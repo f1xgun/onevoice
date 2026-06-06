@@ -21,7 +21,7 @@ import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
 // ChatRowMenu hosts the per-row actions (rename, regenerate title, move,
 // pin/unpin, delete). Shared with ProjectSection / PinnedSection / ChatHeader.
 import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
-import type { Conversation } from '@/lib/conversations';
+import { type Conversation, UNASSIGNED_PROJECT_ID } from '@/lib/conversations';
 
 interface Props {
   conversations: Conversation[];
@@ -64,23 +64,23 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-1 text-left"
+          className="shrink-0 text-ink-faint hover:text-ink"
           aria-expanded={!collapsed}
           aria-label={collapsed ? tSide('expandUnassigned') : tSide('collapseUnassigned')}
         >
-          {collapsed ? (
-            <ChevronRight size={12} className="shrink-0 text-ink-faint" />
-          ) : (
-            <ChevronDown size={12} className="shrink-0 text-ink-faint" />
-          )}
-          <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
-            <FolderMinus size={12} className="shrink-0 text-ink-faint" />
-            <span className="min-w-0 flex-1 truncate italic text-ink-soft">
-              {tSide('unassigned')}
-            </span>
-            <span className="shrink-0 text-xs text-ink-soft">· {count}</span>
-          </span>
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </button>
+        <Link
+          href={`/projects/${UNASSIGNED_PROJECT_ID}/chats`}
+          onClick={onNavigate}
+          className="flex min-w-0 flex-1 items-center gap-2 truncate"
+        >
+          <FolderMinus size={12} className="shrink-0 text-ink-faint" />
+          <span className="min-w-0 flex-1 truncate italic text-ink-soft">
+            {tSide('unassigned')}
+          </span>
+          <span className="shrink-0 text-xs text-ink-soft">· {count}</span>
+        </Link>
         {canCreate && (
           <button
             type="button"

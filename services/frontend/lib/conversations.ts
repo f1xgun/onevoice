@@ -1,6 +1,11 @@
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 
+// Sentinel project id for the «Без проекта» (no-project) bucket. Real projects
+// are UUIDs, so this never collides. The /projects/{id}/chats route renders the
+// unassigned-chats view when the id equals this value.
+export const UNASSIGNED_PROJECT_ID = 'none';
+
 // titleStatus drives placeholder fallback
 // and Regenerate-menu visibility. The shape is a union literal
 // so consumers (chat/page.tsx, ChatHeader) can narrow without re-declaring.
