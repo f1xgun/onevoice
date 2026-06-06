@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -80,6 +81,16 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	yandex.StartScreenshotSweeper(ctx, slog.Default())
+
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {
+		mode := strings.ToLower(strings.TrimSpace(os.Getenv("SCREENSHOT_MODE")))
+		if mode != "" && mode != "off" {
+			slog.Warn("screenshot mode is not off in production — PII risk",
+				"SCREENSHOT_MODE", mode)
+		}
+	}
 
 	if err := ag.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start agent: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -302,8 +303,9 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 	defer func() { _ = page.Close() }()
 
 	if err := fn(page); err != nil {
-		filename := fmt.Sprintf("/tmp/yandex_error_%d.png", time.Now().UnixMilli())
-		_, _ = page.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(filename)})
+		if path, capErr := captureScreenshot(page, "error"); capErr == nil && path != "" {
+			slog.Info("rpa error screenshot saved", "path", path)
+		}
 		return err
 	}
 	return nil

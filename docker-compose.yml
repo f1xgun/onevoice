@@ -314,7 +314,6 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: https://api:8443
-      RPA_DEBUG_SCREENSHOTS: "1"
       REDIS_URL: redis://redis:6379/0
       # BrowserPool tuning (Phase 26 LRU eviction). Empty = defaults from code.
       BROWSER_POOL_MAX_CONTEXTS: ${BROWSER_POOL_MAX_CONTEXTS:-}
