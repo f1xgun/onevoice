@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
@@ -41,48 +40,42 @@ type Client struct {
 	cache map[string]cacheEntry
 }
 
-func New(baseURL string, httpClient *http.Client) *Client {
+// New constructs a token client. When mTLS is enabled
+// (ONEVOICE_MTLS_ENABLED=true) and the cert/CA env paths cannot be loaded,
+// New returns an error — there is no silent downgrade to plain HTTP. When
+// mTLS is disabled, the transport is plain (preserves the dev/test path).
+// When httpClient is non-nil, mTLS env state is ignored and the caller's
+// client is used as-is.
+func New(baseURL string, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
-		httpClient = defaultHTTPClient()
+		c, err := defaultHTTPClient()
+		if err != nil {
+			return nil, err
+		}
+		httpClient = c
 	}
 	return &Client{
 		baseURL:    baseURL,
 		httpClient: httpClient,
 		cacheTTL:   defaultCacheTTL,
 		cache:      make(map[string]cacheEntry),
-	}
+	}, nil
 }
 
-// defaultHTTPClient builds the http.Client used when callers pass nil to
-// New. When ONEVOICE_MTLS_ENABLED=true, the transport carries the
-// service's leaf cert + CA root so calls to the API's internal :8443
-// listener complete the mTLS handshake. When mTLS is disabled (unit tests
-// against httptest.NewServer), the transport stays plain — preserving the
-// pre-mTLS behavior so the existing test suite keeps passing.
-//
-// A misconfigured mTLS env (enabled=true but missing/unreadable certs) is
-// logged at warn level and falls back to plain transport rather than
-// returning an error — `New` has no error return and changing its
-// signature would break every caller (4 platform agents + tests). The
-// downstream request will then hit a TLS handshake failure with a clear
-// error, which is logged at every call site.
-func defaultHTTPClient() *http.Client {
+func defaultHTTPClient() (*http.Client, error) {
 	tr := &http.Transport{}
 	if mtls.IsEnabled() {
 		paths, err := mtls.PathsFromEnv()
-		switch {
-		case err != nil:
-			slog.Warn("tokenclient: mtls enabled but env misconfigured — falling back to plain transport", "error", err)
-		default:
-			tlsCfg, terr := mtls.LoadClientTLSConfig(paths)
-			if terr != nil {
-				slog.Warn("tokenclient: mtls enabled but cert load failed — falling back to plain transport", "error", terr)
-			} else {
-				tr.TLSClientConfig = tlsCfg
-			}
+		if err != nil {
+			return nil, fmt.Errorf("tokenclient: mtls enabled but env misconfigured: %w", err)
 		}
+		tlsCfg, err := mtls.LoadClientTLSConfig(paths)
+		if err != nil {
+			return nil, fmt.Errorf("tokenclient: mtls enabled but cert load failed: %w", err)
+		}
+		tr.TLSClientConfig = tlsCfg
 	}
-	return &http.Client{Timeout: 10 * time.Second, Transport: tr}
+	return &http.Client{Timeout: 10 * time.Second, Transport: tr}, nil
 }
 
 func cacheKey(businessID, platform, externalID string) string {
@@ -95,8 +88,9 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 	c.mu.RLock()
 	if entry, ok := c.cache[key]; ok {
 		if time.Since(entry.fetchedAt) < c.cacheTTL && !tokenExpiringSoon(entry.token) {
+			tk := *entry.token
 			c.mu.RUnlock()
-			return entry.token, nil
+			return &tk, nil
 		}
 	}
 	c.mu.RUnlock()
@@ -137,8 +131,9 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 		return nil, fmt.Errorf("tokenclient: decode response: %w", err)
 	}
 
+	cached := token
 	c.mu.Lock()
-	c.cache[key] = cacheEntry{token: &token, fetchedAt: time.Now()}
+	c.cache[key] = cacheEntry{token: &cached, fetchedAt: time.Now()}
 	c.mu.Unlock()
 
 	return &token, nil

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -26,7 +27,10 @@ func main() {
 
 func run() error {
 	apiURL := agentbase.GetEnv("API_INTERNAL_URL", defaultAPIInternalURL)
-	tc := tokenclient.New(apiURL, nil)
+	tc, err := tokenclient.New(apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("tokenclient init: %w", err)
+	}
 	tokens := agentbase.NewTokenResolver(tc)
 	dedupe := agentbase.NewDedupeClient(agentbase.GetEnv("REDIS_URL", "redis://redis:6379"))
 	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyTelegramError))

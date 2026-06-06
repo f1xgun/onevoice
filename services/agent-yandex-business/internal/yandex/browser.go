@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -14,24 +16,165 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
-// debugScreenshots is true when RPA_DEBUG_SCREENSHOTS env is set.
-var debugScreenshots = os.Getenv("RPA_DEBUG_SCREENSHOTS") != ""
+// ScreenshotMode controls how diagnostic page screenshots are captured by the
+// Yandex.Business RPA agent. The value is read from the SCREENSHOT_MODE env on
+// every call to screenshotMode so an operator can flip to "off" mid-incident
+// without restarting the agent.
+type ScreenshotMode string
 
-// debugScreenshot saves a screenshot to /tmp/rpa_debug_{label}_{timestamp}.png
-// when RPA_DEBUG_SCREENSHOTS is enabled.
-func debugScreenshot(page playwright.Page, label string) {
-	if !debugScreenshots {
-		return
+const (
+	// ScreenshotOff captures nothing — no file is written and page.Screenshot
+	// is not invoked. Production default; protects PII in the authenticated
+	// Yandex.Business DOM.
+	ScreenshotOff ScreenshotMode = "off"
+
+	// ScreenshotTmpfs writes screenshots under /dev/shm with a 1h TTL sweeper.
+	// Staging default — data is ephemeral, never persisted to disk.
+	ScreenshotTmpfs ScreenshotMode = "tmpfs"
+
+	// ScreenshotFull writes screenshots under /tmp with no TTL. Dev default —
+	// files outlive the agent for post-mortem inspection.
+	ScreenshotFull ScreenshotMode = "full"
+)
+
+// screenshotTmpfsDir is where tmpfs-mode screenshots live and where the sweeper
+// reaps files older than the screenshot TTL.
+const screenshotTmpfsDir = "/dev/shm/onevoice-rpa-screenshots"
+
+// screenshotTTL is how long a tmpfs-mode screenshot survives before the sweeper
+// removes it.
+const screenshotTTL = 1 * time.Hour
+
+// screenshotSweepInterval is the polling cadence of the sweeper goroutine.
+const screenshotSweepInterval = 5 * time.Minute
+
+// screenshotDirPerm is the mode applied to the tmpfs screenshot directory.
+// 0o750 satisfies gosec G301: owner full, group read+exec, world none.
+const screenshotDirPerm = 0o750
+
+// screenshotMode reads SCREENSHOT_MODE on each call. Unknown values fall back
+// to off — the safest default whenever the env contract is violated.
+func screenshotMode() ScreenshotMode {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SCREENSHOT_MODE"))) {
+	case "tmpfs":
+		return ScreenshotTmpfs
+	case "full":
+		return ScreenshotFull
+	default:
+		return ScreenshotOff
 	}
-	filename := fmt.Sprintf("/tmp/rpa_debug_%s_%d.png", label, time.Now().UnixMilli())
+}
+
+// captureScreenshot writes a screenshot of the current page under a label.
+// Returns ("", nil) when SCREENSHOT_MODE=off and does not invoke page.Screenshot.
+// In tmpfs/full mode it returns the absolute path the file was written to.
+func captureScreenshot(page playwright.Page, label string) (string, error) {
+	mode := screenshotMode()
+	if mode == ScreenshotOff {
+		return "", nil
+	}
+	ts := time.Now().UnixMilli()
+	var path string
+	switch mode {
+	case ScreenshotTmpfs:
+		if err := os.MkdirAll(screenshotTmpfsDir, screenshotDirPerm); err != nil {
+			return "", fmt.Errorf("mkdir tmpfs screenshot dir: %w", err)
+		}
+		path = filepath.Join(screenshotTmpfsDir, fmt.Sprintf("yandex_%s_%d.png", label, ts))
+	case ScreenshotFull:
+		path = fmt.Sprintf("/tmp/yandex_%s_%d.png", label, ts)
+	default:
+		return "", nil
+	}
 	if _, err := page.Screenshot(playwright.PageScreenshotOptions{
-		Path:     playwright.String(filename),
+		Path:     playwright.String(path),
 		FullPage: playwright.Bool(true),
 	}); err != nil {
-		slog.Warn("debug screenshot failed", "label", label, "error", err)
+		return path, err
+	}
+	return path, nil
+}
+
+// debugScreenshot is the thin wrapper used by the existing RPA tool sites.
+// It applies the SCREENSHOT_MODE gate and logs success/failure. Files captured
+// in tmpfs mode are reclaimed by StartScreenshotSweeper; files captured in
+// full mode survive for post-mortem inspection in development.
+func debugScreenshot(page playwright.Page, label string) {
+	path, err := captureScreenshot(page, label)
+	if err != nil {
+		slog.Warn("screenshot capture failed", "label", label, "error", err)
 		return
 	}
-	slog.Info("debug screenshot saved", "label", label, "path", filename)
+	if path == "" {
+		return
+	}
+	slog.Info("debug screenshot saved", "label", label, "path", path)
+}
+
+// StartScreenshotSweeper spawns a goroutine that removes screenshots older
+// than screenshotTTL from the tmpfs directory every screenshotSweepInterval.
+// The goroutine exits when ctx is canceled (bind via signal.NotifyContext for
+// graceful SIGTERM shutdown). The sweeper is unconditional — captureScreenshot
+// re-reads SCREENSHOT_MODE on every call so the env contract advertises
+// "operator can flip off→tmpfs mid-incident without restarting". A boot-time
+// gate here would silently break that contract on the off→tmpfs path. The
+// loop is cheap (5 min cadence) and sweepScreenshotsIn returns silently when
+// the tmpfs directory is absent (the off / full mode steady state).
+func StartScreenshotSweeper(ctx context.Context, logger *slog.Logger) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	startSweeperLoop(ctx, logger, screenshotSweepInterval, screenshotTmpfsDir, nil)
+}
+
+// startSweeperForTest is the test-only seam used by browser_test.go. It runs
+// the sweeper loop against a caller-controlled tick interval and signals
+// `done` after the loop exits so the test can assert clean shutdown without
+// waiting for the production five-minute cadence.
+func startSweeperForTest(ctx context.Context, logger *slog.Logger, interval time.Duration, done chan<- struct{}) {
+	startSweeperLoop(ctx, logger, interval, screenshotTmpfsDir, done)
+}
+
+func startSweeperLoop(ctx context.Context, logger *slog.Logger, interval time.Duration, dir string, done chan<- struct{}) {
+	go func() {
+		if done != nil {
+			defer close(done)
+		}
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				cutoff := time.Now().Add(-screenshotTTL).Add(-interval)
+				sweepScreenshotsIn(dir, cutoff, logger)
+			}
+		}
+	}()
+}
+
+// sweepScreenshotsIn removes files in dir whose modtime is before cutoff. It
+// is the test-friendly seam exercised by TestSweepScreenshotsIn_RemovesOldFiles.
+func sweepScreenshotsIn(dir string, cutoff time.Time, logger *slog.Logger) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+				logger.Debug("screenshot sweep remove failed", "name", e.Name(), "error", err)
+			}
+		}
+	}
 }
 
 // spravBaseURL builds the Yandex.Business management URL for a given permalink.

@@ -144,8 +144,8 @@ services:
       MONGO_DB: onevoice
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production-min-32-chars}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-12345678901234567890123456789012}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set, generate with openssl rand -base64 48}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set, generate with openssl rand -base64 24}
       INTERNAL_PORT: 8443
       ORCHESTRATOR_URL: http://orchestrator:8090
       NATS_URL: nats://nats:4222
@@ -314,17 +314,25 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: https://api:8443
-      RPA_DEBUG_SCREENSHOTS: "1"
       REDIS_URL: redis://redis:6379/0
+      # APP_ENV gates the boot-time PII warning when SCREENSHOT_MODE != off
+      # (see cmd/main.go). Without propagation the production check was
+      # silently dead in compose deploys.
+      APP_ENV: ${APP_ENV:-development}
       # BrowserPool tuning (Phase 26 LRU eviction). Empty = defaults from code.
       BROWSER_POOL_MAX_CONTEXTS: ${BROWSER_POOL_MAX_CONTEXTS:-}
+      # Screenshot capture mode for diagnostics. Default `off` — never
+      # persist Yandex.Business DOM (PII) on host disk. Operators may
+      # opt in to `tmpfs` (ephemeral, 1h TTL on /dev/shm) for staging
+      # triage, or `full` for dev. See services/agent-yandex-business
+      # /internal/yandex/browser.go for the enum.
+      SCREENSHOT_MODE: ${SCREENSHOT_MODE:-off}
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-yandex-business.crt
       ONEVOICE_MTLS_KEY_PATH: /etc/onevoice/mtls/agent-yandex-business.key
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
-      - ./rpa-screenshots:/tmp:rw
     depends_on:
       nats:
         condition: service_healthy

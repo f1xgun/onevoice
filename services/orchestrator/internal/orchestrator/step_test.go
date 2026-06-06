@@ -501,7 +501,8 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	bc := billingclient.New(srv.URL, nil)
+	bc, err := billingclient.New(srv.URL, nil)
+	require.NoError(t, err)
 
 	fakeProv := &e2eFakeProvider{resp: &llm.ChatResponse{
 		Content: "ok", FinishReason: "stop",
@@ -574,7 +575,8 @@ func TestStepRun_BillingSkippedWhenBusinessIDNil(t *testing.T) {
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
-	bc := billingclient.New(srv.URL, nil)
+	bc, err := billingclient.New(srv.URL, nil)
+	require.NoError(t, err)
 	fakeProv := &e2eFakeProvider{resp: &llm.ChatResponse{
 		Content: "ok", FinishReason: "stop",
 		Usage: llm.TokenUsage{InputTokens: 100, OutputTokens: 50},

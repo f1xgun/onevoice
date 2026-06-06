@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
@@ -26,13 +30,28 @@ func run() error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	tc := tokenclient.New(cfg.APIInternalURL, nil)
+	tc, err := tokenclient.New(cfg.APIInternalURL, nil)
+	if err != nil {
+		return fmt.Errorf("tokenclient init: %w", err)
+	}
 	tokens := agentbase.NewTokenResolver(tc)
 	pool := yandex.NewBrowserPoolWithCap(cfg.BrowserPoolMaxContexts)
 	defer pool.Close()
 	dedupe := agentbase.NewDedupeClient(cfg.RedisURL)
 	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyYandexError))
 	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher)
+
+	sweeperCtx, stopSweeper := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSweeper()
+	yandex.StartScreenshotSweeper(sweeperCtx, slog.Default())
+
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {
+		mode := strings.ToLower(strings.TrimSpace(os.Getenv("SCREENSHOT_MODE")))
+		if mode != "" && mode != "off" {
+			slog.Warn("screenshot mode is not off in production — PII risk",
+				"SCREENSHOT_MODE", mode)
+		}
+	}
 
 	return agentbase.Run(agentbase.RunConfig{
 		AgentID:    a2a.AgentYandexBusiness,

@@ -78,7 +78,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	log.Info("mtls", "enabled", mtls.IsEnabled())
 
-	billingHTTP := billingclient.New(cfg.APIInternalURL, nil)
+	billingHTTP, err := billingclient.New(cfg.APIInternalURL, nil)
+	if err != nil {
+		return fmt.Errorf("billingclient init: %w", err)
+	}
 	log.Info("billing client wired", "url", cfg.APIInternalURL)
 
 	routerOpts := []llm.RouterOption{llm.WithBilling(billingHTTP)}

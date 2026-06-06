@@ -61,7 +61,9 @@ func TestTokenResolver_GetToken_DelegatesToClient(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := agentbase.NewTokenResolver(tokenclient.New(srv.URL, nil))
+	tc, err := tokenclient.New(srv.URL, nil)
+	require.NoError(t, err)
+	resolver := agentbase.NewTokenResolver(tc)
 	got, err := resolver.GetToken(context.Background(), "biz-1", "vk", "group-456")
 	require.NoError(t, err)
 
@@ -86,7 +88,9 @@ func TestTokenResolver_GetToken_EmptyExternalID_Propagates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := agentbase.NewTokenResolver(tokenclient.New(srv.URL, nil))
+	tc, err := tokenclient.New(srv.URL, nil)
+	require.NoError(t, err)
+	resolver := agentbase.NewTokenResolver(tc)
 	got, err := resolver.GetToken(context.Background(), "biz-1", "telegram", "")
 	require.NoError(t, err)
 
@@ -107,7 +111,9 @@ func TestTokenResolver_GetToken_NoUserToken_LeavesEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := agentbase.NewTokenResolver(tokenclient.New(srv.URL, nil))
+	tc, err := tokenclient.New(srv.URL, nil)
+	require.NoError(t, err)
+	resolver := agentbase.NewTokenResolver(tc)
 	got, err := resolver.GetToken(context.Background(), "biz-1", "telegram", "channel-1001")
 	require.NoError(t, err)
 
@@ -126,7 +132,9 @@ func TestTokenResolver_GetToken_ErrorPropagates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := agentbase.NewTokenResolver(tokenclient.New(srv.URL, nil))
+	tc, err := tokenclient.New(srv.URL, nil)
+	require.NoError(t, err)
+	resolver := agentbase.NewTokenResolver(tc)
 	got, err := resolver.GetToken(context.Background(), "biz-1", "vk", "group-456")
 	require.Error(t, err)
 	assert.Equal(t, agentbase.TokenInfo{}, got, "error path must return zero TokenInfo")
