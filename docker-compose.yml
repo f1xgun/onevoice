@@ -315,6 +315,10 @@ services:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: https://api:8443
       REDIS_URL: redis://redis:6379/0
+      # APP_ENV gates the boot-time PII warning when SCREENSHOT_MODE != off
+      # (see cmd/main.go). Without propagation the production check was
+      # silently dead in compose deploys.
+      APP_ENV: ${APP_ENV:-development}
       # BrowserPool tuning (Phase 26 LRU eviction). Empty = defaults from code.
       BROWSER_POOL_MAX_CONTEXTS: ${BROWSER_POOL_MAX_CONTEXTS:-}
       # Screenshot capture mode for diagnostics. Default `off` — never
