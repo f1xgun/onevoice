@@ -120,7 +120,7 @@ func TestSearchHandler_500OnMissingBusinessContext(t *testing.T) {
 // TestSearchHandler_503BeforeReady — readiness flag false → 503 +
 // Retry-After: 5 header.
 func TestSearchHandler_503BeforeReady(t *testing.T) {
-	h := newSearchHandlerForTest(t, false /* not ready */)
+	h := newSearchHandlerForTest(t, false)
 	businessID := uuid.New()
 	userID := uuid.New()
 
@@ -182,9 +182,6 @@ func TestSearchHandler_LogShape(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	logs := buf.String()
-	// Service-layer log line carries query_length on every search. We
-	// only assert the negative (no leak) here; the service unit test
-	// covers the positive presence.
 	assert.NotContains(t, logs, literalQuery,
 		"query text leaked into logs")
 }

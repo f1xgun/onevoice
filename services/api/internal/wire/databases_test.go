@@ -21,8 +21,6 @@ func TestDatabases_PgxpoolFailsLoud_OnBadDSN(t *testing.T) {
 	cfg := &config.Config{
 		PostgresUser: "postgres",
 		PostgresPass: "postgres",
-		// A space in the host renders the URL unparseable by pgx.ParseConfig
-		// without ever touching the network.
 		PostgresHost: "not a valid host",
 		PostgresPort: "5432",
 		PostgresDB:   "onevoice",

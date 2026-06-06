@@ -111,8 +111,6 @@ func buildTestRouter(t *testing.T) *chi.Mux {
 	cache := authz.NewCacheForTest(&fakeLoader{}, time.Second, time.Second)
 	hc := health.New()
 	handlers := buildTestHandlers()
-	// nil users / nil pool / nil lock — all middleware gates degrade to
-	// pass-through for the router structure tests.
 	return router.Setup(handlers, []byte("test-secret"), nil, hc, []string{"http://localhost:3000"}, router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10}, cache, nil, nil, nil)
 }
 
@@ -185,8 +183,6 @@ func TestRouter_CreateBusinessRegistered(t *testing.T) {
 // Acceptance: this test fails before the chi.RealIP removal (RealIP
 // would rewrite r.RemoteAddr to "178.154.250.5") and passes after.
 func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
-	// Force defaultTrustedCIDRs (178.154.250.0/24, 84.252.160.0/19) into
-	// the package-level set so ClientIP can be exercised end-to-end.
 	require.NoError(t, apimiddleware.InitTrustedProxies(""))
 
 	var capturedRemoteAddr, capturedClientIP string
@@ -199,32 +195,22 @@ func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
 	mux := chi.NewRouter()
 	mux.Use(chimiddleware.RequestID)
 	mux.Use(apimiddleware.CorrelationID())
-	// NOTE: NO chimiddleware.RealIP here — that is the contract this test enforces.
 	mux.Use(chimiddleware.Logger)
 	mux.Use(chimiddleware.Recoverer)
 	mux.Post("/probe", probe)
 
 	req := httptest.NewRequest(http.MethodPost, "/probe", http.NoBody)
-	// TCP peer outside any trusted CIDR.
 	req.RemoteAddr = "9.9.9.9:443"
-	// XFF that WOULD match a trusted CIDR (Yandex Cloud LB range
-	// 178.154.250.0/24) — attacker trying to look like an LB.
 	req.Header.Set("X-Forwarded-For", "178.154.250.5")
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	// r.RemoteAddr MUST be the TCP peer, NOT rewritten from XFF.
 	require.Equal(t, "9.9.9.9:443", capturedRemoteAddr,
 		"chi.RealIP is intentionally not mounted — r.RemoteAddr must equal the actual TCP peer")
-	// middleware.ClientIP MUST return the TCP peer host (9.9.9.9),
-	// ignoring the spoofed XFF because 9.9.9.9 is not in any trusted CIDR.
 	require.Equal(t, "9.9.9.9", capturedClientIP,
 		"middleware.ClientIP must ignore X-Forwarded-For when the TCP peer is outside TRUSTED_PROXY_CIDRS")
-	// The /16 derived for lockout keying MUST be the attacker's /16,
-	// not the spoofed-LB /16 — proves the lockout/captcha gate is bound
-	// to the real attacker.
 	require.Equal(t, "9.9.0.0/16", apimiddleware.Net16(capturedClientIP))
 }
 
@@ -246,7 +232,6 @@ func buildTestInternalRouter(t *testing.T) http.Handler {
 	t.Helper()
 	hc := health.New()
 	h := buildTestHandlers()
-	// Inject internal billing handler.
 	h.InternalBilling = handler.NewInternalBillingHandler(stubBilling{}, nil)
 	return router.SetupInternal(h, hc)
 }
@@ -260,7 +245,6 @@ func TestSetupInternal_BillingRoute_AppliesMTLSMiddleware(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"business_id":"` + uuid.New().String() + `","model":"x","provider":"y"}`))
 	req := httptest.NewRequest(http.MethodPost, "/internal/v1/billing/usage_logs", body)
 	req.Header.Set("Content-Type", "application/json")
-	// req.TLS == nil — RequireServiceIdentity must 403.
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -313,7 +297,6 @@ func TestSetupInternal_DailySpendRoute_AppliesMTLSMiddleware(t *testing.T) {
 
 	url := "/internal/v1/billing/daily_spend?business_id=" + uuid.New().String() + "&date=2026-05-30"
 	req := httptest.NewRequest(http.MethodGet, url, http.NoBody)
-	// req.TLS == nil — RequireServiceIdentity must 403.
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

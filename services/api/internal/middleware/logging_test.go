@@ -30,7 +30,6 @@ func TestRequestLogger_Success(t *testing.T) {
 
 	logOutput := buf.String()
 
-	// Check that both "request started" and "request completed" logs exist
 	assert.Contains(t, logOutput, "request started")
 	assert.Contains(t, logOutput, "request completed")
 	assert.Contains(t, logOutput, `"method":"GET"`)
@@ -84,7 +83,6 @@ func TestRequestLogger_ImplicitStatusOK(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
 	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Don't explicitly call WriteHeader - should default to 200
 		_, _ = w.Write([]byte("success"))
 	}))
 
@@ -102,11 +100,9 @@ func TestResponseWriter_WriteHeaderOnce(t *testing.T) {
 	rr := httptest.NewRecorder()
 	wrapped := wrapResponseWriter(rr)
 
-	// First WriteHeader should be recorded
 	wrapped.WriteHeader(http.StatusCreated)
 	assert.Equal(t, http.StatusCreated, wrapped.status)
 
-	// Second WriteHeader should be ignored
 	wrapped.WriteHeader(http.StatusInternalServerError)
 	assert.Equal(t, http.StatusCreated, wrapped.status, "status should not change after first WriteHeader")
 }
@@ -115,7 +111,6 @@ func TestResponseWriter_WriteWithoutWriteHeader(t *testing.T) {
 	rr := httptest.NewRecorder()
 	wrapped := wrapResponseWriter(rr)
 
-	// Write without calling WriteHeader should default to 200
 	n, err := wrapped.Write([]byte("test"))
 	assert.NoError(t, err)
 	assert.Equal(t, 4, n)
@@ -135,8 +130,6 @@ func TestRequestLogger_StripsTokenFromConfirmPath(t *testing.T) {
 
 	var rawQueryAtHandlerTime string
 	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Capture what the inner handler sees — RawQuery must already
-		// be scrubbed by the time we reach here.
 		rawQueryAtHandlerTime = r.URL.RawQuery
 		w.WriteHeader(http.StatusNoContent)
 	}))

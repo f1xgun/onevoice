@@ -30,9 +30,5 @@ func TestAnalyzer_AllowlistSuppressesDiagnostics(t *testing.T) {
 	}
 	t.Cleanup(func() { activeAllowlist = prev })
 
-	// Use the no-diagnostic fixture; analysistest.Run with the violation
-	// package would require the fixture to also drop the `// want` comments.
-	// Instead, point at a fresh subdir that mirrors violation but without
-	// `// want` annotations — see testdata/src/violation_allowlisted.
 	analysistest.Run(t, analysistest.TestData(), Analyzer, "violation_allowlisted")
 }

@@ -42,8 +42,6 @@ func (s *stubConversationRepo) GetByID(_ context.Context, id string) (*domain.Co
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.getByIDInvocationCounter++
-	// Second GetByID (post-Update) honors a distinct error knob so tests can
-	// simulate the rare refetch failure independently.
 	if s.getByIDInvocationCounter == 2 && s.GetByIDAfterUpdateErr != nil {
 		return nil, s.GetByIDAfterUpdateErr
 	}
@@ -341,9 +339,6 @@ func TestMoveToProject_HappyPath_NoProject(t *testing.T) {
 		"UpdateProjectAssignment must receive nil pointer (not a pointer to empty string)")
 
 	require.Len(t, msg.Created, 1)
-	// English catalog ships "No project" as the default destination — the
-	// localized label is locale-dependent; assert the content is non-empty
-	// and the role is system rather than coupling to a specific locale.
 	assert.NotEmpty(t, msg.Created[0].Content)
 	assert.Equal(t, "system", msg.Created[0].Role)
 }
@@ -373,7 +368,6 @@ func TestMoveToProject_Forbidden_OtherUserConversation(t *testing.T) {
 	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), other, nil)
 	assert.True(t, errors.Is(err, domain.ErrForbidden), "want ErrForbidden, got %v", err)
 
-	// Critical: ownership rejection must NOT have written anything.
 	assert.Empty(t, conv.UpdateCalls, "ownership rejection must NOT call UpdateProjectAssignment")
 	assert.Empty(t, msg.Created, "ownership rejection must NOT append a system note")
 }
@@ -383,7 +377,7 @@ func TestMoveToProject_ProjectNotFound_NonExistent(t *testing.T) {
 	conv := &stubConversationRepo{
 		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
 	}
-	proj := &stubProjectRepoForConv{Project: nil} // GetByID returns ErrProjectNotFound
+	proj := &stubProjectRepoForConv{Project: nil}
 	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
 
 	projIDStr := uuid.NewString()
@@ -407,7 +401,7 @@ func TestMoveToProject_ProjectNotFound_CrossTenant(t *testing.T) {
 		Project: &domain.Project{
 			ID:         uuid.New(),
 			Name:       "Other Business Project",
-			BusinessID: otherBiz, // cross-tenant
+			BusinessID: otherBiz,
 		},
 	}
 	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
@@ -451,7 +445,6 @@ func TestMoveToProject_NoteFailure_DoesNotFailMove(t *testing.T) {
 	require.NoError(t, err, "note-write failure must NOT fail the move")
 	require.NotNil(t, updated)
 	require.Len(t, conv.UpdateCalls, 1, "UpdateProjectAssignment still ran")
-	// Created list stays empty — Create returned an error.
 	assert.Empty(t, msg.Created)
 }
 
@@ -481,7 +474,7 @@ func TestMoveToProject_EmptyStringProjectID_TreatedAsNoProject(t *testing.T) {
 	conv := &stubConversationRepo{
 		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
 	}
-	proj := &stubProjectRepoForConv{} // GetErr stays nil; if called by mistake, Project=nil → ErrProjectNotFound
+	proj := &stubProjectRepoForConv{}
 	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
 
 	empty := ""
@@ -513,7 +506,7 @@ func TestOpenChat_HappyPath_EmptyPending(t *testing.T) {
 			{ID: "m2", ConversationID: convID, Role: "assistant", Content: "hello"},
 		},
 	}
-	pending := &stubPendingToolCallRepo{} // Batches=nil → empty result
+	pending := &stubPendingToolCallRepo{}
 	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, pending)
 
 	view, err := svc.OpenChat(context.Background(), convID, requesterUser)
@@ -624,7 +617,6 @@ func TestOpenChat_Forbidden_OtherUserConversation(t *testing.T) {
 	conv := &stubConversationRepo{
 		Conv: &domain.Conversation{ID: "c1", UserID: owner.String()},
 	}
-	// If either repo gets touched on the forbidden path, fail loudly.
 	msg := &stubMessageRepo{ListErr: errors.New("must not be called on forbidden path")}
 	pending := &stubPendingToolCallRepo{ListErr: errors.New("must not be called on forbidden path")}
 	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, pending)
@@ -656,7 +648,7 @@ func TestOpenChat_NilMessages_NormalizedToEmptySlice(t *testing.T) {
 	conv := &stubConversationRepo{
 		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
 	}
-	msg := &stubMessageRepo{Messages: nil} // explicit nil from repo
+	msg := &stubMessageRepo{Messages: nil}
 	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
 
 	view, err := svc.OpenChat(context.Background(), "c1", requesterUser)

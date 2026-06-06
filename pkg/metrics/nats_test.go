@@ -16,7 +16,7 @@ func TestCollapseSubject(t *testing.T) {
 		{"_INBOX.abc123xyz", "_INBOX"},
 		{"_INBOX.", "_INBOX"},
 		{"", ""},
-		{"_INBOX", "_INBOX"}, // bare token, no prefix match — passes through unchanged
+		{"_INBOX", "_INBOX"},
 	}
 	for _, tc := range tests {
 		if got := CollapseSubject(tc.in); got != tc.want {
@@ -41,7 +41,6 @@ func TestRecordNATSPublish(t *testing.T) {
 }
 
 func TestRecordNATSHandler(t *testing.T) {
-	// Smoke test: no panic and the histogram is registered.
 	RecordNATSHandler("tasks.vk", "ok", 50*time.Millisecond)
 	RecordNATSHandler("_INBOX.abc", "error", 5*time.Millisecond)
 	if natsHandlerDuration == nil {

@@ -37,9 +37,6 @@ func TestRegistry_RegisterModelProvider(t *testing.T) {
 }
 
 func TestRegistry_RegisterModelProvider_OverwritesByProvider(t *testing.T) {
-	// Same (model, provider) pair must overwrite in place — preserves the
-	// pointer identity so a Selector holding a reference from a prior Pick
-	// keeps seeing the latest config.
 	registry := llm.NewRegistry()
 
 	registry.RegisterModelProvider(&llm.ModelProviderEntry{

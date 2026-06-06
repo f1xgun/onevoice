@@ -12,8 +12,6 @@ import (
 )
 
 func TestClientIP_RemoteAddrUntrustedIgnoresXFF(t *testing.T) {
-	// Init with a deliberately-narrow trust set; 1.2.3.4 is OUTSIDE it.
-	// The XFF header must be ignored — returns the peer IP.
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -24,7 +22,6 @@ func TestClientIP_RemoteAddrUntrustedIgnoresXFF(t *testing.T) {
 }
 
 func TestClientIP_RemoteAddrTrustedReadsXFF(t *testing.T) {
-	// Peer is INSIDE the trust set → trust the LB's XFF. Leftmost wins.
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -35,8 +32,6 @@ func TestClientIP_RemoteAddrTrustedReadsXFF(t *testing.T) {
 }
 
 func TestClientIP_TrustedNoXFF_FallsBackToPeer(t *testing.T) {
-	// Edge case: LB peer but no XFF header → return the LB IP itself
-	// rather than empty string. Forensic value preserved.
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -46,9 +41,6 @@ func TestClientIP_TrustedNoXFF_FallsBackToPeer(t *testing.T) {
 }
 
 func TestClientIP_DefaultCIDRs_WhenEmptyInput(t *testing.T) {
-	// Empty CSV → defaults to Yandex Cloud LB ranges. 178.154.250.5 is
-	// inside 178.154.250.0/24 (the published Yandex Cloud LB range), so
-	// the XFF must be honored.
 	require.NoError(t, middleware.InitTrustedProxies(""))
 
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -58,7 +50,6 @@ func TestClientIP_DefaultCIDRs_WhenEmptyInput(t *testing.T) {
 }
 
 func TestInitTrustedProxies_InvalidCIDR_ReturnsError(t *testing.T) {
-	// Fail-fast on operator typo — never silently degrade to "trust nothing".
 	err := middleware.InitTrustedProxies("not-a-cidr,10.0.0.0/8")
 	require.Error(t, err)
 }
@@ -81,8 +72,6 @@ func TestNet16_IPv4(t *testing.T) {
 }
 
 func TestNet16_IPv6_ReturnsEmpty(t *testing.T) {
-	// IPv6 bucketing TBD; for now Net16 returns "" and the lockout
-	// middleware treats that as "skip lockout for this request".
 	assert.Equal(t, "", middleware.Net16("fe80::1"))
 	assert.Equal(t, "", middleware.Net16("::1"))
 }

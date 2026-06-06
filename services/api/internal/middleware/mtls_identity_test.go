@@ -82,7 +82,6 @@ func TestRequireServiceIdentity_RejectsMissingCert_WhenMTLSEnabled(t *testing.T)
 	mw := middleware.RequireServiceIdentity([]string{"orchestrator"}, nil)(next)
 
 	req := httptest.NewRequest(http.MethodPost, "/internal/v1/billing/usage_logs", http.NoBody)
-	// req.TLS == nil intentionally.
 	rec := httptest.NewRecorder()
 	mw.ServeHTTP(rec, req)
 

@@ -39,7 +39,6 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 	now := time.Now().UTC()
 
-	// Tx expectations — RepeatableRead + EnsureOwnerExistsAfter + commit.
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	mockPool.ExpectQuery("SELECT user_id, role_id").
 		WithArgs(pgxmock.AnyArg()).
@@ -48,7 +47,6 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 			AddRow(targetID, newRoleID))
 	mockPool.ExpectCommit()
 
-	// Mocks — role lookup + UpdateRoleInTx + read-back hydrate.
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
 		ID: newRoleID, BusinessID: nil, Name: "viewer",
 	}, nil)
@@ -95,11 +93,9 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 	assert.Equal(t, bizID, *e.BusinessID)
 	require.NotNil(t, e.UserID, "actor user_id (bc.UserID) must populate UserID")
 	assert.Equal(t, actorID, *e.UserID)
-	// Details should carry target_user_id + new_role_id.
 	details := string(e.Details)
 	assert.Contains(t, details, targetID.String(), "Details must capture target_user_id")
 	assert.Contains(t, details, newRoleID.String(), "Details must capture new_role_id")
-	// inv side-effect verifies AFTER-commit ordering.
 	inv.AssertExpectations(t)
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }

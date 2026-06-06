@@ -114,14 +114,14 @@ func TestConnectVK_Paste_TokenWithoutWallScope_400(t *testing.T) {
 	vkServer := newVKAPIMock(t, vkMockOpts{
 		communityID:   1,
 		communityName: "X",
-		scopes:        []string{"manage"}, // no wall
+		scopes:        []string{"manage"},
 	})
 	defer vkServer.Close()
 
 	businessID := uuid.New()
 	userID := uuid.New()
 	mockBusiness := new(MockBusinessService)
-	mockIntegration := new(MockConnectIntegrationService) // Connect must NOT be called
+	mockIntegration := new(MockConnectIntegrationService)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
 	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
@@ -193,8 +193,6 @@ func TestConnectVK_Paste_EmptyToken_400(t *testing.T) {
 }
 
 func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
-	// Empty groups array — token is technically valid but isn't bound to a
-	// community (e.g., a stray service token).
 	vkServer := newVKAPIMock(t, vkMockOpts{scopes: []string{"wall"}})
 	defer vkServer.Close()
 
@@ -251,7 +249,7 @@ func TestConnectVK_Paste_Forbidden(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "tok"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(connectBizCtx(businessID, userID /* no perms */))
+	req = req.WithContext(connectBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 
 	h.ConnectVK(rr, req)

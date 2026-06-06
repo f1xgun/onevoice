@@ -82,7 +82,6 @@ func TestGetToken_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrIntegrationNotFound),
 		"404 must surface as ErrIntegrationNotFound; got %v", err)
-	// Wire-format invariant: log greps depend on this exact prefix.
 	assert.Contains(t, err.Error(), "tokenclient: integration not found")
 }
 
@@ -124,7 +123,6 @@ func TestGetToken_ServerError_IsTransient(t *testing.T) {
 // connection refused / DNS failure / TLS hiccup chains ErrTransient and
 // preserves the underlying error for diagnostics.
 func TestGetToken_NetworkError_IsTransient(t *testing.T) {
-	// Listen on a port, then close it — the next Dial gets connection refused.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := l.Addr().String()
@@ -228,7 +226,6 @@ func mtlsTestHarness(t *testing.T) *mtlsHarness {
 		write(path, "PRIVATE KEY", der)
 	}
 
-	// Primary CA + server + client.
 	caCert, caKey, caDER := makeCA("dev-ca")
 	serverDER, serverKey := makeLeaf("api", caCert, caKey,
 		[]string{"localhost", "api"},
@@ -237,7 +234,6 @@ func mtlsTestHarness(t *testing.T) *mtlsHarness {
 		[]string{"client", "localhost"},
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth})
 
-	// Rogue CA + rogue client cert — the API CA does NOT trust this CA.
 	rogueCA, rogueCAKey, rogueCADER := makeCA("rogue-ca")
 	rogueDER, rogueKey := makeLeaf("client", rogueCA, rogueCAKey,
 		[]string{"localhost"},
@@ -291,7 +287,7 @@ func TestGetToken_mTLS_Success(t *testing.T) {
 	srv.StartTLS()
 	defer srv.Close()
 
-	client := New(srv.URL, nil) // nil → default client picks up ONEVOICE_MTLS_* env
+	client := New(srv.URL, nil)
 	got, err := client.GetToken(context.Background(), "b", "vk", "g")
 	require.NoError(t, err)
 	assert.Equal(t, "mtls-ok", got.AccessToken)
@@ -306,7 +302,6 @@ func TestGetToken_mTLS_RejectsUnsignedClient(t *testing.T) {
 	h := mtlsTestHarness(t)
 	t.Setenv(mtls.EnvEnabled, "true")
 	t.Setenv(mtls.EnvCAPath, h.caCertPath)
-	// Client presents a rogue-signed cert.
 	t.Setenv(mtls.EnvCertPath, h.rogueClientCert)
 	t.Setenv(mtls.EnvKeyPath, h.rogueClientKey)
 
@@ -348,24 +343,19 @@ func TestGetToken_mTLS_PlainHTTPRejected(t *testing.T) {
 	srv.StartTLS()
 	defer srv.Close()
 
-	// srv.URL is https://...; strip to http:// to simulate a plain-HTTP
-	// client talking to a TLS-only listener.
 	plainURL := "http://" + strings.TrimPrefix(srv.URL, "https://")
 
-	// Use a short timeout so the test doesn't hang on a hopeless connection.
 	client := New(plainURL, &http.Client{Timeout: 2 * time.Second})
 	tok, err := client.GetToken(context.Background(), "b", "vk", "g")
 	require.Error(t, err, "TLS-only listener must NEVER serve a useful response to a plain-HTTP client")
 	assert.Nil(t, tok, "no token should leak through a plain-HTTP attempt against a TLS-only listener")
-	// Sanity: it's NOT 404 / 410 / success — the server cannot satisfy a
-	// plain-HTTP request on a TLS port.
 	assert.False(t, errors.Is(err, ErrIntegrationNotFound))
 	assert.False(t, errors.Is(err, ErrTokenExpired))
 }
 
 func TestGetToken_CacheEvictsExpiringSoon(t *testing.T) {
 	var callCount atomic.Int32
-	expiresAt := time.Now().Add(30 * time.Second) // expires in 30s (< 5 min threshold)
+	expiresAt := time.Now().Add(30 * time.Second)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
@@ -381,7 +371,6 @@ func TestGetToken_CacheEvictsExpiringSoon(t *testing.T) {
 	_, err := client.GetToken(context.Background(), "b", "vk", "g")
 	require.NoError(t, err)
 
-	// Second call should fetch again because token expires within 1 minute
 	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.NoError(t, err)
 

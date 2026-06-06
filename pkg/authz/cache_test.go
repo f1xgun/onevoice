@@ -95,7 +95,6 @@ func TestCache_GetRole_CachesOnFirstCall(t *testing.T) {
 	cache := authz.NewCache(loader)
 
 	roleID := uuid.New()
-	// Override the role with a specific roleID.
 	loader.role = &authz.CachedRole{Permissions: []authz.Permission{authz.PermContentCreate}}
 
 	r1, err := cache.GetRole(context.Background(), roleID)
@@ -117,22 +116,18 @@ func TestCache_InvalidateMember_DeletesOneKey(t *testing.T) {
 	bizID := uuid.New()
 	userID1, userID2 := uuid.New(), uuid.New()
 
-	// Populate cache for both users.
 	_, err := cache.GetMembership(context.Background(), bizID, userID1)
 	require.NoError(t, err)
 	_, err = cache.GetMembership(context.Background(), bizID, userID2)
 	require.NoError(t, err)
 	require.Equal(t, 2, loader.MemberCallCount())
 
-	// Invalidate only userID1.
 	cache.InvalidateMember(bizID, userID1)
 
-	// userID1 should re-hit loader.
 	_, err = cache.GetMembership(context.Background(), bizID, userID1)
 	require.NoError(t, err)
 	require.Equal(t, 3, loader.MemberCallCount(), "invalidated user must re-fetch from loader")
 
-	// userID2 should still be cached.
 	_, err = cache.GetMembership(context.Background(), bizID, userID2)
 	require.NoError(t, err)
 	require.Equal(t, 3, loader.MemberCallCount(), "non-invalidated user should remain cached")
@@ -147,15 +142,12 @@ func TestCache_InvalidateRole_DeletesOneRoleKey(t *testing.T) {
 	bizID := uuid.New()
 	roleID := uuid.New()
 
-	// Populate role cache.
 	_, err := cache.GetRole(context.Background(), roleID)
 	require.NoError(t, err)
 	require.Equal(t, 1, loader.RoleCallCount())
 
-	// Invalidate the role.
 	cache.InvalidateRole(bizID, roleID)
 
-	// Next GetRole should re-hit loader.
 	_, err = cache.GetRole(context.Background(), roleID)
 	require.NoError(t, err)
 	require.Equal(t, 2, loader.RoleCallCount(), "invalidated role must re-fetch from loader")
@@ -167,7 +159,6 @@ func TestCache_MembershipEviction_At1025(t *testing.T) {
 	cache := authz.NewCache(loader)
 	bizID := uuid.New()
 
-	// Populate 1024 unique (bizID, userID) pairs.
 	userIDs := make([]uuid.UUID, 1025)
 	for i := 0; i < 1025; i++ {
 		userIDs[i] = uuid.New()
@@ -177,8 +168,6 @@ func TestCache_MembershipEviction_At1025(t *testing.T) {
 	countAfterFill := loader.MemberCallCount()
 	require.Equal(t, 1025, countAfterFill, "each unique pair should hit loader once")
 
-	// The first entry (userIDs[0]) should have been evicted after 1025 inserts.
-	// Calling it again should hit the loader (total = 1026).
 	_, err := cache.GetMembership(context.Background(), bizID, userIDs[0])
 	require.NoError(t, err)
 	require.Equal(t, 1026, loader.MemberCallCount(), "oldest entry should be evicted after 1025 inserts")
@@ -201,7 +190,7 @@ func TestNewCacheForTest_TTLInjection(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, loader.MemberCallCount(), "within TTL, no re-load")
 
-	time.Sleep(700 * time.Millisecond) // total 1.2s elapsed > 1s TTL
+	time.Sleep(700 * time.Millisecond)
 	_, err = cache.GetMembership(context.Background(), bizID, userID)
 	require.NoError(t, err)
 	require.Equal(t, 2, loader.MemberCallCount(), "after TTL elapsed, loader re-invoked")
@@ -222,7 +211,6 @@ func TestCache_RoleEviction_At257(t *testing.T) {
 	}
 	require.Equal(t, 257, loader.RoleCallCount())
 
-	// The first role (roleIDs[0]) should have been evicted after 257 inserts.
 	_, err := cache.GetRole(context.Background(), roleIDs[0])
 	require.NoError(t, err)
 	require.Equal(t, 258, loader.RoleCallCount(), "oldest role entry should be evicted after 257 inserts")
@@ -235,7 +223,6 @@ func TestCache_ConcurrentAccess_NoRace(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 
-	// Pre-populate.
 	_, err := cache.GetMembership(context.Background(), bizID, userID)
 	require.NoError(t, err)
 

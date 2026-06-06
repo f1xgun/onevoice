@@ -55,7 +55,7 @@ func TestRequireVerifiedEmailDay0_BlocksUnverifiedRegardlessOfAge(t *testing.T) 
 			ID:            uid,
 			Email:         "u@x.com",
 			EmailVerified: false,
-			CreatedAt:     time.Now().Add(-24 * time.Hour), // 1 day old — still blocks at day 0
+			CreatedAt:     time.Now().Add(-24 * time.Hour),
 		},
 	}
 	var called bool
@@ -104,7 +104,7 @@ func TestRequireVerifiedEmailDay7_AllowsUnverifiedWithinGrace(t *testing.T) {
 			ID:            uid,
 			Email:         "u@x.com",
 			EmailVerified: false,
-			CreatedAt:     time.Now().Add(-3 * 24 * time.Hour), // 3 days old — within grace
+			CreatedAt:     time.Now().Add(-3 * 24 * time.Hour),
 		},
 	}
 	var called bool
@@ -125,7 +125,7 @@ func TestRequireVerifiedEmailDay7_BlocksUnverifiedPastGrace(t *testing.T) {
 			ID:            uid,
 			Email:         "u@x.com",
 			EmailVerified: false,
-			CreatedAt:     time.Now().Add(-8 * 24 * time.Hour), // 8 days old — past grace
+			CreatedAt:     time.Now().Add(-8 * 24 * time.Hour),
 		},
 	}
 	var called bool
@@ -166,7 +166,7 @@ func TestRequireVerifiedEmailDay7_AllowsVerifiedRegardlessOfAge(t *testing.T) {
 // when the upstream Auth middleware did not set a userID. The downstream
 // handler is expected to 401 in this case.
 func TestRequireVerifiedEmail_NoUserIDPassesThrough(t *testing.T) {
-	users := &fakeUserLookup{} // never called
+	users := &fakeUserLookup{}
 	var called bool
 	h := RequireVerifiedEmailDay0(users)(nextOK(t, &called))
 

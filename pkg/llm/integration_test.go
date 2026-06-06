@@ -14,7 +14,6 @@ import (
 
 // TestIntegration_RegistryWithConfig verifies registry works with config types
 func TestIntegration_RegistryWithConfig(t *testing.T) {
-	// Load config from YAML
 	yamlData := `
 providers:
   openrouter:
@@ -50,10 +49,8 @@ default_pricing:
 	err := yaml.Unmarshal([]byte(yamlData), &cfg)
 	require.NoError(t, err)
 
-	// Create registry and register models from config
 	registry := llm.NewRegistry()
 
-	// Register Claude model from pricing overrides
 	claudePricing := cfg.PricingOverrides["claude-3.5-sonnet"]
 	registry.RegisterModelProvider(&llm.ModelProviderEntry{
 		Model:              "claude-3.5-sonnet",
@@ -67,7 +64,6 @@ default_pricing:
 		LastCheckedAt:      time.Now(),
 	})
 
-	// Register GPT-4 with default pricing
 	registry.RegisterModelProvider(&llm.ModelProviderEntry{
 		Model:              "gpt-4-turbo",
 		Provider:           "openai",
@@ -80,15 +76,10 @@ default_pricing:
 		LastCheckedAt:      time.Now(),
 	})
 
-	// Verify models are registered
 	assert.True(t, registry.ModelExists("claude-3.5-sonnet"))
 	assert.True(t, registry.ModelExists("gpt-4-turbo"))
-	assert.False(t, registry.ModelExists("gpt-3.5-turbo")) // Not in whitelist
+	assert.False(t, registry.ModelExists("gpt-3.5-turbo"))
 
-	// Simulate successful requests and track metrics. Recording lives on
-	// the Selector after the round-2 architecture refactor (RecordSuccess/
-	// RecordFailure were moved off Registry — the seam is exercised here
-	// to keep this integration test covering the same end-to-end path).
 	sel := llm.NewSelector(registry, nil)
 	claudeEntries := registry.GetModelProviders("claude-3.5-sonnet")
 	require.Len(t, claudeEntries, 1)
@@ -99,11 +90,9 @@ default_pricing:
 	require.Len(t, gptEntries, 1)
 	sel.Record(gptEntries[0], llm.Outcome{Success: true, Latency: 2000 * time.Millisecond})
 
-	// Verify metrics updated (read through registry — Selector mirrors
-	// state onto the entry pointer for admin / status consumers).
 	claudeProviders := registry.GetModelProviders("claude-3.5-sonnet")
 	require.Len(t, claudeProviders, 1)
-	assert.Equal(t, 1150, claudeProviders[0].AvgLatencyMs) // Average of 1200 and 1100
+	assert.Equal(t, 1150, claudeProviders[0].AvgLatencyMs)
 	assert.Equal(t, "healthy", claudeProviders[0].HealthStatus)
 
 	gptProviders := registry.GetModelProviders("gpt-4-turbo")
@@ -114,7 +103,6 @@ default_pricing:
 
 // TestIntegration_CostCalculationWithCommission verifies cost breakdown with commission
 func TestIntegration_CostCalculationWithCommission(t *testing.T) {
-	// Create chat request
 	req := llm.ChatRequest{
 		UserID:      uuid.New(),
 		Model:       "claude-3.5-sonnet",
@@ -123,37 +111,32 @@ func TestIntegration_CostCalculationWithCommission(t *testing.T) {
 		Temperature: 0.7,
 	}
 
-	// Simulate token usage
 	usage := llm.TokenUsage{
 		InputTokens:  50,
 		OutputTokens: 100,
 		TotalTokens:  150,
 	}
 
-	// Calculate cost with pricing
-	inputPricing := 3.00   // $3 per 1M tokens
-	outputPricing := 15.00 // $15 per 1M tokens
+	inputPricing := 3.00
+	outputPricing := 15.00
 
 	providerCost := (float64(usage.InputTokens) * inputPricing / 1_000_000) +
 		(float64(usage.OutputTokens) * outputPricing / 1_000_000)
 
-	commission := providerCost * 0.20 // 20% commission
+	commission := providerCost * 0.20
 	userCost := providerCost + commission
 
-	// Create cost breakdown
 	cost := llm.CostBreakdown{
 		ProviderCost: providerCost,
 		Commission:   commission,
 		UserCost:     userCost,
 	}
 
-	// Verify calculations
-	assert.InDelta(t, 0.00165, cost.ProviderCost, 0.0001) // ~$0.00165
-	assert.InDelta(t, 0.00033, cost.Commission, 0.0001)   // ~$0.00033
-	assert.InDelta(t, 0.00198, cost.UserCost, 0.0001)     // ~$0.00198
+	assert.InDelta(t, 0.00165, cost.ProviderCost, 0.0001)
+	assert.InDelta(t, 0.00033, cost.Commission, 0.0001)
+	assert.InDelta(t, 0.00198, cost.UserCost, 0.0001)
 	assert.Equal(t, cost.ProviderCost+cost.Commission, cost.UserCost)
 
-	// Verify request has required fields
 	assert.NotEqual(t, uuid.Nil, req.UserID)
 	assert.Equal(t, "claude-3.5-sonnet", req.Model)
 	assert.NotEmpty(t, req.Messages)
@@ -163,7 +146,6 @@ func TestIntegration_CostCalculationWithCommission(t *testing.T) {
 func TestIntegration_ProviderSelectionByStrategy(t *testing.T) {
 	registry := llm.NewRegistry()
 
-	// Register same model with multiple providers
 	registry.RegisterModelProvider(&llm.ModelProviderEntry{
 		Model:              "gpt-4-turbo",
 		Provider:           "openrouter",
@@ -178,19 +160,17 @@ func TestIntegration_ProviderSelectionByStrategy(t *testing.T) {
 	registry.RegisterModelProvider(&llm.ModelProviderEntry{
 		Model:              "gpt-4-turbo",
 		Provider:           "openai",
-		InputCostPer1MTok:  10.00, // More expensive
+		InputCostPer1MTok:  10.00,
 		OutputCostPer1MTok: 30.00,
-		AvgLatencyMs:       800, // But faster
+		AvgLatencyMs:       800,
 		HealthStatus:       "healthy",
 		Enabled:            true,
 		Priority:           2,
 	})
 
-	// Get all providers for model
 	providers := registry.GetModelProviders("gpt-4-turbo")
 	require.Len(t, providers, 2)
 
-	// Simulate cost strategy selection (lowest cost)
 	var cheapest *llm.ModelProviderEntry
 	minCost := float64(1000000)
 	for _, p := range providers {
@@ -206,7 +186,6 @@ func TestIntegration_ProviderSelectionByStrategy(t *testing.T) {
 	assert.Equal(t, "openrouter", cheapest.Provider)
 	assert.Equal(t, 5.00, cheapest.InputCostPer1MTok)
 
-	// Simulate speed strategy selection (lowest latency)
 	var fastest *llm.ModelProviderEntry
 	minLatency := int(1000000)
 	for _, p := range providers {
@@ -221,7 +200,6 @@ func TestIntegration_ProviderSelectionByStrategy(t *testing.T) {
 	assert.Equal(t, "openai", fastest.Provider)
 	assert.Equal(t, 800, fastest.AvgLatencyMs)
 
-	// Verify Strategy enum values
 	assert.Equal(t, llm.StrategyCost, llm.Strategy(0))
 	assert.Equal(t, llm.StrategySpeed, llm.Strategy(1))
 }

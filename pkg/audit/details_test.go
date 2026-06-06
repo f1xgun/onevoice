@@ -49,24 +49,17 @@ func TestNoSensitiveFields_inDetailsJSON(t *testing.T) {
 		b, err := json.Marshal(v)
 		require.NoError(t, err, "marshal %s", name)
 		s := string(b)
-		// Walk JSON keys via a flat map decode. Empty structs ({}) decode
-		// to an empty map, which the range loop simply skips.
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal(b, &m); err != nil {
 			continue
 		}
 		for k := range m {
-			// allows the attempted_email field on failed-login rows.
 			if k == "attempted_email" {
 				continue
 			}
 			require.Falsef(t, forbiddenKeyPattern.MatchString(k),
 				"%s: forbidden key %q in JSON %s", name, k, s)
 		}
-		// Defense-in-depth on the raw string: no "password" or
-		// "\"token\"" substring should ever leak. Substring "token" alone
-		// would catch User-Agent strings like "Mozilla/5.0 (token=...)"
-		// in legitimate fields, so we anchor on the JSON-key form.
 		require.Falsef(t, strings.Contains(strings.ToLower(s), "password"),
 			"%s: 'password' substring leaked: %s", name, s)
 		require.Falsef(t, strings.Contains(strings.ToLower(s), "\"token\""),

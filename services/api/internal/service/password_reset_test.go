@@ -179,14 +179,9 @@ func (s *stubbedReset) RequestReset(ctx context.Context, emailAddr, ip, ua strin
 		return nil
 	}
 
-	// "Tx" simulation: invalidate, insert, enqueue, commit — counter bumps.
 	s.invalidateCalls++
 	s.insertCalls++
 	if s.enqueueErr != nil {
-		// Failure path: rollback semantics → DO NOT bump commit. Insert
-		// counter still moved (the contract is "did the service ATTEMPT
-		// the insert inside the tx"). The audit row is NOT emitted on
-		// failure.
 		return nil
 	}
 	s.enqueueCalls++
@@ -257,9 +252,6 @@ func TestPasswordResetService_RequestReset_InvalidatesOldTokensBeforeNewInsert(t
 	require.NoError(t, s.RequestReset(context.Background(), "alice@example.com", "", ""))
 	require.Equal(t, 1, s.invalidateCalls)
 	require.Equal(t, 1, s.insertCalls)
-	// Counter parity is the order-witness — InvalidateAllForUser is the
-	// only call that bumps invalidateCalls; Insert is the only call that
-	// bumps insertCalls; the production code path runs them sequentially.
 }
 
 // --- Test 5: 4th request in the hour gets nil + no email ----------------
@@ -272,12 +264,10 @@ func TestPasswordResetService_RequestReset_RateLimited_4thReturnsNilNoEmail(t *t
 	for i := 0; i < resetRateLimitMax; i++ {
 		require.NoError(t, s.RequestReset(ctx, "alice@example.com", "", ""))
 	}
-	// 4th — same 204 contract, but no enqueue.
 	require.NoError(t, s.RequestReset(ctx, "alice@example.com", "", ""))
 
 	require.Equal(t, resetRateLimitMax, s.enqueueCalls,
 		"only the first %d requests enqueue an email; the 4th is rate-limited", resetRateLimitMax)
-	// Last audit row is the rate_limited variant.
 	require.GreaterOrEqual(t, len(s.audit.entries), resetRateLimitMax+1)
 	last := s.audit.entries[len(s.audit.entries)-1]
 	require.Equal(t, audit.ActionPasswordResetRequested, last.Action)
@@ -308,10 +298,6 @@ func TestPasswordResetService_RequestReset_RollbackOnOutboxFailure_NoTokenRow(t 
 // in test/integration/password_reset_test.go.
 
 func TestPasswordResetService_ConfirmReset_ShortPassword_ReturnsTooWeak_DoesNotConsumeToken(t *testing.T) {
-	// Service constructed with nil pool deliberately — the fast-path
-	// returns BEFORE any pool access. If the test ever reaches pool.Begin
-	// we'd nil-panic; that nil-panic IS the failure signal proving the
-	// fast-path regressed.
 	svc := &PasswordResetService{}
 
 	err := svc.ConfirmReset(context.Background(), "any-token", "short", "1.2.3.4", "ua")
@@ -349,9 +335,6 @@ func TestPasswordResetService_TokenIsCryptoRandomAndBase64URL(t *testing.T) {
 	tokens := make(map[string]struct{}, 100)
 	for i := 0; i < 100; i++ {
 		raw := make([]byte, resetTokenEntropyBytes)
-		// crypto/rand: we don't import it directly to avoid drift; instead
-		// build a token through the same encode path the service uses.
-		// The pattern check below catches accidental switch to non-URL-safe.
 		buf := []byte(fmt.Sprintf("%032d", i))
 		tok := base64.RawURLEncoding.EncodeToString(buf[:resetTokenEntropyBytes])
 		_ = raw
@@ -385,8 +368,6 @@ func TestPasswordResetService_RateLimit_ConcurrentRequests(t *testing.T) {
 	}
 	wg.Wait()
 
-	// First resetRateLimitMax (3) requests are allowed; remaining (7) are
-	// limited. Atomic INCR ensures the count is deterministic.
 	require.Equal(t, int64(N-resetRateLimitMax), limitedCount.Load())
 }
 
@@ -404,7 +385,6 @@ func TestPasswordResetService_WipeRefreshTokens_DeletesOnlyTargetUserKeys(t *tes
 	target := uuid.New()
 	other := uuid.New()
 
-	// Seed: 3 keys for target, 2 keys for other.
 	for i := 0; i < 3; i++ {
 		require.NoError(t, r.Set(ctx, fmt.Sprintf("onevoice:auth:refresh_token:t-%d", i), target.String(), time.Hour).Err())
 	}
@@ -414,7 +394,6 @@ func TestPasswordResetService_WipeRefreshTokens_DeletesOnlyTargetUserKeys(t *tes
 
 	require.NoError(t, svc.wipeRefreshTokens(ctx, target))
 
-	// Target keys gone; other user's keys intact.
 	for i := 0; i < 3; i++ {
 		_, err := r.Get(ctx, fmt.Sprintf("onevoice:auth:refresh_token:t-%d", i)).Result()
 		require.ErrorIs(t, err, redis.Nil, "target user's refresh tokens must be wiped")
@@ -434,9 +413,6 @@ func TestPasswordResetService_WipeRefreshTokens_DeletesOnlyTargetUserKeys(t *tes
 // ErrResetTokenInvalid for any consume failure that's already
 // domain.ErrResetTokenInvalid.
 func TestPasswordResetService_ConfirmReset_ConsumeAtomicError_MapsToInvalid(t *testing.T) {
-	// Document the contract via an in-line type sentinel. Production code
-	// path:
-	//   ConsumeAtomic -> domain.ErrResetTokenInvalid -> service.ErrResetTokenInvalid
 	require.True(t, errors.Is(ErrResetTokenInvalid, domain.ErrResetTokenInvalid),
 		"service.ErrResetTokenInvalid must alias domain.ErrResetTokenInvalid")
 }

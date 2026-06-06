@@ -84,20 +84,18 @@ func TestLogger_HappyPath(t *testing.T) {
 
 func TestLogger_RetriesThenSucceeds(t *testing.T) {
 	repo := &stubRepo{}
-	repo.failTimes.Store(2) // first 2 attempts fail, 3rd succeeds
+	repo.failTimes.Store(2)
 	l := NewLogger(repo)
 	l.Log(context.Background(), Entry{Action: ActionLoginSuccess, Resource: "user"})
-	// 1s + 2s + jitter ≈ <4s; allow generous deadline.
 	require.Equal(t, 1, waitForInserts(repo, 1, 6*time.Second))
 }
 
 func TestLogger_TerminalFailureIncrementsMetric(t *testing.T) {
 	repo := &stubRepo{}
-	repo.failTimes.Store(10) // exceeds 3 attempts → terminal
+	repo.failTimes.Store(10)
 	before := testutil.ToFloat64(auditLogWriteFailuresTotal.WithLabelValues("auth"))
 	l := NewLogger(repo)
 	l.Log(context.Background(), Entry{Action: ActionLoginFailed, Resource: "user"})
-	// Wait for all 3 retries + backoffs (1s + 2s + jitter ≈ ~3-5s).
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		if testutil.ToFloat64(auditLogWriteFailuresTotal.WithLabelValues("auth")) >= before+1 {
@@ -149,7 +147,7 @@ func TestLogger_WithResolver_NilUserIDLeavesEmailEmpty(t *testing.T) {
 	resolver := &fakeUserResolver{emailResult: "should-not-be-used@x.com"}
 	l := NewLoggerWithResolver(repo, resolver)
 	l.Log(context.Background(), Entry{
-		Action:   ActionLoginFailed, // typical nil-userID entry
+		Action:   ActionLoginFailed,
 		Resource: "user",
 	})
 	require.Equal(t, 1, waitForInserts(repo, 1, 2*time.Second))
@@ -177,9 +175,6 @@ func TestLogger_WithResolver_ErrorStillWritesRow(t *testing.T) {
 }
 
 func TestLogger_NewLoggerKeepsNopResolver(t *testing.T) {
-	// Backward-compatibility gate: NewLogger (no resolver) must continue to
-	// produce empty UserEmailAtEvent without calling any resolver. Defends
-	// against a future refactor accidentally requiring resolver injection.
 	repo := &stubRepo{}
 	l := NewLogger(repo)
 	uid := uuid.New()

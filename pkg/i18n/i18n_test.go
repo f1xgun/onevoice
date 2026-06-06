@@ -17,8 +17,6 @@ func TestLocaleFromContext_BareContextReturnsDefault(t *testing.T) {
 }
 
 func TestLocaleFromContext_NilContextReturnsDefault(t *testing.T) {
-	// Defensive: production code should never pass a nil ctx, but adversarial
-	// callers must not panic the resolver.
 	//nolint:staticcheck // intentional nil-context smoke test
 	got := i18n.LocaleFromContext(nil)
 	assert.Equal(t, i18n.DefaultTag, got)
@@ -58,7 +56,6 @@ func TestTr_DefaultsToRussianWithoutLocale(t *testing.T) {
 }
 
 func TestTrTag_FallsBackToRussianForUnsupportedLocale(t *testing.T) {
-	// French isn't in Supported — lookup() routes unknown bases through ru.
 	got := i18n.TrTag(language.French, "test.hello", "Monde")
 	assert.Equal(t, "Привет, Monde", got)
 }
@@ -81,8 +78,6 @@ func TestTrTag_ReturnsKeyWhenMissingFromBothCatalogs(t *testing.T) {
 }
 
 func TestTrTag_NoArgsSkipsSprintf(t *testing.T) {
-	// Sanity: when no args are supplied the template must be returned verbatim
-	// (so catalog entries containing literal `%` characters aren't mangled).
 	got := i18n.TrTag(language.Russian, "test.hello")
 	assert.Equal(t, "Привет, %s", got)
 }
@@ -105,8 +100,6 @@ func TestMatchAcceptLanguage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := i18n.MatchAcceptLanguage(tt.header)
-			// Compare on Base because Matcher may return a regional variant
-			// (e.g. en-US) for some inputs even when we asked for `en`.
 			wantBase, _ := tt.want.Base()
 			gotBase, _ := got.Base()
 			require.Equal(t, wantBase.String(), gotBase.String(),
@@ -147,12 +140,11 @@ func TestNormalizeToSupported(t *testing.T) {
 }
 
 func TestMatchAcceptLanguage_NeverPanics(t *testing.T) {
-	// Adversarial inputs must not panic — this is the worst-case smoke test.
 	inputs := []string{
 		"",
 		"!!!",
 		"\x00\x01\x02",
-		string(make([]byte, 1024)), // long zero-filled buffer
+		string(make([]byte, 1024)),
 		"en;q=invalid",
 		"de;q=0.9, fr;q=0.8, it;q=0.7",
 	}

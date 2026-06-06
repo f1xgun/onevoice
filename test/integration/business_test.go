@@ -13,7 +13,6 @@ import (
 func TestBusinessCRUD(t *testing.T) {
 	cleanupDatabase(t)
 
-	// Setup: create user and login
 	accessToken := setupTestUser(t, "business@example.com", "password123")
 
 	var businessID string
@@ -26,7 +25,6 @@ func TestBusinessCRUD(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should return 404 since no business exists yet
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
@@ -128,7 +126,6 @@ func TestBusinessCRUD(t *testing.T) {
 
 // Helper function to create a test user and return access token
 func setupTestUser(t *testing.T, email, password string) string {
-	// Register
 	payload := map[string]string{
 		"email":    email,
 		"password": password,
@@ -139,7 +136,6 @@ func setupTestUser(t *testing.T, email, password string) string {
 	require.NoError(t, err)
 	resp.Body.Close()
 
-	// Login
 	resp, err = httpClient.Post(baseURL+"/api/v1/auth/login", "application/json", bytes.NewBuffer(body))
 	require.NoError(t, err)
 	defer resp.Body.Close()

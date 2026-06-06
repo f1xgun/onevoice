@@ -318,7 +318,6 @@ func TestMembersHandler_ListMembers_Forbidden(t *testing.T) {
 
 	bizID := uuid.New()
 	userID := uuid.New()
-	// No PermMembersRead in context
 	ctx := businessContextWith(context.Background(), bizID, userID)
 	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody).WithContext(ctx)
 	w := httptest.NewRecorder()
@@ -355,19 +354,14 @@ func TestMembersHandler_UpdateMemberRole_HappyPath(t *testing.T) {
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 	now := time.Now().UTC()
 
-	// BeginTx expectation
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	// EnsureOwnerExistsAfter SELECT FOR UPDATE
 	mockPool.ExpectQuery("SELECT user_id, role_id").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID). // actor stays as owner
-			AddRow(targetID, newRoleID))  // target gets demoted
-	// Commit
+			AddRow(actorID, ownerRoleID).
+			AddRow(targetID, newRoleID))
 	mockPool.ExpectCommit()
 
-	// handler now validates role belongs to this business before tx.
-	// Return a system role (BusinessID=nil) so the validation passes.
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
 		ID:         newRoleID,
 		BusinessID: nil,
@@ -415,7 +409,6 @@ func TestMembersHandler_UpdateMemberRole_LastOwnerRefuses(t *testing.T) {
 	newRoleID := uuid.New()
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 
-	// handler validates role belongs to this business before opening tx.
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
 		ID:         newRoleID,
 		BusinessID: nil,
@@ -423,12 +416,10 @@ func TestMembersHandler_UpdateMemberRole_LastOwnerRefuses(t *testing.T) {
 	}, nil)
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	// Returns only the sole owner in the snapshot
 	mockPool.ExpectQuery("SELECT user_id, role_id").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(targetID, ownerRoleID)) // sole owner
-	// Rollback (no commit since invariant fails)
+			AddRow(targetID, ownerRoleID))
 	mockPool.ExpectRollback()
 
 	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
@@ -451,7 +442,7 @@ func TestMembersHandler_UpdateMemberRole_Forbidden(t *testing.T) {
 
 	bizID := uuid.New()
 	userID := uuid.New()
-	ctx := businessContextWith(context.Background(), bizID, userID) // no PermMembersUpdateRole
+	ctx := businessContextWith(context.Background(), bizID, userID)
 	body := map[string]interface{}{"role_id": uuid.New().String()}
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(bodyBytes)).WithContext(ctx)
@@ -491,7 +482,6 @@ func TestMembersHandler_UpdateMemberRole_InvalidBody(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 	ctx := businessContextWith(context.Background(), bizID, userID, authz.PermMembersUpdateRole)
-	// missing role_id (uuid.Nil)
 	req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader([]byte(`{}`))).WithContext(ctx)
 	req = withChiParams(req, map[string]string{"userId": uuid.New().String()})
 	w := httptest.NewRecorder()
@@ -599,7 +589,6 @@ func TestMembersHandler_RemoveMember_HappyPath_NonSelf(t *testing.T) {
 	nonOwnerRoleID := uuid.New()
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	// EnsureOwnerExistsAfter — actor stays as owner
 	mockPool.ExpectQuery("SELECT user_id, role_id").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
@@ -618,7 +607,6 @@ func TestMembersHandler_RemoveMember_HappyPath_NonSelf(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.RemoveMember(w, req)
 
-	// MEDIUM #8: EXACTLY 204, no body
 	assert.Equal(t, http.StatusNoContent, w.Code)
 	assert.Empty(t, w.Body.String())
 	inv.AssertExpectations(t)
@@ -636,7 +624,7 @@ func TestMembersHandler_RemoveMember_LastOwnerRefuses(t *testing.T) {
 
 	bizID := uuid.New()
 	actorID := uuid.New()
-	targetID := actorID // sole owner trying to remove themselves
+	targetID := actorID
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
@@ -648,8 +636,7 @@ func TestMembersHandler_RemoveMember_LastOwnerRefuses(t *testing.T) {
 
 	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
 
-	// Self-removal is exempt from PermMembersRemove check, but still subject to last-owner check
-	ctx := businessContextWith(context.Background(), bizID, actorID) // no PermMembersRemove
+	ctx := businessContextWith(context.Background(), bizID, actorID)
 	req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
 	req = withChiParams(req, map[string]string{"userId": targetID.String()})
 	w := httptest.NewRecorder()
@@ -666,8 +653,8 @@ func TestMembersHandler_RemoveMember_NonSelf_NoPermission(t *testing.T) {
 
 	bizID := uuid.New()
 	actorID := uuid.New()
-	targetID := uuid.New()                                           // different user
-	ctx := businessContextWith(context.Background(), bizID, actorID) // no PermMembersRemove
+	targetID := uuid.New()
+	ctx := businessContextWith(context.Background(), bizID, actorID)
 	req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
 	req = withChiParams(req, map[string]string{"userId": targetID.String()})
 	w := httptest.NewRecorder()
@@ -686,16 +673,15 @@ func TestMembersHandler_RemoveMember_SelfRemoval_WithoutPermission(t *testing.T)
 
 	bizID := uuid.New()
 	actorID := uuid.New()
-	targetID := actorID // self-removal — exempt from PermMembersRemove
+	targetID := actorID
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 	nonOwnerRoleID := uuid.New()
 
-	// There is another owner in the business
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	mockPool.ExpectQuery("SELECT user_id, role_id").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(uuid.New(), ownerRoleID). // another owner
+			AddRow(uuid.New(), ownerRoleID).
 			AddRow(targetID, nonOwnerRoleID))
 	mockPool.ExpectCommit()
 
@@ -704,14 +690,12 @@ func TestMembersHandler_RemoveMember_SelfRemoval_WithoutPermission(t *testing.T)
 
 	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
 
-	// No PermMembersRemove — but self-removal is exempt
 	ctx := businessContextWith(context.Background(), bizID, actorID)
 	req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
 	req = withChiParams(req, map[string]string{"userId": targetID.String()})
 	w := httptest.NewRecorder()
 	h.RemoveMember(w, req)
 
-	// MEDIUM #8: EXACTLY 204, no body
 	assert.Equal(t, http.StatusNoContent, w.Code)
 	assert.Empty(t, w.Body.String())
 	inv.AssertExpectations(t)

@@ -69,7 +69,6 @@ func TestReconsentHandler_403_OriginNotAllowed(t *testing.T) {
 	h := NewConsentsHandler(&fakeConsentsService{}, &fakeConsentsLister{}, testAllowedOrigins)
 	body := `{"policies":[{"slug":"tos","version":"v1.0"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/consents", bytes.NewBufferString(body))
-	// No Origin header set.
 	req = ctxWithUserID(req, uuid.New())
 	w := httptest.NewRecorder()
 	h.Reconsent(w, req)
@@ -161,7 +160,6 @@ func TestWithdrawPDNHandler_423WhenAlreadyPending(t *testing.T) {
 func TestWithdrawPDNHandler_403_OriginNotAllowed(t *testing.T) {
 	h := NewConsentsHandler(&fakeConsentsService{}, &fakeConsentsLister{}, testAllowedOrigins)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/consents/pdn/withdraw", http.NoBody)
-	// No Origin header.
 	req = ctxWithUserID(req, uuid.New())
 	w := httptest.NewRecorder()
 	h.WithdrawPDN(w, req)

@@ -28,8 +28,6 @@ func TestPlatforms_DefaultStatuses(t *testing.T) {
 		"telegram":        PlatformStatusActive,
 		"vk":              PlatformStatusActive,
 		"yandex_business": PlatformStatusActive,
-		// google_business is held in coming_soon despite the agent existing,
-		// per Linen design v2 product decision.
 		"google_business": PlatformStatusComingSoon,
 		"2gis":            PlatformStatusComingSoon,
 		"avito":           PlatformStatusComingSoon,

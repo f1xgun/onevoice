@@ -34,7 +34,7 @@ func (m *mockPasswordResetService) RequestReset(_ context.Context, emailAddr, cl
 	m.requestLastEmail = emailAddr
 	m.requestLastIP = clientIP
 	m.requestLastUA = userAgent
-	return nil // RequestReset always returns nil (PITFALLS §1.1)
+	return nil
 }
 
 func (m *mockPasswordResetService) ConfirmReset(_ context.Context, plaintextToken, newPassword, _, _ string) error {
@@ -155,11 +155,6 @@ func TestConfirmPasswordReset_DomainExpired_Returns400_CodeResetTokenExpired(t *
 }
 
 func TestConfirmPasswordReset_ShortPassword_Returns400_CodePasswordTooWeak(t *testing.T) {
-	// Handler-level validation tag (min=8) catches this BEFORE the
-	// service runs — so we never see the code; we see the validator's
-	// generic 400. The service-level ErrPasswordTooWeak path is
-	// exercised when a request bypasses validation (e.g. integration
-	// tests with a tampered request) — that branch is covered below.
 	prs := &mockPasswordResetService{}
 	h := newTestAuthHandler(t, prs)
 	body, _ := json.Marshal(map[string]string{"token": "tok", "newPassword": "short"})

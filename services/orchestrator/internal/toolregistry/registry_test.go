@@ -51,7 +51,7 @@ func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 	registerAuto(reg, "telegram__send_post")
 	registerAuto(reg, tools.VKPublishPost)
 	registerAuto(reg, "google_business__update_hours")
-	registerAuto(reg, "get_business_info") // internal tool, always available
+	registerAuto(reg, "get_business_info")
 
 	active := []string{"telegram"}
 	defs := reg.Available(active)
@@ -117,7 +117,6 @@ func toolNames(defs []llm.ToolDefinition) []string {
 // ModeExplicit" — see AvailableForWhitelist's docstring.
 func fixtureRegistry() *toolregistry.Registry {
 	reg := toolregistry.NewRegistry()
-	// Write tools — Manual floor, fully gated by whitelist + HITL.
 	for _, name := range []string{
 		tools.TelegramSendChannelPost,
 		tools.TelegramSendNotification,
@@ -125,13 +124,8 @@ func fixtureRegistry() *toolregistry.Registry {
 	} {
 		reg.Register(toolregistry.ToolSpec{Def: makeDef(name), Floor: domain.ToolFloorManual}, nil)
 	}
-	// Read tools — Auto floor, always available under ModeExplicit so the
-	// LLM can fetch context (Pitfall: clicking "Проверить отзывы" with only
-	// a write tool in whitelist made the LLM publish posts ABOUT checking
-	// reviews instead of fetching them).
 	registerAuto(reg, tools.TelegramGetReviews)
 	registerAuto(reg, tools.VKGetComments)
-	// Internal — no platform prefix, always available.
 	registerAuto(reg, "get_business_info")
 	return reg
 }
@@ -151,7 +145,6 @@ func TestRegistry_AvailableForWhitelist_ModeAll_SameAsAvailable(t *testing.T) {
 }
 
 func TestRegistry_AvailableForWhitelist_ModeInherit_SameAsAll(t *testing.T) {
-	// for v1.3, inherit == all. Replaced later with business defaults.
 	reg := fixtureRegistry()
 	base := reg.Available([]string{"telegram", "vk"})
 	got := reg.AvailableForWhitelist(context.Background(), []string{"telegram", "vk"}, domain.WhitelistModeInherit, nil)
@@ -173,23 +166,18 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_Intersection(t *testing.T) 
 		[]string{tools.TelegramSendChannelPost},
 	)
 	names := toolNames(got)
-	// Explicit allowlist returns the named Manual-floor write tool PLUS
-	// every Auto-floor read tool for active integrations (always-available
-	// exemption — see AvailableForWhitelist docstring).
 	assert.ElementsMatch(t,
 		[]string{
-			tools.TelegramSendChannelPost, // explicitly allowed
-			tools.TelegramGetReviews,      // Auto floor, telegram active
-			tools.VKGetComments,           // Auto floor, vk active
-			"get_business_info",           // Auto floor, internal (no platform prefix)
+			tools.TelegramSendChannelPost,
+			tools.TelegramGetReviews,
+			tools.VKGetComments,
+			"get_business_info",
 		},
 		names,
 	)
 }
 
 func TestRegistry_AvailableForWhitelist_ModeExplicit_FiltersOutInactivePlatform(t *testing.T) {
-	// VK whitelisted but VK not active → vk__publish_post dropped.
-	// Auto-floor tools for the ACTIVE platform (telegram) still come through.
 	reg := fixtureRegistry()
 	got := reg.AvailableForWhitelist(
 		context.Background(),
@@ -203,8 +191,8 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_FiltersOutInactivePlatform(
 	assert.NotContains(t, names, tools.TelegramSendChannelPost, "Manual write tool not in allowlist")
 	assert.ElementsMatch(t,
 		[]string{
-			tools.TelegramGetReviews, // Auto, telegram active
-			"get_business_info",      // Auto, internal
+			tools.TelegramGetReviews,
+			"get_business_info",
 		},
 		names,
 	)
@@ -220,8 +208,6 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_UnknownTool_LogsAndDrops(t 
 		[]string{"unknown__tool"},
 	)
 	names := toolNames(got)
-	// Unknown tool dropped; no Manual-floor write tools come through;
-	// Auto-floor read tools for active platform still available.
 	assert.NotContains(t, names, "unknown__tool")
 	assert.NotContains(t, names, tools.TelegramSendChannelPost)
 	assert.NotContains(t, names, tools.TelegramSendNotification)
@@ -261,7 +247,6 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_MixedKnownAndUnknown(t *tes
 		[]string{tools.TelegramSendChannelPost, "bogus__tool"},
 	)
 	names := toolNames(got)
-	// Known tool + auto-floor exemptions; unknown dropped + logged.
 	assert.ElementsMatch(t,
 		[]string{
 			tools.TelegramSendChannelPost,
@@ -287,7 +272,7 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_AutoFloorAlwaysIncluded(t *
 		context.Background(),
 		[]string{"telegram", "vk"},
 		domain.WhitelistModeExplicit,
-		nil, // empty allowlist — only auto-floor tools should come through
+		nil,
 	)
 	names := toolNames(got)
 	assert.NotContains(t, names, tools.TelegramSendChannelPost, "Manual floor must require explicit whitelist")
@@ -314,7 +299,7 @@ func TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto(t
 		context.Background(),
 		[]string{"telegram", "vk"},
 		domain.WhitelistModeNone,
-		[]string{tools.TelegramGetReviews}, // even allowlisting an auto tool doesn't matter
+		[]string{tools.TelegramGetReviews},
 	)
 	assert.Empty(t, got)
 }
@@ -373,12 +358,10 @@ func TestRegistry_EditableFields_Defensive(t *testing.T) {
 		EditableFields: original,
 	}, nil)
 
-	// Mutate the caller's slice after Register — registry should not observe the change.
 	original[0] = "channel_id"
 	got := reg.EditableFields(tools.TelegramSendChannelPost)
 	assert.ElementsMatch(t, []string{"text", "parse_mode"}, got)
 
-	// Mutate the returned slice — registry should not observe the change.
 	got[0] = "tampered"
 	fresh := reg.EditableFields(tools.TelegramSendChannelPost)
 	assert.ElementsMatch(t, []string{"text", "parse_mode"}, fresh)
@@ -488,7 +471,6 @@ func TestRegistry_DisplayNameKey_ReturnsSpecValue(t *testing.T) {
 
 func TestRegistry_DescriptionEn_AvailableForWhitelist_LocaleAware(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	// Russian source-of-truth Description on def.
 	def := llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "Публикует пост в Telegram"},
@@ -501,27 +483,21 @@ func TestRegistry_DescriptionEn_AvailableForWhitelist_LocaleAware(t *testing.T) 
 		EditableFields: []string{"text"},
 	}, nil)
 
-	// RU ctx (default) → RU description.
 	ru := i18n.WithLocale(context.Background(), language.Russian)
 	defsRu := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
 	require.Len(t, defsRu, 1)
 	assert.Equal(t, "Публикует пост в Telegram", defsRu[0].Function.Description)
 
-	// EN ctx → EN description.
 	en := i18n.WithLocale(context.Background(), language.English)
 	defsEn := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
 	require.Len(t, defsEn, 1)
 	assert.Equal(t, "Publishes a post to Telegram", defsEn[0].Function.Description)
 
-	// Source def must not be mutated by either call (defensive copy).
 	defsRu2 := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
 	assert.Equal(t, "Публикует пост в Telegram", defsRu2[0].Function.Description)
 }
 
 func TestRegistry_AvailableForWhitelist_NoDescriptionEn_FallsBackToRu(t *testing.T) {
-	// A tool without DescriptionEn must serve its RU description in BOTH locales —
-	// the fallback prevents an unset EN translation from showing as an empty
-	// description to the LLM (which would degrade reasoning).
 	reg := toolregistry.NewRegistry()
 	def := llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
@@ -603,7 +579,7 @@ func TestRegistry_LocalizeParameters_EnSwapsPropertyDescriptions(t *testing.T) {
 		props      map[string]map[string]interface{}
 		required   []string
 		paramsEn   map[string]string
-		assertions map[string]string // property name → expected EN description
+		assertions map[string]string
 	}{
 		{
 			name:     "telegram_send_channel_post",
@@ -695,7 +671,6 @@ func TestRegistry_LocalizeParameters_EnSwapsPropertyDescriptions(t *testing.T) {
 					"property %q should expose EN description", prop)
 			}
 
-			// Schema shape must be preserved verbatim.
 			assert.Equal(t, "object", defs[0].Function.Parameters["type"])
 			if len(tc.required) > 0 {
 				assert.Equal(t, tc.required, defs[0].Function.Parameters["required"])
@@ -785,7 +760,7 @@ func TestRegistry_LocalizeParameters_EmptyEnDescriptionFallsBackToRu(t *testing.
 	reg.Register(toolregistry.ToolSpec{
 		Def: def,
 		ParameterDescriptionsEn: map[string]string{
-			"text": "", // explicit empty
+			"text": "",
 		},
 		Floor: domain.ToolFloorManual,
 	}, nil)
@@ -818,7 +793,7 @@ func TestRegistry_ParameterDescriptionsEn_Register_DefensiveCopy(t *testing.T) {
 		ParameterDescriptionsEn: caller,
 		Floor:                   domain.ToolFloorManual,
 	}, nil)
-	caller["text"] = "TAMPERED" // post-registration mutation
+	caller["text"] = "TAMPERED"
 
 	en := i18n.WithLocale(context.Background(), language.English)
 	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
@@ -851,8 +826,6 @@ func TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity(t *testing.T) {
 		[]string{"text"},
 	)
 	sourceParams := def.Function.Parameters
-	// Deliberately omit ParameterDescriptionsEn — only the top-level
-	// translation is set so localizeDef hits the descriptionEn-only branch.
 	reg.Register(toolregistry.ToolSpec{
 		Def:           def,
 		DescriptionEn: "EN desc",
@@ -889,7 +862,6 @@ func TestRegistry_LocalizeParameters_ZeroParamTool_NoOp(t *testing.T) {
 			},
 		},
 	}
-	// Deliberately omit ParameterDescriptionsEn — zero-param tools don't need it.
 	reg.Register(toolregistry.ToolSpec{
 		Def:           def,
 		DescriptionEn: "EN desc",

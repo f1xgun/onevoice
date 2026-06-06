@@ -25,13 +25,11 @@ func TestIncRBACCheck(t *testing.T) {
 }
 
 func TestIncRBACCheck_OnlyIncrementsSingleLabel(t *testing.T) {
-	// After incrementing "allow", "deny" should remain unchanged.
 	beforeDeny := testutil.ToFloat64(rbacCheckTotal.WithLabelValues("deny"))
 	IncRBACCheck("allow")
 	afterDeny := testutil.ToFloat64(rbacCheckTotal.WithLabelValues("deny"))
 	require.InDelta(t, beforeDeny, afterDeny, 0.0001, "incrementing 'allow' should not affect 'deny'")
 
-	// After incrementing "deny", "missing" should remain unchanged.
 	beforeMissing := testutil.ToFloat64(rbacCheckTotal.WithLabelValues("missing"))
 	IncRBACCheck("deny")
 	afterMissing := testutil.ToFloat64(rbacCheckTotal.WithLabelValues("missing"))
@@ -41,7 +39,6 @@ func TestIncRBACCheck_OnlyIncrementsSingleLabel(t *testing.T) {
 // TestIncRBACCheck_LabelShape asserts the counter uses exactly one label
 // named "result" by gathering from the default registry and inspecting labels.
 func TestIncRBACCheck_LabelShape(t *testing.T) {
-	// Ensure the counter has been initialized by calling it.
 	IncRBACCheck("allow")
 
 	families, err := prometheus.DefaultGatherer.Gather()

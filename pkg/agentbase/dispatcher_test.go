@@ -122,7 +122,7 @@ func TestDispatch_NilClassifier_PassesErrorThrough(t *testing.T) {
 // path inside FuncClassifier itself: a nil FuncClassifier value (not the
 // interface, but the underlying function pointer) returns err unchanged.
 func TestDispatch_FuncClassifier_NilReceiver_IsIdentity(t *testing.T) {
-	var fc agentbase.FuncClassifier // nil func value
+	var fc agentbase.FuncClassifier
 	rawErr := errors.New("any error")
 	got := fc.Classify(rawErr)
 	assert.Same(t, rawErr, got, "nil FuncClassifier must act as identity")
@@ -161,7 +161,6 @@ func TestDispatch_DedupeGate_EmptyApprovalID_BypassesGate(t *testing.T) {
 func TestDispatch_DedupeGate_InFlight_ShortCircuits(t *testing.T) {
 	dedupe, _ := newTestDedupe(t)
 
-	// Hand-claim the key so the next Dispatch sees ClaimOutcomeInFlight.
 	out, _, err := dedupe.Claim(context.Background(), "biz-1", "appr-1")
 	require.NoError(t, err)
 	require.Equal(t, hitldedupe.ClaimOutcomeClaimed, out)
@@ -192,7 +191,6 @@ func TestDispatch_DedupeGate_Duplicate_ReturnsCachedResponse(t *testing.T) {
 	dedupe, _ := newTestDedupe(t)
 	ctx := context.Background()
 
-	// Stage: claim + store the original execution's response.
 	_, _, err := dedupe.Claim(ctx, "biz-1", "appr-1")
 	require.NoError(t, err)
 	original := &a2a.ToolResponse{
@@ -231,8 +229,6 @@ func TestDispatch_DedupeGate_Duplicate_MalformedJSON_ReturnsGeneric(t *testing.T
 	dedupe, mr := newTestDedupe(t)
 	ctx := context.Background()
 
-	// Inject a malformed value at the canonical key so Claim returns
-	// ClaimOutcomeDuplicate with cached = "{not-json".
 	key := hitldedupe.KeyFor("biz-1", "appr-bad")
 	require.NoError(t, mr.Set(key, "{not-json"))
 
@@ -275,7 +271,6 @@ func TestDispatch_StoreOnSuccess_Caches(t *testing.T) {
 
 	d := agentbase.NewDispatcher(dedupe, nil)
 
-	// First dispatch — exec runs, response stored.
 	resp1, err := d.Dispatch(ctx,
 		a2a.ToolRequest{TaskID: "t-1", BusinessID: "biz-1", ApprovalID: "appr-1"}, exec)
 	require.NoError(t, err)
@@ -292,7 +287,6 @@ func TestDispatch_StoreOnSuccess_Caches(t *testing.T) {
 	assert.True(t, stored.Success)
 	assert.Equal(t, "sent", stored.Result["status"])
 
-	// Second dispatch — cached duplicate, exec must NOT run again.
 	resp2, err := d.Dispatch(ctx,
 		a2a.ToolRequest{TaskID: "t-2", BusinessID: "biz-1", ApprovalID: "appr-1"}, exec)
 	require.NoError(t, err)
@@ -325,7 +319,6 @@ func TestDispatch_StoreSkippedOnError(t *testing.T) {
 	assert.Same(t, execErr, err)
 	assert.Nil(t, resp)
 
-	// The "executing" sentinel from Claim must still be there — Store was skipped.
 	key := hitldedupe.KeyFor("biz-1", "appr-fail")
 	val, gerr := mr.Get(key)
 	require.NoError(t, gerr)
@@ -366,7 +359,6 @@ func TestDispatch_OrderingContract(t *testing.T) {
 	assert.Same(t, wrapped, err, "classifier output must be the dispatcher's returned error")
 	assert.Equal(t, int32(1), classifierCalls.Load(), "classifier must run exactly once per Dispatch")
 
-	// Classifier wrapped a non-nil err → store must be skipped → executing sentinel intact.
 	val, gerr := mr.Get(hitldedupe.KeyFor("biz-1", "appr-order"))
 	require.NoError(t, gerr)
 	assert.Equal(t, "executing", val,

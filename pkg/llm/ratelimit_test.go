@@ -64,7 +64,6 @@ func TestLimits_IsUnlimited(t *testing.T) {
 }
 
 func TestRateLimiter_CheckLimit(t *testing.T) {
-	// Skip if no Redis available
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		t.Skip("REDIS_ADDR not set, skipping Redis tests")
@@ -74,25 +73,21 @@ func TestRateLimiter_CheckLimit(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
 	defer func() { _ = rdb.Close() }()
 
-	// Clean up test keys
 	defer func() { _ = rdb.FlushDB(ctx).Err() }()
 
 	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
 	userID := uuid.New()
 
-	// First request should pass
-	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100) // 100 tokens
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
 	assert.NoError(t, err)
 	assert.True(t, allowed)
 
-	// 9 more requests (free tier: 10 req/min)
 	for i := 0; i < 9; i++ {
 		allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
 		assert.NoError(t, err)
 		assert.True(t, allowed)
 	}
 
-	// 11th request should fail (exceeded 10 req/min)
 	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
 	assert.NoError(t, err)
 	assert.False(t, allowed)
@@ -112,15 +107,13 @@ func TestRateLimiter_TokenLimit(t *testing.T) {
 	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
 	userID := uuid.New()
 
-	// Use 4000 tokens (free tier: 5000 tok/min)
 	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 4000)
 	assert.NoError(t, err)
 	assert.True(t, allowed)
 
-	// Use 1500 more tokens (total 5500 > 5000 limit)
 	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 1500)
 	assert.NoError(t, err)
-	assert.False(t, allowed) // Exceeds token limit
+	assert.False(t, allowed)
 }
 
 // ---------------------------------------------------------------------
@@ -201,7 +194,7 @@ func TestRateLimiter_DailySpend_Allowed(t *testing.T) {
 func TestRateLimiter_DailySpend_SkippedWhenNil(t *testing.T) {
 	_, rdb := freshRedis(t)
 
-	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0)) // no DailySpender
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
 
 	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
 	require.NoError(t, err)
@@ -235,8 +228,6 @@ func TestRateLimiter_DailySpend_BlocksBeforeRedis(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded))
 
-	// Daily-spend gate fired before the INCR — the per-minute key must not
-	// exist in miniredis.
 	for _, k := range mr.Keys() {
 		assert.NotContains(t, k, "ratelimit:"+userID.String())
 	}
@@ -248,13 +239,11 @@ func TestRateLimiter_DailySpend_EpsilonNudge(t *testing.T) {
 	_, rdb := freshRedis(t)
 	dailyCap := 1.0
 
-	// Just under cap by an epsilon → fires.
 	atCap := &fakeDailySpender{spend: dailyCap - 1e-12}
 	rlAtCap := llm.NewRateLimiter(rdb, freeTierWithCap(dailyCap), llm.WithDailySpender(atCap))
 	_, err := rlAtCap.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
 	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "epsilon-below cap must fire, got %v", err)
 
-	// Clearly under cap → passes.
 	under := &fakeDailySpender{spend: dailyCap - 1e-3}
 	rlUnder := llm.NewRateLimiter(rdb, freeTierWithCap(dailyCap), llm.WithDailySpender(under))
 	allowed, err := rlUnder.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
@@ -308,12 +297,10 @@ func TestRateLimiter_RedisDown_LocalFallback_Exhausted(t *testing.T) {
 		llm.WithLocalBucket(rate.Limit(0.0001), 1),
 	)
 
-	// First call drains the burst — allowed.
 	allowed1, err1 := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
 	require.NoError(t, err1)
 	assert.True(t, allowed1)
 
-	// Second call — bucket empty; rate so low refill won't happen in test.
 	allowed2, err2 := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
 	require.Error(t, err2)
 	assert.True(t, errors.Is(err2, llm.ErrRateLimitExceeded), "got %v", err2)
@@ -330,7 +317,6 @@ func TestRateLimiter_RedisDown_LocalFallback_Misconfigured(t *testing.T) {
 	before := testutil.ToFloat64(metrics.LLMRedisDownFallback.WithLabelValues("misconfigured"))
 	rl := llm.NewRateLimiter(rdb, llm.DefaultTierLimits,
 		llm.WithRedisDownPolicy(llm.RedisDownPolicyLocalFallback),
-		// no WithLocalBucket
 	)
 
 	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
@@ -357,7 +343,6 @@ func TestRateLimiter_DailySpenderError_FailsClosed(t *testing.T) {
 	assert.False(t, allowed)
 	assert.Equal(t, before+1, testutil.ToFloat64(metrics.LLMRedisDownFallback.WithLabelValues("misconfigured")))
 
-	// No per-minute INCR key landed.
 	for _, k := range mr.Keys() {
 		assert.NotContains(t, k, "ratelimit:"+userID.String())
 	}

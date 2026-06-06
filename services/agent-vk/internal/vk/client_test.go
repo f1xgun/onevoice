@@ -119,7 +119,6 @@ func newMockVKServer() *httptest.Server {
 		}))
 	})
 
-	// Create a temporary server to get the URL, then register the upload handlers.
 	var srv *httptest.Server
 
 	mux.HandleFunc("/method/photos.getWallUploadServer", func(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +129,6 @@ func newMockVKServer() *httptest.Server {
 	})
 
 	mux.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
-		// Parse multipart (upload from vksdk)
 		_ = r.ParseMultipartForm(10 << 20)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"server": 1, "photo": "[]", "hash": "abc123"}`)
@@ -217,7 +215,6 @@ func TestClient_RateLimitError_Code6(t *testing.T) {
 }
 
 func TestClient_NetworkError(t *testing.T) {
-	// Create a listener, get its address, then close it to guarantee connection refused.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := l.Addr().String()
@@ -235,10 +232,8 @@ func TestClient_PostPhoto_Success(t *testing.T) {
 	srv := newMockVKServer()
 	defer srv.Close()
 
-	// Serve a 1x1 PNG image.
 	imgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		// Minimal 1x1 PNG.
 		png1x1 := []byte{
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00,
 			0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
@@ -271,7 +266,6 @@ func TestClient_PostPhoto_InvalidURL(t *testing.T) {
 }
 
 func TestClient_SchedulePost_Success(t *testing.T) {
-	// Create a mock server that verifies publish_date is set.
 	var capturedPublishDate string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/method/wall.post", func(w http.ResponseWriter, r *http.Request) {
@@ -427,7 +421,6 @@ func TestClient_GetComments_SurfacesOwnerReplyFromThread(t *testing.T) {
 						},
 					},
 				},
-				// Flat-mode reply row — should be skipped to avoid double counting.
 				{"id": 13, "text": "ignored", "date": 1700000200, "from_id": -123456, "reply_to_comment": 10},
 			},
 		}))
@@ -440,22 +433,13 @@ func TestClient_GetComments_SurfacesOwnerReplyFromThread(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, comments, 2, "top-level + the user thread reply (owner replies are excluded)")
-	// Row 0: top-level question — owner answer comes after it.
 	assert.Equal(t, "Top-level question", comments[0]["text"])
 	assert.Equal(t, "Owner answer", comments[0]["reply"])
-	// Row 1: the older user thread reply — owner answer is also after it.
 	assert.Equal(t, "Older user reply", comments[1]["text"])
 	assert.Equal(t, "Owner answer", comments[1]["reply"])
 }
 
 func TestClient_GetComments_NestedUserReplyAfterOwnerHasNoReply(t *testing.T) {
-	// Mirrors the real production thread from the screenshot:
-	//   Даниил  "123123123"            (top-level, t=100)
-	//     OneVoice "test reply"        (owner reply,  t=200)
-	//     Даниил  "OneVoice, asdasd"   (nested user reply, t=300)
-	// "asdasd" arrived after the owner's only reply, so it must surface
-	// as a separate row with no `reply` field — that's the new comment
-	// the operator still needs to answer.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/method/wall.getComments", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -483,10 +467,8 @@ func TestClient_GetComments_NestedUserReplyAfterOwnerHasNoReply(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, comments, 2)
-	// Top-level "123123123" → answered by "test reply".
 	assert.Equal(t, "123123123", comments[0]["text"])
 	assert.Equal(t, "test reply", comments[0]["reply"])
-	// Nested "OneVoice, asdasd" → newer than the only owner reply, pending.
 	assert.Equal(t, "OneVoice, asdasd", comments[1]["text"])
 	_, hasReply := comments[1]["reply"]
 	assert.False(t, hasReply, "nested user reply that arrived after the operator's last message has no reply yet")
@@ -530,7 +512,7 @@ func TestClient_PostPhoto_InvalidGroupID(t *testing.T) {
 
 	imgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write([]byte{0x89, 0x50, 0x4e, 0x47}) // minimal PNG header
+		_, _ = w.Write([]byte{0x89, 0x50, 0x4e, 0x47})
 		_, _ = io.WriteString(w, "fake")
 	}))
 	defer imgServer.Close()

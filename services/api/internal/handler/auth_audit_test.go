@@ -86,7 +86,6 @@ func TestAuthHandler_AuditLoginSuccess_RecordsUserIDAndDetails(t *testing.T) {
 	require.NotNil(t, e.UserID, "login_success must record user_id")
 	assert.Equal(t, userID, *e.UserID)
 	assert.Nil(t, e.BusinessID, "auth events are system-wide; business_id must be nil")
-	// Details JSON should carry the IP + UA pair.
 	details := string(e.Details)
 	assert.Contains(t, details, "192.0.2.10")
 	assert.Contains(t, details, "test-agent/1.0")

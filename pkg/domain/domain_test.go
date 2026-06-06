@@ -25,7 +25,6 @@ func TestSentinelErrors_AreDistinct(t *testing.T) {
 		ErrReviewNotFound, ErrPostNotFound, ErrAgentTaskNotFound,
 	}
 
-	// Every pair should be different
 	for i := 0; i < len(errs); i++ {
 		for j := i + 1; j < len(errs); j++ {
 			assert.NotErrorIs(t, errs[i], errs[j],
@@ -65,12 +64,10 @@ func TestUser_JSON_OmitsPasswordHash(t *testing.T) {
 	data, err := json.Marshal(u)
 	require.NoError(t, err)
 
-	// PasswordHash tagged json:"-" — must not appear in output
 	assert.NotContains(t, string(data), "secret_hash_value")
 	assert.NotContains(t, string(data), "passwordHash")
 	assert.NotContains(t, string(data), "password_hash")
 
-	// Other fields present
 	assert.Contains(t, string(data), "test@example.com")
 }
 
@@ -111,13 +108,11 @@ func TestIntegration_JSON_OmitsTokens(t *testing.T) {
 	data, err := json.Marshal(i)
 	require.NoError(t, err)
 
-	// Tokens tagged json:"-" — must not appear
 	assert.NotContains(t, string(data), "encrypted_access")
 	assert.NotContains(t, string(data), "encrypted_refresh")
 	assert.NotContains(t, string(data), "accessToken")
 	assert.NotContains(t, string(data), "refreshToken")
 
-	// Other fields present
 	assert.Contains(t, string(data), "vk")
 	assert.Contains(t, string(data), "-123456")
 }
@@ -211,7 +206,6 @@ func TestMessage_JSON_OmitsEmptyOptionalFields(t *testing.T) {
 	data, err := json.Marshal(msg)
 	require.NoError(t, err)
 
-	// omitempty fields should not be present
 	assert.NotContains(t, string(data), "attachments")
 	assert.NotContains(t, string(data), "toolCalls")
 	assert.NotContains(t, string(data), "toolResults")
@@ -232,10 +226,6 @@ func TestMessage_ZeroStatus_IsComplete(t *testing.T) {
 	if m.Status != "" {
 		t.Fatalf("zero-value Message.Status = %q, want empty string", m.Status)
 	}
-	// No constant-equality check here: the whole point is that legacy rows
-	// that DON'T carry the field still render as "complete" through whatever
-	// UI/branching logic downstream consumers apply. See docstring on
-	// Message.Status in mongo_models.go for the contract.
 }
 
 func TestBusiness_ToolApprovals(t *testing.T) {
@@ -286,11 +276,10 @@ func TestBusiness_ToolApprovals(t *testing.T) {
 	})
 
 	t.Run("malformed value type skipped", func(t *testing.T) {
-		// Non-string value → skipped silently (defensive parsing).
 		b := Business{Settings: map[string]interface{}{
 			"tool_approvals": map[string]interface{}{
 				"good__tool": "manual",
-				"bad__tool":  42, // int, not string
+				"bad__tool":  42,
 			},
 		}}
 		got := b.ToolApprovals()
@@ -319,7 +308,6 @@ func TestBusiness_ToolApprovals(t *testing.T) {
 	})
 
 	t.Run("tool_approvals key is not a map is ignored", func(t *testing.T) {
-		// Defensive: if someone wrote a string at that key, don't panic.
 		b := Business{Settings: map[string]interface{}{
 			"tool_approvals": "not-a-map",
 		}}

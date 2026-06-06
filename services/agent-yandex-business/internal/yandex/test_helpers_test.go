@@ -11,10 +11,6 @@ import (
 // URL (UploadPhoto). Caller MUST defer srv.Close().
 func newPNGServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	// Smallest valid PNG: 8-byte signature + IHDR + IDAT + IEND.
-	// We don't need it to actually decode — Yandex production reads bytes
-	// and SetInputFiles ships the path. Any non-empty body suffices for
-	// the test path.
 	const png = "\x89PNG\r\n\x1a\n"
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")

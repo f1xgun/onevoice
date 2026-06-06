@@ -20,7 +20,6 @@ func TestSearchByConversationIDs_GroupsByConversation(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()
 
-	// Need the text index for $text to work.
 	require.NoError(t, EnsureSearchIndexes(ctx, db))
 
 	repo := NewMessageRepository(db).(*messageRepository)
@@ -29,7 +28,6 @@ func TestSearchByConversationIDs_GroupsByConversation(t *testing.T) {
 	convB := bson.NewObjectID().Hex()
 	now := time.Now().UTC()
 
-	// Conv A: 2 matching messages.
 	id1 := bson.NewObjectID().Hex()
 	_, err := db.Collection("messages").InsertOne(ctx, bson.M{
 		"_id": id1, "conversation_id": convA, "role": "user",
@@ -45,7 +43,6 @@ func TestSearchByConversationIDs_GroupsByConversation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Conv B: 1 matching message.
 	id3 := bson.NewObjectID().Hex()
 	_, err = db.Collection("messages").InsertOne(ctx, bson.M{
 		"_id": id3, "conversation_id": convB, "role": "user",
@@ -148,7 +145,6 @@ func TestSearchByConversationIDs_WordPrefixMorphology(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	// Compound word — must NOT match.
 	_, err := db.Collection("messages").InsertOne(ctx, bson.M{
 		"_id": bson.NewObjectID().Hex(), "conversation_id": convCompound,
 		"role": "user", "content": "переотзыв системы",
@@ -190,7 +186,6 @@ func TestSearchByConversationIDs_AllowlistScopesResults(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Allowlist only the visible conversation.
 	hits, err := repo.SearchByConversationIDs(ctx, "договор", []string{convVisible}, 20)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)

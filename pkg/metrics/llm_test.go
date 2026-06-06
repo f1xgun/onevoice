@@ -8,7 +8,6 @@ import (
 )
 
 func TestRecordLLMRequest_IncrementsCounter(t *testing.T) {
-	// Get baseline
 	familiesBefore, _ := prometheus.DefaultGatherer.Gather()
 	mfBefore := findMetric(familiesBefore, "llm_requests_total")
 	var baseLine float64
@@ -166,7 +165,6 @@ func TestRecordLLMCacheUsage_ZeroArgsAreNoOp(t *testing.T) {
 	baseCreate := counterValue(t, "llm_cache_create_tokens_total", model)
 	baseInput := counterValue(t, "llm_input_tokens_after_breakpoint_total", model)
 
-	// Only cacheCreate is positive; the other two args should be skipped.
 	RecordLLMCacheUsage(model, 0, 25, 0)
 
 	if got := counterValue(t, "llm_cache_read_tokens_total", model); got != baseRead {

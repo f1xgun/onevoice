@@ -39,9 +39,7 @@ func businessBrowserOnPage(page *mockPage, permalink string) *BusinessBrowser {
 // the canonical [{permalink, name}] map shape.
 func TestBusinessBrowser_ListCompanies_ParsesCompanyRows(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/companies/")
-	// Make .CompaniesCompanyRow visible (WaitFor returns nil).
 	page.locators[".CompaniesCompanyRow"] = &mockLocator{}
-	// Evaluate returns the JSON-marshalable list the production code expects.
 	page.evaluateResult = []map[string]interface{}{
 		{"permalink": "114697172504", "name": "Кафе Тверская"},
 		{"permalink": "987654321", "name": "Магазин Арбат"},
@@ -80,7 +78,6 @@ func TestBusinessBrowser_ListCompanies_PassportRedirect_ReturnsNonRetryable(t *t
 // Test #3 — when the SPA's row selector times out, return [] not an error.
 func TestBusinessBrowser_ListCompanies_NoCompanies_ReturnsEmpty(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/companies/")
-	// No .CompaniesCompanyRow registered → fallback locator returns waitErr.
 	bb := businessBrowserOnPage(page, "default")
 
 	rows, err := bb.ListCompanies(context.Background())
@@ -144,7 +141,6 @@ func TestBusinessBrowser_GetReviews_ExtractsAuthorRatingText(t *testing.T) {
 // Test #6 — scrapeReviewCards on an empty DOM returns empty slice (no error).
 func TestScrapeReviewCards_HandlesEmpty(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/reviews")
-	// No card selector registered → All() returns empty.
 	cards, err := scrapeReviewCards(page, 10)
 	if err != nil {
 		t.Fatalf("scrapeReviewCards returned error: %v", err)
@@ -167,7 +163,6 @@ func TestExtractText_FallbackChain(t *testing.T) {
 		t.Fatalf("extractText = %q, want %q", got, "fallback hit")
 	}
 
-	// All selectors miss → fallback returned.
 	got = extractText(parent, []string{".not-there"}, "FALLBACK")
 	if got != "FALLBACK" {
 		t.Fatalf("extractText (no match) = %q, want %q", got, "FALLBACK")
@@ -199,7 +194,6 @@ func TestExtractRating_NumericVsString(t *testing.T) {
 // LLM-supplied and a missing card means the review doesn't exist).
 func TestBusinessBrowser_ReplyReview_NavigatesAndClicksSave(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/reviews")
-	// No data-review-id locator registered → WaitFor errors → non-retryable.
 
 	bb := businessBrowserOnPage(page, "123")
 	err := bb.ReplyReview(context.Background(), "rev-1", "thanks!")
@@ -209,7 +203,6 @@ func TestBusinessBrowser_ReplyReview_NavigatesAndClicksSave(t *testing.T) {
 	if !errors.Is(err, &a2a.NonRetryableError{}) {
 		t.Fatalf("expected NonRetryableError, got: %v", err)
 	}
-	// Confirm it actually navigated to /reviews before bailing.
 	if len(page.gotoCalls) == 0 || !strings.Contains(page.gotoCalls[0], "/reviews") {
 		t.Fatalf("expected first Goto to /reviews, got %v", page.gotoCalls)
 	}
@@ -223,7 +216,6 @@ func TestBusinessBrowser_ReplyReview_NavigatesAndClicksSave(t *testing.T) {
 // mocked locators and surfaces them on the result map.
 func TestBusinessBrowser_GetInfo_ScrapesAllFields(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/")
-	// Name, phone, email, hours, status — production code reads via TextContent / InputValue.
 	page.locators["[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span"] = &mockLocator{
 		textContent: "Кафе Тверская",
 	}
@@ -239,7 +231,6 @@ func TestBusinessBrowser_GetInfo_ScrapesAllFields(t *testing.T) {
 	page.locators[".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content"] = &mockLocator{
 		textContent: "Открыто",
 	}
-	// Address evaluator returns empty (we don't drive evaluator here).
 	page.evaluateResult = ""
 
 	bb := businessBrowserOnPage(page, "123")
@@ -273,7 +264,6 @@ func TestBusinessBrowser_GetInfo_ScrapesAllFields(t *testing.T) {
 // calls and inspecting the saved-button click count.
 func TestBusinessBrowser_UpdateInfo_FillsFormFields(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/")
-	// Provide the phone input + body click target + save button.
 	phoneInput := &mockLocator{}
 	page.locators[".InfoPhones input.ya-business-input__control"] = phoneInput
 	page.locators["h1, .InfoBlockCarcass, body"] = &mockLocator{}
@@ -287,7 +277,6 @@ func TestBusinessBrowser_UpdateInfo_FillsFormFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateInfo returned error: %v", err)
 	}
-	// Exactly one Type call (for phone), since unknown_field has no selector.
 	if len(page.keyboard.typeCalls) != 1 {
 		t.Fatalf("expected 1 Type call, got %d (%v)", len(page.keyboard.typeCalls), page.keyboard.typeCalls)
 	}
@@ -340,7 +329,6 @@ func TestFormatHoursForYandex_OpenSlot(t *testing.T) {
 		t.Fatalf("formatHoursForYandex(%q) = %q, want %q", in, got, "Пн 09:00-21:00")
 	}
 
-	// Multi-day same-hours grouping.
 	in = `{"saturday":{"open":"10:00","close":"15:00"},"sunday":{"open":"10:00","close":"15:00"}}`
 	got = formatHoursForYandex(in)
 	if got != "Сб-Вс 10:00-15:00" {
@@ -399,7 +387,6 @@ func TestBusinessBrowser_UploadPhoto_SetsCategoryAndUploadsFile(t *testing.T) {
 			page := newMockPage("https://yandex.ru/sprav/123/p/edit/photos/")
 			fileInput := &mockLocator{}
 			page.locators[tc.selector] = fileInput
-			// Crop dialog button: register but make WaitFor fail so it's skipped.
 			page.locators["button:has-text('Сохранить')"] = &mockLocator{
 				waitErr: errors.New("no crop dialog"),
 			}
@@ -428,8 +415,6 @@ func TestClosePopups_ClicksKnownDismissSelectors(t *testing.T) {
 	crossPlat := &mockLocator{}
 	page.locators[".InfoModal-IconClose"] = infoModal
 	page.locators[".CrossPlatformModal-Close"] = crossPlat
-	// Other selectors not registered — Click on default mockLocator returns nil
-	// since clickErr is zero, so we don't assert on those.
 
 	closePopups(page)
 

@@ -60,7 +60,6 @@ func TestHTTPMiddleware_RecordsMetrics(t *testing.T) {
 		t.Fatalf("failed to gather metrics: %v", err)
 	}
 
-	// Check http_requests_total has a sample
 	mf := findMetric(families, "http_requests_total")
 	if mf == nil {
 		t.Fatal("http_requests_total metric family not found")
@@ -78,7 +77,6 @@ func TestHTTPMiddleware_RecordsMetrics(t *testing.T) {
 		t.Errorf("expected counter >= 1, got %f", sample.GetCounter().GetValue())
 	}
 
-	// Check http_request_duration_seconds has a sample
 	dMf := findMetric(families, "http_request_duration_seconds")
 	if dMf == nil {
 		t.Fatal("http_request_duration_seconds metric family not found")
@@ -111,7 +109,6 @@ func TestHTTPMiddleware_UsesRoutePattern(t *testing.T) {
 		t.Fatal("http_requests_total metric family not found")
 	}
 
-	// Should use route pattern /items/{id}, not /items/123
 	patternSample := findSample(mf, map[string]string{
 		"method": "GET",
 		"path":   "/items/{id}",
@@ -121,7 +118,6 @@ func TestHTTPMiddleware_UsesRoutePattern(t *testing.T) {
 		t.Fatal("expected path label to be '/items/{id}' (route pattern), not the actual URL")
 	}
 
-	// Verify that /items/123 is NOT used as the path label
 	rawSample := findSample(mf, map[string]string{
 		"method": "GET",
 		"path":   "/items/123",

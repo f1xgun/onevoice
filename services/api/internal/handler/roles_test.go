@@ -184,7 +184,7 @@ func TestRolesHandler_List_Forbidden(t *testing.T) {
 
 	bizID := uuid.New()
 	userID := uuid.New()
-	ctx := businessContextFull(context.Background(), bizID, userID, ownerRoleUUID(t)) // no PermRolesRead
+	ctx := businessContextFull(context.Background(), bizID, userID, ownerRoleUUID(t))
 	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody).WithContext(ctx)
 	w := httptest.NewRecorder()
 	h.List(w, req)
@@ -261,7 +261,6 @@ func TestRolesHandler_Create(t *testing.T) {
 		h.Create(w, req)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
-		// No InvalidateRole on Create (no existing memberships reference it).
 		assert.Empty(t, inv.invalidateRole)
 		rr.AssertExpectations(t)
 		require.NoError(t, mockPool.ExpectationsWereMet())
@@ -274,7 +273,7 @@ func TestRolesHandler_Create(t *testing.T) {
 		h := newRolesHandlerForTest(rr, mr, mustPool(t), inv)
 
 		bizID := uuid.New()
-		ctx := businessContextFull(context.Background(), bizID, uuid.New(), uuid.New()) // no PermRolesCreate
+		ctx := businessContextFull(context.Background(), bizID, uuid.New(), uuid.New())
 		body, _ := json.Marshal(map[string]interface{}{"name": "x", "permissions": []string{}})
 		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)).WithContext(ctx)
 		w := httptest.NewRecorder()
@@ -358,11 +357,9 @@ func TestRolesHandler_Create(t *testing.T) {
 		inv := &recordingInvalidator{}
 		h := newRolesHandlerForTest(rr, mr, mustPool(t), inv)
 
-		// Actor's role is NOT the system owner (CheckEscalationSubset is enforced).
 		actorRoleID := uuid.New()
 		ctx := businessContextFull(context.Background(), uuid.New(), uuid.New(), actorRoleID,
 			authz.PermRolesCreate, authz.PermContentRead)
-		// Proposed perms include something actor does NOT hold.
 		body, _ := json.Marshal(map[string]interface{}{
 			"name":        "Editor",
 			"permissions": []string{"members.invite"},
@@ -409,8 +406,6 @@ func TestRolesHandler_Create(t *testing.T) {
 	})
 
 	t.Run("dedup_permissions", func(t *testing.T) {
-		// MED-04 (review): duplicate permission strings in the request
-		// must be coalesced before persisting to the JSONB column.
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}
 		inv := &recordingInvalidator{}
@@ -422,8 +417,6 @@ func TestRolesHandler_Create(t *testing.T) {
 
 		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		mockPool.ExpectCommit()
-		// Assert the role passed to CreateInTx has its Permissions slice
-		// deduplicated AND order-preserved (first occurrence wins).
 		rr.On("CreateInTx", mock.Anything, mock.Anything, mock.MatchedBy(func(role *domain.Role) bool {
 			return len(role.Permissions) == 1 && role.Permissions[0] == "content.read"
 		})).Return(nil)
@@ -446,8 +439,6 @@ func TestRolesHandler_Create(t *testing.T) {
 	})
 
 	t.Run("clone_from_noop", func(t *testing.T) {
-		// Open Question A5 — ?clone_from=... is a no-op server-side. Body
-		// permissions are used verbatim.
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}
 		inv := &recordingInvalidator{}
@@ -460,7 +451,6 @@ func TestRolesHandler_Create(t *testing.T) {
 		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		mockPool.ExpectCommit()
 		rr.On("CreateInTx", mock.Anything, mock.Anything, mock.MatchedBy(func(role *domain.Role) bool {
-			// Sent permissions are the BODY, not anything derived from clone_from.
 			return len(role.Permissions) == 1 && role.Permissions[0] == "content.read"
 		})).Return(nil)
 
@@ -559,7 +549,6 @@ func TestRolesHandler_Update(t *testing.T) {
 	})
 
 	t.Run("cross_tenant", func(t *testing.T) {
-		// Role exists, but its BusinessID is a DIFFERENT business — return 404.
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}
 		inv := &recordingInvalidator{}
@@ -570,7 +559,7 @@ func TestRolesHandler_Update(t *testing.T) {
 
 		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 			ID:         roleID,
-			BusinessID: &bizB, // belongs to OTHER business
+			BusinessID: &bizB,
 			Name:       "leaked",
 			IsSystem:   false,
 		}, nil)
@@ -600,7 +589,7 @@ func TestRolesHandler_Update(t *testing.T) {
 
 		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 			ID:         roleID,
-			BusinessID: nil, // system role
+			BusinessID: nil,
 			Name:       "viewer",
 			IsSystem:   true,
 		}, nil)
@@ -626,7 +615,7 @@ func TestRolesHandler_Update(t *testing.T) {
 		inv := &recordingInvalidator{}
 
 		bizID := uuid.New()
-		actorRoleID := uuid.New() // NOT owner
+		actorRoleID := uuid.New()
 		roleID := uuid.New()
 
 		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
@@ -638,11 +627,10 @@ func TestRolesHandler_Update(t *testing.T) {
 
 		h := newRolesHandlerForTest(rr, mr, mustPool(t), inv)
 
-		// Actor only has PermRolesUpdate; not PermMembersInvite.
 		ctx := businessContextFull(context.Background(), bizID, uuid.New(), actorRoleID, authz.PermRolesUpdate)
 		body, _ := json.Marshal(map[string]interface{}{
 			"name":        "x",
-			"permissions": []string{"members.invite"}, // not held by actor
+			"permissions": []string{"members.invite"},
 		})
 		req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(body)).WithContext(ctx)
 		req = withRoleIDParam(req, roleID.String())
@@ -654,14 +642,13 @@ func TestRolesHandler_Update(t *testing.T) {
 	})
 
 	t.Run("self_lockout", func(t *testing.T) {
-		// Actor holds roleID; new permissions strip roles.update.
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}
 		inv := &recordingInvalidator{}
 
 		bizID := uuid.New()
 		actorID := uuid.New()
-		roleID := uuid.New() // actor's own role
+		roleID := uuid.New()
 
 		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 			ID:         roleID,
@@ -672,13 +659,11 @@ func TestRolesHandler_Update(t *testing.T) {
 
 		h := newRolesHandlerForTest(rr, mr, mustPool(t), inv)
 
-		// Actor holds roles.update + members.update_role + content.read.
-		// New perms DROP roles.update → self-lockout.
 		ctx := businessContextFull(context.Background(), bizID, actorID, roleID,
 			authz.PermRolesUpdate, authz.PermMembersUpdateRole, authz.PermContentRead)
 		body, _ := json.Marshal(map[string]interface{}{
 			"name":        "x",
-			"permissions": []string{"content.read"}, // drops roles.update
+			"permissions": []string{"content.read"},
 		})
 		req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(body)).WithContext(ctx)
 		req = withRoleIDParam(req, roleID.String())
@@ -730,7 +715,6 @@ func TestRolesHandler_Update(t *testing.T) {
 	})
 
 	t.Run("invalidate_after_commit", func(t *testing.T) {
-		// Commit fails → InvalidateRole MUST NOT be called.
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}
 		inv := &recordingInvalidator{}
@@ -1017,7 +1001,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 		rr.On("CountMembersByRole", mock.Anything, bizA, roleID).Return(2, nil)
 		rr.On("GetByID", mock.Anything, reassignToID).Return(&domain.Role{
 			ID:         reassignToID,
-			BusinessID: &bizB, // belongs to OTHER business
+			BusinessID: &bizB,
 			IsSystem:   false,
 		}, nil).Once()
 
@@ -1039,7 +1023,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 		inv := &recordingInvalidator{}
 
 		bizID := uuid.New()
-		actorRoleID := uuid.New() // NOT owner
+		actorRoleID := uuid.New()
 		roleID := uuid.New()
 		reassignToID := uuid.New()
 
@@ -1052,13 +1036,12 @@ func TestRolesHandler_Delete(t *testing.T) {
 		rr.On("GetByID", mock.Anything, reassignToID).Return(&domain.Role{
 			ID:          reassignToID,
 			BusinessID:  &bizID,
-			Permissions: []string{"members.invite"}, // actor doesn't hold this
+			Permissions: []string{"members.invite"},
 			IsSystem:    false,
 		}, nil).Once()
 
 		h := newRolesHandlerForTest(rr, mr, mustPool(t), inv)
 
-		// Actor holds only PermRolesDelete + PermContentRead — cannot grant members.invite.
 		ctx := businessContextFull(context.Background(), bizID, uuid.New(), actorRoleID,
 			authz.PermRolesDelete, authz.PermContentRead)
 		req := httptest.NewRequest(http.MethodDelete, "/?reassign_to="+reassignToID.String(), http.NoBody).WithContext(ctx)
@@ -1071,7 +1054,6 @@ func TestRolesHandler_Delete(t *testing.T) {
 	})
 
 	t.Run("invalidate_after_commit", func(t *testing.T) {
-		// Commit fails → InvalidateRole MUST NOT be called.
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}
 		inv := &recordingInvalidator{}

@@ -93,9 +93,6 @@ func TestSelector_Pick_SkipsDisabled(t *testing.T) {
 }
 
 func TestSelector_Pick_SkipsUnregistered(t *testing.T) {
-	// Entry exists in the registry but no provider implementation is
-	// registered for it — must be skipped, never returned with a nil
-	// Provider.
 	entry := healthyEntry("gpt-4", "ghost-provider", 1.0, 1.0, 100)
 	s, _, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry})
 
@@ -104,9 +101,6 @@ func TestSelector_Pick_SkipsUnregistered(t *testing.T) {
 }
 
 func TestSelector_Pick_FallsBackWhenAllUnhealthy(t *testing.T) {
-	// Every entry is unhealthy. The selector should still return one —
-	// otherwise a single provider's outage would permanently deadlock
-	// future picks once it recovers.
 	e1 := healthyEntry("gpt-4", "a", 1.0, 1.0, 100)
 	e1.HealthStatus = "down"
 	e2 := healthyEntry("gpt-4", "b", 1.0, 1.0, 100)
@@ -121,14 +115,11 @@ func TestSelector_Pick_FallsBackWhenAllUnhealthy(t *testing.T) {
 }
 
 func TestSelector_Pick_LatencyZeroRanksLast(t *testing.T) {
-	// Under StrategySpeed, an entry with zero AvgLatencyMs (no data yet)
-	// must NOT win over an entry with a measured latency — even a slow
-	// measured latency.
 	withData := healthyEntry("gpt-4", "measured", 1.0, 1.0, 5000)
 	noData := healthyEntry("gpt-4", "unknown", 1.0, 1.0, 0)
 
 	s, _, _ := newSelectorFixture(
-		[]*llm.ModelProviderEntry{noData, withData}, // order: unknown first
+		[]*llm.ModelProviderEntry{noData, withData},
 		"measured", "unknown",
 	)
 
@@ -165,7 +156,6 @@ func TestSelector_Record_FailureFlipsToDownAboveThreshold(t *testing.T) {
 	entry := healthyEntry("test-model", "test-provider", 0, 0, 0)
 	s, registry, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "test-provider")
 
-	// 6 consecutive failures → 100% failure rate → "down".
 	for i := 0; i < 6; i++ {
 		s.Record(entry, llm.Outcome{Success: false})
 	}
@@ -178,18 +168,12 @@ func TestSelector_Record_FailureFlipsToDegradedBetweenThresholds(t *testing.T) {
 	entry := healthyEntry("test-model", "test-provider", 0, 0, 0)
 	s, registry, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "test-provider")
 
-	// 1 failure out of 4 total = 25% > healthDegradedRate (20%) but
-	// < healthDownRate (50%).
 	s.Record(entry, llm.Outcome{Success: false})
 	s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
 	s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
 	s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
 
 	providers := registry.GetModelProviders("test-model")
-	// Per the recovery rule, 3 consecutive successes after 1 failure also
-	// flips back to healthy regardless of rate. We assert the rate-only
-	// case separately below — here we expect "healthy" because recovery
-	// fires once successCount >= healthRecoverySuccessMin.
 	assert.Equal(t, "healthy", providers[0].HealthStatus,
 		"recovery rule beats degraded threshold after 3 successes")
 }
@@ -198,8 +182,6 @@ func TestSelector_Record_DegradedAfterTwoOfThreeFailures(t *testing.T) {
 	entry := healthyEntry("test-model", "test-provider", 0, 0, 0)
 	s, registry, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "test-provider")
 
-	// 1 success then 1 failure → 1/2 = 50% (NOT > 50% so not "down");
-	// next failure: 2/3 = 66.6% > 50% so "down".
 	s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
 	s.Record(entry, llm.Outcome{Success: false})
 	providers := registry.GetModelProviders("test-model")
@@ -214,14 +196,12 @@ func TestSelector_Record_RecoveryAfterThreeSuccesses(t *testing.T) {
 	entry := healthyEntry("test-model", "test-provider", 0, 0, 0)
 	s, registry, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "test-provider")
 
-	// Drive to "down".
 	for i := 0; i < 6; i++ {
 		s.Record(entry, llm.Outcome{Success: false})
 	}
 	providers := registry.GetModelProviders("test-model")
 	require.Equal(t, "down", providers[0].HealthStatus)
 
-	// 3 consecutive successes flip back to healthy.
 	for i := 0; i < 3; i++ {
 		s.Record(entry, llm.Outcome{Success: true, Latency: 200 * time.Millisecond})
 	}
@@ -241,15 +221,11 @@ func TestSelector_Record_LatencyRollingWindow(t *testing.T) {
 }
 
 func TestSelector_Record_ZeroLatencySkipsWindow(t *testing.T) {
-	// Streaming starts report zero Latency (channel-open is not the
-	// user-perceived latency). The rolling window must NOT count those
-	// samples — otherwise a busy stream-heavy hour would falsely pull
-	// the avg toward zero.
 	entry := healthyEntry("test-model", "test-provider", 0, 0, 0)
 	s, registry, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "test-provider")
 
 	s.Record(entry, llm.Outcome{Success: true, Latency: 500 * time.Millisecond})
-	s.Record(entry, llm.Outcome{Success: true, Latency: 0}) // streaming start
+	s.Record(entry, llm.Outcome{Success: true, Latency: 0})
 	s.Record(entry, llm.Outcome{Success: true, Latency: 700 * time.Millisecond})
 
 	providers := registry.GetModelProviders("test-model")
@@ -386,9 +362,6 @@ func TestInvoke_PickError_DoesNotRunFnNorRecord(t *testing.T) {
 }
 
 func TestInvoke_WallClock_PopulatedFromObservedDuration(t *testing.T) {
-	// Sleep a small amount inside fn so the wall-clock measurement is
-	// reliably non-zero across schedulers. We assert a lower bound only —
-	// upper bound would be flaky under load.
 	const minSleep = 5 * time.Millisecond
 	sel := &recordingSelector{
 		entry:    &llm.ModelProviderEntry{Model: "gpt-4", Provider: "fake"},
@@ -407,9 +380,6 @@ func TestInvoke_WallClock_PopulatedFromObservedDuration(t *testing.T) {
 }
 
 func TestInvoke_GenericResultType_Works(t *testing.T) {
-	// Sanity: the generic type parameter accepts non-pointer types like
-	// channels (used by the streaming path) and pointer types like
-	// *ChatResponse interchangeably.
 	sel := &recordingSelector{
 		entry:    &llm.ModelProviderEntry{Model: "gpt-4", Provider: "fake"},
 		provider: makeStub("fake"),
@@ -419,7 +389,7 @@ func TestInvoke_GenericResultType_Works(t *testing.T) {
 		func(_ llm.Provider) (<-chan llm.StreamChunk, time.Duration, error) {
 			out := make(chan llm.StreamChunk)
 			close(out)
-			return out, 0, nil // zero latency — channel-open isn't user-perceived
+			return out, 0, nil
 		})
 	require.NoError(t, err)
 	require.NotNil(t, ch)
@@ -504,12 +474,12 @@ func TestSelector_Candidates_StrategyAware(t *testing.T) {
 func TestSelector_Candidates_SkipsDisabledAndUnregistered(t *testing.T) {
 	disabled := healthyEntry("gpt-4", "off", 1.0, 1.0, 100)
 	disabled.Enabled = false
-	ghost := healthyEntry("gpt-4", "ghost", 1.0, 1.0, 100) // no provider registered
+	ghost := healthyEntry("gpt-4", "ghost", 1.0, 1.0, 100)
 	enabled := healthyEntry("gpt-4", "ok", 5.0, 15.0, 500)
 
 	s, _, _ := newSelectorFixture(
 		[]*llm.ModelProviderEntry{disabled, ghost, enabled},
-		"off", "ok", // ghost intentionally absent from provider map
+		"off", "ok",
 	)
 
 	cands := s.Candidates("gpt-4", llm.StrategyCost)
@@ -519,9 +489,6 @@ func TestSelector_Candidates_SkipsDisabledAndUnregistered(t *testing.T) {
 }
 
 func TestSelector_Candidates_DeterministicOrdering(t *testing.T) {
-	// Two entries with the same cost and same health bucket — registry
-	// insertion order must be preserved across repeated Candidates calls
-	// so the retry path picks the same sibling on every invocation.
 	a := healthyEntry("gpt-4", "alpha", 1.0, 1.0, 100)
 	b := healthyEntry("gpt-4", "beta", 1.0, 1.0, 100)
 	s, _, _ := newSelectorFixture(

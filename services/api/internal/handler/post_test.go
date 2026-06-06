@@ -53,7 +53,7 @@ func TestListPosts_Success(t *testing.T) {
 	svc := &mockPostService{
 		listFn: func(_ context.Context, bid uuid.UUID, f domain.PostFilter) ([]domain.Post, int, error) {
 			assert.Equal(t, businessID, bid)
-			assert.Equal(t, 20, f.Limit) // default
+			assert.Equal(t, 20, f.Limit)
 			return []domain.Post{{ID: "p1", Content: "test", Status: "published"}}, 1, nil
 		},
 	}

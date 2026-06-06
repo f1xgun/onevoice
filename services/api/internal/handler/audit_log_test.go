@@ -135,8 +135,6 @@ func TestAuditLogHandler_List_FullPage_BuildsNextCursor(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.NotNil(t, body.NextCursor, "len(rows)==limit ⇒ next cursor present")
 
-	// Round-trip the cursor: decoded (t, id) MUST equal the LAST row's
-	// (created_at, id) — that's the "resume after this row" semantic.
 	gotT, gotID, err := audit.DecodeCursor(*body.NextCursor)
 	require.NoError(t, err)
 	last := rows[len(rows)-1]
@@ -150,7 +148,7 @@ func TestAuditLogHandler_List_FullPage_BuildsNextCursor(t *testing.T) {
 func TestAuditLogHandler_List_NullActor_RendersNullEmail(t *testing.T) {
 	t.Parallel()
 	biz := uuid.New()
-	rows := makeRows(1, biz, nil, "") // nil user, empty email
+	rows := makeRows(1, biz, nil, "")
 	rows[0].Action = "auth.login_failed"
 
 	stub := &fakeAuditLister{returnRows: rows}
@@ -239,7 +237,6 @@ func TestAuditLogHandler_List_Forbidden_WithoutPerm(t *testing.T) {
 	stub := &fakeAuditLister{}
 	h := NewAuditLogHandler(stub)
 
-	// Context has BusinessContext but NO PermAuditRead.
 	ctx := businessContextWithPerms(context.Background(), biz, uuid.New())
 	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody).WithContext(ctx)
 	w := httptest.NewRecorder()
@@ -255,7 +252,6 @@ func TestAuditLogHandler_List_MissingBusinessContext_500(t *testing.T) {
 	stub := &fakeAuditLister{}
 	h := NewAuditLogHandler(stub)
 
-	// No business context attached — programmer error / route misconfig.
 	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	w := httptest.NewRecorder()
 	h.List(w, req)
@@ -271,7 +267,6 @@ func TestAuditLogHandler_List_InvalidCursor_400(t *testing.T) {
 	h := NewAuditLogHandler(stub)
 
 	ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
-	// "corrupt!" is not valid base64-url (the '!' is outside the alphabet).
 	req := httptest.NewRequest(http.MethodGet, "/?cursor=corrupt!", http.NoBody).WithContext(ctx)
 	w := httptest.NewRecorder()
 	h.List(w, req)

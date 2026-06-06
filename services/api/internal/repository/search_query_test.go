@@ -43,14 +43,10 @@ func TestTokenizeQuery_HandlesEdges(t *testing.T) {
 // inflated future input must NEVER produce a pattern that backreferences,
 // alternates, or quantifies on attacker-controlled bytes.
 func TestWordPrefixRegex_LiteralEscaping(t *testing.T) {
-	// Pretend a metachar leaked through (would not in practice — tokenizer
-	// drops it — but the contract MUST hold defense-in-depth).
 	pat := wordPrefixRegex("a.b+c[")
-	// Compile the pattern: if the escape failed, this errors.
 	re, err := regexp.Compile(pat)
 	require.NoError(t, err, "escaped pattern must always compile")
 
-	// "a.b+c[" must match itself only as a literal.
 	assert.True(t, re.MatchString("xx a.b+c[ yy"), "literal substring must match")
 	assert.False(t, re.MatchString("xx aXbXcX yy"),
 		"meta-as-meta would have matched aXbXcX; escape failed")
@@ -67,7 +63,6 @@ func TestWordPrefixRegex_WordBoundary(t *testing.T) {
 	re, err := regexp.Compile("(?i)" + pat)
 	require.NoError(t, err)
 
-	// Positives — start, after space, after punctuation; inflected forms.
 	for _, s := range []string{
 		"отзыв",
 		"проверь отзыв",
@@ -79,7 +74,6 @@ func TestWordPrefixRegex_WordBoundary(t *testing.T) {
 		assert.True(t, re.MatchString(s), "expected match for %q", s)
 	}
 
-	// Negatives — inside another word.
 	for _, s := range []string{
 		"переотзыв",
 		"антиотзыв",

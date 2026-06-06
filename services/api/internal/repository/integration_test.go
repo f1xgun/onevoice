@@ -53,7 +53,6 @@ func TestListByBusinessAndPlatform(t *testing.T) {
 			extID2, map[string]interface{}{}, &now, (*time.Time)(nil),
 			now, now)
 
-	// squirrel Eq map sorts keys alphabetically: business_id, platform
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
@@ -90,7 +89,6 @@ func TestGetByBusinessPlatformExternal_Found(t *testing.T) {
 			externalID, map[string]interface{}{}, &now, (*time.Time)(nil),
 			now, now)
 
-	// squirrel Eq map sorts keys alphabetically: business_id, external_id, platform
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
@@ -114,7 +112,6 @@ func TestGetByBusinessPlatformExternal_NotFound(t *testing.T) {
 
 	repo, mockPool := newTestIntegrationRepo(t)
 
-	// squirrel Eq map sorts keys alphabetically: business_id, external_id, platform
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnError(pgx.ErrNoRows)

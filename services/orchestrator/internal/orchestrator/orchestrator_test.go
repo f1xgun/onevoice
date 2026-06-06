@@ -104,9 +104,7 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 		case orchestrator.EventText:
 			textEvents = append(textEvents, e)
 		case orchestrator.EventError, orchestrator.EventDone:
-			// not relevant for this test
 		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
-			// Not relevant for this test — ignored.
 		}
 	}
 
@@ -120,7 +118,6 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 
 func TestRun_MaxIterations_Stops(t *testing.T) {
 	stub := &stubLLM{}
-	// Always return a tool call — should stop at max iterations
 	for i := 0; i < 15; i++ {
 		args, _ := json.Marshal(map[string]interface{}{})
 		stub.responses = append(stub.responses, &llm.ChatResponse{

@@ -38,7 +38,6 @@ func TestPlatformsHandler_AllConfigured(t *testing.T) {
 	assert.Equal(t, domain.PlatformStatusActive, statuses["telegram"])
 	assert.Equal(t, domain.PlatformStatusActive, statuses["vk"])
 	assert.Equal(t, domain.PlatformStatusActive, statuses["yandex_business"])
-	// google_business stays coming_soon by registry decision regardless of creds.
 	assert.Equal(t, domain.PlatformStatusComingSoon, statuses["google_business"])
 	assert.Equal(t, domain.PlatformStatusComingSoon, statuses["2gis"])
 	assert.Equal(t, domain.PlatformStatusComingSoon, statuses["avito"])
@@ -47,10 +46,10 @@ func TestPlatformsHandler_AllConfigured(t *testing.T) {
 
 func TestPlatformsHandler_DowngradesMissingCreds(t *testing.T) {
 	h := NewPlatformsHandler(PlatformAvailability{
-		Telegram:       false, // missing bot token
+		Telegram:       false,
 		VK:             true,
 		YandexBusiness: true,
-		GoogleBusiness: false, // creds missing — but google_business is already coming_soon
+		GoogleBusiness: false,
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/platforms", http.NoBody)
@@ -69,15 +68,10 @@ func TestPlatformsHandler_DowngradesMissingCreds(t *testing.T) {
 	assert.Equal(t, domain.PlatformStatusOAuthNotConfigured, statuses["telegram"])
 	assert.Equal(t, domain.PlatformStatusActive, statuses["vk"])
 	assert.Equal(t, domain.PlatformStatusActive, statuses["yandex_business"])
-	// google_business is coming_soon at the registry level, so missing creds
-	// do not downgrade it (downgrade only applies to default-Active entries).
 	assert.Equal(t, domain.PlatformStatusComingSoon, statuses["google_business"])
 }
 
 func TestPlatformsHandler_ComingSoonNeverDowngraded(t *testing.T) {
-	// Even when nothing is configured, coming_soon platforms stay
-	// coming_soon — the downgrade logic only applies to platforms whose
-	// default is Active.
 	h := NewPlatformsHandler(PlatformAvailability{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/platforms", http.NoBody)
@@ -142,9 +136,6 @@ func TestPlatformsHandler_WireOmitsNameAndDescription(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	// Inspect the raw JSON envelope so we catch the case where Go would
-	// have serialized an empty string field (json:"name") even with a
-	// zero value — `json:"-"` drops the key entirely.
 	var raw []map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
 	require.NotEmpty(t, raw)
@@ -153,7 +144,6 @@ func TestPlatformsHandler_WireOmitsNameAndDescription(t *testing.T) {
 		assert.False(t, hasName, "platform %v: response must not include `name` key", entry["id"])
 		_, hasDesc := entry["description"]
 		assert.False(t, hasDesc, "platform %v: response must not include `description` key", entry["id"])
-		// Status + id remain.
 		assert.Contains(t, entry, "id")
 		assert.Contains(t, entry, "status")
 	}

@@ -67,7 +67,6 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 	viewerJWT := mintJWT(t, env.jwtSecret, viewerID)
 	nonMemberJWT := mintJWT(t, env.jwtSecret, nonMemberID)
 
-	// LOW #9 — capture allow-metric baseline before the walker runs.
 	rbacAllowBefore := testutil.ToFloat64(metrics.GetRBACCheckCounter().WithLabelValues("allow"))
 
 	chiRouter, ok := env.router.(*chi.Mux)
@@ -75,7 +74,6 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 
 	var walked int
 	err := chi.Walk(chiRouter, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		// Filter: only routes that start with the business-scoped prefix.
 		if route != businessRoutePrefix && !strings.HasPrefix(route, businessRoutePrefix+"/") {
 			return nil
 		}
@@ -84,31 +82,24 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", method, route), func(t *testing.T) {
 			url := substituteURLParams(t, env, bizID, route)
 
-			// Case 1: no JWT → 401.
 			rec := doAuthedRequest(t, env, method, url, "", nil)
 			require.Equal(t, http.StatusUnauthorized, rec.Code,
 				"no-JWT for %s %s: expected 401, got %d body=%q",
 				method, route, rec.Code, rec.Body.String())
 
-			// Case 2: non-member JWT → 404.
 			rec = doAuthedRequest(t, env, method, url, nonMemberJWT, []byte("{}"))
 			require.Equal(t, http.StatusNotFound, rec.Code,
 				"non-member for %s %s: expected 404, got %d body=%q",
 				method, route, rec.Code, rec.Body.String())
 
-			// Cases 3 + 4: viewer permission check.
 			if method == http.MethodGet || method == http.MethodHead {
 				rec = doAuthedRequest(t, env, method, url, viewerJWT, nil)
 				if !readPathExempt(method, route) {
-					// Non-exempt viewer GET must reach the handler and return 200.
 					require.Equal(t, http.StatusOK, rec.Code,
 						"viewer GET for %s %s: expected 200, got %d body=%q",
 						method, route, rec.Code, rec.Body.String())
 				}
-				// Exempt routes: authz gate still verified above (401 + 404);
-				// handler-level response is not checked.
 			} else {
-				// Write verb: viewer must be denied at the authz layer (403).
 				rec = doAuthedRequest(t, env, method, url, viewerJWT, []byte("{}"))
 				if !writePathExempt(method, route) {
 					require.Equal(t, http.StatusForbidden, rec.Code,
@@ -121,15 +112,9 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// AUTHZ-10 acceptance: walker must find at least 37 business-scoped routes.
-	// baseline ~30 + invitations × 3 (POST/GET/DELETE) = 33,
-	// + routes × 4 (POST /roles, PATCH /roles/{roleId},
-	// DELETE /roles/{roleId}, GET /me/permissions) = 37.
 	require.GreaterOrEqual(t, walked, 37,
 		"AUTHZ-10: expected >=37 business-scoped routes (baseline 30 + invitations × 3 + roles × 4), chi.Walk found %d", walked)
 
-	// LOW #9 — AUTHZ-11 integration assertion: the allow counter must have
-	// incremented at least once during the viewer GET checks above.
 	rbacAllowAfter := testutil.ToFloat64(metrics.GetRBACCheckCounter().WithLabelValues("allow"))
 	require.GreaterOrEqual(t, rbacAllowAfter, rbacAllowBefore+1,
 		"AUTHZ-11 metric: rbac_check_total{result=allow} must increment during walker "+
@@ -202,24 +187,20 @@ func TestRBACCoverage_CacheInvalidation(t *testing.T) {
 	seedMembership(t, env.pool, bizID, viewerID, viewerRoleID)
 	viewerJWT := mintJWT(t, env.jwtSecret, viewerID)
 
-	// Viewer POSTs to create a conversation — must be denied (lacks PermContentCreate).
 	url := fmt.Sprintf("/api/v1/businesses/%s/conversations", bizID)
 	rec := doAuthedRequest(t, env, http.MethodPost, url, viewerJWT, []byte(`{"title":"x"}`))
 	require.Equal(t, http.StatusForbidden, rec.Code,
 		"viewer POST /conversations before promotion should 403, got %d", rec.Code)
 
-	// Out-of-band promotion to editor (no InvalidateMember yet).
 	_, err := env.pool.Exec(context.Background(),
 		`UPDATE business_members SET role_id = $1 WHERE business_id = $2 AND user_id = $3`,
 		editorRoleID, bizID, viewerID)
 	require.NoError(t, err)
 
-	// Stale cache: should still return 403.
 	rec = doAuthedRequest(t, env, http.MethodPost, url, viewerJWT, []byte(`{"title":"x"}`))
 	require.Equal(t, http.StatusForbidden, rec.Code,
 		"without InvalidateMember, stale cache must still 403, got %d", rec.Code)
 
-	// Invalidate — next request loads fresh role from DB.
 	env.cache.InvalidateMember(bizID, viewerID)
 	rec = doAuthedRequest(t, env, http.MethodPost, url, viewerJWT, []byte(`{"title":"x"}`))
 	require.NotEqual(t, http.StatusForbidden, rec.Code,
@@ -248,19 +229,16 @@ func TestRBACCoverage_TTLCeiling(t *testing.T) {
 	seedMembership(t, env.pool, bizID, viewerID, viewerRoleID)
 	viewerJWT := mintJWT(t, env.jwtSecret, viewerID)
 
-	// Prime the cache with viewer perms (403 on write).
 	url := fmt.Sprintf("/api/v1/businesses/%s/conversations", bizID)
 	rec := doAuthedRequest(t, env, http.MethodPost, url, viewerJWT, []byte(`{"title":"x"}`))
 	require.Equal(t, http.StatusForbidden, rec.Code,
 		"viewer POST before promotion should 403, got %d", rec.Code)
 
-	// Out-of-band promotion (NO InvalidateMember — TTL must handle it).
 	_, err := env.pool.Exec(context.Background(),
 		`UPDATE business_members SET role_id = $1 WHERE business_id = $2 AND user_id = $3`,
 		editorRoleID, bizID, viewerID)
 	require.NoError(t, err)
 
-	// Sleep beyond the injected 1s TTL (HIGH #1 + HIGH #2 — 1.1s sleep).
 	time.Sleep(1100 * time.Millisecond)
 
 	rec = doAuthedRequest(t, env, http.MethodPost, url, viewerJWT, []byte(`{"title":"x"}`))
@@ -283,7 +261,6 @@ func TestRBACCoverage_LastOwnerSelfRemoval(t *testing.T) {
 	bizID := seedBusiness(t, env.pool, ownerID)
 	ownerJWT := mintJWT(t, env.jwtSecret, ownerID)
 
-	// Sole-owner self-DELETE → 422 last_owner.
 	url := fmt.Sprintf("/api/v1/businesses/%s/members/%s", bizID, ownerID)
 	rec := doAuthedRequest(t, env, http.MethodDelete, url, ownerJWT, nil)
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code,
@@ -291,18 +268,15 @@ func TestRBACCoverage_LastOwnerSelfRemoval(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "last_owner",
 		"422 body must contain 'last_owner'")
 
-	// Add a second owner so the first is no longer the last owner.
 	secondOwnerID := seedUser(t, env.pool)
 	ownerRoleID := uuid.MustParse(domain.SystemRoleOwnerID)
 	seedMembership(t, env.pool, bizID, secondOwnerID, ownerRoleID)
 
-	// Non-last-owner self-DELETE → EXACTLY 204 No Content (MEDIUM #8).
 	rec = doAuthedRequest(t, env, http.MethodDelete, url, ownerJWT, nil)
 	require.Equal(t, http.StatusNoContent, rec.Code,
 		"MEDIUM #8: non-last-owner self-DELETE must return 204 No Content (not 200), "+
 			"got %d body=%q", rec.Code, rec.Body.String())
 
-	// Removed user's next GET to the business → 404 from RequireBusinessAccess.
 	getURL := fmt.Sprintf("/api/v1/businesses/%s/integrations", bizID)
 	rec = doAuthedRequest(t, env, http.MethodGet, getURL, ownerJWT, nil)
 	require.Equal(t, http.StatusNotFound, rec.Code,
@@ -324,10 +298,7 @@ func substituteURLParams(t *testing.T, env *testEnv, bizID uuid.UUID, route stri
 	t.Helper()
 	url := route
 
-	// Replace the outer business {id} first, then any inner {id}.
-	// strings.Replace with n=1 replaces only the first occurrence.
 	url = strings.Replace(url, "{id}", bizID.String(), 1)
-	// Replace any remaining {id} occurrences with random UUIDs.
 	for strings.Contains(url, "{id}") {
 		url = strings.Replace(url, "{id}", uuid.New().String(), 1)
 	}
@@ -342,32 +313,18 @@ func substituteURLParams(t *testing.T, env *testEnv, bizID uuid.UUID, route stri
 		url = strings.ReplaceAll(url, "{batch_id}", uuid.New().String())
 	}
 	if strings.Contains(url, "{userId}") {
-		// Seed a real user for the members route (DELETE /members/{userId} validates UUID).
 		memberID := seedUser(t, env.pool)
 		viewerRoleID := uuid.MustParse(domain.SystemRoleViewerID)
 		seedMembership(t, env.pool, bizID, memberID, viewerRoleID)
 		url = strings.ReplaceAll(url, "{userId}", memberID.String())
 	}
 	if strings.Contains(url, "{inviteId}") {
-		// Task 1: Seed a real pending invitation so DELETE
-		// /invitations/{inviteId} validates the UUID parse + reaches the repo
-		// layer (where the authz gates 401 / 404 still fire as expected). The
-		// viewer JWT used by the walker is a non-creator so DELETE attempts
-		// will hit the PermMembersInvite Can gate before they hit the repo,
-		// which is exactly what the 4-case authz trio asserts.
 		ownerRoleID := uuid.MustParse(domain.SystemRoleOwnerID)
-		// Need a non-Nil createdByUserID — seed a fresh user as the creator.
 		creatorID := seedUser(t, env.pool)
 		invID := seedInvitation(t, env.pool, bizID, ownerRoleID, creatorID)
 		url = strings.ReplaceAll(url, "{inviteId}", invID.String())
 	}
 	if strings.Contains(url, "{roleId}") {
-		// Task 3: Seed a real custom role so PATCH /roles/{roleId}
-		// and DELETE /roles/{roleId} validate UUID parse + reach the repo
-		// layer (where the authz gates 401 / 404 still fire as expected). The
-		// viewer JWT used by the walker lacks PermRolesUpdate / PermRolesDelete
-		// so the handler's authz.Can returns 403 before the repo lookup —
-		// which is exactly what the 4-case authz trio asserts.
 		roleID := seedCustomRole(t, env.pool, bizID)
 		url = strings.ReplaceAll(url, "{roleId}", roleID.String())
 	}
@@ -415,21 +372,10 @@ func readPathExempt(method, route string) bool {
 		"/api/v1/businesses/{id}/integrations/yandex_business/auth-url":  true,
 		"/api/v1/businesses/{id}/integrations/google_business/auth-url":  true,
 		"/api/v1/businesses/{id}/integrations/google_business/locations": true,
-		// G-04: search requires ?q= (len >= 2); walker cannot synthesize the param.
-		// Authz gates (401 + 404) are still asserted.
-		"/api/v1/businesses/{id}/search": true,
-		// G-05: tool-approvals service checks b.UserID == actorUserID. The test viewer
-		// is not the business owner so the service returns ErrBusinessNotFound → 404.
-		// Authz gates (401 + 404) are still asserted.
-		"/api/v1/businesses/{id}/tool-approvals": true,
-		// G-09: GET / (business by ID) — service returns ErrBusinessNotFound for
-		// non-owner viewers (same pattern as tool-approvals); handler maps to 500.
-		// Authz gates (401 + 404) are still asserted via the middleware layer.
-		"/api/v1/businesses/{id}/": true,
-		// G-10: GET /integrations — service performs an owner-only lookup; viewer
-		// (non-owner) gets ErrBusinessNotFound → 500. Authz gates 401 + 404 still
-		// asserted via the middleware layer.
-		"/api/v1/businesses/{id}/integrations": true,
+		"/api/v1/businesses/{id}/search":                                 true,
+		"/api/v1/businesses/{id}/tool-approvals":                         true,
+		"/api/v1/businesses/{id}/":                                       true,
+		"/api/v1/businesses/{id}/integrations":                           true,
 	}
 	return exempt[route]
 }
@@ -453,10 +399,7 @@ func writePathExempt(method, route string) bool {
 		"/api/v1/businesses/{id}/chat/{conversationID}":                              true,
 		"/api/v1/businesses/{id}/chat/{id}/resume":                                   true,
 		"/api/v1/businesses/{id}/conversations/{id}/pending-tool-calls/{id}/resolve": true,
-		// G-11: handler validates required body field "hash" before reaching the
-		// authz Can check; viewer with empty body gets 400 not 403. Authz gate
-		// 401 (no JWT) and 404 (non-member) still assert correctly.
-		"/api/v1/businesses/{id}/integrations/telegram/verify": true,
+		"/api/v1/businesses/{id}/integrations/telegram/verify":                       true,
 	}
 	return exempt[route]
 }

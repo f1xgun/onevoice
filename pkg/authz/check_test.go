@@ -31,7 +31,6 @@ func captureSlog(t *testing.T) *bytes.Buffer {
 // lastLogEntry parses the last non-empty line from buf as a JSON map.
 func lastLogEntry(buf *bytes.Buffer) map[string]any {
 	data := buf.Bytes()
-	// Find the last non-empty line.
 	lines := bytes.Split(bytes.TrimRight(data, "\n"), []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		if len(bytes.TrimSpace(lines[i])) > 0 {
@@ -145,12 +144,10 @@ func TestWithBusinessContext_RoundTrip(t *testing.T) {
 func TestCan_SlogAlwaysCheckedTrue(t *testing.T) {
 	buf := captureSlog(t)
 
-	// Emit all three result paths.
-	authz.Can(context.Background(), authz.PermContentRead) // missing
-	authz.Can(viewerCtx(), authz.PermContentRead)          // allow
-	authz.Can(viewerCtx(), authz.PermContentCreate)        // deny
+	authz.Can(context.Background(), authz.PermContentRead)
+	authz.Can(viewerCtx(), authz.PermContentRead)
+	authz.Can(viewerCtx(), authz.PermContentCreate)
 
-	// Parse all JSON lines.
 	for _, line := range bytes.Split(bytes.TrimRight(buf.Bytes(), "\n"), []byte("\n")) {
 		if len(bytes.TrimSpace(line)) == 0 {
 			continue

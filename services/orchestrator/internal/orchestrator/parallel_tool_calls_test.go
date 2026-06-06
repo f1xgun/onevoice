@@ -99,7 +99,6 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 			toolResultEvents = append(toolResultEvents, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
 		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
-			// Not relevant for this test — ignored.
 		}
 	}
 	elapsed := time.Since(start)
@@ -107,23 +106,15 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 	require.Len(t, toolCallEvents, toolCount, "expected 3 tool_call events")
 	require.Len(t, toolResultEvents, toolCount, "expected 3 tool_result events")
 
-	// Wall time must be much closer to toolDelay than to toolCount*toolDelay.
-	// Allow slack for scheduling; <2x toolDelay proves parallelism (serial would be ~3x).
 	maxParallel := 2 * toolDelay
 	assert.Lessf(t, elapsed, maxParallel,
 		"tools ran serially: elapsed=%s, expected <%s (parallel) not ~%s (serial)",
 		elapsed, maxParallel, toolCount*toolDelay)
 
-	// Tool_call events are emitted before any goroutines start, so their
-	// order matches the original tool_calls slice.
 	assert.Equal(t, "call_yb", toolCallEvents[0].ToolCallID)
 	assert.Equal(t, "call_tg", toolCallEvents[1].ToolCallID)
 	assert.Equal(t, "call_vk", toolCallEvents[2].ToolCallID)
 
-	// tool_result events fire as each tool finishes — completion order, not
-	// original order. Assert set membership instead. OpenAI/Anthropic
-	// correlation is preserved via the role:tool messages appended after
-	// wg.Wait(), not via SSE event order.
 	resultIDs := map[string]bool{}
 	for _, ev := range toolResultEvents {
 		resultIDs[ev.ToolCallID] = true
@@ -191,14 +182,11 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 
 	require.Len(t, resultArrivedAt, 2)
 
-	// Fast result must arrive well before the slow one — proves per-tool
-	// emission, not batched-after-wg.Wait().
 	gap := resultArrivedAt["call_slow"] - resultArrivedAt["call_fast"]
 	assert.Greaterf(t, gap, (slowDelay-fastDelay)/2,
 		"tool_results batched together: fast=%s slow=%s gap=%s (expected >%s)",
 		resultArrivedAt["call_fast"], resultArrivedAt["call_slow"], gap, (slowDelay-fastDelay)/2)
 
-	// Absolute sanity: fast must be close to fastDelay, not slowDelay.
 	assert.Less(t, resultArrivedAt["call_fast"], slowDelay,
 		"fast tool result arrived as late as the slow tool: %s", resultArrivedAt["call_fast"])
 }
@@ -304,20 +292,17 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 			results = append(results, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
 		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
-			// Not relevant for this test — ignored.
 		}
 	}
 
 	require.Len(t, calls, 2)
 	require.Len(t, results, 2)
 
-	// tool_call events are emitted in original order (before goroutines).
 	assert.Equal(t, "call_a", calls[0].ToolCallID)
 	assert.Equal(t, "call_b", calls[1].ToolCallID)
 	assert.Equal(t, "первый", calls[0].ToolArgs["text"])
 	assert.Equal(t, "второй", calls[1].ToolArgs["text"])
 
-	// tool_result events may arrive in any completion order — correlate by ID.
 	resultByID := map[string]orchestrator.Event{}
 	for _, r := range results {
 		resultByID[r.ToolCallID] = r
@@ -373,7 +358,6 @@ func TestRun_PerToolTimeout_BoundsSingleTool(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	// Should not hang — total time bounded by the per-tool timeout (plus some slack).
 	assert.Less(t, elapsed, time.Second, "expected per-tool timeout to bound wall time, got %s", elapsed)
 
 	require.Len(t, results, 2)

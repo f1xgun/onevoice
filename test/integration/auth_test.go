@@ -126,7 +126,6 @@ func TestAuthFlow(t *testing.T) {
 		json.NewDecoder(resp.Body).Decode(&result)
 		assert.NotEmpty(t, result["accessToken"])
 
-		// Update access token
 		accessToken = result["accessToken"].(string)
 	})
 
@@ -164,7 +163,6 @@ func TestAuthFlow(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should fail because token is invalidated
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 }

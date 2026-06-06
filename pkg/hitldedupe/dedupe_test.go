@@ -26,16 +26,11 @@ func newTestClient(t *testing.T) (*hitldedupe.DedupeClient, *miniredis.Miniredis
 }
 
 func TestKeyFor_ExactFormat(t *testing.T) {
-	// Canonical key format. ANY drift here silently
-	// breaks cross-agent dedupe, so this is a guardrail grep-friendly test.
 	assert.Equal(t, "hitl:approval:biz-1:appr-a", hitldedupe.KeyFor("biz-1", "appr-a"))
 	assert.Equal(t, "hitl:approval:b:a", hitldedupe.KeyFor("b", "a"))
 }
 
 func TestClaim_EmptyApprovalID_ReturnsSkip(t *testing.T) {
-	// Anti-footgun #2: empty approvalID must SKIP SetNX
-	// entirely — NOT SetNX with an empty-string key. len(mr.Keys()) MUST
-	// stay 0 across the Claim call.
 	client, mr := newTestClient(t)
 	ctx := context.Background()
 
@@ -73,7 +68,6 @@ func TestClaim_SecondCall_WhileExecuting_ReturnsInFlight(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, hitldedupe.ClaimOutcomeClaimed, out1)
 
-	// Without Store, the key still holds the "executing" sentinel.
 	out2, cached, err := client.Claim(ctx, "biz-1", "appr-1")
 	require.NoError(t, err)
 	assert.Equal(t, hitldedupe.ClaimOutcomeInFlight, out2)
@@ -122,7 +116,6 @@ func TestClaim_TTLIsSet(t *testing.T) {
 	key := hitldedupe.KeyFor("biz-1", "appr-ttl")
 	require.True(t, mr.Exists(key), "pre-condition: key exists")
 
-	// miniredis FastForward past the 24h TTL — the key must be gone.
 	mr.FastForward(25 * time.Hour)
 	assert.False(t, mr.Exists(key), "key must auto-expire after TTL")
 }
@@ -135,24 +128,19 @@ func TestStore_OverwritesExecuting_WithFreshTTL(t *testing.T) {
 	require.NoError(t, err)
 	key := hitldedupe.KeyFor("biz-1", "appr-store")
 
-	// Advance 1 hour — TTL should be ~23h now.
 	mr.FastForward(1 * time.Hour)
 	ttlBefore := mr.TTL(key)
 	require.Greater(t, ttlBefore, time.Duration(0))
 	require.Less(t, ttlBefore, 24*time.Hour,
 		"TTL must have decreased from 24h after FastForward(1h); got %v", ttlBefore)
 
-	// Store refreshes the TTL back to 24h.
 	require.NoError(t, client.Store(ctx, "biz-1", "appr-store",
 		map[string]interface{}{"task_id": "t", "success": true}))
 
 	ttlAfter := mr.TTL(key)
-	// miniredis TTL is the full remaining duration; with a fresh 24h it should
-	// be close to 24h (within a few ms of scheduling slack).
 	assert.Greater(t, ttlAfter, 23*time.Hour,
 		"Store must refresh TTL to ~24h; got %v", ttlAfter)
 
-	// Value must now be a JSON blob, not "executing".
 	val, err := mr.Get(key)
 	require.NoError(t, err)
 	assert.NotEqual(t, "executing", val, "Store must overwrite the executing sentinel")

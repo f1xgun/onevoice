@@ -63,8 +63,6 @@ func TestAgentTaskRepository_Update_EmptyErrorCode_LeavesExisting(t *testing.T) 
 	}
 	require.NoError(t, repo.Create(ctx, task))
 
-	// Subsequent update with empty ErrorCode must not zero out the existing
-	// value — selective $set semantics.
 	update := &domain.AgentTask{
 		ID:         task.ID,
 		BusinessID: task.BusinessID,
@@ -113,7 +111,6 @@ func TestAgentTaskRepository_Find_Queryable_ByErrorCode(t *testing.T) {
 		CompletedAt: &completed,
 	}))
 
-	// Direct collection query — supports a future /tasks?error_code= filter UI.
 	cursor, err := db.Collection("agent_tasks").Find(ctx, bson.M{
 		"business_id": "biz-q",
 		"error_code":  "integration_token_invalid",

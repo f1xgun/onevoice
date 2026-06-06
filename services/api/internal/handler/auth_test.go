@@ -129,7 +129,6 @@ func TestRegister(t *testing.T) {
 				assert.Equal(t, "user@example.com", string(resp.User.Email))
 				assert.Equal(t, "access-token", resp.AccessToken)
 
-				// Verify refresh token is in cookie, not in response body
 				cookies := w.Result().Cookies()
 				var refreshCookie *http.Cookie
 				for _, c := range cookies {
@@ -167,9 +166,6 @@ func TestRegister(t *testing.T) {
 			},
 		},
 		{
-			// openapi_types.Email rejects malformed addresses at JSON-decode
-			// time, so the handler short-circuits to 400 "invalid request body"
-			// before validator.Struct runs. Status code is unchanged.
 			name:        "invalid email format",
 			requestBody: `{"email":"not-an-email","password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
@@ -221,14 +217,11 @@ func TestRegister(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Register emits a machine-readable code so the frontend can
-				// render a Russian string via the i18n catalog.
 				assert.Contains(t, body, `"code":"register_internal"`)
-				assert.NotContains(t, body, "database") // Should not leak internal details
+				assert.NotContains(t, body, "database")
 			},
 		},
 		{
-			// missing consent payload → 400 consent_required.
 			name:        "phase 22 consent missing",
 			requestBody: `{"email":"user@example.com","password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
@@ -242,7 +235,6 @@ func TestRegister(t *testing.T) {
 			},
 		},
 		{
-			// stale single slug → 400 with missing listing it.
 			name:        "phase 22 stale pdn version",
 			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v0.9"}}`,
 			mockSetup:   func(m *MockUserService) {},
@@ -251,7 +243,6 @@ func TestRegister(t *testing.T) {
 				body := w.Body.String()
 				assert.Contains(t, body, `"code":"consent_required"`)
 				assert.Contains(t, body, `"pdn"`)
-				// only pdn is stale — tos + privacy should NOT appear in missing.
 				assert.NotContains(t, body, `"tos"`)
 				assert.NotContains(t, body, `"privacy"`)
 			},
@@ -318,7 +309,6 @@ func TestLogin(t *testing.T) {
 				userData := response["user"].(map[string]interface{})
 				assert.Equal(t, "user@example.com", userData["email"])
 
-				// Verify refresh token is in cookie
 				cookies := w.Result().Cookies()
 				var refreshCookie *http.Cookie
 				for _, c := range cookies {
@@ -387,7 +377,7 @@ func TestLogin(t *testing.T) {
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
 				assert.Contains(t, body, `"error":"internal server error"`)
-				assert.NotContains(t, body, "redis") // Should not leak internal details
+				assert.NotContains(t, body, "redis")
 			},
 		},
 	}
@@ -452,7 +442,6 @@ func TestRefreshToken(t *testing.T) {
 				userData := response["user"].(map[string]interface{})
 				assert.Equal(t, "user@example.com", userData["email"])
 
-				// Verify new refresh token is in cookie
 				cookies := w.Result().Cookies()
 				var refreshCookie *http.Cookie
 				for _, c := range cookies {
@@ -475,7 +464,6 @@ func TestRefreshToken(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				assert.Contains(t, w.Body.String(), `"error":"invalid token"`)
-				// Verify cookie is cleared on invalid token
 				cookies := w.Result().Cookies()
 				var refreshCookie *http.Cookie
 				for _, c := range cookies {
@@ -507,9 +495,8 @@ func TestRefreshToken(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// RefreshToken emits a machine-readable code.
 				assert.Contains(t, body, `"code":"refresh_internal"`)
-				assert.NotContains(t, body, "redis") // Should not leak internal details
+				assert.NotContains(t, body, "redis")
 			},
 		},
 	}
@@ -555,7 +542,6 @@ func TestLogout(t *testing.T) {
 			wantStatus: http.StatusNoContent,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				assert.Empty(t, w.Body.String())
-				// Verify cookie is cleared
 				cookies := w.Result().Cookies()
 				var refreshCookie *http.Cookie
 				for _, c := range cookies {
@@ -599,9 +585,8 @@ func TestLogout(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Logout emits a machine-readable code.
 				assert.Contains(t, body, `"code":"logout_internal"`)
-				assert.NotContains(t, body, "redis") // Should not leak internal details
+				assert.NotContains(t, body, "redis")
 			},
 		},
 	}
@@ -766,9 +751,8 @@ func TestChangePassword(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// ChangePassword emits a machine-readable code.
 				assert.Contains(t, body, `"code":"change_password_internal"`)
-				assert.NotContains(t, body, "database") // no internal detail leak
+				assert.NotContains(t, body, "database")
 			},
 		},
 	}
@@ -896,11 +880,8 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	body := w.Body.String()
-	// Auto-login failure emits a distinct code (auto_login_failed) so the
-	// frontend can tell the user "account was created but login failed,
-	// please sign in manually".
 	assert.Contains(t, body, `"code":"auto_login_failed"`)
-	assert.NotContains(t, body, "auto-login") // no internal detail leak
+	assert.NotContains(t, body, "auto-login")
 
 	mockService.AssertExpectations(t)
 }
@@ -978,9 +959,8 @@ func TestMe(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Me emits a machine-readable code.
 				assert.Contains(t, body, `"code":"get_user_internal"`)
-				assert.NotContains(t, body, "database") // Should not leak internal details
+				assert.NotContains(t, body, "database")
 			},
 		},
 	}
@@ -1071,7 +1051,6 @@ func TestMe_Phase21_EmailVerifiedTrue_OmitsDeadline(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
 	require.Contains(t, body, `"emailVerified":true`)
-	// omitempty → field is absent for verified users (banner does not render).
 	require.NotContains(t, body, "emailVerificationDeadline")
 }
 
@@ -1103,8 +1082,6 @@ func TestMe_ReturnsPreferredLocale(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// Decode into a map (not domain.User) to assert the wire-format field
-	// name explicitly — guards against accidental json tag drift.
 	var resp map[string]interface{}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "en", resp["preferred_locale"], "preferred_locale must be exposed in /me response")
@@ -1241,9 +1218,8 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// UpdatePreferredLocale emits a machine-readable code.
 				assert.Contains(t, body, `"code":"update_locale_internal"`)
-				assert.NotContains(t, body, "postgres") // no internal detail leak
+				assert.NotContains(t, body, "postgres")
 			},
 		},
 	}
@@ -1311,7 +1287,7 @@ func newLockoutFallbackHandler(t *testing.T) (*AuthHandler, *MockUserService, *m
 // TRUSTED_PROXY_CIDRS, so the lockout is keyed to the attacker's REAL /16
 // (9.9.0.0/16), not the spoofed /16 (178.154.0.0/16).
 func TestLogin_LockoutFallback_UsesTrustedProxyClientIP(t *testing.T) {
-	require.NoError(t, middleware.InitTrustedProxies("")) // installs default Yandex LB CIDRs
+	require.NoError(t, middleware.InitTrustedProxies(""))
 
 	h, mockService, mr := newLockoutFallbackHandler(t)
 	mockService.On("Login", mock.Anything, "victim@example.com", "wrongpassword").
@@ -1320,9 +1296,7 @@ func TestLogin_LockoutFallback_UsesTrustedProxyClientIP(t *testing.T) {
 	body := `{"email":"victim@example.com","password":"wrongpassword"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	// Untrusted TCP peer.
 	req.RemoteAddr = "9.9.9.9:443"
-	// Spoofed XFF that would match a trusted CIDR if the peer were the LB.
 	req.Header.Set("X-Forwarded-For", "178.154.250.5")
 	rec := httptest.NewRecorder()
 
@@ -1353,7 +1327,7 @@ func TestLogin_LockoutFallback_UsesTrustedProxyClientIP(t *testing.T) {
 // because the LB has vouched for it. Re-keying onto the LB's own /16
 // would break per-real-client isolation.
 func TestLogin_LockoutFallback_TrustedPeerHonorsXFF(t *testing.T) {
-	require.NoError(t, middleware.InitTrustedProxies("")) // installs default Yandex LB CIDRs
+	require.NoError(t, middleware.InitTrustedProxies(""))
 
 	h, mockService, mr := newLockoutFallbackHandler(t)
 	mockService.On("Login", mock.Anything, "victim@example.com", "wrongpassword").
@@ -1362,9 +1336,7 @@ func TestLogin_LockoutFallback_TrustedPeerHonorsXFF(t *testing.T) {
 	body := `{"email":"victim@example.com","password":"wrongpassword"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	// Trusted TCP peer — real Yandex Cloud NLB IP.
 	req.RemoteAddr = "178.154.250.5:443"
-	// Original client per RFC 5737 documentation /16.
 	req.Header.Set("X-Forwarded-For", "203.0.113.42")
 	rec := httptest.NewRecorder()
 

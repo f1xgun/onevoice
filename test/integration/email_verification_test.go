@@ -45,15 +45,15 @@ import (
 )
 
 const (
-	verifyConfirmPath           = "/api/v1/auth/verify-email/confirm"
-	verifyResendPath            = "/api/v1/auth/verify-email/resend"
-	emailBeforeVerifyPath       = "/api/v1/auth/email-before-verify"
-	verifyEmailSubjectExpected  = "Подтвердите email — OneVoice"
-	httpVerifyOK                = 204
-	httpVerifyBadRequest        = 400
-	httpVerifyForbidden         = 403
-	httpVerifyConflict          = 409
-	httpVerifyTooManyRequests   = 429
+	verifyConfirmPath          = "/api/v1/auth/verify-email/confirm"
+	verifyResendPath           = "/api/v1/auth/verify-email/resend"
+	emailBeforeVerifyPath      = "/api/v1/auth/email-before-verify"
+	verifyEmailSubjectExpected = "Подтвердите email — OneVoice"
+	httpVerifyOK               = 204
+	httpVerifyBadRequest       = 400
+	httpVerifyForbidden        = 403
+	httpVerifyConflict         = 409
+	httpVerifyTooManyRequests  = 429
 )
 
 // verifyTokenRegex pulls token=... from the verify-email link. The
@@ -142,11 +142,9 @@ func TestEmailVerify_TokenSingleUse(t *testing.T) {
 	cleanupVerify(t)
 	_ = setupTestUser(t, "single-use@example.com", "password123")
 
-	// Register enqueues a verification email atomically. Grab its token.
 	body := fetchLatestVerifyOutboxBody(t, "single-use@example.com")
 	token := extractVerifyToken(t, body)
 
-	// First consume succeeds (204) and flips email_verified.
 	resp := postVerifyConfirm(t, token)
 	require.Equal(t, httpVerifyOK, resp.StatusCode)
 	resp.Body.Close()
@@ -156,7 +154,6 @@ func TestEmailVerify_TokenSingleUse(t *testing.T) {
 		`SELECT email_verified FROM users WHERE email = $1`, "single-use@example.com").Scan(&verified))
 	require.True(t, verified)
 
-	// Second consume → 400 verify_token_invalid (atomic UPDATE...WHERE consumed_at IS NULL).
 	resp2 := postVerifyConfirm(t, token)
 	require.Equal(t, httpVerifyBadRequest, resp2.StatusCode)
 	defer resp2.Body.Close()
@@ -177,11 +174,6 @@ func TestEmailVerify_ScannerProtection(t *testing.T) {
 	body := fetchLatestVerifyOutboxBody(t, "scanner@example.com")
 	token := extractVerifyToken(t, body)
 
-	// The verify-email page renders the FE button on GET (no backend GET
-	// handler exists). The backend is asserted by hitting POST without
-	// the token being consumed via any GET-side path — we approximate the
-	// scanner by sha256-hashing the token and checking the DB row is
-	// still unconsumed.
 	hashArr := sha256.Sum256([]byte(token))
 	var consumedAt *time.Time
 	err := pgPool.QueryRow(context.Background(),
@@ -190,7 +182,6 @@ func TestEmailVerify_ScannerProtection(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, consumedAt, "no GET/scanner mechanism should have consumed the token before POST")
 
-	// Now actually POST — that's the only consume path.
 	resp := postVerifyConfirm(t, token)
 	require.Equal(t, httpVerifyOK, resp.StatusCode)
 	resp.Body.Close()
@@ -217,9 +208,6 @@ func TestVerifyConfirm_NoCookiesIssued(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, httpVerifyOK, resp.StatusCode)
 
-	// The load-bearing assertion — Set-Cookie MUST be empty. An attacker
-	// who registered a victim's email then watched the victim click the
-	// link must NOT come away with the victim's session.
 	require.Empty(t, resp.Header.Values("Set-Cookie"),
 		"verify-confirm MUST NOT issue cookies — T-VE-02")
 }
@@ -233,12 +221,10 @@ func TestEmailVerify_ResendThrottleOnePerMinute(t *testing.T) {
 	cleanupVerify(t)
 	accessToken := setupTestUser(t, "throttle@example.com", "password123")
 
-	// 1st resend succeeds.
 	resp := postVerifyResend(t, accessToken)
 	require.Equal(t, httpVerifyOK, resp.StatusCode)
 	resp.Body.Close()
 
-	// 2nd within 60s → 429 verify_resend_throttled.
 	resp2 := postVerifyResend(t, accessToken)
 	defer resp2.Body.Close()
 	require.Equal(t, httpVerifyTooManyRequests, resp2.StatusCode)
@@ -260,15 +246,12 @@ func TestEmailChange_OnlyBeforeVerify_Allowed(t *testing.T) {
 	require.Equal(t, httpVerifyOK, resp.StatusCode, "unverified user must be able to change email")
 	resp.Body.Close()
 
-	// users.email updated.
 	var actualEmail string
 	require.NoError(t, pgPool.QueryRow(context.Background(),
 		`SELECT email FROM users WHERE id = (SELECT id FROM users WHERE email = $1)`,
 		"new@example.com").Scan(&actualEmail))
 	require.Equal(t, "new@example.com", actualEmail)
 
-	// Old outstanding token invalidated (consumed_at set).
-	// Bypassing token hash lookup, we assert ALL tokens for this user are now consumed.
 	var unconsumedCnt int
 	require.NoError(t, pgPool.QueryRow(context.Background(),
 		`SELECT COUNT(*) FROM email_verification_tokens
@@ -276,7 +259,6 @@ func TestEmailChange_OnlyBeforeVerify_Allowed(t *testing.T) {
 		"new@example.com").Scan(&unconsumedCnt))
 	require.Equal(t, 1, unconsumedCnt, "exactly one fresh token survives after change-email")
 
-	// Verify a fresh outbox row to the new email exists.
 	body := fetchLatestVerifyOutboxBody(t, "new@example.com")
 	require.Contains(t, body, "?token=", "fresh verification link to new@example.com must exist")
 }
@@ -290,7 +272,6 @@ func TestEmailChange_OnlyBeforeVerify_BlockedWhenVerified(t *testing.T) {
 	cleanupVerify(t)
 	accessToken := setupTestUser(t, "verified@example.com", "password123")
 
-	// Verify the user (bypass the email flow for setup speed).
 	_, err := pgPool.Exec(context.Background(),
 		`UPDATE users SET email_verified = TRUE, email_verified_at = NOW() WHERE email = $1`,
 		"verified@example.com")

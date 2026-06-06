@@ -54,7 +54,6 @@ func TestStepRun_PopulatesSystemBlocks(t *testing.T) {
 		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	require.NoError(t, err)
-	// Drain to ensure goroutine completes.
 	for range events {
 	}
 
@@ -99,7 +98,6 @@ func TestStepRun_NoLeadingSystemInMessages(t *testing.T) {
 		"Messages[0] must NOT be a role:system entry — SystemBlocks owns that channel; got role=%q",
 		req.Messages[0].Role,
 	)
-	// Sanity: history is preserved verbatim.
 	assert.Equal(t, "user", req.Messages[0].Role)
 	assert.Equal(t, "first", req.Messages[0].Content)
 }

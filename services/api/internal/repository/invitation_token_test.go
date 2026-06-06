@@ -49,9 +49,6 @@ func TestGenerateInvitationToken_HashConsistency(t *testing.T) {
 	raw, hash, err := GenerateInvitationToken()
 	require.NoError(t, err)
 
-	// External recompute of sha256(raw) — must equal the helper's hash.
-	// This proves the lookup path (which computes sha256(raw) from the URL
-	// param) will find the same row the create path inserted.
 	sum := sha256.Sum256([]byte(raw))
 	expected := hex.EncodeToString(sum[:])
 	require.Equal(t, expected, hash, "helper's hash must equal externally recomputed sha256(raw)")

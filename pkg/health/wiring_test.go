@@ -44,8 +44,6 @@ func TestRegisterDefaultChecks_RegistersAllFour(t *testing.T) {
 	if got := checks["redis"]; got != "ok" {
 		t.Fatalf("expected redis=ok, got %v (full=%v)", got, checks)
 	}
-	// Only the registered dep should appear — pg/mongo/nats were nil and
-	// MUST have been skipped.
 	if _, present := checks["postgres"]; present {
 		t.Fatalf("postgres should NOT be registered when pg arg is nil")
 	}
@@ -66,7 +64,6 @@ func TestRegisterDefaultChecks_RegistersAllFour(t *testing.T) {
 func TestRegisterDefaultChecks_SkipsNilDeps(t *testing.T) {
 	c := health.New()
 
-	// Must not panic on nil-everywhere.
 	health.RegisterDefaultChecks(c, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)

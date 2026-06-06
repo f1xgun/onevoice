@@ -65,8 +65,6 @@ func TestListTools_ForwardsAcceptLanguage(t *testing.T) {
 		t.Errorf("Accept-Language = %q, want en", gotAcceptLang)
 	}
 
-	// Empty acceptLanguage must NOT set the header at all (so the
-	// orchestrator's middleware falls back to its own default).
 	gotAcceptLang = "<unset>"
 	if _, err := client.ListTools(context.Background(), ""); err != nil {
 		t.Fatalf("ListTools: %v", err)
@@ -109,7 +107,6 @@ func TestNew_NilHTTPClient_DefaultsToHTTPDefaultClient(t *testing.T) {
 	if c.httpClient != http.DefaultClient {
 		t.Errorf("nil httpClient should fall back to http.DefaultClient; got %p (default %p)", c.httpClient, http.DefaultClient)
 	}
-	// Trailing slash trimmed.
 	if c.baseURL != "http://example.com" {
 		t.Errorf("baseURL = %q, want http://example.com (trailing slash trimmed)", c.baseURL)
 	}
@@ -282,11 +279,9 @@ func TestStreamSSE_MalformedFrame_SkipsOnEventButForwardsRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamSSE: %v", err)
 	}
-	// Malformed line must still appear on the wire (FE may want to log it).
 	if !strings.Contains(rec.body.String(), "{garbage}") {
 		t.Errorf("body missing malformed frame; got %q", rec.body.String())
 	}
-	// Only the well-formed "done" frame triggers OnEvent.
 	if len(got) != 1 || got[0] != "done" {
 		t.Errorf("OnEvent calls = %v, want [done]", got)
 	}
@@ -314,9 +309,6 @@ func TestStreamSSE_CorrelationIDFromCtx_PropagatedAsHeader(t *testing.T) {
 }
 
 func TestStreamSSE_CallerHeaderWinsOverCtxCorrelation(t *testing.T) {
-	// If the caller supplies an X-Correlation-ID in Headers, StreamSSE must
-	// NOT overwrite it with the ctx-derived id — the chatturn paths
-	// pre-merge their own headers and that map is authoritative.
 	var gotCorrID string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotCorrID = r.Header.Get("X-Correlation-Id")
@@ -357,11 +349,6 @@ func TestStreamSSE_WriterMissingFlusher_FailsFastNoWrites(t *testing.T) {
 }
 
 func TestStreamSSE_ClientGone_StopsWritesButDrainsUpstream(t *testing.T) {
-	// Under OrchCtxBudget > 0, a cancellation on the caller ctx must STOP
-	// forwarding to Writer but MUST keep draining the upstream so the
-	// orchestrator's side effects can run to completion. This is the
-	// chatturn lifecycle invariant — a client navigating away mid-stream
-	// must not abort the LLM call.
 	const totalFrames = 8
 	var emittedFrames int32
 
@@ -381,8 +368,6 @@ func TestStreamSSE_ClientGone_StopsWritesButDrainsUpstream(t *testing.T) {
 
 	var seenViaOnEvent int32
 	go func() {
-		// Cancel partway through so some frames write to the recorder and
-		// the rest are drained-but-not-written.
 		time.Sleep(5 * time.Millisecond)
 		cancel()
 	}()
@@ -397,14 +382,9 @@ func TestStreamSSE_ClientGone_StopsWritesButDrainsUpstream(t *testing.T) {
 		t.Fatalf("StreamSSE: %v", err)
 	}
 
-	// OnEvent fires for EVERY drained frame regardless of clientGone — proves
-	// the drain ran to completion even after cancel().
 	if got := atomic.LoadInt32(&seenViaOnEvent); int(got) != totalFrames {
 		t.Errorf("OnEvent count = %d, want %d (full drain expected)", got, totalFrames)
 	}
-	// At least one frame should NOT have been forwarded to Writer — proving
-	// clientGone actually suppressed writes. (Tightening the assertion
-	// further would race with the goroutine scheduler.)
 	writtenLines := strings.Count(rec.body.String(), "data: ")
 	if writtenLines >= totalFrames {
 		t.Errorf("writer received %d frames, expected at least one suppressed under clientGone", writtenLines)

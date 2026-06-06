@@ -84,8 +84,6 @@ func (s *stubBusinessServiceForApprovals) ListMembershipsByUser(_ context.Contex
 // BusinessContext then serves the handler. The businessID is parsed from
 // the {id} segment of urlPath so callers don't need to pass it separately.
 func routeAndServe(h *handler.BusinessHandler, method, urlPath, pattern string, body []byte, userID uuid.UUID, serve func(http.ResponseWriter, *http.Request)) *httptest.ResponseRecorder {
-	// Extract businessID from the URL so we can build a matching BusinessContext.
-	// urlPath is always of the form ".../businesses/<uuid>/..." or ".../business/<uuid>/...".
 	var bizID uuid.UUID
 	parts := strings.Split(urlPath, "/")
 	for i, p := range parts {
@@ -114,7 +112,7 @@ func routeAndServe(h *handler.BusinessHandler, method, urlPath, pattern string, 
 	r.Method(method, pattern, http.HandlerFunc(serve))
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
-	_ = h // used indirectly via serve
+	_ = h
 	return rec
 }
 
@@ -229,7 +227,6 @@ func TestUpdateBusinessToolApprovals_InvalidValue_Returns400(t *testing.T) {
 }
 
 func TestUpdateBusinessToolApprovals_CrossTenant_Returns403(t *testing.T) {
-	// Handler+service model: cross-tenant maps to ErrBusinessNotFound → 404.
 	bizID := uuid.New()
 	userID := uuid.New()
 	svc := &stubBusinessServiceForApprovals{
@@ -249,11 +246,6 @@ func TestUpdateBusinessToolApprovals_CrossTenant_Returns403(t *testing.T) {
 		"/api/v1/business/"+bizID.String()+"/tool-approvals",
 		"/api/v1/business/{id}/tool-approvals", body, userID, h.UpdateBusinessToolApprovals)
 
-	// Per docs/security.md, cross-tenant access returns 404 not 403 to avoid
-	// enumeration. We document this behavior here so the test name
-	// (CrossTenant_Returns403) doesn't surprise readers: the service layer
-	// returns ErrBusinessNotFound for BOTH "missing" and "cross-tenant"
-	// cases, and the handler maps that to 404.
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 (cross-tenant mapped to 404 to avoid enumeration)", rec.Code)
 	}
@@ -284,9 +276,6 @@ func TestUpdateBusinessToolApprovals_PreservesOtherSettings(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	// Assert the handler passed EXACTLY the tool_approvals submap to the
-	// service — not any other settings sibling. The service+repo contract
-	// dictates other settings are preserved on disk (covered in repo tests).
 	if len(svc.updateCallApprovals) != 1 {
 		t.Fatalf("unexpected approvals size %d: %v", len(svc.updateCallApprovals), svc.updateCallApprovals)
 	}

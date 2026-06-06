@@ -66,18 +66,14 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 		case orchestrator.EventToolResult:
 			toolResults = append(toolResults, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
-			// ignore in this test
 		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
-			// Not relevant for this test — ignored.
 		}
 	}
 
-	// tool_call events fire before goroutines start — preserve original order.
 	require.Len(t, toolCalls, 2)
 	assert.Equal(t, tools.TelegramSendChannelPost, toolCalls[0].ToolName)
 	assert.Equal(t, tools.VKPublishPost, toolCalls[1].ToolName)
 
-	// tool_result events arrive in completion order — correlate by ID.
 	require.Len(t, toolResults, 2)
 	byID := map[string]orchestrator.Event{}
 	for _, r := range toolResults {
@@ -133,17 +129,13 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 		case orchestrator.EventText:
 			texts = append(texts, e)
 		case orchestrator.EventToolCall, orchestrator.EventError, orchestrator.EventDone:
-			// ignore in this test
 		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
-			// Not relevant for this test — ignored.
 		}
 	}
 
-	// Tool result should contain the error
 	require.Len(t, toolResults, 1)
 	assert.Contains(t, toolResults[0].ToolError, "deadline exceeded")
 
-	// LLM should still respond after the error
 	require.NotEmpty(t, texts)
 	assert.Contains(t, texts[0].Content, "не сработал")
 }
@@ -151,9 +143,7 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 // TestRun_ContextCancel_StopsLoop verifies that canceling the context
 // stops the agent loop promptly.
 func TestRun_ContextCancel_StopsLoop(t *testing.T) {
-	// LLM that blocks until context is canceled
 	blockingLLM := &stubLLM{responses: []*llm.ChatResponse{}}
-	// stubLLM returns "done" when idx >= len(responses), which is fine
 
 	reg := toolregistry.NewRegistry()
 	orch := orchestrator.New(blockingLLM, reg)
@@ -168,13 +158,12 @@ func TestRun_ContextCancel_StopsLoop(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Should complete quickly due to context cancellation or immediate done
 	deadline := time.After(5 * time.Second)
 	for {
 		select {
 		case _, ok := <-events:
 			if !ok {
-				return // channel closed, test passes
+				return
 			}
 		case <-deadline:
 			t.Fatal("events channel not closed within deadline")

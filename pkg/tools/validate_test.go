@@ -38,7 +38,6 @@ func TestValidateEditArgs_UnknownField_ReturnsErrFieldNotEditable(t *testing.T) 
 }
 
 func TestValidateEditArgs_CaseMismatch_ReturnsErrFieldNotEditable(t *testing.T) {
-	// case-sensitive matching. "Text" != "text".
 	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"Text": "hello"},
 		[]string{"text"},
@@ -50,7 +49,6 @@ func TestValidateEditArgs_CaseMismatch_ReturnsErrFieldNotEditable(t *testing.T) 
 }
 
 func TestValidateEditArgs_NestedObject_ReturnsErrNonScalarValue(t *testing.T) {
-	// nested objects rejected.
 	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{"text": map[string]interface{}{"nested": 1}},
 		[]string{"text"},
@@ -84,7 +82,6 @@ func TestValidateEditArgs_NilValue_ReturnsErrNonScalarValue(t *testing.T) {
 }
 
 func TestValidateEditArgs_NilEditable_EveryFieldRejected(t *testing.T) {
-	// Unknown tool path: Registry returns nil EditableFields.
 	err := tools.ValidateEditArgs("unknown_tool",
 		map[string]interface{}{"text": "hello"},
 		nil,
@@ -113,7 +110,6 @@ func TestValidateEditArgs_MultipleScalars_AllAccepted(t *testing.T) {
 }
 
 func TestValidateEditArgs_JSONNumericScalar_Accepted(t *testing.T) {
-	// JSON decodes numbers as float64 — ensure that path is accepted.
 	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{"count": float64(42)},
 		[]string{"count"},

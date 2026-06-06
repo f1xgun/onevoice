@@ -157,7 +157,6 @@ func TestReviewDrafter_GenerateForBusiness_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Two UpdateDraft calls expected: claim (generating) + finalize (ready).
 	if got := len(repo.updateDraftCalls); got != 2 {
 		t.Fatalf("UpdateDraft calls = %d, want 2: %+v", got, repo.updateDraftCalls)
 	}
@@ -171,7 +170,6 @@ func TestReviewDrafter_GenerateForBusiness_HappyPath(t *testing.T) {
 		t.Errorf("draft = %q, want canned response", repo.updateDraftCalls[1].Draft)
 	}
 
-	// Verify the orchestrator request contained the example.
 	if len(orchC.requests) != 1 {
 		t.Fatalf("orch calls = %d, want 1", len(orchC.requests))
 	}
@@ -187,7 +185,6 @@ func TestReviewDrafter_GenerateForBusiness_HappyPath(t *testing.T) {
 func TestReviewDrafter_GenerateForBusiness_NoExamples(t *testing.T) {
 	repo := &fakeReviewRepo{
 		pending: []domain.Review{{ID: "r1", Text: "Норм", Rating: 4, BusinessID: "b1", Platform: "yandex_business"}},
-		// examples: nil
 	}
 	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
 	orchC := &fakeDraftClient{
@@ -210,19 +207,15 @@ func TestReviewDrafter_GenerateForBusiness_LLMError(t *testing.T) {
 		pending: []domain.Review{{ID: "r1", Text: "X", BusinessID: "b1", Platform: "vk"}},
 	}
 	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
-	// Simulate an orchestrator non-2xx error of the same shape that
-	// pkg/orchestratorclient.DraftReply emits on a 502 response.
 	orchC := &fakeDraftClient{
 		err: errors.New("orchestratorclient: draft-reply: status 502: upstream provider down"),
 	}
 	d := newDrafter(repo, biz, orchC)
 
-	// GenerateForBusiness logs + continues — it doesn't surface per-review errors.
 	if err := d.GenerateForBusiness(context.Background(), uuid.New(), "vk"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Expect: claim (generating) + persist failure (failed). 2 calls total.
 	if got := len(repo.updateDraftCalls); got != 2 {
 		t.Fatalf("UpdateDraft calls = %d, want 2: %+v", got, repo.updateDraftCalls)
 	}

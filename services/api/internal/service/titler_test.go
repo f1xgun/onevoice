@@ -159,9 +159,6 @@ func TestGenerateAndSave_EmptyResponse(t *testing.T) {
 func TestGenerateAndSave_PIIReject_Terminal(t *testing.T) {
 	buf := captureLogs(t)
 
-	// Generated title contains an email — post-hoc PII gate must reject it
-	// and the terminal "Untitled chat <day> <month>" fallback must be
-	// written under the SAME atomic guard.
 	router := &fakeRouter{returnContent: "Связь user@example.com и +7 495 1234567"}
 	repo := &fakeConvRepo{}
 	tt := NewTitler(router, repo, "test-model")
@@ -174,7 +171,6 @@ func TestGenerateAndSave_PIIReject_Terminal(t *testing.T) {
 	if !strings.HasPrefix(repo.updateCalls[0].Title, "Untitled chat ") {
 		t.Fatalf("terminal title got=%q want prefix %q", repo.updateCalls[0].Title, "Untitled chat ")
 	}
-	// Log line should reference the regex_class but never the matched substring.
 	captured := buf.String()
 	if !strings.Contains(captured, "regex_class") {
 		t.Fatalf("expected regex_class field in log output, got: %s", captured)
@@ -200,7 +196,6 @@ func TestGenerateAndSave_ManualWonRace(t *testing.T) {
 	if !strings.Contains(captured, "manual_won_race") {
 		t.Fatalf("expected manual_won_race outcome in log output, got: %q", captured)
 	}
-	// Manual-won-race is INFO level, NOT WARN.
 	if !strings.Contains(captured, "level=INFO") {
 		t.Fatalf("expected INFO level for manual_won_race, got: %q", captured)
 	}
@@ -237,21 +232,19 @@ func TestGenerateAndSave_LogShape(t *testing.T) {
 	tt.GenerateAndSave(context.Background(), "biz-1", "conv-1", piiUserMsg, piiAssistant)
 
 	captured := buf.String()
-	// Negative assertions: NONE of these substrings may appear in any log line.
 	bannedSubstrings := []string{
 		"user@x.ru",
 		"4111111111111111",
 		"+7 (495) 123-45-67",
 		piiUserMsg,
 		piiAssistant,
-		generatedTitle, // generated title must also not appear in logs
+		generatedTitle,
 	}
 	for _, s := range bannedSubstrings {
 		if strings.Contains(captured, s) {
 			t.Fatalf("Log shape violation: captured logs contain banned substring %q. Logs: %s", s, captured)
 		}
 	}
-	// Positive assertion: structured metadata fields are present.
 	for _, s := range []string{"conversation_id", "business_id", "prompt_length", "response_length"} {
 		if !strings.Contains(captured, s) {
 			t.Fatalf("Expected structured metadata field %q in log output, got: %s", s, captured)
@@ -334,9 +327,6 @@ func TestGenerateAndSave_EnglishLocale_UsesEnglishPrompt(t *testing.T) {
 }
 
 func TestGenerateAndSave_RussianLocale_KeepsRussianPrompt(t *testing.T) {
-	// Byte-compat: explicit RU locale (and the empty-ctx default) must
-	// produce the legacy RU prompt verbatim — otherwise existing
-	// production businesses suffer a silent shift on deploy.
 	captureLogs(t)
 
 	router := &fakeRouter{returnContent: "Заголовок"}
@@ -406,15 +396,12 @@ func TestTitler_MalformedBusinessID_DegradesToNil(t *testing.T) {
 	if got := router.lastReq.BusinessID.String(); got != "00000000-0000-0000-0000-000000000000" {
 		t.Fatalf("malformed businessID must degrade to uuid.Nil, got %q", got)
 	}
-	// Title still persisted — malformed BusinessID does not abort the pipeline.
 	if len(repo.updateCalls) != 1 {
 		t.Fatalf("expected 1 UpdateTitleIfPending call even with malformed bizID, got %d", len(repo.updateCalls))
 	}
 }
 
 func TestUntitledChatLocalized(t *testing.T) {
-	// Both fallback formats are stable across deploys — pin them so a typo
-	// in either months table doesn't quietly change persisted titles.
 	d := time.Date(2026, time.April, 26, 0, 0, 0, 0, time.UTC)
 	if got := untitledChatLocalized(d, language.Russian); got != "Untitled chat 26 апреля" {
 		t.Errorf("RU fallback got=%q", got)
@@ -422,7 +409,6 @@ func TestUntitledChatLocalized(t *testing.T) {
 	if got := untitledChatLocalized(d, language.English); got != "Untitled chat April 26" {
 		t.Errorf("EN fallback got=%q", got)
 	}
-	// Zero Tag and unsupported locale fall through to RU.
 	if got := untitledChatLocalized(d, language.Tag{}); got != "Untitled chat 26 апреля" {
 		t.Errorf("zero-tag fallback got=%q", got)
 	}
