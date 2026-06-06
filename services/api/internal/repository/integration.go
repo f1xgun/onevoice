@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -76,7 +76,8 @@ func (r *integrationRepository) Create(ctx context.Context, integration *domain.
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key") {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return domain.ErrIntegrationExists
 		}
 		return fmt.Errorf("insert integration: %w", err)
