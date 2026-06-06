@@ -1,6 +1,7 @@
 package yandex
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,7 @@ type clearCookiesMockContext struct {
 	clearCookiesCalled atomic.Int32
 	closeCalled        atomic.Int32
 	order              []string
+	addCookiesErr      error
 }
 
 func (m *clearCookiesMockContext) ClearCookies(_ ...playwright.BrowserContextClearCookiesOptions) error {
@@ -39,7 +41,7 @@ func (m *clearCookiesMockContext) Close(_ ...playwright.BrowserContextCloseOptio
 }
 
 func (m *clearCookiesMockContext) AddCookies(_ []playwright.OptionalCookie) error {
-	return nil
+	return m.addCookiesErr
 }
 
 func (m *clearCookiesMockContext) snapshotOrder() []string {
@@ -231,5 +233,67 @@ func TestGetOrCreateContext_CookiesFieldCleared(t *testing.T) {
 
 	if pc.cookies != "" {
 		t.Fatalf("cookies field = %q, want empty immediately after successful inject", pc.cookies)
+	}
+}
+
+func TestGetOrCreateContext_InjectFailure_ClearsCookiesBeforeClose(t *testing.T) {
+	pool, ctxs := newClearCookiesPool(t, 5)
+	pool.newContextFn = func() (playwright.BrowserContext, error) {
+		mc := &clearCookiesMockContext{addCookiesErr: errors.New("inject boom")}
+		*ctxs = append(*ctxs, mc)
+		return mc, nil
+	}
+
+	_, err := pool.getOrCreateContext(t.Context(), "biz-fail", `[{"name":"Session_id","value":"abc","domain":".yandex.ru","path":"/"}]`)
+	if err == nil {
+		t.Fatalf("expected error from failed cookie injection")
+	}
+
+	if len(*ctxs) != 1 {
+		t.Fatalf("expected 1 constructed context, got %d", len(*ctxs))
+	}
+	mc := (*ctxs)[0]
+	if got := mc.clearCookiesCalled.Load(); got != 1 {
+		t.Fatalf("inject-failure ClearCookies called %d times, want 1", got)
+	}
+	order := mc.snapshotOrder()
+	if len(order) != 2 || order[0] != "clear" || order[1] != "close" {
+		t.Fatalf("inject-failure call order = %v, want [clear close]", order)
+	}
+}
+
+func TestGetOrCreateContext_LostRace_ClearsCookiesBeforeClose(t *testing.T) {
+	pool, ctxs := newClearCookiesPool(t, 5)
+
+	existing := &pooledContext{ctx: &clearCookiesMockContext{}}
+	existing.touch()
+
+	pool.newContextFn = func() (playwright.BrowserContext, error) {
+		// Simulate a concurrent acquire winning the LoadOrStore race: the entry
+		// is absent at the initial Load but present by the time LoadOrStore runs.
+		pool.contexts.LoadOrStore("biz-race", existing)
+		mc := &clearCookiesMockContext{}
+		*ctxs = append(*ctxs, mc)
+		return mc, nil
+	}
+
+	got, err := pool.getOrCreateContext(t.Context(), "biz-race", `[{"name":"Session_id","value":"abc","domain":".yandex.ru","path":"/"}]`)
+	if err != nil {
+		t.Fatalf("getOrCreateContext: %v", err)
+	}
+	if got != existing {
+		t.Fatalf("expected the pre-existing context to win the race")
+	}
+
+	if len(*ctxs) != 1 {
+		t.Fatalf("expected 1 freshly constructed (discarded) context, got %d", len(*ctxs))
+	}
+	discarded := (*ctxs)[0]
+	if c := discarded.clearCookiesCalled.Load(); c != 1 {
+		t.Fatalf("lost-race ClearCookies called %d times, want 1", c)
+	}
+	order := discarded.snapshotOrder()
+	if len(order) != 2 || order[0] != "clear" || order[1] != "close" {
+		t.Fatalf("lost-race call order = %v, want [clear close]", order)
 	}
 }

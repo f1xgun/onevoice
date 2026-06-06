@@ -55,9 +55,20 @@ func closePooledContext(pc *pooledContext) {
 	if pc == nil {
 		return
 	}
-	_ = pc.ctx.ClearCookies()
-	_ = pc.ctx.Close()
+	clearAndClose(pc.ctx)
 	pc.cookies = ""
+}
+
+// clearAndClose clears a BrowserContext's cookies before closing it. Used on the
+// construction-error and lost-LoadOrStore-race discard paths where the context
+// may already carry an injected session but is not yet wrapped in a
+// pooledContext, so no Session_id survives the discard.
+func clearAndClose(bCtx playwright.BrowserContext) {
+	if bCtx == nil {
+		return
+	}
+	_ = bCtx.ClearCookies()
+	_ = bCtx.Close()
 }
 
 // BrowserPool manages a shared Chromium instance with per-business browser contexts.
@@ -184,12 +195,12 @@ func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookie
 
 	if isOAuthToken(cookiesJSON) {
 		if err := exchangeOAuthForSession(bCtx, cookiesJSON); err != nil {
-			_ = bCtx.Close()
+			clearAndClose(bCtx)
 			return nil, fmt.Errorf("playwright: oauth session exchange: %w", err)
 		}
 	} else {
 		if err := injectCookies(bCtx, cookiesJSON); err != nil {
-			_ = bCtx.Close()
+			clearAndClose(bCtx)
 			return nil, fmt.Errorf("playwright: set cookies: %w", err)
 		}
 	}
@@ -199,7 +210,7 @@ func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookie
 
 	actual, loaded := p.contexts.LoadOrStore(businessID, pc)
 	if loaded {
-		_ = bCtx.Close()
+		clearAndClose(bCtx)
 		existing := actual.(*pooledContext)
 		existing.touch()
 		return existing, nil
