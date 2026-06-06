@@ -98,6 +98,31 @@ describe('applySSEEvent', () => {
     expect(result.status).toBe('done');
   });
 
+  it('appends [Error: ...] wrapper to content on error event', () => {
+    const result = applySSEEvent(baseMessage, {
+      type: 'error',
+      content: 'rate limit exceeded',
+    });
+    expect(result.content).toBe('[Error: rate limit exceeded]');
+    expect(result.status).toBe('done');
+  });
+
+  it('preserves existing assistant content when appending an error', () => {
+    const withText: Message = { ...baseMessage, content: 'Привет.' };
+    const result = applySSEEvent(withText, {
+      type: 'error',
+      content: 'openrouter 429',
+    });
+    expect(result.content).toBe('Привет.\n\n[Error: openrouter 429]');
+    expect(result.status).toBe('done');
+  });
+
+  it('marks done on error event even when content is empty', () => {
+    const result = applySSEEvent(baseMessage, { type: 'error', content: '' });
+    expect(result.content).toBe('');
+    expect(result.status).toBe('done');
+  });
+
   it('uses tool_call_id when provided', () => {
     const msg = applySSEEvent(baseMessage, {
       type: 'tool_call',
