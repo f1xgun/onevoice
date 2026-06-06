@@ -70,6 +70,38 @@ func TestViolatesDenyList(t *testing.T) {
 			},
 			wantHit: false,
 		},
+		{
+			name: "denied key nested in array of maps",
+			args: map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"cookies": "x"},
+				},
+			},
+			wantHit: true,
+			wantKey: "cookies",
+		},
+		{
+			name: "denied key nested in array of arrays of maps",
+			args: map[string]interface{}{
+				"batch": []interface{}{
+					[]interface{}{
+						map[string]interface{}{"session_id": "x"},
+					},
+				},
+			},
+			wantHit: true,
+			wantKey: "session_id",
+		},
+		{
+			name: "array of safe maps does not trigger",
+			args: map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"name": "a"},
+					map[string]interface{}{"name": "b"},
+				},
+			},
+			wantHit: false,
+		},
 	}
 
 	for _, tt := range tests {
