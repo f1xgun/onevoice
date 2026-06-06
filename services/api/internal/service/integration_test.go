@@ -26,6 +26,8 @@ type mockIntegrationRepository struct {
 	getByBusinessPlatformExternalFunc func(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error)
 	updateFunc                        func(ctx context.Context, integration *domain.Integration) error
 	deleteFunc                        func(ctx context.Context, id uuid.UUID) error
+	softDeleteFunc                    func(ctx context.Context, id uuid.UUID) error
+	deleteOlderThanFunc               func(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 func (m *mockIntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
@@ -86,6 +88,20 @@ func (m *mockIntegrationRepository) Delete(ctx context.Context, id uuid.UUID) er
 		return m.deleteFunc(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockIntegrationRepository) SoftDelete(ctx context.Context, id uuid.UUID) error {
+	if m.softDeleteFunc != nil {
+		return m.softDeleteFunc(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockIntegrationRepository) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	if m.deleteOlderThanFunc != nil {
+		return m.deleteOlderThanFunc(ctx, cutoff)
+	}
+	return 0, nil
 }
 
 // testEncryptor creates a test encryptor with a 32-byte key

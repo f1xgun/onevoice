@@ -122,3 +122,147 @@ func TestGetByBusinessPlatformExternal_NotFound(t *testing.T) {
 
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
+
+func TestIntegrationRepo_GetByID_SoftDeleted(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND id = \$1`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnError(pgx.ErrNoRows)
+
+	result, err := repo.GetByID(ctx, id)
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestIntegrationRepo_SoftDelete_Success(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET deleted_at = \$1, updated_at = \$2 WHERE \(id = \$3 AND deleted_at IS NULL\)`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err := repo.SoftDelete(ctx, id)
+	require.NoError(t, err)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestIntegrationRepo_SoftDelete_AlreadyDeletedIsNoOp(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	err := repo.SoftDelete(ctx, id)
+	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestIntegrationRepo_SoftDelete_NotFound(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	err := repo.SoftDelete(ctx, id)
+	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestIntegrationRepo_DeleteOlderThan(t *testing.T) {
+	ctx := context.Background()
+	cutoff := time.Now().Add(-90 * 24 * time.Hour)
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`DELETE FROM integrations WHERE \(deleted_at IS NOT NULL AND deleted_at < \$1\)`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("DELETE", 3))
+
+	n, err := repo.DeleteOlderThan(ctx, cutoff)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestIntegrationRepo_ListByBusinessID_ExcludesSoftDeleted(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	id1 := uuid.New()
+	now := time.Now()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	rows := pgxmock.NewRows([]string{
+		"id", "business_id", "platform", "status",
+		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
+		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
+		"created_at", "updated_at",
+	}).
+		AddRow(id1, businessID, "vk", "active",
+			[]byte("tok"), []byte(nil), []byte(nil),
+			"vk_111", map[string]interface{}{}, &now, (*time.Time)(nil),
+			now, now)
+
+	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND business_id = \$1`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(rows)
+
+	result, err := repo.ListByBusinessID(ctx, businessID)
+	require.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Equal(t, id1, result[0].ID)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestIntegrationRepo_ListAllActiveByPlatforms_ExcludesSoftDeleted(t *testing.T) {
+	ctx := context.Background()
+	id1 := uuid.New()
+	businessID := uuid.New()
+	now := time.Now()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	rows := pgxmock.NewRows([]string{
+		"id", "business_id", "platform", "status",
+		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
+		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
+		"created_at", "updated_at",
+	}).
+		AddRow(id1, businessID, "telegram", "active",
+			[]byte("tok"), []byte(nil), []byte(nil),
+			"tg_999", map[string]interface{}{}, &now, (*time.Time)(nil),
+			now, now)
+
+	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND status = \$1 AND platform IN`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(rows)
+
+	result, err := repo.ListAllActiveByPlatforms(ctx, []string{"telegram", "vk"})
+	require.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Equal(t, id1, result[0].ID)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
