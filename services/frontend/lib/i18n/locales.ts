@@ -11,6 +11,14 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = 'ru';
 
+// Endonyms — each locale labelled in its own language. A language's own
+// name is the clearest, most stable choice for a picker and never needs
+// translating, so these live as constants rather than message keys.
+export const LOCALE_LABELS: Record<Locale, string> = {
+  ru: 'Русский',
+  en: 'English',
+};
+
 // Cookie name is `NEXT_LOCALE` to align with next-intl's convention
 // (and to stay forward-compatible with the official middleware-based
 // router setup if we ever adopt it).

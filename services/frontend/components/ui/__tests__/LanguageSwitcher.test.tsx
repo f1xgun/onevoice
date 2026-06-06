@@ -23,8 +23,8 @@ vi.mock('sonner', () => ({
 }));
 
 // vitest.setup.ts globally mocks 'next-intl' with useLocale: () => 'ru'.
-// That default is what we want here — clicking EN exercises the change
-// path. The setup mock is sufficient; no per-test override required.
+// That default is what we want here — picking "English" exercises the
+// change path. The setup mock is sufficient; no per-test override required.
 
 describe('LanguageSwitcher', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -39,22 +39,24 @@ describe('LanguageSwitcher', () => {
     fetchSpy.mockRestore();
   });
 
-  it('renders a trigger labelled "Language" showing the current locale', () => {
+  it('renders a globe trigger labelled "Language"', () => {
     render(<LanguageSwitcher />);
     const trigger = screen.getByLabelText('Language');
     expect(trigger).toBeInTheDocument();
-    expect(trigger.textContent?.toLowerCase()).toContain('ru');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
   });
 
   it('POSTs /api/locale with the chosen locale and refreshes the router', async () => {
     const user = userEvent.setup();
     render(<LanguageSwitcher />);
 
-    const trigger = screen.getByLabelText('Language');
-    await user.click(trigger);
-    const enOption = await screen.findByRole('option', { name: /en/i });
-    await user.click(enOption);
+    // Open the dropdown and pick the English endonym.
+    await user.click(screen.getByLabelText('Language'));
+    const enItem = await screen.findByText('English');
+    await user.click(enItem);
 
+    // The POST is dispatched inside startTransition; awaiting microtasks
+    // flushes the inner async fn before we assert.
     await vi.waitFor(() => {
       expect(fetchSpy).toHaveBeenCalled();
     });
@@ -70,15 +72,16 @@ describe('LanguageSwitcher', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it('does NOT fire when the user "selects" the already-active locale', async () => {
+  it('does NOT fire when the user picks the already-active locale', async () => {
     const user = userEvent.setup();
     render(<LanguageSwitcher />);
 
-    const trigger = screen.getByLabelText('Language');
-    await user.click(trigger);
-    const ruOption = await screen.findByRole('option', { name: /ru/i });
-    await user.click(ruOption);
+    await user.click(screen.getByLabelText('Language'));
+    const ruItem = await screen.findByText('Русский');
+    await user.click(ruItem);
 
+    // The component short-circuits when next === active to avoid pointless
+    // round-trips.
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -88,10 +91,9 @@ describe('LanguageSwitcher', () => {
     const user = userEvent.setup();
     render(<LanguageSwitcher />);
 
-    const trigger = screen.getByLabelText('Language');
-    await user.click(trigger);
-    const enOption = await screen.findByRole('option', { name: /en/i });
-    await user.click(enOption);
+    await user.click(screen.getByLabelText('Language'));
+    const enItem = await screen.findByText('English');
+    await user.click(enItem);
 
     await vi.waitFor(() => {
       expect(toast.error).toHaveBeenCalled();
@@ -104,10 +106,9 @@ describe('LanguageSwitcher', () => {
     const user = userEvent.setup();
     render(<LanguageSwitcher />);
 
-    const trigger = screen.getByLabelText('Language');
-    await user.click(trigger);
-    const enOption = await screen.findByRole('option', { name: /en/i });
-    await user.click(enOption);
+    await user.click(screen.getByLabelText('Language'));
+    const enItem = await screen.findByText('English');
+    await user.click(enItem);
 
     await vi.waitFor(() => {
       expect(toast.error).toHaveBeenCalled();
