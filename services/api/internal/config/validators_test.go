@@ -64,6 +64,46 @@ func TestValidateEncryptionKey_DenyListChangeMe(t *testing.T) {
 	}
 }
 
+func TestValidateJWTSecret_DenyListDevDefault(t *testing.T) {
+	err := validateJWTSecret("dev-jwt-secret-change-in-production-min-32-chars")
+	if err == nil {
+		t.Fatal("expected error for shipped dev JWT_SECRET default, got nil")
+	}
+	if !strings.Contains(err.Error(), "deny-list") {
+		t.Fatalf("expected deny-list mention, got %q", err.Error())
+	}
+}
+
+func TestValidateJWTSecret_DenyListCaseInsensitive(t *testing.T) {
+	if err := validateJWTSecret("DEV-JWT-SECRET-CHANGE-IN-PRODUCTION-MIN-32-CHARS"); err == nil {
+		t.Fatal("expected case-insensitive deny-list match")
+	}
+}
+
+func TestValidateJWTSecret_RepeatedPattern(t *testing.T) {
+	if err := validateJWTSecret(strings.Repeat("ab", 24)); err == nil {
+		t.Fatal("expected error for short repeated pattern")
+	}
+}
+
+func TestValidateJWTSecret_LowEntropy(t *testing.T) {
+	if err := validateJWTSecret("test-jwt-secret-with-at-least-32-chars"); err == nil {
+		t.Fatal("expected entropy failure for low-entropy fixture, got nil")
+	}
+}
+
+func TestValidateJWTSecret_StrongSecret(t *testing.T) {
+	if err := validateJWTSecret("Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8"); err != nil {
+		t.Fatalf("expected strong base64-style secret to pass, got %v", err)
+	}
+}
+
+func TestValidateJWTSecret_Empty(t *testing.T) {
+	if err := validateJWTSecret(""); err == nil {
+		t.Fatal("expected error for empty secret")
+	}
+}
+
 func TestValidateEncryptionKey_DictionaryWeak(t *testing.T) {
 	weak := "password" + strings.Repeat("0", 24)
 	err := validateEncryptionKey(weak)

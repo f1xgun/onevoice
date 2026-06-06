@@ -405,6 +405,9 @@ func Load() (*Config, error) {
 	if len(cfg.JWTSecret) < auth.JWTSecretMinLen {
 		return nil, fmt.Errorf("JWT_SECRET must be at least %d characters", auth.JWTSecretMinLen)
 	}
+	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
+		return nil, fmt.Errorf("JWT_SECRET validation failed: %w (generate a new secret with: openssl rand -base64 48)", err)
+	}
 	if cfg.EncryptionKey == "" {
 		return nil, fmt.Errorf("ENCRYPTION_KEY is required")
 	}

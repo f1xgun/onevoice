@@ -27,6 +27,18 @@ var encryptionKeyDenyList = []string{
 	"ChangeMeChangeMeChangeMeChangeMe",
 }
 
+// jwtSecretDenyList mirrors encryptionKeyDenyList for the HS256 signing
+// secret. The literal dev default that previously shipped in
+// docker-compose.yml is the headline entry — operators who exported it once
+// and forgot to rotate must be caught at boot.
+var jwtSecretDenyList = []string{
+	"dev-jwt-secret-change-in-production-min-32-chars",
+	"changemechangemechangemechangeme",
+	"00000000000000000000000000000000",
+	"ffffffffffffffffffffffffffffffff",
+	"12345678901234567890123456789012",
+}
+
 // minRepeatedUnitRepetitions: if a 1-4 char unit covers the whole key with
 // at least this many repetitions, the key collapses to brute-forceable
 // effective entropy regardless of total length (e.g. "aaaaaaa…",
@@ -69,6 +81,29 @@ func validateEncryptionKey(key string) error {
 	}
 	if s := zxcvbn.PasswordStrength(key, nil).Score; s < minZxcvbnScore {
 		return fmt.Errorf("ENCRYPTION_KEY is dictionary-weak (zxcvbn score %d, need >=%d)", s, minZxcvbnScore)
+	}
+	return nil
+}
+
+// validateJWTSecret guards the HS256 signing secret with the same shape of
+// gates the encryption key gets: deny-list literal (case-insensitive), repeat
+// pattern, Shannon entropy. zxcvbn is skipped because JWT secrets are
+// typically opaque base64 (which zxcvbn flags as marginal score 2-3) and the
+// boot length check already enforces a 32-char minimum.
+func validateJWTSecret(secret string) error {
+	if secret == "" {
+		return fmt.Errorf("JWT_SECRET is empty")
+	}
+	for _, denied := range jwtSecretDenyList {
+		if strings.EqualFold(secret, denied) {
+			return fmt.Errorf("JWT_SECRET matches a known-weak deny-list literal")
+		}
+	}
+	if isShortRepeatedPattern(secret) {
+		return fmt.Errorf("JWT_SECRET is a short repeated pattern")
+	}
+	if e := shannonEntropy([]byte(secret)); e < minShannonEntropy {
+		return fmt.Errorf("JWT_SECRET has insufficient entropy: %.2f bits/byte (need >=%.1f)", e, minShannonEntropy)
 	}
 	return nil
 }

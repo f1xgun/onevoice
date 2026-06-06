@@ -144,7 +144,7 @@ services:
       MONGO_DB: onevoice
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production-min-32-chars}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set, generate with openssl rand -base64 48}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set, generate with openssl rand -base64 24}
       INTERNAL_PORT: 8443
       ORCHESTRATOR_URL: http://orchestrator:8090

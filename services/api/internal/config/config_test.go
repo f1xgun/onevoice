@@ -30,7 +30,7 @@ func setValidLegal(t *testing.T) {
 // per repo convention so env state restores automatically on test cleanup.
 func minTestEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-chars")
+	t.Setenv("JWT_SECRET", "Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8")
 	// Strong 32-byte random-style key chosen to clear the SEC-11 boot
 	// validator (deny-list / repeat-pattern / Shannon entropy >= 3.5 /
 	// zxcvbn score >= 3). Mirrors the recommended `openssl rand -base64 24`
@@ -401,7 +401,7 @@ func TestConfig_PG_MinConnsNegative_FailsLoud(t *testing.T) {
 }
 
 func TestLoad_RejectDefaultEncryptionKey(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-chars")
+	t.Setenv("JWT_SECRET", "Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8")
 	t.Setenv("ENCRYPTION_KEY", "12345678901234567890123456789012")
 	_, err := config.Load()
 	require.Error(t, err)
@@ -409,7 +409,7 @@ func TestLoad_RejectDefaultEncryptionKey(t *testing.T) {
 }
 
 func TestLoad_RejectLowEntropyKey(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-chars")
+	t.Setenv("JWT_SECRET", "Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8")
 	t.Setenv("ENCRYPTION_KEY", strings.Repeat("a", 32))
 	_, err := config.Load()
 	require.Error(t, err)
