@@ -3,10 +3,15 @@ package yandex
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
 )
+
+// yandexBEMStarsValueRe captures the numeric rating embedded in Yandex's
+// StarsRating BEM class — e.g. `StarsRating_value_10` for 5★ (tenths scale).
+var yandexBEMStarsValueRe = regexp.MustCompile(`StarsRating_value_(\d+)`)
 
 // GetReviews scrapes reviews from Yandex.Business reviews page.
 func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[string]interface{}, error) {
@@ -38,6 +43,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 		humanDelay()
 
 		containerSelectors := []string{
+			".ReviewsPage-ReviewsList",
 			"[data-testid='reviews-list']",
 			".reviews-list",
 			"[class*='ReviewsList']",
@@ -107,6 +113,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 // scrapeReviewCards extracts review data from visible review card elements.
 func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interface{}, error) { //nolint:unparam // error return reserved for future DOM validation errors
 	cardSelectors := []string{
+		".Review",
 		"[data-testid='review-card']",
 		".review-card",
 		"[class*='ReviewCard']",
@@ -142,6 +149,7 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		review["rating"] = extractRating(card)
 
 		authorSelectors := []string{
+			".Review-UserName",
 			"[data-testid='review-author']",
 			".review-author",
 			"[class*='Author']",
@@ -150,6 +158,7 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		review["author"] = extractText(card, authorSelectors, "Unknown")
 
 		textSelectors := []string{
+			".Review-Text",
 			"[data-testid='review-text']",
 			".review-text",
 			"[class*='ReviewText']",
@@ -158,6 +167,7 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		review["text"] = extractText(card, textSelectors, "")
 
 		dateSelectors := []string{
+			".Review-Date",
 			"[data-testid='review-date']",
 			".review-date",
 			"[class*='Date']",
@@ -182,9 +192,14 @@ func extractText(parent playwright.Locator, selectors []string, fallback string)
 	return fallback
 }
 
-// extractRating extracts the rating number from a review card.
+// extractRating extracts the 1–5 star rating from a review card. Yandex.Business
+// encodes the value as a BEM modifier on .StarsRating (e.g.
+// `StarsRating_value_10` for 5★ on a tenths scale), so we read the class
+// attribute and divide by 2. Falls back to data-rating / aria-label / text for
+// any DOM that pre-dates the BEM stars markup.
 func extractRating(card playwright.Locator) interface{} {
 	ratingSelectors := []string{
+		"[class*='StarsRating']",
 		"[data-testid='review-rating']",
 		"[class*='Rating']",
 		"[class*='rating']",
@@ -192,6 +207,11 @@ func extractRating(card playwright.Locator) interface{} {
 	}
 	for _, sel := range ratingSelectors {
 		loc := card.Locator(sel).First()
+		if class, err := loc.GetAttribute("class"); err == nil && class != "" {
+			if m := yandexBEMStarsValueRe.FindStringSubmatch(class); m != nil {
+				return parseYandexStarsTenths(m[1])
+			}
+		}
 		if val, err := loc.GetAttribute("data-rating"); err == nil && val != "" {
 			return val
 		}
@@ -203,4 +223,26 @@ func extractRating(card playwright.Locator) interface{} {
 		}
 	}
 	return nil
+}
+
+// parseYandexStarsTenths converts the tenths-of-a-star value encoded in
+// `StarsRating_value_N` (range 0..10) to a 1–5 star integer when even, or to
+// the raw tenths string when half-stars are present (e.g. "9" → "4.5"). Unknown
+// inputs fall through as the raw captured string so the LLM still sees signal.
+func parseYandexStarsTenths(tenths string) interface{} {
+	switch tenths {
+	case "10":
+		return 5
+	case "8":
+		return 4
+	case "6":
+		return 3
+	case "4":
+		return 2
+	case "2":
+		return 1
+	case "0":
+		return 0
+	}
+	return tenths
 }
