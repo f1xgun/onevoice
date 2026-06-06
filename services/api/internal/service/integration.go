@@ -38,6 +38,9 @@ type ConnectParams struct {
 	UserTokenExpires *time.Time // VK user token expiration (optional)
 	Metadata         map[string]interface{}
 	ExpiresAt        *time.Time
+	ActorIP          string
+	UserAgent        string
+	ParsedFormat     string
 }
 
 // TokenResponse holds decrypted token data for a platform integration.
@@ -311,7 +314,7 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
-	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID, "", "", "")
+	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID, params.ActorIP, params.UserAgent, params.ParsedFormat)
 
 	return integration, nil
 }

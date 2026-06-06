@@ -563,6 +563,74 @@ func TestConnect_Success(t *testing.T) {
 	assert.Equal(t, "active", result.Status)
 }
 
+func TestConnect_ForwardsActorIP(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+	businessID := uuid.New()
+
+	repo := &mockIntegrationRepository{
+		createFunc: func(_ context.Context, integration *domain.Integration) error {
+			integration.ID = uuid.New()
+			return nil
+		},
+	}
+
+	rec := &recordingSyncLogger{}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	_, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:   businessID,
+		Platform:     "yandex_business",
+		ExternalID:   "ext_1",
+		AccessToken:  "tok",
+		ActorIP:      "1.2.3.4",
+		UserAgent:    "UA/1.0",
+		ParsedFormat: "json",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, rec.asyncCalls, 1)
+	entry := rec.asyncCalls[0]
+	assert.Equal(t, audit.ActionIntegrationConnected, entry.Action)
+
+	var details audit.IntegrationConnectedDetails
+	require.NoError(t, json.Unmarshal(entry.Details, &details))
+	assert.Equal(t, "1.2.3.4", details.ActorIP)
+	assert.Equal(t, "UA/1.0", details.UserAgent)
+	assert.Equal(t, "json", details.ParsedFormat)
+}
+
+func TestConnect_ForwardsParsedFormat(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+	businessID := uuid.New()
+
+	repo := &mockIntegrationRepository{
+		createFunc: func(_ context.Context, integration *domain.Integration) error {
+			integration.ID = uuid.New()
+			return nil
+		},
+	}
+
+	rec := &recordingSyncLogger{}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	_, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:  businessID,
+		Platform:    "telegram",
+		ExternalID:  "ext_2",
+		AccessToken: "tok",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, rec.asyncCalls, 1)
+	var details audit.IntegrationConnectedDetails
+	require.NoError(t, json.Unmarshal(rec.asyncCalls[0].Details, &details))
+	assert.Empty(t, details.ActorIP)
+	assert.Empty(t, details.UserAgent)
+	assert.Empty(t, details.ParsedFormat)
+}
+
 func TestConnect_Duplicate(t *testing.T) {
 	ctx := context.Background()
 	enc := testEncryptor(t)
