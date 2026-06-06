@@ -20,6 +20,7 @@ import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
+import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 import { EmailChangeBeforeVerifyModal } from './EmailChangeBeforeVerifyModal';
 
 const HTTP_NO_CONTENT = 204;
@@ -42,7 +43,10 @@ export function VerificationBanner() {
 
   const deadline = user.emailVerificationDeadline ? new Date(user.emailVerificationDeadline) : null;
   const deadlineLabel = deadline
-    ? deadline.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+    ? deadline.toLocaleDateString(localeToIntlTag(DEFAULT_LOCALE), {
+        day: 'numeric',
+        month: 'long',
+      })
     : '';
 
   async function resend() {

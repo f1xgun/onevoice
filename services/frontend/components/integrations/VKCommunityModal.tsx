@@ -12,6 +12,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 
 interface Props {
   open: boolean;
@@ -62,9 +63,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
       onClose();
       return data;
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        tVk('connectFailed');
+      const msg = extractApiErrorCode(err) || tVk('connectFailed');
       toast.error(msg);
       setSubmitting(false);
     }

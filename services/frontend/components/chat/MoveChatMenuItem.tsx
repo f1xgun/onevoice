@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation } from '@/hooks/useConversations';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 import { cn } from '@/lib/utils';
 import type { Project } from '@/types/project';
 
@@ -52,7 +53,7 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
         onError: (err) => {
           const message =
             err instanceof Error && 'response' in err
-              ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? '')
+              ? (extractApiErrorCode(err) ?? '')
               : err instanceof Error
                 ? err.message
                 : '';

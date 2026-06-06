@@ -92,9 +92,8 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
 		return
 	}
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -135,7 +134,7 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	err = h.service.ReConsent(r.Context(), userID, middleware.ClientIP(r), r.UserAgent(), policies)
+	err := h.service.ReConsent(r.Context(), userID, middleware.ClientIP(r), r.UserAgent(), policies)
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -167,13 +166,12 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
 		return
 	}
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
-	err = h.service.WithdrawPDN(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
+	err := h.service.WithdrawPDN(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -196,9 +194,8 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 // ListMine handles GET /users/me/consents. Returns the user's current
 // consent state for Surface F (Withdraw / status panel).
 func (h *ConsentsHandler) ListMine(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 

@@ -35,6 +35,7 @@ import {
   type DeletionAccountError,
   type SoleOwnerBusiness,
 } from '@/lib/api/account';
+import { localeToIntlTag } from '@/lib/i18n/locales';
 import { SoleOwnerBlockedModal } from './SoleOwnerBlockedModal';
 
 interface DeleteConfirmModalProps {
@@ -63,7 +64,7 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
   const [soleOwnerBusinesses, setSoleOwnerBusinesses] = useState<SoleOwnerBusiness[]>([]);
 
   const deletionDate = new Date(Date.now() + DELETION_GRACE_MS);
-  const dateLabel = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'ru-RU', {
+  const dateLabel = new Intl.DateTimeFormat(localeToIntlTag(locale), {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

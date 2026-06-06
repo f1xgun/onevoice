@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -70,24 +69,13 @@ func NewConversationHandler(
 
 // CreateConversation handles POST /conversations. See docs/api/handlers/conversation.md.
 func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "CreateConversation", authz.PermContentCreate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "CreateConversation: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentCreate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
-	var req openapi.CreateConversationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.CreateConversationRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -131,32 +119,12 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 
 // ListConversations handles GET /conversations. See docs/api/handlers/conversation.md.
 func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ListConversations", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ListConversations: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
-	limit := DefaultConversationLimit
-	offset := 0
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			limit = parsedLimit
-			if limit > MaxConversationLimit {
-				limit = MaxConversationLimit
-			}
-		}
-	}
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
-			offset = parsedOffset
-		}
-	}
+	limit, offset := parseLimitOffset(r, DefaultConversationLimit, MaxConversationLimit)
 
 	conversations, err := h.conversationRepo.ListByUserID(r.Context(), bc.UserID.String(), limit, offset)
 	if err != nil {
@@ -169,14 +137,8 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 
 // GetConversation handles GET /conversations/{id}. See docs/api/handlers/conversation.md.
 func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "GetConversation", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "GetConversation: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -212,26 +174,15 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 // UpdateConversation handles PUT /conversations/{id} — manual rename.
 // See docs/api/handlers/conversation.md §"UpdateConversation".
 func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "UpdateConversation", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "UpdateConversation: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	conversationID := chi.URLParam(r, "id")
 
-	var req openapi.UpdateConversationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.UpdateConversationRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -264,14 +215,8 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 // DeleteConversation handles DELETE /conversations/{id}.
 // See docs/api/handlers/conversation.md.
 func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "DeleteConversation", authz.PermContentDelete)
 	if !ok {
-		slog.ErrorContext(r.Context(), "DeleteConversation: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentDelete) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -304,14 +249,8 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 // ListMessages handles GET /conversations/{id}/messages — adapter over
 // ConversationService.OpenChat. See docs/api/handlers/conversation.md.
 func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ListMessages", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ListMessages: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -336,14 +275,8 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 // MoveConversation handles POST /conversations/{id}/move. See docs/api/handlers/conversation.md.
 // Null/empty/absent ProjectId all map to the "Без проекта" bucket.
 func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "MoveConversation", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "MoveConversation: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -380,14 +313,8 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 // by (id, business_id, user_id). Cross-tenant → uniform 404 (no leak).
 // See docs/api/handlers/conversation.md §"Pin / unpin atomicity".
 func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Pin", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Pin: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -427,14 +354,8 @@ func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 // Unpin handles POST /conversations/{id}/unpin — symmetric to Pin.
 // See docs/api/handlers/conversation.md §"Pin / unpin atomicity".
 func (h *ConversationHandler) Unpin(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Unpin", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Unpin: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 

@@ -48,15 +48,8 @@ func NewIntegrationHandler(integrationService IntegrationService, _ BusinessServ
 
 // ListIntegrations returns all integrations for the business from the request context.
 func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ListIntegrations", authz.PermIntegrationsRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ListIntegrations: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermIntegrationsRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -72,15 +65,8 @@ func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Req
 
 // DeleteIntegration deletes an integration by ID
 func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "DeleteIntegration", authz.PermIntegrationsDisconnect)
 	if !ok {
-		slog.ErrorContext(r.Context(), "DeleteIntegration: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermIntegrationsDisconnect) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 

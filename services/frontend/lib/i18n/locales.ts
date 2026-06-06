@@ -20,6 +20,20 @@ export function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
 
+// Canonical BCP-47 regional tags for `Intl.*` / `toLocale*String`. The in-app
+// `Locale` codes (`ru`, `en`) map to the regional forms (`ru-RU`, `en-US`) the
+// dashboard renders. Accepts a bare `string` so call-sites holding the untyped
+// `useLocale()` value can pass it directly; anything other than `en` resolves
+// to `ru-RU` (the previous `locale === 'en' ? 'en-US' : 'ru-RU'` behavior).
+const INTL_LOCALE_TAG: Record<Locale, string> = {
+  ru: 'ru-RU',
+  en: 'en-US',
+};
+
+export function localeToIntlTag(locale: string): string {
+  return locale === 'en' ? INTL_LOCALE_TAG.en : INTL_LOCALE_TAG.ru;
+}
+
 // RFC 9110-style Accept-Language parser. We honour q-factors so a client
 // sending `ru;q=0.1, en;q=0.9` correctly resolves to `en` (the previous
 // in-order parser would have picked `ru`). Entries are sorted by quality

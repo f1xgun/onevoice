@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -104,38 +103,18 @@ func domainAgentTaskToOpenAPI(t domain.AgentTask) openapi.AgentTask {
 
 // ListTasks handles GET /api/v1/tasks
 func (h *AgentTaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ListTasks", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ListTasks: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
+	limit, offset := parseLimitOffset(r, DefaultTaskLimit, MaxTaskLimit)
 	filter := domain.TaskFilter{
 		Platform: r.URL.Query().Get("platform"),
 		Status:   r.URL.Query().Get("status"),
 		Type:     r.URL.Query().Get("type"),
-		Limit:    DefaultTaskLimit,
-		Offset:   0,
-	}
-
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			filter.Limit = parsedLimit
-			if filter.Limit > MaxTaskLimit {
-				filter.Limit = MaxTaskLimit
-			}
-		}
-	}
-
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
-			filter.Offset = parsedOffset
-		}
+		Limit:    limit,
+		Offset:   offset,
 	}
 
 	tasks, total, err := h.agentTaskService.List(r.Context(), bc.BusinessID, filter)
@@ -164,14 +143,8 @@ func (h *AgentTaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 // task lifecycle events (task.created, task.updated) for the authenticated
 // user's business.
 func (h *AgentTaskHandler) StreamTasks(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "StreamTasks", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "StreamTasks: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 

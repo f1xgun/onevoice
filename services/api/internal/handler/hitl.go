@@ -85,14 +85,8 @@ func toServiceDecisions(rows []openapi.HITLDecisionInput) []service.DecisionInpu
 // ResolvePendingToolCalls handles POST /conversations/{id}/pending-tool-calls/{batch_id}/resolve.
 // See docs/api/handlers/hitl.md.
 func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ResolvePendingToolCalls", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ResolvePendingToolCalls: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -193,14 +187,8 @@ func nilToEmptyStringArr(s []string) []string {
 
 // Resume handles POST /chat/{id}/resume?batch_id=X. See docs/api/handlers/hitl.md.
 func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Resume", authz.PermContentCreate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Resume: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentCreate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 

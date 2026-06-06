@@ -2,6 +2,7 @@
 
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 import type { AuditFilters, AuditLogDTO, AuditLogListResponse } from './types';
 
 // Default page size — matches the backend default (handler/audit_log.go).
@@ -28,8 +29,7 @@ async function fetchPage(
     );
     return data;
   } catch (e) {
-    const err = e as { response?: { data?: { error?: string } } };
-    const code = err?.response?.data?.error ?? 'unknown';
+    const code = extractApiErrorCode(e) ?? 'unknown';
     const wrapped = new Error(code);
     (wrapped as Error & { code?: string }).code = code;
     throw wrapped;

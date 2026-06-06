@@ -148,14 +148,8 @@ func (a titlerAdapter) GenerateAndSave(ctx context.Context, businessID, conversa
 // Chat handles POST /chat/{conversationID}; delegates lifecycle to Turn.Run
 // and maps TurnOutcome → HTTP. See docs/api/handlers/chat-proxy.md.
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Chat", authz.PermContentCreate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Chat: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentCreate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 

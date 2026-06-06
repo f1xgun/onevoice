@@ -24,7 +24,7 @@ import type { PendingInvitation } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 
-import { ConfirmDestructive } from './ConfirmDestructive';
+import { ConfirmDestructive } from '@/components/ui/confirm-destructive';
 
 interface InvitationsTabProps {
   businessId: string;

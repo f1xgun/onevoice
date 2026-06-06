@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -113,13 +112,8 @@ func domainMemberToOpenAPI(m domain.BusinessMember, user *domain.User, role *dom
 // ListMembers handles GET /api/v1/businesses/{id}/members.
 // Permission: PermMembersRead. SPEC MEMBER-01.
 func (h *MembersHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersRead)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -157,13 +151,8 @@ func (h *MembersHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 //  4. tx.Commit
 //  5. cache.InvalidateMember — AFTER commit, never before
 func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersUpdateRole)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersUpdateRole) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	targetUserID, ok := parseMemberUserIDParam(w, r)
@@ -270,9 +259,8 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 //
 // Returns 204 No Content on success.
 func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := businessContext(w, r, "")
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 	targetUserID, ok := parseMemberUserIDParam(w, r)
@@ -336,11 +324,5 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 // parseMemberUserIDParam extracts and validates the {userId} URL param.
 // Writes 400 invalid_user_id and returns false on parse failure.
 func parseMemberUserIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, "userId")
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_user_id")
-		return uuid.Nil, false
-	}
-	return id, true
+	return parseUUIDParam(w, r, "userId", "invalid_user_id")
 }

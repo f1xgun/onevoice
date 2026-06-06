@@ -74,14 +74,8 @@ func NewTitlerHandler(
 //     response close, the cheap-LLM call takes 3-8s).
 //  8. respond 200 (empty body) — fire-and-forget.
 func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "RegenerateTitle", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "RegenerateTitle: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
