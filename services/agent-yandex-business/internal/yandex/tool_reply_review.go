@@ -18,104 +18,100 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 		return a2a.NewNonRetryableError(fmt.Errorf("reply text is required"))
 	}
 
-	return recordStep("replyReview", func() error {
-		return withRetry(ctx, 3, func() error {
-			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-				reviewsURL := bb.baseURL() + "/reviews"
-				if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
-					WaitUntil: playwright.WaitUntilStateNetworkidle,
-					Timeout:   playwright.Float(pageNavTimeoutMs),
-				}); err != nil {
-					return fmt.Errorf("navigate to reviews: %w", err)
-				}
+	return bb.runStep(ctx, "replyReview", 3, func(page playwright.Page) error {
+		reviewsURL := bb.baseURL() + "/reviews"
+		if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateNetworkidle,
+			Timeout:   playwright.Float(pageNavTimeoutMs),
+		}); err != nil {
+			return fmt.Errorf("navigate to reviews: %w", err)
+		}
 
-				if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
-					return err
-				}
-				humanDelay()
+		if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+			return err
+		}
+		humanDelay()
 
-				reviewCard := page.Locator(fmt.Sprintf("[data-review-id='%s']", reviewID)).First()
-				if err := reviewCard.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(listItemTimeoutMs),
-				}); err != nil {
-					return a2a.NewNonRetryableError(fmt.Errorf("review not found: %s", reviewID))
-				}
+		reviewCard := page.Locator(fmt.Sprintf("[data-review-id='%s']", reviewID)).First()
+		if err := reviewCard.WaitFor(playwright.LocatorWaitForOptions{
+			Timeout: playwright.Float(listItemTimeoutMs),
+		}); err != nil {
+			return a2a.NewNonRetryableError(fmt.Errorf("review not found: %s", reviewID))
+		}
 
-				replyBtnSelectors := []string{
-					"[data-testid='reply-button']",
-					"button:has-text('Ответить')",
-					"[class*='ReplyButton']",
-					"[class*='reply-btn']",
+		replyBtnSelectors := []string{
+			"[data-testid='reply-button']",
+			"button:has-text('Ответить')",
+			"[class*='ReplyButton']",
+			"[class*='reply-btn']",
+		}
+		replyClicked := false
+		for _, sel := range replyBtnSelectors {
+			btn := reviewCard.Locator(sel).First()
+			if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(uiPollTimeoutMs),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err == nil {
+				if err := btn.Click(); err == nil {
+					replyClicked = true
+					break
 				}
-				replyClicked := false
-				for _, sel := range replyBtnSelectors {
-					btn := reviewCard.Locator(sel).First()
-					if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(uiPollTimeoutMs),
-						State:   playwright.WaitForSelectorStateVisible,
-					}); err == nil {
-						if err := btn.Click(); err == nil {
-							replyClicked = true
-							break
-						}
-					}
-				}
-				if !replyClicked {
-					return a2a.NewNonRetryableError(fmt.Errorf("reply button not found for review %s", reviewID))
-				}
-				humanDelay()
+			}
+		}
+		if !replyClicked {
+			return a2a.NewNonRetryableError(fmt.Errorf("reply button not found for review %s", reviewID))
+		}
+		humanDelay()
 
-				textareaSelectors := []string{
-					"[data-testid='reply-textarea']",
-					"textarea[name='reply']",
-					"textarea[placeholder*='Ответ']",
-					"[class*='ReplyTextarea'] textarea",
-					"[class*='reply-form'] textarea",
+		textareaSelectors := []string{
+			"[data-testid='reply-textarea']",
+			"textarea[name='reply']",
+			"textarea[placeholder*='Ответ']",
+			"[class*='ReplyTextarea'] textarea",
+			"[class*='reply-form'] textarea",
+		}
+		textareaFilled := false
+		for _, sel := range textareaSelectors {
+			textarea := page.Locator(sel).First()
+			if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(primaryActionTimeoutMs),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err == nil {
+				if err := textarea.Fill(text); err == nil {
+					textareaFilled = true
+					break
 				}
-				textareaFilled := false
-				for _, sel := range textareaSelectors {
-					textarea := page.Locator(sel).First()
-					if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(primaryActionTimeoutMs),
-						State:   playwright.WaitForSelectorStateVisible,
-					}); err == nil {
-						if err := textarea.Fill(text); err == nil {
-							textareaFilled = true
-							break
-						}
-					}
-				}
-				if !textareaFilled {
-					return a2a.NewNonRetryableError(fmt.Errorf("reply form unavailable for review %s", reviewID))
-				}
-				humanDelay()
+			}
+		}
+		if !textareaFilled {
+			return a2a.NewNonRetryableError(fmt.Errorf("reply form unavailable for review %s", reviewID))
+		}
+		humanDelay()
 
-				submitSelectors := []string{
-					"[data-testid='submit-reply']",
-					"button:has-text('Отправить')",
-					"button[type='submit']",
-					"[class*='SubmitReply']",
+		submitSelectors := []string{
+			"[data-testid='submit-reply']",
+			"button:has-text('Отправить')",
+			"button[type='submit']",
+			"[class*='SubmitReply']",
+		}
+		submitted := false
+		for _, sel := range submitSelectors {
+			btn := page.Locator(sel).First()
+			if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(uiPollTimeoutMs),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err == nil {
+				if err := btn.Click(); err == nil {
+					submitted = true
+					break
 				}
-				submitted := false
-				for _, sel := range submitSelectors {
-					btn := page.Locator(sel).First()
-					if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(uiPollTimeoutMs),
-						State:   playwright.WaitForSelectorStateVisible,
-					}); err == nil {
-						if err := btn.Click(); err == nil {
-							submitted = true
-							break
-						}
-					}
-				}
-				if !submitted {
-					return fmt.Errorf("submit button not found — reply may not have been sent")
-				}
+			}
+		}
+		if !submitted {
+			return fmt.Errorf("submit button not found — reply may not have been sent")
+		}
 
-				humanDelay()
-				return nil
-			})
-		})
+		humanDelay()
+		return nil
 	})
 }

@@ -10,42 +10,40 @@ import (
 // GetInfo scrapes current business info from the Yandex.Business edit page.
 func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{}, error) {
 	var result map[string]interface{}
-	err := recordStep("getInfo", func() error {
-		return withRetry(ctx, 3, func() error {
-			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-				if err := bb.navigateToEditPage(page); err != nil {
-					return err
-				}
-				debugScreenshot(page, "getinfo_after_navigate")
+	err := bb.runStep(ctx, "getInfo", 3, func(page playwright.Page) error {
+		if err := bb.navigateToEditPage(page); err != nil {
+			return err
+		}
+		debugScreenshot(page, "getinfo_after_navigate")
 
-				info := make(map[string]interface{})
+		info := make(map[string]interface{})
 
-				nameEl := page.Locator("[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span").First()
-				if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
-					info["name"] = strings.TrimSpace(name)
-				}
+		nameEl := page.Locator("[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span").First()
+		if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
+			info["name"] = strings.TrimSpace(name)
+		}
 
-				hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
-				if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-					info["hours"] = val
-				}
+		hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
+		if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+			info["hours"] = val
+		}
 
-				phoneInput := page.Locator(".InfoPhones input.ya-business-input__control").First()
-				if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-					info["phone"] = val
-				}
+		phoneInput := page.Locator(".InfoPhones input.ya-business-input__control").First()
+		if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+			info["phone"] = val
+		}
 
-				emailInput := page.Locator(".InfoEmails input.ya-business-input__control").First()
-				if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-					info["email"] = val
-				}
+		emailInput := page.Locator(".InfoEmails input.ya-business-input__control").First()
+		if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+			info["email"] = val
+		}
 
-				descInput := page.Locator("input.ya-business-input__control[placeholder*='Описание'], .ya-business-input__label:has-text('Описание') ~ input, span:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input").First()
-				if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-					info["description"] = val
-				}
+		descInput := page.Locator("input.ya-business-input__control[placeholder*='Описание'], .ya-business-input__label:has-text('Описание') ~ input, span:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input").First()
+		if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+			info["description"] = val
+		}
 
-				if rawAddr, evalErr := page.Evaluate(`() => {
+		if rawAddr, evalErr := page.Evaluate(`() => {
 				const root = document.querySelector('.InfoAddress');
 				if (!root) return '';
 				const mode = root.querySelector('.ya-business-tab-line-item_checked .ya-business-tab-line-item__child');
@@ -68,21 +66,19 @@ func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{},
 				}
 				return '';
 			}`); evalErr == nil {
-					if s, ok := rawAddr.(string); ok && s != "" {
-						info["address"] = normalizeWhitespace(s)
-					}
-				}
+			if s, ok := rawAddr.(string); ok && s != "" {
+				info["address"] = normalizeWhitespace(s)
+			}
+		}
 
-				statusEl := page.Locator(".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content").First()
-				if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
-					info["status"] = strings.TrimSpace(text)
-				}
+		statusEl := page.Locator(".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content").First()
+		if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
+			info["status"] = strings.TrimSpace(text)
+		}
 
-				debugScreenshot(page, "getinfo_result")
-				result = info
-				return nil
-			})
-		})
+		debugScreenshot(page, "getinfo_result")
+		result = info
+		return nil
 	})
 	return result, err
 }
