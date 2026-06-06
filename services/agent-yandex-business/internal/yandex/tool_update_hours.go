@@ -22,41 +22,37 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 		return a2a.NewNonRetryableError(fmt.Errorf("could not parse hours from: %s", hoursJSON))
 	}
 
-	return recordStep("updateHours", func() error {
-		return withRetry(ctx, 3, func() error {
-			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-				if err := bb.navigateToEditPage(page); err != nil {
-					return err
-				}
+	return bb.runStep(ctx, "updateHours", 3, func(page playwright.Page) error {
+		if err := bb.navigateToEditPage(page); err != nil {
+			return err
+		}
 
-				hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
-				if err := hoursInput.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(listItemTimeoutMs),
-					State:   playwright.WaitForSelectorStateVisible,
-				}); err != nil {
-					debugScreenshot(page, "hours_input_not_found")
-					return fmt.Errorf("hours input not found — DOM may have changed")
-				}
+		hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
+		if err := hoursInput.WaitFor(playwright.LocatorWaitForOptions{
+			Timeout: playwright.Float(listItemTimeoutMs),
+			State:   playwright.WaitForSelectorStateVisible,
+		}); err != nil {
+			debugScreenshot(page, "hours_input_not_found")
+			return fmt.Errorf("hours input not found — DOM may have changed")
+		}
 
-				if err := hoursInput.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
-					return fmt.Errorf("click hours input: %w", err)
-				}
-				if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(keyboardDelayDefaultMs)}); err != nil {
-					return fmt.Errorf("type hours: %w", err)
-				}
-				_ = page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
-					Timeout: playwright.Float(uiPollTimeoutMs),
-				})
-				time.Sleep(2 * time.Second)
-				debugScreenshot(page, "hours_after_fill")
-
-				if err := clickSave(page); err != nil {
-					return err
-				}
-				debugScreenshot(page, "hours_after_save")
-				return nil
-			})
+		if err := hoursInput.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
+			return fmt.Errorf("click hours input: %w", err)
+		}
+		if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(keyboardDelayDefaultMs)}); err != nil {
+			return fmt.Errorf("type hours: %w", err)
+		}
+		_ = page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
+			Timeout: playwright.Float(uiPollTimeoutMs),
 		})
+		time.Sleep(2 * time.Second)
+		debugScreenshot(page, "hours_after_fill")
+
+		if err := clickSave(page); err != nil {
+			return err
+		}
+		debugScreenshot(page, "hours_after_save")
+		return nil
 	})
 }
 

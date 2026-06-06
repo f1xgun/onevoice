@@ -76,11 +76,10 @@ func NewConsentService(
 	}
 }
 
-// RecordRegistrationConsents UPSERTs consents inside the caller's Register tx (atomic with user row).
-// See docs/services/consent.md.
-func (s *ConsentService) RecordRegistrationConsents(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ip, userAgent string, policies []PolicyAccepted) error {
-	purposes := make([]string, 0, len(policies))
-	var policyVersion, policySHA256 string
+// upsertConsents UPSERTs each policy in the supplied tx, returning the
+// accumulated purposes plus the first (version, sha256) seen for the audit row.
+func (s *ConsentService) upsertConsents(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ip, userAgent string, policies []PolicyAccepted) (purposes []string, firstVersion, firstSHA256 string, err error) {
+	purposes = make([]string, 0, len(policies))
 	for _, p := range policies {
 		if err := s.consents.UpsertConsent(ctx, tx, repository.UpsertConsentInput{
 			UserID:        userID,
@@ -90,13 +89,23 @@ func (s *ConsentService) RecordRegistrationConsents(ctx context.Context, tx pgx.
 			IP:            ip,
 			UserAgent:     userAgent,
 		}); err != nil {
-			return fmt.Errorf("record registration consents: %w", err)
+			return nil, "", "", err
 		}
 		purposes = append(purposes, p.Slug)
-		if policyVersion == "" {
-			policyVersion = p.Version
-			policySHA256 = p.SHA256
+		if firstVersion == "" {
+			firstVersion = p.Version
+			firstSHA256 = p.SHA256
 		}
+	}
+	return purposes, firstVersion, firstSHA256, nil
+}
+
+// RecordRegistrationConsents UPSERTs consents inside the caller's Register tx (atomic with user row).
+// See docs/services/consent.md.
+func (s *ConsentService) RecordRegistrationConsents(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ip, userAgent string, policies []PolicyAccepted) error {
+	purposes, policyVersion, policySHA256, err := s.upsertConsents(ctx, tx, userID, ip, userAgent, policies)
+	if err != nil {
+		return fmt.Errorf("record registration consents: %w", err)
 	}
 	if err := audit.LogConsentRecordedTx(ctx, tx, userID, purposes, policyVersion, policySHA256, ip, userAgent); err != nil {
 		return fmt.Errorf("record registration consents audit: %w", err)
@@ -126,23 +135,9 @@ func (s *ConsentService) ReConsent(ctx context.Context, userID uuid.UUID, ip, us
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	purposes := make([]string, 0, len(policies))
-	var toVersion string
-	for _, p := range policies {
-		if err := s.consents.UpsertConsent(ctx, tx, repository.UpsertConsentInput{
-			UserID:        userID,
-			Purpose:       p.Slug,
-			PolicyVersion: p.Version,
-			PolicySHA256:  p.SHA256,
-			IP:            ip,
-			UserAgent:     userAgent,
-		}); err != nil {
-			return fmt.Errorf("reconsent upsert: %w", err)
-		}
-		purposes = append(purposes, p.Slug)
-		if toVersion == "" {
-			toVersion = p.Version
-		}
+	purposes, toVersion, _, err := s.upsertConsents(ctx, tx, userID, ip, userAgent, policies)
+	if err != nil {
+		return fmt.Errorf("reconsent upsert: %w", err)
 	}
 	if err := audit.LogConsentReconsentedTx(ctx, tx, userID, purposes, "", toVersion, ip, userAgent); err != nil {
 		return fmt.Errorf("reconsent audit: %w", err)

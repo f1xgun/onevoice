@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -21,6 +20,10 @@ import (
 // the upper bound that platform agents accept and gives the syncer headroom
 // to ingest a backlog after a long disconnect without paging.
 const reviewSyncBatchSize = 50
+
+// reviewSyncDispatchTimeout caps the per-platform NATS request budget for a
+// single sync fetch.
+const reviewSyncDispatchTimeout = 60 * time.Second
 
 // reviewToolByPlatform maps a platform ID to the tool name that returns
 // review/comment-like entries. Not every platform follows the __get_reviews
@@ -177,34 +180,10 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		return fmt.Errorf("no review tool registered for platform %q", platform)
 	}
 
-	req := a2a.ToolRequest{
-		TaskID:     uuid.NewString(),
-		Tool:       toolName,
-		Args:       map[string]interface{}{"limit": float64(reviewSyncBatchSize)},
-		BusinessID: businessID.String(),
-	}
-	data, err := json.Marshal(req)
+	resp, err := dispatchTool(ctx, s.nc, platform, toolName,
+		map[string]interface{}{"limit": float64(reviewSyncBatchSize)}, businessID.String(), reviewSyncDispatchTimeout)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	msg, err := s.nc.RequestMsgWithContext(reqCtx, &natslib.Msg{
-		Subject: a2a.Subject(platform),
-		Data:    data,
-	})
-	if err != nil {
-		return fmt.Errorf("nats request to %s: %w", a2a.Subject(platform), err)
-	}
-
-	var resp a2a.ToolResponse
-	if err := json.Unmarshal(msg.Data, &resp); err != nil {
-		return fmt.Errorf("unmarshal response: %w", err)
-	}
-	if !resp.Success {
-		return fmt.Errorf("agent error: %s", resp.Error)
+		return err
 	}
 
 	reviewsRaw, ok := resp.Result["reviews"]
@@ -267,7 +246,7 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 
 	author, _ := m["author"].(string)
 	if author == "" {
-		if fromID, ok := intFromMap(m, "from_id"); ok {
+		if fromID, ok := metaInt(m, "from_id"); ok {
 			author = fmt.Sprintf("vk_user_%d", fromID)
 		}
 	}
@@ -285,7 +264,7 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {
 			createdAt = t
 		}
-	} else if unix, ok := intFromMap(m, "date"); ok && unix > 0 {
+	} else if unix, ok := metaInt(m, "date"); ok && unix > 0 {
 		createdAt = time.Unix(unix, 0).UTC()
 	}
 
@@ -315,28 +294,14 @@ func externalIDFromMap(m map[string]interface{}, platform string) string {
 	if s, ok := m["id"].(string); ok && s != "" {
 		return s
 	}
-	id, hasID := intFromMap(m, "id")
+	id, hasID := metaInt(m, "id")
 	if !hasID {
 		return ""
 	}
 	if platform == a2a.AgentVK {
-		if postID, ok := intFromMap(m, "post_id"); ok {
+		if postID, ok := metaInt(m, "post_id"); ok {
 			return fmt.Sprintf("%d_%d", postID, id)
 		}
 	}
 	return fmt.Sprintf("%d", id)
-}
-
-// intFromMap extracts an integer from a JSON-unmarshalled map, tolerating the
-// float64 representation Go uses by default.
-func intFromMap(m map[string]interface{}, key string) (int64, bool) {
-	switch v := m[key].(type) {
-	case float64:
-		return int64(v), true
-	case int:
-		return int64(v), true
-	case int64:
-		return v, true
-	}
-	return 0, false
 }

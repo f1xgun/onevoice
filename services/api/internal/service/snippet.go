@@ -53,11 +53,10 @@ func BuildSnippet(content string, queryPrefixes map[string]struct{}) string {
 	return snippet
 }
 
-// firstPrefixMatch scans content token-by-token and returns the byte
-// range of the first token whose lowercased form starts with any
-// prefix in queryPrefixes. Returns (-1, -1) on no match.
-func firstPrefixMatch(content string, queryPrefixes map[string]struct{}) (start, end int) {
-	runes := []rune(content)
+// forEachToken scans s on letter/digit boundaries and invokes fn with each
+// lowercased token and its byte range. fn returning true stops the scan.
+func forEachToken(s string, fn func(token string, byteStart, byteEnd int) bool) {
+	runes := []rune(s)
 	pos := 0
 	for pos < len(runes) {
 		for pos < len(runes) && !unicode.IsLetter(runes[pos]) && !unicode.IsDigit(runes[pos]) {
@@ -71,13 +70,25 @@ func firstPrefixMatch(content string, queryPrefixes map[string]struct{}) (start,
 			continue
 		}
 		token := strings.ToLower(string(runes[ts:pos]))
-		if anyPrefixMatches(token, queryPrefixes) {
-			byteStart := len(string(runes[:ts]))
-			byteEnd := len(string(runes[:pos]))
-			return byteStart, byteEnd
+		if fn(token, len(string(runes[:ts])), len(string(runes[:pos]))) {
+			return
 		}
 	}
-	return -1, -1
+}
+
+// firstPrefixMatch scans content token-by-token and returns the byte
+// range of the first token whose lowercased form starts with any
+// prefix in queryPrefixes. Returns (-1, -1) on no match.
+func firstPrefixMatch(content string, queryPrefixes map[string]struct{}) (start, end int) {
+	start, end = -1, -1
+	forEachToken(content, func(token string, byteStart, byteEnd int) bool {
+		if anyPrefixMatches(token, queryPrefixes) {
+			start, end = byteStart, byteEnd
+			return true
+		}
+		return false
+	})
+	return start, end
 }
 
 // expandLeftToBoundary moves `pos` leftward until the previous byte is
@@ -108,26 +119,12 @@ func expandRightToBoundary(s string, pos int) int {
 // in the response payload.
 func HighlightRanges(snippet string, queryPrefixes map[string]struct{}) [][2]int {
 	var marks [][2]int
-	runes := []rune(snippet)
-	pos := 0
-	for pos < len(runes) {
-		for pos < len(runes) && !unicode.IsLetter(runes[pos]) && !unicode.IsDigit(runes[pos]) {
-			pos++
-		}
-		ts := pos
-		for pos < len(runes) && (unicode.IsLetter(runes[pos]) || unicode.IsDigit(runes[pos])) {
-			pos++
-		}
-		if ts == pos {
-			continue
-		}
-		token := strings.ToLower(string(runes[ts:pos]))
+	forEachToken(snippet, func(token string, byteStart, byteEnd int) bool {
 		if anyPrefixMatches(token, queryPrefixes) {
-			byteStart := len(string(runes[:ts]))
-			byteEnd := len(string(runes[:pos]))
 			marks = append(marks, [2]int{byteStart, byteEnd})
 		}
-	}
+		return false
+	})
 	return marks
 }
 
@@ -148,21 +145,9 @@ func anyPrefixMatches(token string, prefixes map[string]struct{}) bool {
 // and whitespace become separators.
 func QueryPrefixes(query string) map[string]struct{} {
 	result := make(map[string]struct{})
-	runes := []rune(query)
-	pos := 0
-	for pos < len(runes) {
-		for pos < len(runes) && !unicode.IsLetter(runes[pos]) && !unicode.IsDigit(runes[pos]) {
-			pos++
-		}
-		ts := pos
-		for pos < len(runes) && (unicode.IsLetter(runes[pos]) || unicode.IsDigit(runes[pos])) {
-			pos++
-		}
-		if ts == pos {
-			continue
-		}
-		token := strings.ToLower(string(runes[ts:pos]))
+	forEachToken(query, func(token string, _, _ int) bool {
 		result[token] = struct{}{}
-	}
+		return false
+	})
 	return result
 }

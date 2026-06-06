@@ -22,9 +22,7 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -42,8 +40,6 @@ const (
 	// verifyTokenTTL — (RU email providers defer delivery hours;
 	// 24h is too tight, 7d is too loose. 72h is the compromise.).
 	verifyTokenTTL = 72 * time.Hour
-	// verifyTokenEntropyBytes — (256 bits).
-	verifyTokenEntropyBytes = 32
 	// verifyResendMinWindow / verifyResendHourMax / verifyResendHourWindow —
 	// 1/min and 5/hr per user.
 	verifyResendMinWindow  = 60 * time.Second
@@ -236,13 +232,12 @@ func (s *EmailVerificationService) ChangeEmailBeforeVerify(ctx context.Context, 
 // Exported so the user service can call it directly (it composes the
 // user_consents INSERT + outbox enqueue + token issue in one tx).
 func (s *EmailVerificationService) IssueAndEnqueueTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error {
-	plaintext, err := generateVerifyToken()
+	plaintext, hash, err := generateOpaqueToken()
 	if err != nil {
 		return fmt.Errorf("generate verify token: %w", err)
 	}
-	hashArr := sha256.Sum256([]byte(plaintext))
 	expiresAt := time.Now().Add(s.tokenTTL)
-	if err := s.tokens.Insert(ctx, tx, userID, email, hashArr[:], expiresAt); err != nil {
+	if err := s.tokens.Insert(ctx, tx, userID, email, hash, expiresAt); err != nil {
 		return fmt.Errorf("insert verify token: %w", err)
 	}
 
@@ -257,17 +252,6 @@ func (s *EmailVerificationService) IssueAndEnqueueTx(ctx context.Context, tx pgx
 		return fmt.Errorf("enqueue verify email: %w", err)
 	}
 	return nil
-}
-
-// generateVerifyToken returns a 32-byte url-safe base64 plaintext token.
-// SHA-256 of the plaintext is what lands in the DB; the plaintext lives
-// only in the email body + the user's browser.
-func generateVerifyToken() (string, error) {
-	b := make([]byte, verifyTokenEntropyBytes)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 func buildVerifyEmailPlainText(link string) string {

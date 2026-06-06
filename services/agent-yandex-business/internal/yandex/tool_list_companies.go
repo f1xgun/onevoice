@@ -25,34 +25,32 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 	const companiesURL = yandexSpravCompaniesURL
 
 	var result []map[string]interface{}
-	err := recordStep("listCompanies", func() error {
-		return withRetry(ctx, 2, func() error {
-			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-				if _, err := page.Goto(companiesURL, playwright.PageGotoOptions{
-					WaitUntil: playwright.WaitUntilStateNetworkidle,
-					Timeout:   playwright.Float(pageNavTimeoutMs),
-				}); err != nil {
-					return fmt.Errorf("navigate to companies: %w", err)
-				}
-				debugScreenshot(page, "list_companies_after_navigate")
+	err := bb.runStep(ctx, "listCompanies", 2, func(page playwright.Page) error {
+		if _, err := page.Goto(companiesURL, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateNetworkidle,
+			Timeout:   playwright.Float(pageNavTimeoutMs),
+		}); err != nil {
+			return fmt.Errorf("navigate to companies: %w", err)
+		}
+		debugScreenshot(page, "list_companies_after_navigate")
 
-				currentURL := page.URL()
-				if strings.Contains(currentURL, "passport.yandex") {
-					return a2a.NewNonRetryableError(fmt.Errorf("%w: redirected to %s", ErrSessionExpired, currentURL))
-				}
-				closePopups(page)
+		currentURL := page.URL()
+		if strings.Contains(currentURL, "passport.yandex") {
+			return a2a.NewNonRetryableError(fmt.Errorf("%w: redirected to %s", ErrSessionExpired, currentURL))
+		}
+		closePopups(page)
 
-				if err := page.Locator(".CompaniesCompanyRow").First().WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(tabSwitchTimeoutMs),
-					State:   playwright.WaitForSelectorStateVisible,
-				}); err != nil {
-					slog.Info("ListCompanies: no .CompaniesCompanyRow visible; returning empty list",
-						"url", currentURL)
-					result = []map[string]interface{}{}
-					return nil
-				}
+		if err := page.Locator(".CompaniesCompanyRow").First().WaitFor(playwright.LocatorWaitForOptions{
+			Timeout: playwright.Float(tabSwitchTimeoutMs),
+			State:   playwright.WaitForSelectorStateVisible,
+		}); err != nil {
+			slog.Info("ListCompanies: no .CompaniesCompanyRow visible; returning empty list",
+				"url", currentURL)
+			result = []map[string]interface{}{}
+			return nil
+		}
 
-				raw, err := page.Evaluate(`() => {
+		raw, err := page.Evaluate(`() => {
 				const rows = Array.from(document.querySelectorAll('.CompaniesCompanyRow'));
 				return rows.map(row => {
 					const href = row.getAttribute('href') || '';
@@ -63,18 +61,16 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 					return { permalink, name };
 				}).filter(c => c.permalink);
 			}`)
-				if err != nil {
-					return fmt.Errorf("evaluate companies list: %w", err)
-				}
+		if err != nil {
+			return fmt.Errorf("evaluate companies list: %w", err)
+		}
 
-				b, _ := json.Marshal(raw)
-				var rows []map[string]interface{}
-				_ = json.Unmarshal(b, &rows)
-				result = rows
-				debugScreenshot(page, "list_companies_done")
-				return nil
-			})
-		})
+		b, _ := json.Marshal(raw)
+		var rows []map[string]interface{}
+		_ = json.Unmarshal(b, &rows)
+		result = rows
+		debugScreenshot(page, "list_companies_done")
+		return nil
 	})
 	return result, err
 }

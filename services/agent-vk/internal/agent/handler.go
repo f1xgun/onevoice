@@ -179,11 +179,7 @@ func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, fmt.Errorf("vk: publish post: %w", classifyVKError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"post_id": float64(postID)},
-	}, nil
+	return a2a.OK(req, map[string]any{"post_id": float64(postID)}), nil
 }
 
 func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -201,11 +197,7 @@ func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.Tool
 	if err != nil {
 		return nil, fmt.Errorf("vk: post photo: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"post_id": float64(postID)},
-	}, nil
+	return a2a.OK(req, map[string]any{"post_id": float64(postID)}), nil
 }
 
 func (h *Handler) schedulePost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -234,11 +226,7 @@ func (h *Handler) schedulePost(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	if err != nil {
 		return nil, fmt.Errorf("vk: schedule post: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"post_id": float64(postID), "scheduled": true},
-	}, nil
+	return a2a.OK(req, map[string]any{"post_id": float64(postID), "scheduled": true}), nil
 }
 
 // parsePublishDate accepts a Unix timestamp string or RFC3339 formatted date.
@@ -264,11 +252,7 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 		return nil, fmt.Errorf("vk: update group info: %w", classifyVKError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "updated"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "updated"}), nil
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -309,11 +293,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 			}
 			merged = append(merged, cs...)
 		}
-		return &a2a.ToolResponse{
-			TaskID:  req.TaskID,
-			Success: true,
-			Result:  map[string]interface{}{"comments": merged, "count": len(merged)},
-		}, nil
+		return a2a.OK(req, map[string]any{"comments": merged, "count": len(merged)}), nil
 	}
 
 	comments, err := client.GetComments(groupID, postID, count)
@@ -321,11 +301,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, fmt.Errorf("vk: get comments: %w", classifyVKError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"comments": comments, "count": len(comments)},
-	}, nil
+	return a2a.OK(req, map[string]any{"comments": comments, "count": len(comments)}), nil
 }
 
 func (h *Handler) replyComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -352,11 +328,7 @@ func (h *Handler) replyComment(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	if err != nil {
 		return nil, fmt.Errorf("vk: reply comment: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"comment_id": float64(newCommentID)},
-	}, nil
+	return a2a.OK(req, map[string]any{"comment_id": float64(newCommentID)}), nil
 }
 
 func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -373,11 +345,7 @@ func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.
 	if err := client.DeleteComment(groupID, commentID); err != nil {
 		return nil, fmt.Errorf("vk: delete comment: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "deleted"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "deleted"}), nil
 }
 
 func (h *Handler) getCommunityInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -393,11 +361,7 @@ func (h *Handler) getCommunityInfo(ctx context.Context, req a2a.ToolRequest) (*a
 	if err != nil {
 		return nil, fmt.Errorf("vk: get community info: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  info,
-	}, nil
+	return a2a.OK(req, info), nil
 }
 
 func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -425,9 +389,5 @@ func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	if err != nil {
 		return nil, fmt.Errorf("vk: get wall posts: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"posts": posts, "total": total},
-	}, nil
+	return a2a.OK(req, map[string]any{"posts": posts, "total": total}), nil
 }

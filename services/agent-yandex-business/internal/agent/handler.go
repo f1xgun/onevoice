@@ -145,11 +145,7 @@ func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRe
 	if err != nil {
 		return nil, fmt.Errorf("yandex: get info: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  info,
-	}, nil
+	return a2a.OK(req, info), nil
 }
 
 func (h *Handler) listCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -159,11 +155,7 @@ func (h *Handler) listCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.
 		if listErr != nil {
 			return nil, fmt.Errorf("yandex: list companies: %w", classifyYandexError(listErr))
 		}
-		return &a2a.ToolResponse{
-			TaskID:  req.TaskID,
-			Success: true,
-			Result:  map[string]interface{}{"companies": companies},
-		}, nil
+		return a2a.OK(req, map[string]any{"companies": companies}), nil
 	}
 	browser, err := h.getBrowser(ctx, req)
 	if err != nil {
@@ -174,11 +166,7 @@ func (h *Handler) listCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.
 	if err != nil {
 		return nil, fmt.Errorf("yandex: list companies: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"companies": companies},
-	}, nil
+	return a2a.OK(req, map[string]any{"companies": companies}), nil
 }
 
 func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -191,11 +179,7 @@ func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	if err := browser.UpdateHours(ctx, hours); err != nil {
 		return nil, fmt.Errorf("yandex: update hours: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "updated", "note": "changes pending Yandex moderation"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "updated", "note": "changes pending Yandex moderation"}), nil
 }
 
 func (h *Handler) updateInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -213,11 +197,7 @@ func (h *Handler) updateInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	if err := browser.UpdateInfo(ctx, info); err != nil {
 		return nil, fmt.Errorf("yandex: update info: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "updated", "note": "changes pending Yandex moderation"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "updated", "note": "changes pending Yandex moderation"}), nil
 }
 
 func (h *Handler) createPost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -230,11 +210,7 @@ func (h *Handler) createPost(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	if err := browser.CreatePost(ctx, text); err != nil {
 		return nil, fmt.Errorf("yandex: create post: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "published"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "published"}), nil
 }
 
 func (h *Handler) uploadPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -251,11 +227,7 @@ func (h *Handler) uploadPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	if err := browser.UploadPhoto(ctx, photoURL, category); err != nil {
 		return nil, fmt.Errorf("yandex: upload photo: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "uploaded", "note": "photo pending Yandex moderation"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "uploaded", "note": "photo pending Yandex moderation"}), nil
 }
 
 func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -277,11 +249,7 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	if err != nil {
 		return nil, fmt.Errorf("yandex: get reviews: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"reviews": reviews, "count": len(reviews)},
-	}, nil
+	return a2a.OK(req, map[string]any{"reviews": reviews, "count": len(reviews)}), nil
 }
 
 func (h *Handler) replyReview(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -296,9 +264,5 @@ func (h *Handler) replyReview(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	if err := browser.ReplyReview(ctx, reviewID, text); err != nil {
 		return nil, fmt.Errorf("yandex: reply review: %w", classifyYandexError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "replied"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "replied"}), nil
 }

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -172,36 +171,8 @@ func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.R
 		return nil
 	}
 
-	req := a2a.ToolRequest{
-		TaskID:     uuid.NewString(),
-		Tool:       toolName,
-		Args:       args,
-		BusinessID: review.BusinessID,
-	}
-	data, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	dispatchCtx, cancel := context.WithTimeout(ctx, s.dispatchTimeout)
-	defer cancel()
-
-	msg, err := s.nc.RequestMsgWithContext(dispatchCtx, &natslib.Msg{
-		Subject: a2a.Subject(review.Platform),
-		Data:    data,
-	})
-	if err != nil {
-		return fmt.Errorf("nats request: %w", err)
-	}
-
-	var resp a2a.ToolResponse
-	if err := json.Unmarshal(msg.Data, &resp); err != nil {
-		return fmt.Errorf("decode agent response: %w", err)
-	}
-	if !resp.Success {
-		return fmt.Errorf("agent error: %s", resp.Error)
-	}
-	return nil
+	_, err = dispatchTool(ctx, s.nc, review.Platform, toolName, args, review.BusinessID, s.dispatchTimeout)
+	return err
 }
 
 // buildPlatformReply maps a Review + reply text to the platform-agent tool

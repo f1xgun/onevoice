@@ -185,14 +185,15 @@ func TestRequestResend_SixthCallInHourThrottles(t *testing.T) {
 // encoded as URL-safe base64 (no padding). At ~43 chars + URL-safe charset
 // the token survives email-template HTML escaping + browser URL bars.
 func TestGenerateVerifyToken_Entropy(t *testing.T) {
-	got, err := generateVerifyToken()
+	got, hash, err := generateOpaqueToken()
 	require.NoError(t, err)
 	require.Len(t, got, 43, "32-byte raw URL-safe base64 → 43 chars")
+	require.Len(t, hash, 32, "sha-256 hash is 32 bytes")
 	require.NotContains(t, got, "+")
 	require.NotContains(t, got, "/")
 	require.NotContains(t, got, "=")
 
-	got2, err := generateVerifyToken()
+	got2, _, err := generateOpaqueToken()
 	require.NoError(t, err)
 	require.NotEqual(t, got, got2)
 }

@@ -152,11 +152,7 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 		return nil, fmt.Errorf("telegram: send message: %w", classifyTelegramError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "sent"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "sent"}), nil
 }
 
 func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -184,11 +180,7 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 		return nil, fmt.Errorf("telegram: send photo: %w", classifyTelegramError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "sent"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "sent"}), nil
 }
 
 func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -215,11 +207,7 @@ func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a
 		return nil, fmt.Errorf("telegram: send notification: %w", classifyTelegramError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "sent"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "sent"}), nil
 }
 
 func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -242,11 +230,7 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		return nil, fmt.Errorf("telegram: get reviews: %w", classifyTelegramError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"reviews": reviews, "count": len(reviews)},
-	}, nil
+	return a2a.OK(req, map[string]any{"reviews": reviews, "count": len(reviews)}), nil
 }
 
 func (h *Handler) replyToComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -288,9 +272,5 @@ func (h *Handler) replyToComment(ctx context.Context, req a2a.ToolRequest) (*a2a
 		return nil, fmt.Errorf("telegram: reply to comment: %w", classifyTelegramError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "replied"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "replied"}), nil
 }

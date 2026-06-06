@@ -1,6 +1,7 @@
 package yandex
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/playwright-community/playwright-go"
@@ -28,6 +29,15 @@ func (p *BrowserPool) ForBusiness(businessID, cookiesJSON, permalink string) *Bu
 // baseURL returns the management URL for this business.
 func (bb *BusinessBrowser) baseURL() string {
 	return spravBaseURL(bb.permalink)
+}
+
+// runStep records the named RPA step and runs fn under withRetry + WithPage.
+func (bb *BusinessBrowser) runStep(ctx context.Context, name string, retries int, fn func(page playwright.Page) error) error {
+	return recordStep(name, func() error {
+		return withRetry(ctx, retries, func() error {
+			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, fn)
+		})
+	})
 }
 
 // navigateToEditPage loads the main edit page and dismisses popups.
