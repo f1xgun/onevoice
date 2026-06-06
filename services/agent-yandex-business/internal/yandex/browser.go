@@ -48,6 +48,10 @@ const screenshotTTL = 1 * time.Hour
 // screenshotSweepInterval is the polling cadence of the sweeper goroutine.
 const screenshotSweepInterval = 5 * time.Minute
 
+// screenshotDirPerm is the mode applied to the tmpfs screenshot directory.
+// 0o750 satisfies gosec G301: owner full, group read+exec, world none.
+const screenshotDirPerm = 0o750
+
 // screenshotMode reads SCREENSHOT_MODE on each call. Unknown values fall back
 // to off — the safest default whenever the env contract is violated.
 func screenshotMode() ScreenshotMode {
@@ -73,7 +77,7 @@ func captureScreenshot(page playwright.Page, label string) (string, error) {
 	var path string
 	switch mode {
 	case ScreenshotTmpfs:
-		if err := os.MkdirAll(screenshotTmpfsDir, 0o755); err != nil {
+		if err := os.MkdirAll(screenshotTmpfsDir, screenshotDirPerm); err != nil {
 			return "", fmt.Errorf("mkdir tmpfs screenshot dir: %w", err)
 		}
 		path = filepath.Join(screenshotTmpfsDir, fmt.Sprintf("yandex_%s_%d.png", label, ts))
@@ -109,7 +113,7 @@ func debugScreenshot(page playwright.Page, label string) {
 
 // StartScreenshotSweeper spawns a goroutine that removes screenshots older
 // than screenshotTTL from the tmpfs directory every screenshotSweepInterval.
-// The goroutine exits when ctx is cancelled (bind via signal.NotifyContext for
+// The goroutine exits when ctx is canceled (bind via signal.NotifyContext for
 // graceful SIGTERM shutdown). It is a no-op when SCREENSHOT_MODE is not tmpfs.
 func StartScreenshotSweeper(ctx context.Context, logger *slog.Logger) {
 	if screenshotMode() != ScreenshotTmpfs {

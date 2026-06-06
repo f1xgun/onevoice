@@ -46,7 +46,7 @@ func TestScreenshotMode_Tmpfs(t *testing.T) {
 	}
 	// Best-effort write probe — even on Linux containers /dev/shm may be
 	// mounted read-only or unavailable in restricted CI sandboxes.
-	if err := os.MkdirAll(screenshotTmpfsDir, 0o755); err != nil {
+	if err := os.MkdirAll(screenshotTmpfsDir, screenshotDirPerm); err != nil {
 		t.Skipf("/dev/shm not writable in this environment: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func TestStartScreenshotSweeper_ExitsOnContextCancel(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skipf("sweeper exit test requires tmpfs mode, skipping on %s", runtime.GOOS)
 	}
-	if err := os.MkdirAll(screenshotTmpfsDir, 0o755); err != nil {
+	if err := os.MkdirAll(screenshotTmpfsDir, screenshotDirPerm); err != nil {
 		t.Skipf("/dev/shm not writable in this environment: %v", err)
 	}
 	t.Setenv("SCREENSHOT_MODE", "tmpfs")
