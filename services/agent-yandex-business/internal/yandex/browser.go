@@ -147,12 +147,6 @@ func startSweeperLoop(ctx context.Context, logger *slog.Logger, interval time.Du
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				// Subtract one sweep interval from the cutoff so a file
-				// whose mtime is currently being updated by an in-flight
-				// Playwright write is never reaped within `interval` of
-				// crossing the TTL boundary. Eliminates the partial-write
-				// race for high-rate screenshot bursts at negligible cost
-				// (TTL is 1h; 5m of extra lifetime is irrelevant).
 				cutoff := time.Now().Add(-screenshotTTL).Add(-interval)
 				sweepScreenshotsIn(dir, cutoff, logger)
 			}

@@ -41,12 +41,6 @@ func run() error {
 	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyYandexError))
 	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher)
 
-	// Screenshot sweeper runs as a background goroutine for the lifetime of
-	// the process; bind it to a signal-driven ctx so SIGTERM tears it down
-	// in lockstep with agentbase.Run's own internal signal handler. The
-	// sweeper is unconditional — captureScreenshot re-reads SCREENSHOT_MODE
-	// on every call so operators can flip off→tmpfs mid-incident without
-	// restart. See pkg/agent-yandex-business/internal/yandex/browser.go.
 	sweeperCtx, stopSweeper := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSweeper()
 	yandex.StartScreenshotSweeper(sweeperCtx, slog.Default())
