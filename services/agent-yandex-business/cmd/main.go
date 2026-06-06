@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 
+	natslib "github.com/nats-io/nats.go"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
@@ -59,6 +61,13 @@ func run() error {
 		NATSURL:    cfg.NATSUrl,
 		HealthPort: cfg.HealthPort,
 		Exec:       handler.Handle,
+		OnNATSConn: func(nc *natslib.Conn) (func(), error) {
+			revokeSub, err := agentbase.NewRevokeSubscriber(nc, tc, "yandex_business")
+			if err != nil {
+				return nil, fmt.Errorf("revoke subscriber: %w", err)
+			}
+			return func() { _ = revokeSub.Close() }, nil
+		},
 	})
 }
 
