@@ -193,10 +193,11 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
           </TooltipContent>
         </Tooltip>
 
-        {/* Language switcher — compact 40 px wide select that fits the
-            56 px rail. Sits directly above logout so locale + identity
-            controls live in the same footer cluster. */}
-        <LanguageSwitcher className="mb-2 h-8 w-10 px-1" />
+        {/* Language switcher — 40 px globe icon button matching the rail's
+            icon column. Sits directly above logout so locale + identity
+            controls live in the same footer cluster; the menu opens to the
+            right of the rail like the nav tooltips. */}
+        <LanguageSwitcher className="mb-2" side="right" align="end" />
 
         {/* Logout */}
         <Tooltip>
