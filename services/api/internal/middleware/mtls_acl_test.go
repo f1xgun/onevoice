@@ -11,7 +11,7 @@ import (
 )
 
 // platformACL is the canonical CN→[]platforms map used by RequirePlatformACL
-// behavior tests. Mirrors the D-02 example shape.
+// behavior tests. Mirrors the documented internal-ACL shape.
 func platformACL() map[string][]string {
 	return map[string][]string{
 		"agent-telegram":        {"telegram"},
@@ -205,7 +205,7 @@ func TestRequirePlatformACL_SystemAllowedWhenInACL(t *testing.T) {
 }
 
 // TestRequirePlatformACL_PropagatesIdentity: after a successful allow the CN is
-// retrievable via ServiceIdentityFromContext (reused ctx key for SEC-04 audit).
+// retrievable via ServiceIdentityFromContext (reused ctx key for the token-decrypt audit).
 func TestRequirePlatformACL_PropagatesIdentity(t *testing.T) {
 	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
 	code, called, identity := runPlatformACL(t, "orchestrator", "vk")

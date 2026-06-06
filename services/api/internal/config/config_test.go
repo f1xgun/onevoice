@@ -12,7 +12,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 )
 
-// canonicalACLJSON is the D-02 example ACL value used across config tests.
+// canonicalACLJSON is a representative internal-ACL value used across config tests.
 const canonicalACLJSON = `{"agent-telegram":["telegram"],"agent-vk":["vk"],"agent-yandex-business":["yandex_business"],"agent-google-business":["google_business"],"orchestrator":["telegram","vk","yandex_business","google_business"],"api":["*"]}`
 
 // setValidLegal sets every LEGAL_* env var to a non-placeholder value that

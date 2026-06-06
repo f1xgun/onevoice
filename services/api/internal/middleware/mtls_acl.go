@@ -31,7 +31,7 @@ import (
 //
 // On allow, the resolved CN is stored on r.Context() under the same
 // ctxKeyServiceIdentity used by RequireServiceIdentity, so downstream handlers
-// (and the SEC-04 token-decrypt audit) read it via ServiceIdentityFromContext.
+// (and the token-decrypt audit) read it via ServiceIdentityFromContext.
 //
 // The supplied logger is used for warn-level traces on reject paths. Nil falls
 // back to slog.Default().
