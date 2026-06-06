@@ -370,8 +370,79 @@ func TestConnectTelegram_BotNoAccess(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp.Error != "bot does not have access to this channel" {
-		t.Errorf("expected bot access error, got %q", resp.Error)
+	// After the error-categorization refactor, ok:false with a non-Forbidden
+	// description surfaces the upstream message verbatim instead of the
+	// generic "bot does not have access to this channel" — that string is
+	// now reserved for the genuine forbidden case.
+	if resp.Error != "Bad Request: chat not found" {
+		t.Errorf("expected upstream description, got %q", resp.Error)
+	}
+}
+
+// TestConnectTelegram_BotForbidden: Telegram returns ok:false with a
+// Forbidden-prefixed description. We map that to 403 and pass the upstream
+// message through so the user sees the actual reason (kicked, not a member).
+func TestConnectTelegram_BotForbidden(t *testing.T) {
+	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"ok":false,"description":"Forbidden: bot was kicked from the channel chat"}`)
+	}))
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, tgServer.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"-1001234567890"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for Forbidden description, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp openapi.ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.HasPrefix(resp.Error, "Forbidden") {
+		t.Errorf("expected upstream Forbidden description, got %q", resp.Error)
+	}
+}
+
+// TestConnectTelegram_Unreachable: HTTP client times out before Telegram
+// answers. We must NOT silently translate this to "bot has no access" —
+// that masks an upstream outage as a user-data problem. Expected: 502.
+// Regression test for the incident on 2026-06-06 (corr-id e43d3cb8).
+func TestConnectTelegram_Unreachable(t *testing.T) {
+	// Server hangs longer than the client timeout, forcing
+	// context.DeadlineExceeded inside httpClient.Do.
+	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	client := &http.Client{Timeout: 50 * time.Millisecond}
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, client)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@onevoice_test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for upstream timeout, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
