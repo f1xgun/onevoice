@@ -1544,6 +1544,7 @@
       "team": "Team",
       "roles": "Roles",
       "audit": "Activity log",
+      "privacy": "Privacy",
       "navAria": "Settings — sections"
     },
     "tools": {
