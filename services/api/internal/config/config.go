@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -95,6 +96,13 @@ type Config struct {
 	GoogleRedirectURI  string
 
 	InternalPort string
+
+	// InternalACL is the declarative CN→[]platforms map enforced on
+	// /internal/v1/tokens. Each trusted client cert CommonName maps to the
+	// platforms it may request; a "*" entry grants any platform. A CN absent
+	// from the map is fail-closed (403). Loaded from ONEVOICE_INTERNAL_ACL_JSON
+	// at boot — missing or malformed JSON aborts startup.
+	InternalACL map[string][]string
 
 	OrchestratorURL string
 
@@ -408,7 +416,29 @@ func Load() (*Config, error) {
 		slog.Warn("LEGAL_* placeholders present (allowed in non-production)", "issue", err.Error())
 	}
 
+	acl, err := parseInternalACL()
+	if err != nil {
+		return nil, err
+	}
+	cfg.InternalACL = acl
+
 	return cfg, nil
+}
+
+// parseInternalACL reads ONEVOICE_INTERNAL_ACL_JSON and decodes the declarative
+// CN→[]platforms map gating /internal/v1/tokens. The variable is required:
+// an empty value or unparsable JSON aborts boot so a misconfigured deploy fails
+// loud rather than running the internal token endpoint without a platform gate.
+func parseInternalACL() (map[string][]string, error) {
+	raw := os.Getenv("ONEVOICE_INTERNAL_ACL_JSON")
+	if raw == "" {
+		return nil, fmt.Errorf(`ONEVOICE_INTERNAL_ACL_JSON is required; example: {"agent-telegram":["telegram"],"orchestrator":["telegram","vk","yandex_business","google_business"],"api":["*"]}`)
+	}
+	var acl map[string][]string
+	if err := json.Unmarshal([]byte(raw), &acl); err != nil {
+		return nil, fmt.Errorf("ONEVOICE_INTERNAL_ACL_JSON invalid: %w", err)
+	}
+	return acl, nil
 }
 
 // getEnv returns the env var or defaultValue when unset / empty.
