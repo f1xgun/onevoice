@@ -135,12 +135,10 @@ func TestRequestResend_HappyPath_FirstCallIssuesAndStampsTTL(t *testing.T) {
 	require.NoError(t, s.RequestResend(context.Background(), u.ID))
 	require.Equal(t, 1, s.issued)
 
-	// Both counters present + bounded.
 	minKey := fmt.Sprintf("verify_resend:user:%s:min", u.ID)
 	hrKey := fmt.Sprintf("verify_resend:user:%s:hr", u.ID)
 	require.True(t, mr.Exists(minKey))
 	require.True(t, mr.Exists(hrKey))
-	// TTL must be set (a 0 TTL would mean key lives forever — defeats throttle).
 	require.True(t, mr.TTL(minKey) > 0)
 	require.True(t, mr.TTL(hrKey) > 0)
 }
@@ -170,16 +168,12 @@ func TestRequestResend_SixthCallInHourThrottles(t *testing.T) {
 	u := s.users.addUser(t, "alice@example.com", false)
 	minKey := fmt.Sprintf("verify_resend:user:%s:min", u.ID)
 
-	// Five successful resends. After each, manually nuke the minute key so
-	// the next call passes the 1/min gate — simulates 60s passing without
-	// actually sleeping.
 	for i := 0; i < 5; i++ {
 		require.NoError(t, s.RequestResend(context.Background(), u.ID), "iteration %d", i)
 		mr.Del(minKey)
 	}
 	require.Equal(t, 5, s.issued)
 
-	// 6th attempt must hit the hourly cap.
 	err := s.RequestResend(context.Background(), u.ID)
 	require.ErrorIs(t, err, domain.ErrResendThrottled)
 	require.Equal(t, 5, s.issued, "hourly cap must short-circuit issue")
@@ -193,14 +187,11 @@ func TestRequestResend_SixthCallInHourThrottles(t *testing.T) {
 func TestGenerateVerifyToken_Entropy(t *testing.T) {
 	got, err := generateVerifyToken()
 	require.NoError(t, err)
-	// base64.RawURLEncoding of 32 bytes = ceil(32 * 4 / 3) = 43 chars.
 	require.Len(t, got, 43, "32-byte raw URL-safe base64 → 43 chars")
-	// Must not contain '+' '/' '=' (the URL-unsafe / padded variants).
 	require.NotContains(t, got, "+")
 	require.NotContains(t, got, "/")
 	require.NotContains(t, got, "=")
 
-	// Two consecutive tokens MUST differ (crypto/rand is the source).
 	got2, err := generateVerifyToken()
 	require.NoError(t, err)
 	require.NotEqual(t, got, got2)

@@ -73,10 +73,6 @@ export function useRadiogroupKeyboard<T extends string>({
   value,
   onValueChange,
 }: UseRadiogroupKeyboardOptions<T>): UseRadiogroupKeyboardResult<T> {
-  // We hold a ref to the latest options/value so the keydown handler
-  // doesn't need to be recreated on every render. The handler is itself
-  // memoized so consumers can pass it to a stable container without
-  // re-binding listeners.
   const stateRef = useRef({ options, value });
   stateRef.current = { options, value };
 
@@ -85,8 +81,6 @@ export function useRadiogroupKeyboard<T extends string>({
       const { options: opts, value: current } = stateRef.current;
       if (opts.length === 0) return;
       const idx = opts.indexOf(current);
-      // If the current value isn't in the options list (caller bug or
-      // mid-transition), bail rather than navigating from -1.
       if (idx < 0) return;
 
       let nextIdx: number | null = null;
@@ -105,11 +99,6 @@ export function useRadiogroupKeyboard<T extends string>({
       const nextValue = opts[nextIdx];
       onValueChange(nextValue);
 
-      // Move focus to the newly-checked radio. We schedule via
-      // requestAnimationFrame so the parent re-renders with the new
-      // `tabIndex={0}` before we ask the browser to focus that node.
-      // `currentTarget` is the radiogroup container; we search inside it
-      // by data attribute (no refs threaded through the caller's JSX).
       const container = e.currentTarget;
       const focusNext = () => {
         const target = container.querySelector<HTMLElement>(

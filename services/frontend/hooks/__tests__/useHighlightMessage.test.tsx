@@ -24,9 +24,6 @@ function Harness({ messagesReady }: { messagesReady: boolean }) {
 }
 
 function setHighlightParam(value: string | null) {
-  // Reset the same URLSearchParams instance so the hook's `params` reference is stable.
-  // Removing all keys keeps the same object identity, which matches Next's behavior of
-  // returning the same ReadonlyURLSearchParams unless the URL changes.
   for (const k of Array.from(params.keys())) params.delete(k);
   if (value !== null) params.set('highlight', value);
 }
@@ -103,7 +100,6 @@ describe('useHighlightMessage', () => {
     act(() => {
       vi.advanceTimersByTime(1749);
     });
-    // Just before the flash window closes — still highlighted, no replace yet.
     expect(target.getAttribute('data-highlight')).toBe('true');
     expect(replaceMock).not.toHaveBeenCalled();
 
@@ -119,13 +115,10 @@ describe('useHighlightMessage', () => {
     setHighlightParam('missing-msg');
 
     expect(() => render(<Harness messagesReady={true} />)).not.toThrow();
-    // No replace because no element matched.
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
   it('uses CSS.escape so special chars in msgId still match', () => {
-    // Inject an msgId containing a chunk that would otherwise be interpreted as
-    // a CSS combinator/quote — e.g., the literal `"` and `]` characters.
     const tricky = '5f7c#weird"id';
     setHighlightParam(tricky);
     const target = document.createElement('div');

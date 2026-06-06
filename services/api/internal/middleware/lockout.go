@@ -63,9 +63,6 @@ type loginReqProbe struct {
 func LockoutMiddleware(lock *lockout.Lockout) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// 1. Body peek + restore. ANY decode error → pass through; the
-			// downstream handler will fail at its own json.Decode with the
-			// canonical 400 error message. We do not duplicate validation here.
 			bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, bodyPeekLimit))
 			if err != nil {
 				next.ServeHTTP(w, r)
@@ -79,16 +76,13 @@ func LockoutMiddleware(lock *lockout.Lockout) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 2. Derive trusted IP + /16 bucket.
 			clientIP := ClientIP(r)
 			net16 := Net16(clientIP)
 			if net16 == "" {
-				// IPv6 / unparseable → no lockout key; pass through.
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// 3. Check tier. Fail-open on Redis error.
 			tier, err := lock.GetTier(r.Context(), probe.Email, net16)
 			if err != nil {
 				slog.Warn("lockout: GetTier failed; failing open",
@@ -127,7 +121,7 @@ func writeLockedResponse(w http.ResponseWriter, ttl time.Duration) {
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(seconds))
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusLocked) // 423
+	w.WriteHeader(http.StatusLocked)
 	if err := json.NewEncoder(w).Encode(map[string]any{
 		"code":                "account_locked",
 		"retry_after_seconds": seconds,

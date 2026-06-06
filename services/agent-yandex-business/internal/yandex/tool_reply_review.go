@@ -29,13 +29,11 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 					return fmt.Errorf("navigate to reviews: %w", err)
 				}
 
-				// Session canary
 				if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
 					return err
 				}
 				humanDelay()
 
-				// Locate the review by ID
 				reviewCard := page.Locator(fmt.Sprintf("[data-review-id='%s']", reviewID)).First()
 				if err := reviewCard.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(listItemTimeoutMs),
@@ -43,7 +41,6 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 					return a2a.NewNonRetryableError(fmt.Errorf("review not found: %s", reviewID))
 				}
 
-				// Find and click the "Reply" button within the review card
 				replyBtnSelectors := []string{
 					"[data-testid='reply-button']",
 					"button:has-text('Ответить')",
@@ -68,7 +65,6 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 				}
 				humanDelay()
 
-				// Wait for reply textarea and fill it
 				textareaSelectors := []string{
 					"[data-testid='reply-textarea']",
 					"textarea[name='reply']",
@@ -94,7 +90,6 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 				}
 				humanDelay()
 
-				// Click submit button
 				submitSelectors := []string{
 					"[data-testid='submit-reply']",
 					"button:has-text('Отправить')",
@@ -118,7 +113,6 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 					return fmt.Errorf("submit button not found — reply may not have been sent")
 				}
 
-				// Wait for confirmation — reply appears or success indicator
 				humanDelay()
 				return nil
 			})

@@ -104,19 +104,11 @@ type StreamSSERequest struct {
 func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	flusher, ok := req.Writer.(http.Flusher)
 	if !ok {
-		// No bytes have been written yet, so callers can still map this to a
-		// non-SSE HTTP error response.
 		return fmt.Errorf("orchestratorclient: StreamSSE: writer does not implement http.Flusher")
 	}
 
-	// Resolve correlation_id once; reused for ctx propagation and upstream header.
-	// We do NOT overwrite a caller-supplied header — the chatturn paths inject
-	// their own merged map and that override wins.
 	corrID := logger.CorrelationIDFromContext(ctx)
 
-	// Upstream context: detached when budget > 0 (preserves chatturn lifecycle
-	// invariant — client disconnect must not abort the LLM call), inherited
-	// otherwise.
 	var (
 		upstreamCtx context.Context
 		cancel      context.CancelFunc
@@ -138,8 +130,6 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		// "stream chat" / "stream resume" wording lets caller substring matchers
-		// distinguish pre-connect failures from mid-drain ones.
 		verb := "stream chat"
 		if req.BatchID != "" {
 			verb = "stream resume"
@@ -148,9 +138,6 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// SSE response envelope: written exactly once, before the first byte of
-	// the upstream body lands on the wire. X-Accel-Buffering: no disables
-	// nginx's response buffering so the FE sees frames as they arrive.
 	req.Writer.Header().Set("Content-Type", "text/event-stream")
 	req.Writer.Header().Set("Cache-Control", "no-cache")
 	req.Writer.Header().Set("Connection", "keep-alive")
@@ -160,9 +147,6 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, sseScannerBufferBytes), sseScannerBufferBytes)
 
-	// Client-disconnect signal under the detached-ctx regime. When
-	// OrchCtxBudget == 0, upstreamCtx == ctx and a client disconnect already
-	// aborts the upstream — clientGone stays nil so the select default wins.
 	var clientGone <-chan struct{}
 	if req.OrchCtxBudget > 0 {
 		clientGone = ctx.Done()
@@ -170,9 +154,6 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		// Skip writes to a dead socket but keep draining the upstream so
-		// tool_result frames still arrive and the orchestrator's post-stream
-		// cleanup runs.
 		write := true
 		if clientGone != nil {
 			select {
@@ -193,8 +174,6 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 		}
 		ev, err := sse.Unmarshal([]byte(line[6:]))
 		if err != nil {
-			// Malformed frame: don't hand callers a zero-valued domain event,
-			// but keep draining — a single garbled frame should not crash the loop.
 			continue
 		}
 		req.OnEvent(ev)
@@ -233,8 +212,6 @@ func (c *Client) buildStreamRequest(ctx context.Context, conversationID, batchID
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	// Never overwrite a caller-supplied X-Correlation-ID — chatturn paths
-	// inject their own merged map and that override wins.
 	if corrID != "" && req.Header.Get("X-Correlation-ID") == "" {
 		req.Header.Set("X-Correlation-ID", corrID)
 	}
@@ -315,8 +292,6 @@ func (c *Client) DraftReply(ctx context.Context, in DraftReplyRequest) (*DraftRe
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Bounded readback (512 bytes) — a streaming JSON error response
-		// must not be slurped into memory wholesale.
 		snippet := make([]byte, 0, 512)
 		buf := make([]byte, 512)
 		n, _ := resp.Body.Read(buf)

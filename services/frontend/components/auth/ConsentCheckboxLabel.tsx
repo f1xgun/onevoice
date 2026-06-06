@@ -14,8 +14,6 @@ export function ConsentCheckboxLabel({ text }: { text: string }) {
   const out: ReactNode[] = [];
   let lastIndex = 0;
   let i = 0;
-  // RegExp.exec maintains state via lastIndex when the regex has the /g
-  // flag — re-creating the iterator each call would loop forever.
   let m: RegExpExecArray | null;
   const re = new RegExp(LINK_RE.source, 'g');
   while ((m = re.exec(text)) !== null) {

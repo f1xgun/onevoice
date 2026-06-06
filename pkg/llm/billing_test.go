@@ -82,28 +82,28 @@ func TestCalculateCommission(t *testing.T) {
 			mode:         "percentage",
 			providerCost: 0.01,
 			tier:         "free",
-			expectedComm: 0.002, // 20% of 0.01
+			expectedComm: 0.002,
 		},
 		{
 			name:         "flat mode",
 			mode:         "flat",
 			providerCost: 0.01,
 			tier:         "free",
-			expectedComm: 0.001, // Fixed $0.001
+			expectedComm: 0.001,
 		},
 		{
 			name:         "tiered mode - free",
 			mode:         "tiered",
 			providerCost: 0.01,
 			tier:         "free",
-			expectedComm: 0.003, // 30% for free tier
+			expectedComm: 0.003,
 		},
 		{
 			name:         "tiered mode - pro",
 			mode:         "tiered",
 			providerCost: 0.01,
 			tier:         "pro",
-			expectedComm: 0.001, // 10% for pro tier
+			expectedComm: 0.001,
 		},
 	}
 
@@ -116,7 +116,6 @@ func TestCalculateCommission(t *testing.T) {
 }
 
 func TestBillingRepository_Interface(t *testing.T) {
-	// Verify interface is defined
 	var _ llm.BillingRepository = (*MockBillingRepository)(nil)
 }
 
@@ -136,8 +135,6 @@ func (m *MockBillingRepository) LogUsage(_ context.Context, log *llm.UsageLog) e
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.logs = append(m.logs, *log)
-	// Store a copy on the new-shape slice so callers reading after the fact
-	// see a stable pointer that won't be mutated by future LogUsage calls.
 	cp := *log
 	m.Logs = append(m.Logs, &cp)
 	return nil
@@ -163,7 +160,7 @@ func (m *MockBillingRepository) CallCount() int {
 }
 
 func (m *MockBillingRepository) GetUserBalance(_ context.Context, _ uuid.UUID) (float64, error) {
-	return 10.0, nil // Mock balance
+	return 10.0, nil
 }
 
 // GetDailySpend returns the preloaded value from DailySpendByBusiness, or
@@ -202,7 +199,6 @@ func TestMockBillingRepository(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 
-	// Log usage
 	log := &llm.UsageLog{
 		ID:          uuid.New(),
 		BusinessID:  businessID,
@@ -215,12 +211,10 @@ func TestMockBillingRepository(t *testing.T) {
 	err := repo.LogUsage(ctx, log)
 	assert.NoError(t, err)
 
-	// Get daily spend — aggregate by business in the in-memory fallback.
 	spend, err := repo.GetDailySpend(ctx, businessID, time.Now())
 	assert.NoError(t, err)
 	assert.Equal(t, 0.05, spend)
 
-	// Get balance
 	balance, err := repo.GetUserBalance(ctx, userID)
 	assert.NoError(t, err)
 	assert.Equal(t, 10.0, balance)

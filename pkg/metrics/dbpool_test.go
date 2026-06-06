@@ -45,12 +45,10 @@ func TestMongoMonitors_PoolEventLifecycle(t *testing.T) {
 	if mon == nil || mon.Event == nil {
 		t.Fatal("NewMongoPoolMonitor returned monitor with nil Event")
 	}
-	// Synthesize a full checkout lifecycle.
 	mon.Event(&event.PoolEvent{Type: event.ConnectionCheckOutStarted, ConnectionID: 1})
 	time.Sleep(2 * time.Millisecond)
 	mon.Event(&event.PoolEvent{Type: event.ConnectionCheckedOut, ConnectionID: 1})
 	mon.Event(&event.PoolEvent{Type: event.ConnectionCheckedIn, ConnectionID: 1})
-	// mongo_pool_in_use should net to baseline across the balanced pair.
 	if got := testutil.ToFloat64(mongoPoolInUse); got != before {
 		t.Errorf("mongo_pool_in_use = %v, want %v after balanced checkout+checkin", got, before)
 	}
@@ -60,8 +58,6 @@ func TestMongoMonitors_CheckOutFailedCleansUp(t *testing.T) {
 	mon := NewMongoPoolMonitor()
 	mon.Event(&event.PoolEvent{Type: event.ConnectionCheckOutStarted, ConnectionID: 42})
 	mon.Event(&event.PoolEvent{Type: event.ConnectionCheckOutFailed, ConnectionID: 42})
-	// The map entry should be gone — a subsequent ConnectionCheckedOut for the same
-	// ID would have nothing to observe, but must not panic.
 	mon.Event(&event.PoolEvent{Type: event.ConnectionCheckedOut, ConnectionID: 42})
 }
 

@@ -92,7 +92,6 @@ func TestRecordToolDispatch_MultipleCalls_Accumulate(t *testing.T) {
 	tool := "test__multi_call"
 	agent := "test"
 
-	// Record multiple calls
 	for i := 0; i < 5; i++ {
 		RecordToolDispatch(tool, agent, "success", 100*time.Millisecond)
 	}

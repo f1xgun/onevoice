@@ -196,13 +196,10 @@ func TestAnthropic_SystemRouting(t *testing.T) {
 		assert.Empty(t, systemBlocks)
 		require.Len(t, msgs, 3)
 
-		// user
 		assert.Equal(t, anthropic.MessageParamRoleUser, msgs[0].Role)
 
-		// assistant with text + tool_use block
 		assert.Equal(t, anthropic.MessageParamRoleAssistant, msgs[1].Role)
 		require.GreaterOrEqual(t, len(msgs[1].Content), 1)
-		// At least one block must be a tool_use referencing call_1.
 		foundToolUse := false
 		for _, blk := range msgs[1].Content {
 			if blk.OfToolUse != nil && blk.OfToolUse.ID == "call_1" && blk.OfToolUse.Name == "telegram__send_channel_post" {
@@ -211,7 +208,6 @@ func TestAnthropic_SystemRouting(t *testing.T) {
 		}
 		assert.True(t, foundToolUse, "assistant message must carry a tool_use block matching the ToolCall")
 
-		// tool message as user-role MessageParam with tool_result block
 		assert.Equal(t, anthropic.MessageParamRoleUser, msgs[2].Role)
 		require.Len(t, msgs[2].Content, 1)
 		require.NotNil(t, msgs[2].Content[0].OfToolResult)
@@ -246,7 +242,6 @@ func TestAnthropic_DefaultMaxTokens(t *testing.T) {
 
 			var body map[string]interface{}
 			require.NoError(t, json.Unmarshal(captured, &body), "body=%s", string(captured))
-			// JSON numbers decode as float64.
 			require.IsType(t, float64(0), body["max_tokens"])
 			assert.Equal(t, tc.wantMax, int64(body["max_tokens"].(float64)))
 		})

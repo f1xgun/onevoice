@@ -90,11 +90,9 @@ func TestMarkWithdrawn_IdempotentOnAlreadyWithdrawn(t *testing.T) {
 	userID := uuid.New()
 
 	mock.ExpectBegin()
-	// First call: row updated.
 	mock.ExpectExec(`UPDATE user_consents.*withdrawn_at IS NULL`).
 		WithArgs(userID, "pdn").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	// Second call: zero rows updated (the guard kicked in).
 	mock.ExpectExec(`UPDATE user_consents.*withdrawn_at IS NULL`).
 		WithArgs(userID, "pdn").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))

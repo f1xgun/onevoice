@@ -64,7 +64,6 @@ func TestPendingToolCall_EnsureIndexes_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
-	// Second run — must be a no-op.
 	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
 
 	specs, err := db.Collection("pending_tool_calls").Indexes().ListSpecifications(ctx)
@@ -106,7 +105,6 @@ func TestPersist_HappyPath_SetsPendingWithExpiresAt(t *testing.T) {
 	before := time.Now().UTC()
 	require.NoError(t, repo.Persist(ctx, batch))
 
-	// Callers receive the post-promote state mirrored on the input pointer.
 	assert.Equal(t, "pending", batch.Status, "Persist must leave the batch pointer in status=pending")
 	assert.False(t, batch.ExpiresAt.IsZero(), "Persist must set expires_at on the batch pointer")
 

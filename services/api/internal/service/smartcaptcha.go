@@ -108,10 +108,6 @@ func (y *yandexSmartCaptcha) Verify(ctx context.Context, token, clientIP string)
 		return fmt.Errorf("%w: read body: %v", ErrCaptchaTransient, err)
 	}
 
-	// Yandex SmartCaptcha success response shape:
-	//   {"status":"ok","message":"","host":"..."}
-	// Failure response shape:
-	//   {"status":"failed","message":"invalid token"}
 	var parsed struct {
 		Status  string `json:"status"`
 		Message string `json:"message"`

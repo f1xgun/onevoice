@@ -105,11 +105,9 @@ func classifyYandexError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Preserve an already-typed code from upstream wrapping sites.
 	if a2a.CodeOf(err) != "" {
 		return err
 	}
-	// Sentinel check — canary already wrapped in NonRetryableError, propagate as-is.
 	if errors.Is(err, yandex.ErrSessionExpired) {
 		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
 	}
@@ -126,7 +124,6 @@ func classifyYandexError(err error) error {
 	if strings.Contains(msg, "reply form unavailable") || strings.Contains(msg, "reply button not found") {
 		return a2a.NewCodedError("transient", a2a.NewNonRetryableError(err))
 	}
-	// Transient (timeout, network, etc.) — keep retryable.
 	return a2a.NewCodedError("transient", err)
 }
 
@@ -156,10 +153,6 @@ func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRe
 }
 
 func (h *Handler) listCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	// list_companies is the only tool that can be invoked BEFORE an
-	// integration row exists (during the connect-flow company picker).
-	// In that case the API service passes cookies inline via req.Args
-	// instead of relying on tokenclient → DB → decrypt.
 	if cookiesJSON, ok := req.Args["cookies"].(string); ok && cookiesJSON != "" {
 		browser := h.pool.ForBusiness(req.BusinessID, cookiesJSON, "")
 		companies, listErr := browser.ListCompanies(ctx)

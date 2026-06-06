@@ -57,13 +57,9 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 
 	ownerRoleID, err := uuid.Parse(domain.SystemRoleOwnerID)
 	if err != nil {
-		// Compile-time impossible: SystemRoleOwnerID is a literal valid UUID.
 		return fmt.Errorf("authz.EnsureOwnerExistsAfter: parse SystemRoleOwnerID: %w", err)
 	}
 
-	// FOR UPDATE serializes concurrent demote/remove against the same business.
-	// status='active' only: suspended members cannot act, so counting them would create
-	// a back-door last-owner stranding (matches CountOwnersByBusiness).
 	const lockSQL = `
 		SELECT user_id, role_id
 		FROM business_members
@@ -121,7 +117,6 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 			if change.RoleID == nil {
 				return fmt.Errorf("authz.EnsureOwnerExistsAfter: OwnerChangeRoleDelete requires RoleID")
 			}
-			// FK ON DELETE RESTRICT prevents the delete in practice; the simulation captures intent.
 			if m.RoleID == *change.RoleID {
 				continue
 			}
@@ -153,7 +148,6 @@ func CheckEscalationSubset(actorRoleID uuid.UUID, actorPerms, proposedPerms []Pe
 	}
 	for _, p := range proposedPerms {
 		if _, ok := have[p]; !ok {
-			// Wrap with the missing permission for audit context; errors.Is still matches sentinel.
 			return fmt.Errorf("%w: missing %q", ErrCannotGrantUnownedPermissions, p)
 		}
 	}
@@ -164,7 +158,7 @@ func CheckEscalationSubset(actorRoleID uuid.UUID, actorPerms, proposedPerms []Pe
 // members.update_role permission. Fires only when actorRoleID == editedRoleID.
 // See docs/pkg/authz-invariants.md.
 func CheckSelfLockout(actorUserID, actorRoleID, editedRoleID uuid.UUID, newPerms []Permission) error {
-	_ = actorUserID // reserved for future audit logging
+	_ = actorUserID
 	if actorRoleID != editedRoleID {
 		return nil
 	}

@@ -52,9 +52,6 @@ export function SidebarSearch() {
   const pathname = usePathname();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
-  // Route-aware default scope.
-  // /chat/projects/{id} → default to project; show «По всему бизнесу» checkbox.
-  // /chat root          → default to entire business; do NOT render checkbox.
   const projectIdFromRoute = useMemo(() => {
     if (!pathname) return null;
     const m = pathname.match(/^\/chat\/projects\/([^/]+)/);
@@ -63,8 +60,6 @@ export function SidebarSearch() {
   const isProjectScoped = projectIdFromRoute != null && !scopeAllBusiness;
   const effectiveProjectId = isProjectScoped ? projectIdFromRoute : null;
 
-  // Reset checkbox on route change — default re-asserts when navigating
-  // between chat root and project pages.
   useEffect(() => {
     setScopeAllBusiness(false);
   }, [projectIdFromRoute]);
@@ -86,9 +81,6 @@ export function SidebarSearch() {
         .then((r) => r.data ?? []),
   });
 
-  // Cmd-K consumer. The event is dispatched from a global keydown listener
-  // at app/(app)/layout.tsx; we attach in this component so the focus +
-  // select happens on the actual <input>.
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
@@ -103,13 +95,11 @@ export function SidebarSearch() {
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
-      // Esc clears + closes + blurs in single keystroke.
       e.preventDefault();
       setQuery('');
       setIsOpen(false);
       inputRef.current?.blur();
     }
-    // ↑/↓/Enter delegated to the dropdown's roving-tabindex list.
   }
 
   const popoverOpen = isOpen && enabled;
@@ -155,17 +145,10 @@ export function SidebarSearch() {
           align="start"
           sideOffset={4}
           id={listboxId}
-          // role="listbox" requires children with role="option" — applying
-          // it unconditionally and rendering an empty-state text node trips
-          // the axe `aria-required-children` (critical) rule. We apply
-          // role="listbox" only when there are real result rows; the empty
-          // state uses role="status" (a polite live region — also satisfies
-          // aria-controls because the element identity is stable).
           role={results.length > 0 ? 'listbox' : 'status'}
           aria-live={results.length === 0 ? 'polite' : undefined}
           aria-label={results.length > 0 ? tSide('search.resultsAria') : tSide('search.stateAria')}
           className="z-50 max-h-96 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-md border border-line bg-paper-raised p-1 shadow-ov-2"
-          // Keep focus in the search <input> so the user can keep typing.
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           {projectIdFromRoute && (
@@ -179,11 +162,6 @@ export function SidebarSearch() {
             </label>
           )}
           {results.length === 0 && !isFetching && (
-            // Compact inline empty — visual retuned to match mock-states.jsx
-            // "Поиск не нашёл совпадений" (lines 126–135): ink-mid lead +
-            // ink-soft hint. Phrasing preserved verbatim via
-            // sidebar.search.noResultsByQuery (covered by SidebarSearch
-            // test contract); the helper hint comes from sidebar.noResults.
             <div className="px-3 py-3">
               <div className="text-[13px] leading-relaxed text-ink-mid">
                 {tSide('search.noResultsByQuery', { query: debounced })}

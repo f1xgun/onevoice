@@ -74,7 +74,6 @@ func (c *Counter) Acquire(ctx context.Context, userID uuid.UUID, tier string) (f
 		return noopRelease, nil
 	}
 	if c.rdb == nil {
-		// No backing store and cap > 0: behave as Redis-down.
 		allowed, sentinel := c.policy.HandleRedisError(errors.New("ssecounter: nil redis client"))
 		if !allowed {
 			metrics.SSEConcurrencyBlocked.WithLabelValues(tier).Inc()
@@ -95,18 +94,12 @@ func (c *Counter) Acquire(ctx context.Context, userID uuid.UUID, tier string) (f
 			metrics.SSEConcurrencyBlocked.WithLabelValues(tier).Inc()
 			return noopRelease, sentinel
 		}
-		// Local-fallback allowed: no Redis state was committed, so release
-		// only touches the in-process gauge.
 		metrics.SSEConcurrencyInflight.Inc()
 		return makeReleaseLocalFallback(), nil
 	}
 
 	count, _ := incr.Result()
 	if int(count) > c.max {
-		// Over cap: roll back our INCR and reject. Errors here are
-		// best-effort; the TTL guarantees eventual cleanup, but we surface
-		// failures via a counter + warn log so partial Redis outages are
-		// dashboardable rather than silently relying on the TTL sweep.
 		if derr := c.rdb.Decr(ctx, key).Err(); derr != nil {
 			slog.WarnContext(ctx, "ssecounter: over-cap rollback DECR failed; relying on TTL",
 				"user_id", userID.String(), "error", derr)
@@ -134,8 +127,6 @@ func makeReleaseRedis(rdb *redis.Client, key string) func() {
 		if done.Swap(true) {
 			return
 		}
-		// Background ctx — release MUST run even when the request ctx
-		// is already canceled (the common case for SSE stream close).
 		_ = rdb.Decr(context.Background(), key).Err()
 		metrics.SSEConcurrencyInflight.Dec()
 	}

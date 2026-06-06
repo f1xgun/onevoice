@@ -84,7 +84,6 @@ func TestOpenAI_SystemBlocksConcatenated(t *testing.T) {
 	first := msgs[0].(map[string]interface{})
 	assert.Equal(t, "system", first["role"])
 	assert.Equal(t, "P\n\nB", first["content"])
-	// User message preserved unchanged in second position.
 	assert.Equal(t, "user", msgs[1].(map[string]interface{})["role"])
 }
 
@@ -198,7 +197,6 @@ func TestAnthropic_SystemBlocksPreferredOverScrub(t *testing.T) {
 	assert.Equal(t, "A", systemArr[0].(map[string]interface{})["text"])
 	assert.Equal(t, "B", systemArr[1].(map[string]interface{})["text"])
 
-	// Block A flagged CacheBoundary → carries cache_control. Block B does not.
 	ccA, hasA := systemArr[0].(map[string]interface{})["cache_control"]
 	require.True(t, hasA, "CacheBoundary=true block must carry cache_control: %v", systemArr[0])
 	assert.Equal(t, "ephemeral", ccA.(map[string]interface{})["type"])

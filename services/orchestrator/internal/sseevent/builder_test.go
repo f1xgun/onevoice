@@ -50,7 +50,7 @@ func TestFromEvent_PerType(t *testing.T) {
 		{
 			name: "done — only type",
 			typ:  orchestrator.EventDone,
-			want: sse.Event{Type: "done", Content: "Привет"}, // content survives if set
+			want: sse.Event{Type: "done", Content: "Привет"},
 		},
 		{
 			name: "error — type+content",

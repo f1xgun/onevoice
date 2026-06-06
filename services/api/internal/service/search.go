@@ -65,7 +65,6 @@ func (s *Searcher) Search(
 	projectID *string,
 	limit int,
 ) ([]SearchResult, error) {
-	// Cross-tenant defense-in-depth — repository layer enforces the same guard.
 	if businessID == "" || userID == "" {
 		return nil, domain.ErrInvalidScope
 	}
@@ -76,7 +75,6 @@ func (s *Searcher) Search(
 		limit = 20
 	}
 
-	// Metadata-only log line — NEVER the literal query text. Verified by TestSearcher_LogShape_NoQueryText.
 	slog.InfoContext(ctx, "search.query",
 		"user_id", userID,
 		"business_id", businessID,
@@ -124,7 +122,6 @@ func mergeAndRank(
 		snippet := BuildSnippet(m.TopContent, prefixes)
 		marks := HighlightRanges(snippet, prefixes)
 		if existing, ok := byID[m.ConversationID]; ok {
-			// Title+content both hit: keep stronger score; fill snippet/marks/match_count from content.
 			if score > existing.Score {
 				existing.Score = score
 			}
@@ -147,7 +144,6 @@ func mergeAndRank(
 	for _, v := range byID {
 		out = append(out, *v)
 	}
-	// Fully-ordered comparator removes the same-query wobble from Go map iteration order.
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Score != out[j].Score {
 			return out[i].Score > out[j].Score

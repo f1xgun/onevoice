@@ -117,7 +117,6 @@ func TestBuildSplit_BlockOrdering(t *testing.T) {
 			Now:                time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
 		}, nil, nil)
 
-		// Block 1 invariants
 		assert.True(t, strings.HasPrefix(platform, "Ты — AI-ассистент"),
 			"Block 1 (RU) must start with the preamble: %q", platform)
 		assert.Contains(t, platform, "## Правила", "Block 1 must contain the rules header")
@@ -130,7 +129,6 @@ func TestBuildSplit_BlockOrdering(t *testing.T) {
 		assert.NotContains(t, platform, "Текущая дата и время",
 			"Block 1 must NOT carry per-turn timestamp")
 
-		// Block 2 invariants
 		assert.Contains(t, business, "## Бизнес: Кофейня Уют",
 			"Block 2 must carry business name header")
 		assert.Contains(t, business, "Текущая дата и время:",

@@ -127,9 +127,6 @@ func TestResumeHandler_StreamsToolDisplayNameAndKey(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 
-	// Parse each `data: {...}` SSE frame back into a generic map so we can
-	// assert the JSON field names match the chat.go canonical shape exactly
-	// (tool_display_name / tool_display_name_key).
 	frames := parseSSEFrames(t, rec.Body.String())
 	var toolCall, toolResult map[string]interface{}
 	for _, f := range frames {
@@ -284,7 +281,6 @@ func TestInternalToolsAll_ReturnsFullProjection(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries, got %d: %v", len(entries), entries)
 	}
-	// Every entry must carry the 5 canonical keys.
 	required := []string{"name", "platform", "floor", "editableFields", "description"}
 	for i, e := range entries {
 		for _, k := range required {
@@ -292,7 +288,6 @@ func TestInternalToolsAll_ReturnsFullProjection(t *testing.T) {
 				t.Fatalf("entry[%d] missing key %q: %v", i, k, e)
 			}
 		}
-		// editableFields must be an array, never null.
 		if _, ok := e["editableFields"].([]interface{}); !ok {
 			t.Fatalf("entry[%d].editableFields is not an array: %v", i, e["editableFields"])
 		}

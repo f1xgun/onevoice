@@ -47,50 +47,28 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// + PITFALLS §1.4: defensively strip the
-			// query string from the URL on the password-reset confirm
-			// path. r.URL.Path is already query-string-free, so the
-			// existing slog.String("path", r.URL.Path) below is safe
-			// today. We mutate r.URL.RawQuery here so any DOWNSTREAM
-			// middleware (panic recovery, Sentry, request-id) or a
-			// future log-format change cannot surface the ?token=…
-			// fragment for THIS path specifically. Path is preserved
-			// so chi can still route the request.
 			if strings.Contains(r.URL.Path, resetConfirmPathFragment) {
 				r.URL.RawQuery = ""
 			}
 			start := time.Now()
 
-			// Log request start
 			logger.Info("request started",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				// remote_addr is the raw TCP peer (chi.RealIP is intentionally
-				// not mounted). For trust-gated client IP, use
-				// middleware.ClientIP — see trusted_proxy.go. Logged here for
-				// best-effort forensics only.
 				slog.String("remote_addr", r.RemoteAddr),
 			)
 
-			// Wrap response writer to capture status
 			wrapped := wrapResponseWriter(w)
 
-			// Call next handler
 			next.ServeHTTP(wrapped, r)
 
-			// Calculate duration
 			duration := time.Since(start)
 
-			// Log request completion
 			logger.Info("request completed",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", wrapped.status),
 				slog.Int64("duration_ms", duration.Milliseconds()),
-				// remote_addr is the raw TCP peer (chi.RealIP is intentionally
-				// not mounted). For trust-gated client IP, use
-				// middleware.ClientIP — see trusted_proxy.go. Logged here for
-				// best-effort forensics only.
 				slog.String("remote_addr", r.RemoteAddr),
 			)
 		})

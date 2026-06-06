@@ -204,7 +204,7 @@ func TestChatResponse_Fields(t *testing.T) {
 			ToolCalls:    []ToolCall{{ID: "call_1", Type: ToolCallTypeFunction}},
 			FinishReason: "stop",
 			Usage:        usage,
-			Latency:      100 * 1000 * 1000, // 100ms in nanoseconds
+			Latency:      100 * 1000 * 1000,
 		}
 
 		assert.Equal(t, "Hello", resp.Content)

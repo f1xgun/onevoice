@@ -87,16 +87,12 @@ export function SearchResultRow({ result, onSelect }: Props) {
     ? format(parseISO(result.lastMessageAt), 'd MMM', { locale: dateFnsLocale })
     : '';
 
-  // The parent Popover.Content carries role="listbox"
-  // when results.length > 0; ARIA requires its direct children to be option.
   return (
     <div role="option" aria-selected={false} className="rounded-md hover:bg-paper-sunken">
       <div className="flex items-center gap-2 px-2 pt-1.5">
         <Link
           href={href}
           onClick={onSelect}
-          // useRovingTabIndex; this attribute
-          // is the contract anchor.
           data-roving-item="true"
           className="flex flex-1 items-center gap-2 truncate text-sm text-ink"
         >

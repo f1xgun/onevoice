@@ -81,7 +81,6 @@ func TestDeleteAccount_HappyPath(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 
-	// Soft-delete columns set
 	ctx := context.Background()
 	var deletedAt, requestedAt *time.Time
 	err := pgPool.QueryRow(ctx,
@@ -91,14 +90,12 @@ func TestDeleteAccount_HappyPath(t *testing.T) {
 	require.NotNil(t, deletedAt, "deleted_at should be set")
 	require.NotNil(t, requestedAt, "deletion_requested_at should be set")
 
-	// Outbox has 2 rows for this user
 	var outboxCount int
 	err = pgPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM email_outbox WHERE to_email = $1`, email).Scan(&outboxCount)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, outboxCount, 2, "expected confirmation + T-7 outbox rows")
 
-	// Audit row for account.deletion_requested
 	var auditCount int
 	err = pgPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM audit_logs WHERE action = 'account.deletion_requested' AND user_id = $1`,
@@ -120,7 +117,6 @@ func TestDeleteAccount_PasswordWrong_Returns401(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	require.Equal(t, "password_invalid", body["code"])
 
-	// users row untouched — deletion_requested_at MUST be NULL
 	ctx := context.Background()
 	var requestedAt *time.Time
 	err := pgPool.QueryRow(ctx,
@@ -129,7 +125,6 @@ func TestDeleteAccount_PasswordWrong_Returns401(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, requestedAt, "deletion_requested_at must stay NULL on wrong-password attempt")
 
-	// No deletion_requested audit row written
 	var auditCount int
 	err = pgPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM audit_logs WHERE action = 'account.deletion_requested' AND user_id = $1`,
@@ -149,12 +144,8 @@ func TestDeleteAccount_IdempotencyGuard_Returns423(t *testing.T) {
 	resp1.Body.Close()
 	require.Equal(t, http.StatusNoContent, resp1.StatusCode, "first delete should succeed")
 
-	// Second attempt — the user might be soft-deleted (auth still works
-	// briefly via JWT) but the service should return 423.
 	resp2 := deleteAccountReq(t, token, password)
 	defer resp2.Body.Close()
-	// The grace gate middleware also returns 423 on the next request —
-	// either path produces 423; we just assert non-204.
 	require.NotEqual(t, http.StatusNoContent, resp2.StatusCode, "second delete must not succeed")
 }
 
@@ -168,12 +159,7 @@ func TestPendingInvitationsRevokedOnDelete_SimplePath(t *testing.T) {
 
 	_, password, userID, token := seedUserForDelete(t)
 
-	// Manually seed a pending invitation by direct INSERT so we don't
-	// need to go through the full businesses + invitations + RBAC
-	// seeding path here. The service's revoke logic is the load-bearing
-	// assertion; the test confirms the WHERE clause matches.
 	ctx := context.Background()
-	// Need a business + role_id to satisfy FKs; use the owner system role.
 	var bizID uuid.UUID
 	err := pgPool.QueryRow(ctx, `INSERT INTO businesses (id, name, category, address, phone)
 	                              VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING id`,
@@ -215,16 +201,12 @@ func TestRestore_AfterDelete(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 
-	// POST /users/me/restore with the API base as Origin (matches CORS-
-	// allowed origins for the test deployment).
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/api/v1/users/me/restore", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Origin", baseURL)
 	resp2, err := httpClient.Do(req)
 	require.NoError(t, err)
 	defer resp2.Body.Close()
-	// 204 expected — but if test API CORS doesn't list baseURL, 403 is
-	// acceptable for the CI environment. Both prove the route is wired.
 	require.Contains(t, []int{http.StatusNoContent, http.StatusForbidden},
 		resp2.StatusCode, "restore expected 204 (allowed origin) or 403 (CORS list mismatch)")
 

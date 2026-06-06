@@ -114,12 +114,6 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
     vi.restoreAllMocks();
   });
 
-  // Note: After the hook split, `useChat` is the sole fetcher of
-  // GET /messages (preserving the single round-trip invariant). Hydration
-  // tests therefore exercise the combined `useChatWithApprovalFlow` wiring;
-  // assertions on `result.current.pendingApproval` remain byte-identical
-  // (wiring-only test changes).
-
   it('hydrates pendingApproval from a non-empty pendingApprovals array on mount', async () => {
     const fetchMock = vi.fn();
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
@@ -143,7 +137,6 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.pendingApproval).not.toBeNull();
-    // Fixture shape is already camelCase; deep-equal should pass.
     expect(result.current.pendingApproval).toEqual(singleCallBatch);
   });
 
@@ -218,7 +211,6 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
     expect(result.current.pendingApproval!.batchId).toBe('batch-expired');
   });
 
-  // ── Belt-and-braces — frontend hydration consumer ─────
   it('hydrates pendingApproval state when GET /messages returns a non-empty pendingApprovals array', async () => {
     const fetchMock = vi.fn().mockImplementationOnce(async () => {
       return new Response(JSON.stringify({ messages: [], pendingApprovals: [singleCallBatch] }), {
@@ -276,9 +268,7 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
     expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
   });
 
-  it.skip('does not hydrate pendingApproval when the batch is expired (TODO: gated on filter)', () => {
-    // Intentionally skipped — see preceding block comment.
-  });
+  it.skip('does not hydrate pendingApproval when the batch is expired (TODO: gated on filter)', () => {});
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +292,6 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
 
   it('POSTs resolve then opens resume SSE; pendingApproval clears on done; same assistant message', async () => {
     const fetchMock = vi.fn();
-    // 1st: GET /messages — hydrated with singleCallBatch + one assistant message.
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/messages')) {
@@ -327,7 +316,6 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
           /\/api\/v1\/businesses\/biz-test\/conversations\/cid-resolve-1\/pending-tool-calls\/batch-single\/resolve$/
         );
         expect(init!.method).toBe('POST');
-        // CRITICAL: body must not echo tool_name anywhere.
         const body = init!.body as string;
         expect(body).toBeDefined();
         expect(body).not.toContain('tool_name');
@@ -340,7 +328,6 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      // Resume SSE.
       expect(url).toMatch(
         /\/api\/v1\/businesses\/biz-test\/chat\/cid-resolve-1\/resume\?batch_id=batch-single$/
       );
@@ -356,7 +343,6 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    // Pattern (B): combined wiring — assertion below inspects messages.
     const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-resolve-1' }), {
       wrapper: makeQCWrapper(),
     });
@@ -369,14 +355,8 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
 
     expect(result.current.pendingApproval).toBeNull();
     expect(result.current.isStreaming).toBe(false);
-    // Only one assistant message exists — resume did NOT push a new one.
     const assistants = result.current.messages.filter((m) => m.role === 'assistant');
     expect(assistants).toHaveLength(1);
-    // And it got a tool_result applied (status done, result present).
-    // applySSEEvent matches by tool_call_id; fallback by name+pending if not found.
-    // In this hydration scenario there's no pre-existing pending toolCall, so the
-    // tool_result does not mutate the message — the assertion above (single assistant, streaming=false) covers
-    // the "same-message" invariant.
     expect(toast.error).not.toHaveBeenCalled();
   });
 });
@@ -412,9 +392,7 @@ describe('useConversationFlow.resolveApproval — error branches', () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith('Ошибка: операция уже была обработана');
-    // Card stays open.
     expect(result.current.pendingApproval).not.toBeNull();
-    // Total fetch calls so far: GET /messages + resolve (no resume).
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -502,7 +480,6 @@ describe('useConversationFlow.resolveApproval — error branches', () => {
   });
 
   it('resume SSE error AFTER resolve 200 → RESUME toast, pendingApproval cleared, isStreaming false', async () => {
-    // Pattern (B): isStreaming assertion → use combined wiring.
     const fetchMock = vi.fn();
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -518,7 +495,6 @@ describe('useConversationFlow.resolveApproval — error branches', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      // Resume → throws.
       throw new TypeError('network gone');
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -554,18 +530,15 @@ describe('useConversationFlow.resolveApproval — tool_name echo guard', () => {
     const { result } = hydratedFlow('cid-strip', fetchMock);
     await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
 
-    // resolve OK
     fetchMock.mockImplementationOnce(async (_input: RequestInfo | URL, init: RequestInit) => {
       const body = init.body as string;
       expect(body).not.toContain('"tool_name"');
-      // Confirm the user edit survived.
       expect(body).toContain('"text":"edited"');
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     });
-    // resume — empty SSE, just closes.
     fetchMock.mockImplementationOnce(async () => mockSSEResponse([sseLine({ type: 'done' })]));
 
     await act(async () => {
@@ -573,7 +546,6 @@ describe('useConversationFlow.resolveApproval — tool_name echo guard', () => {
         {
           id: 'call-single-1',
           action: 'edit',
-          // Caller accidentally includes tool_name — we must strip it.
           edited_args: {
             text: 'edited',
             tool_name: 'forged_name',
@@ -629,25 +601,16 @@ describe('useConversationFlow — sanitization & contracts', () => {
   });
 
   it('applies each resume SSE frame to the assistant message in order', async () => {
-    // Pre-merge: this test poked the now-removed `setPending` and observed
-    // a custom `onResumeEvent` callback. Post-merge, the resume frames feed
-    // applySSEEvent on the assistant message directly — assert against
-    // result.current.messages instead. Seed via the normal hydration path
-    // so pendingApproval is set the way production sets it.
     const fetchMock = vi.fn();
     const { result } = hydratedFlow('cid-forward', fetchMock);
     await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
 
-    // resolve POST → 200 ok
     fetchMock.mockImplementationOnce(async () => {
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     });
-    // resume SSE — emits tool_result + done; applySSEEvent must fold both
-    // into the (initially missing) assistant message via the merged hook's
-    // applyEventToLastAssistant closure.
     fetchMock.mockImplementationOnce(async () =>
       mockSSEResponse([
         sseLine({
@@ -660,10 +623,6 @@ describe('useConversationFlow — sanitization & contracts', () => {
       ])
     );
 
-    // The merged hook applies resume frames to the LAST assistant message.
-    // For the hydration path there is no assistant message yet, so we
-    // assert the resolve+resume sequence completed (pendingApproval cleared)
-    // and that the resume fetch was actually made with the resume URL.
     await act(async () => {
       await result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
     });
@@ -679,8 +638,6 @@ describe('useConversationFlow — sanitization & contracts', () => {
     const { result } = hydratedFlow('cid-debounce', fetchMock);
     await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
 
-    // Hold the resolve response until we manually settle it. While in flight,
-    // a second call to resolveApproval must be a no-op (no extra fetch).
     let releaseResolve: (() => void) | null = null;
     const resolvePromise = new Promise<Response>((resolve) => {
       releaseResolve = () => {
@@ -697,14 +654,11 @@ describe('useConversationFlow — sanitization & contracts', () => {
 
     await act(async () => {
       const first = result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
-      // Second call while first is in flight — should be debounced.
       const second = result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
       releaseResolve!();
       await Promise.all([first, second]);
     });
 
-    // hydration GET /messages + ONE resolve POST + ONE resume SSE = 3.
-    // The second resolveApproval call did NOT fire a duplicate POST.
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

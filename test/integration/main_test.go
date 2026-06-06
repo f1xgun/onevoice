@@ -23,22 +23,18 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	// Setup
 	ctx := context.Background()
 
-	// Get test database URLs from environment
 	baseURL = os.Getenv("TEST_API_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
 
-	// Wait for API to be ready
 	if err := waitForAPI(baseURL, 30*time.Second); err != nil {
 		fmt.Printf("API not ready: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Connect to databases for cleanup
 	pgURL := os.Getenv("TEST_POSTGRES_URL")
 	if pgURL != "" {
 		var err error
@@ -63,13 +59,10 @@ func TestMain(m *testing.M) {
 		redisClient = redis.NewClient(&redis.Options{Addr: redisURL})
 	}
 
-	// HTTP client with timeout
 	httpClient = &http.Client{Timeout: 10 * time.Second}
 
-	// Run tests
 	code := m.Run()
 
-	// Cleanup
 	if pgPool != nil {
 		pgPool.Close()
 	}
@@ -99,7 +92,6 @@ func waitForAPI(url string, timeout time.Duration) error {
 func cleanupDatabase(t *testing.T) {
 	ctx := context.Background()
 
-	// Clean PostgreSQL (only tables that exist in migration)
 	if pgPool != nil {
 		_, err := pgPool.Exec(ctx, "TRUNCATE users, businesses, integrations CASCADE")
 		if err != nil {
@@ -107,13 +99,11 @@ func cleanupDatabase(t *testing.T) {
 		}
 	}
 
-	// Clean MongoDB
 	if mongoDB != nil {
 		mongoDB.Collection("conversations").Drop(ctx)
 		mongoDB.Collection("messages").Drop(ctx)
 	}
 
-	// Clean Redis
 	if redisClient != nil {
 		redisClient.FlushDB(ctx)
 	}

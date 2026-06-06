@@ -15,7 +15,6 @@ func TestCursorRoundTrip(t *testing.T) {
 	id := uuid.New()
 	s := EncodeCursor(now, id)
 	require.NotEmpty(t, s)
-	// No padding chars in URL-safe encoding.
 	require.NotContains(t, s, "=")
 	got, gotID, err := DecodeCursor(s)
 	require.NoError(t, err)

@@ -50,7 +50,7 @@ func TestBuildSystemPrompt_AppendsHistory(t *testing.T) {
 	}
 
 	msgs := prompt.Build(ctx, nil, history)
-	require.Len(t, msgs, 3) // system + 2 history messages
+	require.Len(t, msgs, 3)
 	assert.Equal(t, "user", msgs[1].Role)
 	assert.Equal(t, "assistant", msgs[2].Role)
 }
@@ -99,13 +99,11 @@ func TestBuildSystemPrompt_WithProject_AppendsAfterRules(t *testing.T) {
 	require.Len(t, msgs, 2)
 	content := msgs[0].Content
 
-	// Contains original business content + project block
 	assert.Contains(t, content, "Кофейня Уют")
 	assert.Contains(t, content, "## Правила")
 	assert.Contains(t, content, "## Проект: Отзывы")
 	assert.Contains(t, content, "Отвечай вежливо")
 
-	// Ordering: Правила must come BEFORE Проект
 	idxRules := strings.Index(content, "## Правила")
 	idxProj := strings.Index(content, "## Проект:")
 	require.NotEqual(t, -1, idxRules, "rules block not found")
@@ -154,7 +152,6 @@ func TestBuildSystemPrompt_ProjectPromptWithTrailingNewline(t *testing.T) {
 	msgs := prompt.Build(biz, proj, nil)
 	require.Len(t, msgs, 1)
 	content := msgs[0].Content
-	// Should not contain three consecutive newlines as a result of the body
 	assert.NotContains(t, content, "body\n\n\n", "trailing newline should not compound")
 }
 
@@ -204,7 +201,7 @@ func TestAppendProjectBlock_AllMode_NoHint(t *testing.T) {
 	proj := &prompt.ProjectContext{
 		Name:          "Всё разрешено",
 		WhitelistMode: domain.WhitelistModeAll,
-		AllowedTools:  []string{tools.TelegramSendChannelPost}, // should be ignored for `all`
+		AllowedTools:  []string{tools.TelegramSendChannelPost},
 	}
 	got := buildWithProj(t, proj)
 
@@ -222,8 +219,6 @@ func TestAppendProjectBlock_InheritMode_NoHint(t *testing.T) {
 }
 
 func TestAppendProjectBlock_EmptyMode_NoHint(t *testing.T) {
-	// Back-compat: call sites that don't populate the new fields still work —
-	// empty string falls through to the default branch with no hint.
 	proj := &prompt.ProjectContext{
 		Name:         "Legacy",
 		SystemPrompt: "body",
@@ -235,9 +230,6 @@ func TestAppendProjectBlock_EmptyMode_NoHint(t *testing.T) {
 }
 
 func TestAppendProjectBlock_ExplicitModeEmptyAllowedTools_FallsBackToNoneWording(t *testing.T) {
-	// Defensive: service layer rejects this via ErrProjectWhitelistEmpty,
-	// but if bad data sneaks through we emit the same wording as
-	// WhitelistModeNone.
 	proj := &prompt.ProjectContext{
 		Name:          "Пусто",
 		WhitelistMode: domain.WhitelistModeExplicit,
@@ -251,9 +243,6 @@ func TestAppendProjectBlock_ExplicitModeEmptyAllowedTools_FallsBackToNoneWording
 }
 
 func TestAppendProjectBlock_ExplicitMode_InstructsAgainstSubstitution(t *testing.T) {
-	// Regression guard: the anti-substitution instruction MUST be present
-	// verbatim. If a refactor removes this substring, the substitution bug
-	// comes back.
 	proj := &prompt.ProjectContext{
 		Name:          "Регрессия",
 		WhitelistMode: domain.WhitelistModeExplicit,
@@ -262,7 +251,6 @@ func TestAppendProjectBlock_ExplicitMode_InstructsAgainstSubstitution(t *testing
 	got := buildWithProj(t, proj)
 
 	assert.Contains(t, got, "НЕ подменяй канал молча")
-	// And the weaker but useful invariant — we tell it HOW to refuse (explain + alternative).
 	assert.Contains(t, got, "объясни вежливо")
 }
 
@@ -277,10 +265,6 @@ func TestAppendProjectBlock_ExplicitMode_InstructsAgainstSubstitution(t *testing
 // load-bearing "Respond in English" directive.
 
 func TestBuildSystemPrompt_ZeroLocale_RendersRussian(t *testing.T) {
-	// Legacy callers that don't populate Locale must keep their pre-i18n RU
-	// output. Without the explicit zero-Tag guard in resolveLocale, the
-	// golang.org/x/text/language default base is "en" — this test pins the
-	// backward-compat path.
 	biz := prompt.BusinessContext{
 		Name:               "Кофейня Уют",
 		ActiveIntegrations: []string{"telegram"},
@@ -312,7 +296,6 @@ func TestBuildSystemPrompt_RussianLocale_RendersRussian(t *testing.T) {
 	require.Len(t, msgs, 1)
 	content := msgs[0].Content
 
-	// Section headers RU.
 	assert.Contains(t, content, "## Бизнес: Кофейня Уют")
 	assert.Contains(t, content, "Категория: кофейня")
 	assert.Contains(t, content, "Адрес: ул. Мира 1")
@@ -326,7 +309,6 @@ func TestBuildSystemPrompt_RussianLocale_RendersRussian(t *testing.T) {
 	assert.Contains(t, content, "## Правила")
 	assert.Contains(t, content, "Общайся на русском языке")
 
-	// EN must NOT leak.
 	assert.NotContains(t, content, "Respond in English")
 	assert.NotContains(t, content, "## Business:")
 	assert.NotContains(t, content, "## Rules")
@@ -348,7 +330,6 @@ func TestBuildSystemPrompt_EnglishLocale_RendersEnglish(t *testing.T) {
 	require.Len(t, msgs, 1)
 	content := msgs[0].Content
 
-	// Section headers EN.
 	assert.Contains(t, content, "## Business: Cozy Café")
 	assert.Contains(t, content, "Category: café")
 	assert.Contains(t, content, "Address: 1 Main St")
@@ -362,14 +343,12 @@ func TestBuildSystemPrompt_EnglishLocale_RendersEnglish(t *testing.T) {
 	assert.Contains(t, content, "## Rules")
 	assert.Contains(t, content, "Respond in English", "EN locale must emit the load-bearing language-steering directive")
 
-	// RU must NOT leak.
 	assert.NotContains(t, content, "Общайся на русском")
 	assert.NotContains(t, content, "## Бизнес:")
 	assert.NotContains(t, content, "## Правила")
 }
 
 func TestBuildSystemPrompt_EnglishLocale_EmptyIntegrations_RendersEnglish(t *testing.T) {
-	// Empty-integrations branch has its own message — must be localized too.
 	biz := prompt.BusinessContext{
 		Name:   "Acme",
 		Now:    time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC),
@@ -383,7 +362,6 @@ func TestBuildSystemPrompt_EnglishLocale_EmptyIntegrations_RendersEnglish(t *tes
 }
 
 func TestBuildSystemPrompt_EnglishLocale_DefaultTone(t *testing.T) {
-	// Empty Tone defaults to "professional" in EN (vs "профессиональный" in RU).
 	biz := prompt.BusinessContext{
 		Name:   "Acme",
 		Now:    time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC),
@@ -449,7 +427,6 @@ func TestAppendProjectBlock_EnglishLocale_ExplicitMode_EnglishAllowedTools(t *te
 	assert.Contains(t, content, "Only the following tools are allowed in this project: telegram__send_channel_post, telegram__send_channel_photo")
 	assert.Contains(t, content, "politely explain")
 	assert.Contains(t, content, "Do NOT silently substitute a channel.")
-	// Tool names stay verbatim — they're stable LLM identifiers, not user-facing copy.
 	assert.NotContains(t, content, "разрешены только")
 }
 

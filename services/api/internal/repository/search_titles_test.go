@@ -89,7 +89,6 @@ func TestSearchTitles_ScopesByBusinessAndUser(t *testing.T) {
 	insertConvForSearch(t, db, "biz-B", "user-B", nil, "Документы по инвойсу", now)
 	insertConvForSearch(t, db, "biz-A", "user-other", nil, "Документы по инвойсу", now)
 
-	// User A in biz-A sees only their own.
 	hits, _, err := repo.SearchTitles(ctx, "biz-A", "user-A", "инвойс", nil, 20)
 	require.NoError(t, err)
 	require.Len(t, hits, 1, "scope filter must drop other-business and other-user matches")
@@ -110,7 +109,7 @@ func TestSearchTitles_FiltersByProjectID(t *testing.T) {
 	other := "proj-Y"
 	matchingID := insertConvForSearch(t, db, "biz-1", "user-1", &projID, "Договор инвойс", now)
 	insertConvForSearch(t, db, "biz-1", "user-1", &other, "Договор инвойс", now)
-	insertConvForSearch(t, db, "biz-1", "user-1", nil, "Договор инвойс", now) // no project
+	insertConvForSearch(t, db, "biz-1", "user-1", nil, "Договор инвойс", now)
 
 	hits, _, err := repo.SearchTitles(ctx, "biz-1", "user-1", "инвойс", &projID, 20)
 	require.NoError(t, err)

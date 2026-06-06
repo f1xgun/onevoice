@@ -94,10 +94,6 @@ func checkBusinessSubroute(pass *analysis.Pass, call *ast.CallExpr) {
 		return
 	}
 
-	// Missing chokepoint — emit a diagnostic on every handler registration in
-	// the body, UNLESS the route is in the allowlist (HI-02). Allowlist
-	// entries are parsed and expiry-checked in allowlist.go; the matcher
-	// here gates the report.
 	for _, stmt := range funcLit.Body.List {
 		es, ok := stmt.(*ast.ExprStmt)
 		if !ok {

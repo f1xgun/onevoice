@@ -127,30 +127,20 @@ func (s *Services) StartReviewSyncer(ctx context.Context, log *slog.Logger, inte
 // function with identical identifiers in one package — Services is the
 // returned aggregate type.
 func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, repos *Repos, h *DBHandles) (*Services, error) {
-	// must construct before any service that talks to the orchestrator;
-	// Timeout=0 keeps SSE streams alive (per-call ctx bounds the budget).
 	orchClient := orchestratorclient.New(cfg.OrchestratorURL, &http.Client{Timeout: 0})
 
 	s := &Services{
-		TaskHub:    taskhub.New(),
-		OrchClient: orchClient,
-		// userResolverAdapter snapshots user_email_at_event BEFORE the INSERT
-		// so post-hard-delete audit rows still carry the email for 152-ФЗ
-		// forensic queries.
+		TaskHub:     taskhub.New(),
+		OrchClient:  orchClient,
 		AuditLogger: audit.NewLoggerWithResolver(repos.AuditLog, userResolverAdapter{repo: repos.User}),
 	}
 
-	// Auto-titler LLM router — graceful disable when no provider key OR no
-	// model is configured. API must boot in dev without any LLM env.
 	var llmRouter *llm.Router
 	titlerModel := cfg.TitlerModel
 	if titlerModel != "" {
 		registry := llm.NewRegistry()
 		routerOpts := LLMProviderOpts(cfg, registry, log)
 		if len(routerOpts) > 0 {
-			// api-side rate limiter shares the daily-spend policy with the
-			// orchestrator. repoDailySpender avoids a billingclient HTTP hop —
-			// the api already holds the Postgres pool.
 			if h.Redis != nil && repos.Billing != nil {
 				rl, rlErr := BuildAPIRateLimiter(cfg, log, h.Redis, repos.Billing)
 				if rlErr != nil {
@@ -178,11 +168,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		log.Info("auto-titler: service constructed", "model", titlerModel)
 	}
 
-	// CRITICAL ORDERING: MarkIndexesReady must run AFTER
-	// BootstrapDatabases.EnsureSearchIndexes returns nil. The atomic.Bool
-	// Store provides a happens-before edge for subsequent Loads by handler
-	// goroutines. Reorder and Searcher.Search would no longer return
-	// ErrSearchIndexNotReady on a cold boot.
 	s.Searcher = service.NewSearcher(repos.Conversation, repos.Message)
 	s.Searcher.MarkIndexesReady()
 
@@ -191,16 +176,10 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		return nil, fmt.Errorf("wire: create user service: %w", err)
 	}
 	s.User = userService
-	// BusinessService dual-writes businesses + business_members(role_id=owner)
-	// in a single tx; AuditLogger emits business.created/updated AFTER commit.
 	s.Business = service.NewBusinessService(repos.Business, repos.BusinessMembership, repos.Role, h.PG, s.AuditLogger)
 
-	// AuthzCache memoizes (user_id, business_id) → (role_id, permissions);
-	// invalidated explicitly on member add/remove/role-change.
 	s.AuthzCache = authz.NewCache(repos.MembershipLoader)
 
-	// optional Google token refresher; injected so token refresh happens
-	// transparently inside GetDecryptedToken.
 	var refresher service.TokenRefresher
 	if cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "" {
 		refresher = NewGoogleTokenRefresher(
@@ -215,8 +194,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business)
 	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
 
-	// ConversationService owns multi-repo conversation transitions
-	// (MoveToProject reads from three repos).
 	conversationService, err := service.NewConversationService(repos.Conversation, repos.Message, repos.Project, h.PendingToolCallRepo)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create conversation service: %w", err)
@@ -237,13 +214,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.ObjectStorage = objectStorage
 	log.Info("connected to object storage", "endpoint", cfg.S3Endpoint, "bucket", cfg.S3Bucket)
 
-	// Review syncer built early so it can be injected into reviewService for
-	// the manual-refresh endpoint. Background ticker started by
-	// StartReviewSyncer from cmd/main.go after handlers are wired.
 	if h.NATS != nil {
 		var drafter service.DraftPassRunner
 		if cfg.ReviewDraftEnabled {
-			// drafter reuses the shared orchClient Transport pool
 			drafter = service.NewReviewDrafter(
 				repos.Review,
 				repos.Business,
@@ -261,23 +234,17 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.ReviewSyncer = service.NewReviewSyncer(h.NATS, repos.Integration, repos.Review, drafter, syncInterval)
 	}
 
-	// h.NATS=nil → Review still works in Mongo-only mode (legacy). nil
-	// reviewRefresher disables POST /reviews/refresh.
 	var reviewRefresher service.ReviewRefresher
 	if s.ReviewSyncer != nil {
 		reviewRefresher = s.ReviewSyncer
 	}
 	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher)
 
-	// Platform syncer dispatches by capability interfaces — no no-op methods
-	// required on impls.
 	adapter := IntegrationSyncAdapter(s.Integration)
 	platformHTTPClient := &http.Client{Timeout: 10 * time.Second}
 	if h.NATS != nil {
 		s.AgentTaskPublisher = platform.NewNATSTaskPublisher(h.NATS)
 	}
-	// cast through the interface so YandexSyncer's nil-check sees an
-	// honestly-nil value (avoids the typed-nil interface trap).
 	var yandexPublisher platform.TaskPublisher
 	if s.AgentTaskPublisher != nil {
 		yandexPublisher = s.AgentTaskPublisher
@@ -289,8 +256,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	}
 	s.PlatformSync = platform.NewSyncer(adapter, repos.AgentTask, s.TaskHub, perPlatform)
 
-	// ToolsRegistryCache: 5-min TTL — single source of truth for
-	// settings/project pages + edit-validation.
 	s.ToolsCache = service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, toolsCacheTTL)
 	s.HITL = service.NewHITLService(
 		h.PendingToolCallRepo,
@@ -300,10 +265,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		orchClient,
 	)
 
-	// Lockout keyed off Redis; nil when Redis is unavailable (matches
-	// rate-limiter pattern — Redis is soft infra, not a hard boot dep).
-	// Initialized here (instead of after middleware setup) so PasswordReset
-	// can clear lockout state on a successful self-unlock.
 	if h.Redis != nil {
 		s.Lockout = lockout.New(h.Redis, lockout.Config{
 			FailThresholdCaptcha: cfg.LockoutFailThresholdCaptcha,
@@ -346,8 +307,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.AuditLogger,
 	)
 
-	// currentVersion closure plumbs legalconfig.* constants; sha256 stays
-	// empty (frontend computes it).
 	s.Consent = service.NewConsentService(
 		h.PG,
 		repos.UserConsents,
@@ -358,8 +317,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		},
 	)
 
-	// must wire after EmailVerification + AuditLogger exist; setter pattern
-	// keeps NewUserService's signature stable across phases.
 	if registerSetter, ok := s.User.(interface {
 		SetRegisterCollaborators(
 			pool service.RegisterTxPool,
@@ -377,20 +334,15 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			s.AuditLogger,
 		)
 	}
-	// must wire after Consent exists — RegisterWithContext writes 3 consent
-	// rows in the same tx as the user row + verify token + outbox.
 	if consentSetter, ok := s.User.(interface {
 		SetRegisterConsentService(consentSvc *service.ConsentService)
 	}); ok {
 		consentSetter.SetRegisterConsentService(s.Consent)
 	}
 
-	// InitTrustedProxies fail-loud — invalid CIDR is fatal because silent
-	// degrade to "trust nothing" would lock the wrong IPs.
 	if err := middleware.InitTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
 		return nil, fmt.Errorf("wire: init trusted proxies: %w", err)
 	}
-	// SmartCaptcha always non-nil so the handler has a stable dep to inject.
 	if cfg.SmartCaptchaSecretKey != "" {
 		s.SmartCaptcha = service.NewYandexSmartCaptcha(cfg.SmartCaptchaSecretKey, nil)
 		log.Info("smartcaptcha: enabled (Yandex)")

@@ -13,7 +13,6 @@ import (
 func TestIntegrationManagement(t *testing.T) {
 	cleanupDatabase(t)
 
-	// Setup: create user and business
 	accessToken := setupTestUser(t, "integration@example.com", "password123")
 	setupTestBusiness(t, accessToken)
 
@@ -46,7 +45,6 @@ func TestIntegrationManagement(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should return 501 Not Implemented
 		assert.Equal(t, http.StatusNotImplemented, resp.StatusCode)
 	})
 
@@ -58,7 +56,6 @@ func TestIntegrationManagement(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should return 404 Not Found
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
@@ -76,7 +73,6 @@ func TestIntegrationManagement(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should return 501 Not Implemented (or could be 400 Bad Request)
 		assert.True(t, resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusBadRequest)
 	})
 }

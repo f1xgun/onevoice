@@ -67,9 +67,6 @@ export function useRovingTabIndex(itemCount: number) {
     [itemCount, focusItem]
   );
 
-  // Re-assert initial tabindex distribution whenever the item count
-  // changes. The first roving item is the single Tab stop; all others
-  // are tabindex=-1 (focusable only via the arrow keys above).
   useEffect(() => {
     const items = containerRef.current?.querySelectorAll<HTMLElement>('[data-roving-item]');
     items?.forEach((el, i) => el.setAttribute('tabindex', i === 0 ? '0' : '-1'));

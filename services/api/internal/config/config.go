@@ -248,7 +248,6 @@ func Load() (*Config, error) {
 		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
 		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
 
-		// placeholder defaults so the API boots without operator config
 		LegalEntityName: getEnv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]"),
 		LegalINN:        os.Getenv("LEGAL_INN"),
 		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),
@@ -257,13 +256,10 @@ func Load() (*Config, error) {
 		HealthCheckTimeout: getEnvDuration("HEALTH_CHECK_TIMEOUT", 2*time.Second),
 	}
 
-	// defensive clamp — getEnvDuration falls back on parse errors; a zero or
-	// negative explicit value would slip past otherwise.
 	if cfg.HealthCheckTimeout <= 0 {
 		cfg.HealthCheckTimeout = 2 * time.Second
 	}
 
-	// defaults match pkg/lockout.Default* constants so they stay in sync.
 	const (
 		defaultLockoutCaptcha  = 4
 		defaultLockoutLock     = 10
@@ -272,7 +268,6 @@ func Load() (*Config, error) {
 	cfg.LockoutFailThresholdCaptcha = getEnvInt("LOCKOUT_FAIL_THRESHOLD_CAPTCHA", defaultLockoutCaptcha)
 	cfg.LockoutFailThresholdLock = getEnvInt("LOCKOUT_FAIL_THRESHOLD_LOCK", defaultLockoutLock)
 	cfg.LockoutDuration = getEnvDuration("LOCKOUT_DURATION", defaultLockoutDuration)
-	// defend against operator typo (negative threshold etc.)
 	if cfg.LockoutFailThresholdCaptcha <= 0 {
 		cfg.LockoutFailThresholdCaptcha = defaultLockoutCaptcha
 	}
@@ -285,12 +280,8 @@ func Load() (*Config, error) {
 	cfg.SmartCaptchaSiteKey = os.Getenv("SMARTCAPTCHA_SITE_KEY")
 	cfg.SmartCaptchaSecretKey = os.Getenv("SMARTCAPTCHA_SECRET_KEY")
 	cfg.TrustedProxyCIDRs = os.Getenv("TRUSTED_PROXY_CIDRS")
-	// fail-open during Yandex outages so legitimate users keep logging in
 	cfg.SmartCaptchaFailOpen = getEnv("SMARTCAPTCHA_FAIL_OPEN", envBoolTrue) == envBoolTrue
 
-	// Auto-titler: API does NOT fail-fast on missing LLMModel (different
-	// from orchestrator) — graceful disable so the API boots in dev with no
-	// LLM env at all.
 	cfg.LLMModel = os.Getenv("LLM_MODEL")
 	cfg.LLMTier = os.Getenv("LLM_TIER")
 	if cfg.LLMTier == "" {
@@ -298,7 +289,7 @@ func Load() (*Config, error) {
 	}
 	cfg.TitlerModel = os.Getenv("TITLER_MODEL")
 	if cfg.TitlerModel == "" {
-		cfg.TitlerModel = cfg.LLMModel // graceful fallback
+		cfg.TitlerModel = cfg.LLMModel
 	}
 	cfg.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
@@ -318,7 +309,6 @@ func Load() (*Config, error) {
 	}
 	cfg.LocalFallbackRequestsPerHour = 2000
 	if v := os.Getenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR"); v != "" {
-		// strconv.Atoi fails loud — non-integer is misconfiguration
 		n, perr := strconv.Atoi(v)
 		if perr != nil {
 			return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be a positive integer, got %q: %w", v, perr)
@@ -329,8 +319,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")
 	}
 
-	// SSE_MAX_PER_USER: fail loud on non-integer — silent default coercion
-	// has bitten cost-guard wiring before. 0 disables the gate entirely.
 	cfg.SSEMaxPerUser = defaultSSEMaxPerUser
 	if v := os.Getenv("SSE_MAX_PER_USER"); v != "" {
 		n, perr := strconv.Atoi(v)
@@ -343,8 +331,6 @@ func Load() (*Config, error) {
 		cfg.SSEMaxPerUser = n
 	}
 
-	// PG_* parse + validate fail loud — silent default coercion on a typo
-	// would silently hide pool starvation in production.
 	pgMaxConns, err := parseIntEnv("PG_MAX_CONNS", defaultPGMaxConns)
 	if err != nil {
 		return nil, err
@@ -384,8 +370,6 @@ func Load() (*Config, error) {
 	if cfg.PGMaxConns <= 0 {
 		return nil, fmt.Errorf("PG_MAX_CONNS must be > 0, got %d", cfg.PGMaxConns)
 	}
-	// upper bound matches pgxpool.Config.MaxConns (int32) — bounding here
-	// lets wire/databases.go convert without a gosec G115 false positive.
 	if cfg.PGMaxConns > math.MaxInt32 {
 		return nil, fmt.Errorf("PG_MAX_CONNS must be <= %d, got %d", math.MaxInt32, cfg.PGMaxConns)
 	}
@@ -494,7 +478,6 @@ func parseIntEnv(key string, defaultValue int) (int, error) {
 	if value == "" {
 		return defaultValue, nil
 	}
-	// strconv.Atoi fails loud — non-integer is misconfiguration
 	n, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be an integer, got %q: %w", key, value, err)
@@ -510,7 +493,6 @@ func parseDurationEnv(key string, defaultValue time.Duration) (time.Duration, er
 	if value == "" {
 		return defaultValue, nil
 	}
-	// time.ParseDuration fails loud — bad duration is misconfiguration
 	d, err := time.ParseDuration(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be a Go duration, got %q: %w", key, value, err)

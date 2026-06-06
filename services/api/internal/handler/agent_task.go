@@ -115,7 +115,6 @@ func (h *AgentTaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query parameters
 	filter := domain.TaskFilter{
 		Platform: r.URL.Query().Get("platform"),
 		Status:   r.URL.Query().Get("status"),
@@ -191,7 +190,6 @@ func (h *AgentTaskHandler) StreamTasks(w http.ResponseWriter, r *http.Request) {
 	events, unsub := h.hub.Subscribe(bc.BusinessID.String())
 	defer unsub()
 
-	// Immediately flush headers so the browser commits the connection.
 	flusher.Flush()
 
 	heartbeat := time.NewTicker(streamHeartbeatInterval)

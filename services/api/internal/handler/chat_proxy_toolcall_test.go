@@ -66,9 +66,6 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 
 	business := &domain.Business{ID: businessID, Name: "Test"}
 
-	// Orchestrator returns two tool_calls with the SAME name but distinct IDs,
-	// plus results emitted in a DIFFERENT order than the calls. Correlation by
-	// name would misalign — by ID it works.
 	sse := strings.Join([]string{
 		`data: {"type":"tool_call","tool_call_id":"call_a","tool_name":"telegram__send_channel_post","tool_args":{"text":"первый"}}`,
 		`data: {"type":"tool_call","tool_call_id":"call_b","tool_name":"telegram__send_channel_post","tool_args":{"text":"второй"}}`,
@@ -126,21 +123,17 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 	msgRepo.mu.Lock()
 	defer msgRepo.mu.Unlock()
 
-	// Two messages: the user's input + the assistant response. The assistant
-	// message is where tool_calls/tool_results accumulate.
 	require.Len(t, msgRepo.messages, 2)
 	assistant := msgRepo.messages[1]
 	require.Equal(t, "assistant", assistant.Role)
 	require.Len(t, assistant.ToolCalls, 2)
 	require.Len(t, assistant.ToolResults, 2)
 
-	// IDs are the LLM-issued ones, preserved from SSE.
 	assert.Equal(t, "call_a", assistant.ToolCalls[0].ID)
 	assert.Equal(t, "call_b", assistant.ToolCalls[1].ID)
 	assert.Equal(t, "первый", assistant.ToolCalls[0].Arguments["text"])
 	assert.Equal(t, "второй", assistant.ToolCalls[1].Arguments["text"])
 
-	// Each result references its originating call by ID.
 	assert.Equal(t, "call_a", assistant.ToolResults[0].ToolCallID)
 	assert.Equal(t, "call_b", assistant.ToolResults[1].ToolCallID)
 	assert.EqualValues(t, 1, assistant.ToolResults[0].Content["message_id"])

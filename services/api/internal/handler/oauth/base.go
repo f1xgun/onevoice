@@ -103,7 +103,6 @@ type OAuthConfig struct {
 
 // VKCommunityRedirectURI returns the redirect URI for community OAuth callback.
 func (c OAuthConfig) VKCommunityRedirectURI() string {
-	// Replace /oauth/vk/callback with /oauth/vk/community-callback
 	return strings.Replace(c.VKRedirectURI, "/oauth/vk/callback", "/oauth/vk/community-callback", 1)
 }
 

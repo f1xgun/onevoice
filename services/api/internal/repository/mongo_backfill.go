@@ -36,7 +36,6 @@ func BackfillConversationsV15(ctx context.Context, db *mongo.Database) error {
 	conversations := db.Collection("conversations")
 	marker := db.Collection("schema_migrations")
 
-	// Fast-path: if marker exists, skip — idempotent on restart.
 	var existing bson.M
 	err := marker.FindOne(ctx, bson.M{"_id": SchemaMigrationPhase15}).Decode(&existing)
 	if err == nil {
@@ -47,9 +46,6 @@ func BackfillConversationsV15(ctx context.Context, db *mongo.Database) error {
 		return fmt.Errorf("read schema_migrations marker: %w", err)
 	}
 
-	// Per-field guarded $set so newer docs that already have the field are
-	// untouched. Unrolled per field so the {$exists: false} guard is literal
-	// and easy to audit.
 	if err := backfillField(ctx, conversations, "project_id",
 		bson.M{"project_id": bson.M{"$exists": false}},
 		bson.M{"$set": bson.M{"project_id": nil}}); err != nil {
@@ -71,7 +67,6 @@ func BackfillConversationsV15(ctx context.Context, db *mongo.Database) error {
 		return err
 	}
 
-	// last_message_at ← updated_at when missing (aggregation pipeline update).
 	lastMsgFilter := bson.M{"last_message_at": bson.M{"$exists": false}}
 	lastMsgPipeline := mongo.Pipeline{
 		{{Key: "$set", Value: bson.D{{Key: "last_message_at", Value: "$updated_at"}}}},
@@ -83,7 +78,6 @@ func BackfillConversationsV15(ctx context.Context, db *mongo.Database) error {
 	slog.InfoContext(ctx, "phase 15 backfill last_message_at",
 		"matched", lmRes.MatchedCount, "modified", lmRes.ModifiedCount)
 
-	// Marker (one-shot; upsert so restart after partial run does not fail).
 	_, err = marker.UpdateOne(ctx,
 		bson.M{"_id": SchemaMigrationPhase15},
 		bson.M{"$set": bson.M{
@@ -141,7 +135,6 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 	conversations := db.Collection("conversations")
 	marker := db.Collection("schema_migrations")
 
-	// Fast-path: if marker exists, skip — idempotent on restart.
 	var existing bson.M
 	err := marker.FindOne(ctx, bson.M{"_id": SchemaMigrationPhase19}).Decode(&existing)
 	if err == nil {
@@ -152,19 +145,12 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 		return fmt.Errorf("read schema_migrations marker: %w", err)
 	}
 
-	// Step 1: pinned_at = nil when the field is missing.
-	// Note: backfillField logs under "phase 15 backfill field" — log key is
-	// shared so the operational pattern stays uniform across migrations
-	// (the `field` value tells operators which migration ran).
 	if err := backfillField(ctx, conversations, "pinned_at",
 		bson.M{"pinned_at": bson.M{"$exists": false}},
 		bson.M{"$set": bson.M{"pinned_at": nil}}); err != nil {
 		return err
 	}
 
-	// Step 2: migrate legacy `pinned: true` rows where pinned_at is still nil.
-	// Use an aggregation-pipeline update so the new value can reference
-	// `$updated_at` from the same document.
 	legacyFilter := bson.M{"pinned": true, "pinned_at": nil}
 	legacyPipeline := mongo.Pipeline{
 		{{Key: "$set", Value: bson.D{{Key: "pinned_at", Value: "$updated_at"}}}},
@@ -176,8 +162,6 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 	slog.InfoContext(ctx, "phase 19 backfill legacy pinned:true → pinned_at",
 		"matched", res.MatchedCount, "modified", res.ModifiedCount)
 
-	// Step 3: drop the legacy `pinned` field. Single source of truth becomes
-	// PinnedAt != nil.
 	dropRes, err := conversations.UpdateMany(ctx,
 		bson.M{"pinned": bson.M{"$exists": true}},
 		bson.M{"$unset": bson.M{"pinned": ""}})
@@ -187,7 +171,6 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 	slog.InfoContext(ctx, "phase 19 backfill drop legacy pinned bool",
 		"matched", dropRes.MatchedCount, "modified", dropRes.ModifiedCount)
 
-	// Marker (one-shot upsert; restart after partial run is safe).
 	_, err = marker.UpdateOne(ctx,
 		bson.M{"_id": SchemaMigrationPhase19},
 		bson.M{"$set": bson.M{
@@ -240,11 +223,6 @@ func BackfillAgentTaskDisplayNameKey(ctx context.Context, db *mongo.Database) (i
 
 	totalModified := 0
 	for legacyName, key := range agentTaskDisplayNameToKey {
-		// Each row is updated at most once per call because the
-		// {$exists: false} OR empty-string guard removes the row from the
-		// matcher set after the first write. Iterating the map keeps the
-		// write list explicit per legacy literal so the operational logs
-		// show exactly which mapping moved how many rows.
 		filter := bson.M{
 			"display_name": legacyName,
 			"$or": []bson.M{

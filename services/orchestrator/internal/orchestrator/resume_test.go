@@ -137,7 +137,6 @@ func TestResume_BatchExpired_EmitsError(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "done", FinishReason: "stop"}}}
 	reg, _ := registryWithRecording(t, "manual_tool", domain.ToolFloorManual)
 	repo := newMockPendingRepo()
-	// Pre-insert an expired batch
 	expired := &domain.PendingToolCallBatch{ID: "batch-x", Status: "expired"}
 	repo.store["batch-x"] = expired
 
@@ -152,7 +151,6 @@ func TestResume_BatchExpired_EmitsError(t *testing.T) {
 }
 
 func TestResume_AllApproved_DispatchesInParallel(t *testing.T) {
-	// Stub LLM follows up with text-only after resume finishes dispatch
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
 	rec := &recordingExecutor{
@@ -178,7 +176,6 @@ func TestResume_AllApproved_DispatchesInParallel(t *testing.T) {
 	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-p"})
 	require.NoError(t, err)
 
-	// Wait for both tool_result events
 	gotResults := 0
 	for e := range events {
 		if e.Type == orchestrator.EventToolResult {
@@ -188,11 +185,8 @@ func TestResume_AllApproved_DispatchesInParallel(t *testing.T) {
 	elapsed := time.Since(start)
 
 	assert.Equal(t, 2, gotResults)
-	// Parallel: each call takes 100ms; sequential would be 200ms+.
-	// Give a generous budget to avoid flakes on slow CI.
 	assert.Less(t, elapsed, 180*time.Millisecond, "parallel dispatch must complete in less than 2×delay")
 
-	// Both calls dispatched with approval_id = <batch_id>-<call_id>
 	ids := rec.approvalIDs()
 	assert.Equal(t, 2, len(ids))
 	assert.Contains(t, ids, "batch-p-c1")
@@ -222,11 +216,9 @@ func TestResume_RejectedCall_SynthesizesToolMessage_SkipsDispatch(t *testing.T) 
 
 	evts := drainEvents(events)
 
-	// Executor MUST NOT be called
 	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatched),
 		"rejected calls MUST NOT be dispatched")
 
-	// tool_rejected event emitted with reason
 	rejects := findEvents(evts, orchestrator.EventToolRejected)
 	require.Len(t, rejects, 1)
 	assert.Equal(t, "off-brand", rejects[0].Content)
@@ -251,9 +243,6 @@ func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T)
 	repo.store["batch-toctou"] = batch
 
 	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
-	// FRESH approval map: business flipped the tool to forbidden
-	// AFTER the batch was persisted — the TOCTOU re-check must see this
-	// and drop the call with a policy_revoked synthetic rejection.
 	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{
 		BatchID: "batch-toctou",
 		BusinessApprovals: map[string]domain.ToolFloor{
@@ -289,7 +278,7 @@ func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {
 			ToolName:   "done_tool",
 			Arguments:  map[string]interface{}{"text": "x"},
 			Verdict:    "approve",
-			Dispatched: true, // crash-recovery: already dispatched in prior attempt
+			Dispatched: true,
 		},
 	})
 	repo.store["batch-d"] = batch
@@ -302,7 +291,6 @@ func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {
 
 	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatched),
 		"already-dispatched call MUST NOT be re-executed")
-	// No tool_call event emitted either
 	toolCalls := findEvents(evts, orchestrator.EventToolCall)
 	for _, tc := range toolCalls {
 		assert.NotEqual(t, "c-dispatched", tc.ToolCallID,
@@ -338,14 +326,12 @@ func TestResume_EditedArgs_PassesMergedArgsToExecutor(t *testing.T) {
 	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-e"})
 	require.NoError(t, err)
 
-	// Drain events
 	for range events {
 	}
 
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	require.Len(t, rec.calls, 1)
-	// Merge preserves un-edited keys: channel_id stays, text is overwritten
 	assert.Equal(t, "edited", rec.calls[0].args["text"])
 	assert.Equal(t, "-100", rec.calls[0].args["channel_id"])
 }
@@ -370,7 +356,6 @@ func TestResume_ApprovalID_IsBatchIDDashCallID(t *testing.T) {
 	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-1"})
 	require.NoError(t, err)
 
-	// Drain events
 	for range events {
 	}
 
@@ -380,7 +365,6 @@ func TestResume_ApprovalID_IsBatchIDDashCallID(t *testing.T) {
 }
 
 func TestResume_CompletesAndContinuesStepRun_ToDone(t *testing.T) {
-	// After tool executes, LLM responds with text-only → Done
 	stub := &stubLLM{responses: []*llm.ChatResponse{
 		{Content: "Готово!", FinishReason: "stop"},
 	}}
@@ -404,7 +388,6 @@ func TestResume_CompletesAndContinuesStepRun_ToDone(t *testing.T) {
 
 	evts := drainEvents(events)
 
-	// tool_call + tool_result + text + done all emitted
 	assert.NotEmpty(t, findEvents(evts, orchestrator.EventToolCall))
 	assert.NotEmpty(t, findEvents(evts, orchestrator.EventToolResult))
 	texts := findEvents(evts, orchestrator.EventText)
@@ -436,7 +419,6 @@ func TestResume_MixedRejectAndApprove_BothProcessed(t *testing.T) {
 
 	evts := drainEvents(events)
 
-	// Exactly 1 dispatch, 1 rejection
 	assert.Equal(t, 1, rec.callCount())
 	rejects := findEvents(evts, orchestrator.EventToolRejected)
 	require.Len(t, rejects, 1)
@@ -498,8 +480,6 @@ func snapshotWithAccumulated(t *testing.T, accumIn, accumOut int) []byte {
 // hydrates the new RunState fields so the resumed loop's cap measurement
 // continues from the pre-pause budget rather than restarting at zero.
 func TestResume_PreservesAccumulatedTokens(t *testing.T) {
-	// LLM returns 15k input on the resumed call. Total 40k + 15k = 55k > 50k
-	// cap → error fires on the first iteration after resume.
 	stub := &stubLLM{responses: []*llm.ChatResponse{
 		{Content: "boom", FinishReason: "stop", Usage: llm.TokenUsage{InputTokens: 15000}},
 	}}
@@ -535,7 +515,6 @@ func TestResume_LegacyV1SnapshotZeroes(t *testing.T) {
 	repo := newMockPendingRepo()
 
 	batch := batchWithCalls(t, "batch-legacy", []domain.PendingCall{})
-	// Legacy V1 raw-array shape — no accumulated fields.
 	raw, err := json.Marshal([]llm.Message{{Role: "user", Content: "hi"}})
 	require.NoError(t, err)
 	batch.ModelMessages = raw
@@ -549,7 +528,6 @@ func TestResume_LegacyV1SnapshotZeroes(t *testing.T) {
 	require.NoError(t, err)
 	evts := drainEvents(events)
 
-	// 5k from the new call sits under the 50k cap → no error.
 	assert.Empty(t, findEvents(evts, orchestrator.EventError),
 		"legacy snapshot must hydrate at 0 so the resumed turn does not falsely trip the cap")
 }
@@ -563,13 +541,8 @@ func TestResume_LegacyV1SnapshotZeroes(t *testing.T) {
 // block forever once the 32-slot SSE buffer was full and the consumer stopped
 // reading.
 func TestResume_CtxCancelledMidDispatch_ReturnsPromptly_NoGoroutineLeak(t *testing.T) {
-	// stubLLM is never reached because stepRun runs after dispatch returns;
-	// even if it is, providing a benign response keeps the assertion local
-	// to the dispatch behavior.
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
-	// 64 approved calls > 32-slot SSE buffer; each call emits tool_call +
-	// tool_result so naive sends would block well before drain completes.
 	const numCalls = 64
 	rec := &recordingExecutor{}
 	reg := toolregistry.NewRegistry()
@@ -597,19 +570,10 @@ func TestResume_CtxCancelledMidDispatch_ReturnsPromptly_NoGoroutineLeak(t *testi
 	events, err := orch.Resume(ctx, orchestrator.ResumeRequest{BatchID: "batch-leak"})
 	require.NoError(t, err)
 
-	// Simulate caller hang-up: cancel immediately and DO NOT drain `events`.
-	// The 32-slot buffer will fill quickly; per-call goroutines then must
-	// observe ctx.Done() rather than block on the send.
 	cancel()
 
-	// The producer goroutine must close `events` within a generous bound.
-	// If the leak regressed, this would hang forever and the test would
-	// time out at the package timeout — assert closure explicitly so the
-	// failure is obvious.
 	closed := make(chan struct{})
 	go func() {
-		// Drain whatever events were already buffered so the channel can be
-		// closed by the producer; we don't care about the content here.
 		for range events {
 		}
 		close(closed)
@@ -617,7 +581,6 @@ func TestResume_CtxCancelledMidDispatch_ReturnsPromptly_NoGoroutineLeak(t *testi
 
 	select {
 	case <-closed:
-		// Producer closed `events` promptly after cancellation — fix works.
 	case <-time.After(2 * time.Second):
 		t.Fatal("resume dispatch did not return after ctx cancellation — goroutine leak regression")
 	}

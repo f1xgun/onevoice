@@ -78,7 +78,6 @@ func TestGetVKAuthURL_NoBusinessContext(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
-	// no BusinessContext seeded
 	rr := httptest.NewRecorder()
 	h.GetVKAuthURL(rr, req)
 
@@ -95,7 +94,7 @@ func TestGetVKAuthURL_Forbidden(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
-	req = req.WithContext(oauthBizCtx(businessID, userID /* no perms */))
+	req = req.WithContext(oauthBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.GetVKAuthURL(rr, req)
 
@@ -110,7 +109,6 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	businessID := uuid.New()
 	_ = uuid.New()
 
-	// Mock VK token exchange server
 	vkServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -155,7 +153,6 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 		t.Errorf("expected redirect to /integrations?vk_step=select_community, got: %s", location)
 	}
 
-	// Verify temp token was stored in Redis
 	tempKey := fmt.Sprintf("vk_temp_token:%s", businessID.String())
 	storedToken, err := redisClient.Get(context.Background(), tempKey).Result()
 	if err != nil {

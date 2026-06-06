@@ -57,12 +57,9 @@ export function VKCommunityModal({ open, onClose }: Props) {
       );
       toast.success(tVk('connected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
-      // Reset local state then call parent close to keep the modal logic clean.
       setToken('');
       setSubmitting(false);
       onClose();
-      // Note: returning data avoids an unused-var lint hint when adding
-      // post-connect UX later (e.g., showing the resolved community name).
       return data;
     } catch (err: unknown) {
       const msg =

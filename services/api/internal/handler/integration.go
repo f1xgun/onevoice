@@ -60,7 +60,6 @@ func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Get integrations for business
 	integrations, err := h.integrationService.ListByBusinessID(r.Context(), bc.BusinessID)
 	if err != nil {
 		slog.Error("failed to list integrations", "error", err)
@@ -68,7 +67,6 @@ func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Return integrations (empty array if none)
 	writeJSON(w, http.StatusOK, integrations)
 }
 
@@ -86,7 +84,6 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Parse integration ID from URL
 	idStr := chi.URLParam(r, "integrationId")
 	integrationID, err := uuid.Parse(idStr)
 	if err != nil {
@@ -94,9 +91,6 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Verify integration belongs to this business. Also captures the platform
-	// for the audit emission below — the service-layer Delete only has the
-	// integration_id, so we capture platform HERE before the row is gone.
 	integrations, err := h.integrationService.ListByBusinessID(r.Context(), bc.BusinessID)
 	if err != nil {
 		slog.Error("failed to list integrations", "error", err)
@@ -116,7 +110,6 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Delete integration
 	err = h.integrationService.Delete(r.Context(), integrationID)
 	if err != nil {
 		slog.Error("failed to delete integration", "error", err)
@@ -124,11 +117,7 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// emit integration.disconnected AFTER
-	// the row is deleted. We captured platform from the pre-delete fetch above
-	// so the audit row records what was disconnected. Fire-and-forget.
 	audit.LogIntegrationDisconnected(r.Context(), h.audit, bc.BusinessID, bc.UserID, integrationID, target.Platform)
 
-	// Return 204 No Content
 	writeJSON(w, http.StatusNoContent, nil)
 }

@@ -83,13 +83,6 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   });
 
   function handleLogout() {
-    // Drop session-scoped React-Query caches BEFORE the auth store clears
-    // so any in-flight subscription gets the empty state.
-    //   - ['businesses', ...] sweeps members, invitations, roles, permissions
-    //     by partial-match (all are nested under that prefix).
-    //   - ['permissions-catalog'] is top-level and persists across login by
-    //     default (app-static); we remove it here so a different actor's
-    //     deploy build can re-fetch fresh.
     queryClient.removeQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
     queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
     logout();

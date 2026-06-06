@@ -33,20 +33,10 @@ func TestEnsureOwnerExistsAfter_LastOwnerMatrix(t *testing.T) {
 	type fixture struct {
 		businessID uuid.UUID
 		ownerA     uuid.UUID
-		ownerB     uuid.UUID // optional second owner
-		editorC    uuid.UUID // optional editor for "demote" cases
+		ownerB     uuid.UUID
+		editorC    uuid.UUID
 	}
 
-	// Helper: insert a user, a business, and a sole-owner membership.
-	//
-	// users INSERT column list `(id, email, password_hash, role)` matches the
-	// live schema in migrations/postgres/000001_init.up.sql:
-	//   id (PK, defaulted) — provided
-	//   email (NOT NULL, UNIQUE) — provided
-	//   password_hash (NOT NULL) — provided as 'x'
-	//   role (NOT NULL DEFAULT 'owner') — provided
-	//   created_at, updated_at (NOT NULL DEFAULT now()) — omitted; defaults apply
-	// If the users schema drifts, re-verify the NOT NULL columns and update.
 	setupSoleOwner := func(t *testing.T) fixture {
 		t.Helper()
 		bizID := uuid.New()
@@ -234,8 +224,6 @@ func TestCheckEscalationSubset(t *testing.T) {
 	})
 
 	t.Run("system_owner_exempt_can_grant_unowned_perm", func(t *testing.T) {
-		// Owner's actorPerms slice is intentionally empty — the exemption is
-		// based on actorRoleID, not on the perms list.
 		err := authz.CheckEscalationSubset(ownerRoleID, []authz.Permission{}, []authz.Permission{authz.PermBillingUpdate})
 		assert.NoError(t, err)
 	})
@@ -249,14 +237,12 @@ func TestCheckSelfLockout(t *testing.T) {
 	otherRoleID := uuid.New()
 
 	t.Run("actor_edits_own_role_removing_roles_update_refused", func(t *testing.T) {
-		// New perms keep members.update_role but drop roles.update.
 		newPerms := []authz.Permission{authz.PermMembersUpdateRole, authz.PermContentRead}
 		err := authz.CheckSelfLockout(actorUserID, actorRoleID, actorRoleID, newPerms)
 		assert.ErrorIs(t, err, authz.ErrSelfLockout)
 	})
 
 	t.Run("actor_edits_own_role_removing_members_update_role_refused", func(t *testing.T) {
-		// New perms keep roles.update but drop members.update_role.
 		newPerms := []authz.Permission{authz.PermRolesUpdate, authz.PermContentRead}
 		err := authz.CheckSelfLockout(actorUserID, actorRoleID, actorRoleID, newPerms)
 		assert.ErrorIs(t, err, authz.ErrSelfLockout)

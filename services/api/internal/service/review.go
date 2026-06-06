@@ -135,9 +135,6 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 		return domain.ErrReviewNotFound
 	}
 
-	// Try to publish to the platform first. If dispatch fails we persist
-	// reply_status=error so the UI shows "Ошибка отправки" — never a
-	// false-positive "ответ отправлен".
 	dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
 	finalStatus := domain.ReviewReplyStatusReplied
 	if dispatchErr != nil {
@@ -145,9 +142,6 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 	}
 
 	if err := s.repo.UpdateReply(ctx, id, replyText, finalStatus); err != nil {
-		// If we successfully posted to the platform but failed to persist
-		// the status update, the user sees "ждёт ответа" but the comment is
-		// already on VK — log loudly so support can reconcile by hand.
 		slog.Error("review reply: dispatch ok but persist failed",
 			"review_id", id, "platform", review.Platform, "error", err,
 		)
@@ -175,7 +169,6 @@ func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.R
 		return err
 	}
 	if toolName == "" {
-		// Platform not handled by any agent — historical "Mongo-only" mark.
 		return nil
 	}
 
@@ -222,9 +215,6 @@ func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.R
 func buildPlatformReply(review *domain.Review, replyText string) (toolName string, args map[string]interface{}, err error) {
 	switch review.Platform {
 	case a2a.AgentVK:
-		// VK external_id is composed as "<post_id>_<comment_id>" by
-		// review_sync.externalIDFromMap. Split it back out — both fields are
-		// required by vk__reply_comment.
 		parts := strings.SplitN(review.ExternalID, "_", 2)
 		if len(parts) != 2 {
 			return "", nil, fmt.Errorf("vk external_id %q is not <post>_<comment>", review.ExternalID)
@@ -244,9 +234,6 @@ func buildPlatformReply(review *domain.Review, replyText string) (toolName strin
 		}, nil
 
 	case a2a.AgentTelegram:
-		// Telegram review docs carry chat_id + message_id in platform_meta
-		// (review_sync stamps it from the agent's get_reviews payload). Both
-		// are required by telegram__reply_to_comment.
 		chatID, ok := metaString(review.PlatformMeta, "chat_id")
 		if !ok {
 			return "", nil, fmt.Errorf("telegram review %q: missing chat_id in platform_meta", review.ID)
@@ -262,7 +249,6 @@ func buildPlatformReply(review *domain.Review, replyText string) (toolName strin
 		}, nil
 
 	case a2a.AgentYandexBusiness:
-		// Yandex review external_id is the platform's review id verbatim.
 		if review.ExternalID == "" {
 			return "", nil, fmt.Errorf("yandex review %q: empty external_id", review.ID)
 		}
@@ -281,7 +267,6 @@ func buildPlatformReply(review *domain.Review, replyText string) (toolName strin
 		}, nil
 	}
 
-	// Unknown platform — historical Mongo-only behavior.
 	return "", nil, nil
 }
 

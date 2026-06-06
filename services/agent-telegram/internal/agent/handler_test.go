@@ -98,7 +98,6 @@ func TestHandler_SendChannelPost_FetchesTokenPerRequest(t *testing.T) {
 	assert.Equal(t, "Hello, channel!", sender.sentMessage)
 	assert.Equal(t, int64(-1001234567890), sender.sentChatID)
 
-	// Verify the token was fetched with the correct businessID and platform
 	assert.Equal(t, "biz-42", fetcher.lastBizID)
 	assert.Equal(t, "telegram", fetcher.lastPlatform)
 	assert.Equal(t, "-1001234567890", fetcher.lastExtID)
@@ -257,7 +256,6 @@ func TestClassifyTelegramError_ChatNotFound_StampsChannelNotFound(t *testing.T) 
 func TestClassifyTelegramError_Generic_StampsTransient(t *testing.T) {
 	out := agent.ClassifyTelegramError(fmt.Errorf("dial tcp: connection refused"))
 	assert.Equal(t, "transient", a2a.CodeOf(out))
-	// transient does NOT wrap NonRetryableError so withRetry can still retry.
 	assert.False(t, errors.Is(out, &a2a.NonRetryableError{}))
 }
 
@@ -381,10 +379,9 @@ func TestHandler_Handle_ApprovalID_InFlight_ReturnsDuplicateError(t *testing.T) 
 	sender := &countingSender{}
 	h, mr, _ := newDedupeTestHandler(t, sender)
 
-	// Simulate an in-flight peer: the sentinel 'executing' is held under the key.
 	key := "hitl:approval:biz-1:appr-tg-3"
 	require.NoError(t, mr.Set(key, "executing"))
-	mr.SetTTL(key, 24*60*60*1e9) // 24h in nanoseconds
+	mr.SetTTL(key, 24*60*60*1e9)
 
 	resp, err := h.Handle(context.Background(), sendPostReqWithApproval("appr-tg-3"))
 	require.NoError(t, err)

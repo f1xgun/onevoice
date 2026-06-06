@@ -56,7 +56,6 @@ describe('highlight-flow integration', () => {
     vi.useFakeTimers();
     setHighlight('msg-1');
 
-    // Spy on Element.prototype.scrollIntoView (set on jsdom by vitest.setup.ts as a no-op).
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, 'scrollIntoView')
       .mockImplementation(() => {});

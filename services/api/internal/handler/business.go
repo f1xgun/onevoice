@@ -440,8 +440,6 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 		return
 	}
 
-	// "forbidden" is a valid ToolFloor in the spec but rejected here — only
-	// auto/manual can be overridden via PUT; the registry floor is server-owned.
 	approvals := make(map[string]domain.ToolFloor, len(req.ToolApprovals))
 	for toolName, floor := range req.ToolApprovals {
 		if !h.toolsCache.Has(toolName) {
@@ -510,7 +508,6 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = file.Close() }()
 
-	// Detect MIME type from first 512 bytes
 	buf := make([]byte, 512)
 	n, err := file.Read(buf)
 	if err != nil && err != io.EOF {
@@ -539,7 +536,6 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cache-bust on re-upload by including UpdatedAt nanos in the key.
 	key := fmt.Sprintf("businesses/%s/logo-%d%s", business.ID, time.Now().UnixNano(), ext)
 	if err := h.storage.Upload(r.Context(), key, file, header.Size, mimeType); err != nil {
 		slog.ErrorContext(r.Context(), "upload logo: storage upload failed", "key", key, "error", err)

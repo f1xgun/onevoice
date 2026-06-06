@@ -49,7 +49,5 @@ export function nextScheduledLabel(posts: Post[], locale: DateFnsLocale): string
 }
 
 export function topLevelErrorStatus(post: Post): boolean {
-  // Pure boolean — i18n-aware consumers render the fallback string from
-  // posts.errorFallback when this returns true.
   return post.status === 'error';
 }

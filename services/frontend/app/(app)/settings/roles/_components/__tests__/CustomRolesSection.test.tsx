@@ -40,7 +40,6 @@ function renderSection(opts?: { roles?: (typeof MARKETING_ROLE)[]; perms?: strin
   if (opts?.perms !== undefined) {
     mockedGetMyPerms.mockResolvedValue(opts.perms);
   }
-  // Default: 3 custom roles in NON-alphabetical input order to assert sort.
   const roles = opts?.roles ?? [MARKETING_ROLE, ANALYTICS_ROLE, EMPTY_CUSTOM_ROLE];
   return render(
     <Wrapper>
@@ -70,7 +69,6 @@ describe('CustomRolesSection', () => {
     renderSection();
     await waitFor(() => {
       const items = screen.getAllByRole('link', { name: /Analytics|Empty Role|Marketing/ });
-      // Filter only the row-anchors (a[href*="/edit"]).
       const rowLinks = items.filter((el) => el.getAttribute('href')?.endsWith('/edit'));
       const texts = rowLinks.map((el) => el.textContent);
       expect(texts[0]).toContain('Analytics');
@@ -107,7 +105,6 @@ describe('CustomRolesSection', () => {
 
   it('hides «+ Новая роль» CTA when actor lacks roles.create', async () => {
     renderSection({ perms: ['roles.read'] });
-    // Wait until permission query settles.
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: /Новая роль/ })).not.toBeInTheDocument();
     });
@@ -119,7 +116,6 @@ describe('CustomRolesSection', () => {
     await userEvent.setup().click(triggers[0]);
     await waitFor(() => {
       const dup = screen.getByRole('menuitem', { name: 'Дублировать' });
-      // The menuitem wraps a Link via asChild.
       const anchor = dup.closest('a') ?? dup.querySelector('a');
       expect(anchor?.getAttribute('href')).toBe(
         `/settings/roles/new?clone_from=${MARKETING_ROLE.id}`

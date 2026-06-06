@@ -56,7 +56,6 @@ describe('PinnedSection', () => {
         <PinnedSection conversations={[]} projectsById={{}} />
       </Wrapper>
     );
-    // No header, no «Закреплённые» rendered.
     expect(container.firstChild).toBeNull();
     expect(screen.queryByText('Закреплённые')).not.toBeInTheDocument();
   });
@@ -81,7 +80,6 @@ describe('PinnedSection', () => {
         <PinnedSection conversations={convs} projectsById={projectsById} />
       </Wrapper>
     );
-    // The mini chip's project name should be present.
     expect(screen.getByText('Отзывы')).toBeInTheDocument();
   });
 
@@ -93,13 +91,10 @@ describe('PinnedSection', () => {
       </Wrapper>
     );
     expect(screen.getByText('Unbucketed chat')).toBeInTheDocument();
-    // The «Без проекта» literal label MUST NOT appear inside a pinned row
-    // (we only show that label inside the UnassignedBucket header).
     expect(screen.queryByText('Без проекта')).not.toBeInTheDocument();
   });
 
   it('preserves caller-supplied order (caller pre-sorts by pinnedAt desc)', () => {
-    // Caller has already sorted by pinnedAt desc — most-recent first.
     const convs = [
       makeConv('c-newest', 'Newer pinned', null, '2026-04-27T12:00:00Z'),
       makeConv('c-older', 'Older pinned', null, '2026-04-26T12:00:00Z'),
@@ -127,7 +122,6 @@ describe('PinnedSection', () => {
     const items = container.querySelectorAll('[data-roving-item]');
     expect(items.length).toBe(2);
     expect(items[0].getAttribute('role')).toBeNull();
-    // Initial tabindex distribution: first=0, rest=-1.
     expect(items[0].getAttribute('tabindex')).toBe('0');
     expect(items[1].getAttribute('tabindex')).toBe('-1');
     expect(container.querySelector('[role="listbox"]')).toBeNull();

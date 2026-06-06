@@ -96,7 +96,6 @@ func TestWriteAuthzInvariantError(t *testing.T) {
 }
 
 func TestWriteAuthzInvariantError_WrappedErrors(t *testing.T) {
-	// Verify errors.Is works via wrapping.
 	wrappedLastOwner := errors.Join(errors.New("outer"), authz.ErrLastOwner)
 	w := httptest.NewRecorder()
 	writeAuthzInvariantError(t.Context(), w, "test_op", wrappedLastOwner)
@@ -135,8 +134,6 @@ func TestWriteInvitationStateError_Accepted(t *testing.T) {
 }
 
 func TestWriteInvitationStateError_NotFound_CollapsesToUnknown(t *testing.T) {
-	// ErrInvitationNotFound → 410 with reason "unknown" to
-	// defend against token-existence enumeration.
 	w := httptest.NewRecorder()
 	writeInvitationStateError(w, domain.ErrInvitationNotFound)
 	require.Equal(t, http.StatusGone, w.Code)
@@ -162,8 +159,6 @@ func TestWriteInvitationStateError_GenericFallthrough(t *testing.T) {
 // --- writeRevokeError branch coverage (404 vs 410 split) ---
 
 func TestWriteRevokeError_NotFound(t *testing.T) {
-	// revoke handler distinguishes 404 (not exist OR cross-tenant)
-	// from 410 (already terminal). NotFound → 404, not 410.
 	w := httptest.NewRecorder()
 	writeRevokeError(w, domain.ErrInvitationNotFound)
 	require.Equal(t, http.StatusNotFound, w.Code)
@@ -171,7 +166,6 @@ func TestWriteRevokeError_NotFound(t *testing.T) {
 }
 
 func TestWriteRevokeError_AcceptedDelegates(t *testing.T) {
-	// Already-accepted revoke: idempotent 410 (delegates to writeInvitationStateError).
 	w := httptest.NewRecorder()
 	writeRevokeError(w, domain.ErrInvitationAccepted)
 	require.Equal(t, http.StatusGone, w.Code)
@@ -194,8 +188,6 @@ func TestWriteRevokeError_RevokedDelegates(t *testing.T) {
 // the backend on the documented error.
 
 func TestErrorMapping_PasswordReset_TokenInvalid_SentinelMatches(t *testing.T) {
-	// service.ErrResetTokenInvalid aliases domain.ErrResetTokenInvalid;
-	// either form must map to the public reset_token_invalid code.
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("POST", "/", http.NoBody)
 	writePasswordResetError(w, r, service.ErrResetTokenInvalid)

@@ -61,7 +61,6 @@ func TestMembershipLoader_LoadMembership_NotFound(t *testing.T) {
 
 	got, err := l.LoadMembership(ctx, uuid.New(), uuid.New())
 	assert.Nil(t, got)
-	// Must return exact sentinel — pkg/authz middleware uses errors.Is on this value.
 	assert.ErrorIs(t, err, domain.ErrMembershipNotFound)
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
@@ -105,8 +104,6 @@ func TestMembershipLoader_Constructor(t *testing.T) {
 	loader := NewMembershipLoader(mockPool)
 	require.NotNil(t, loader)
 
-	// Verify it satisfies the interface at runtime.
 	//nolint:staticcheck // QF1011 — explicit interface assertion is the
-	// idiomatic pattern; we want the type for compile-time enforcement.
 	var _ authz.MembershipLoader = loader
 }

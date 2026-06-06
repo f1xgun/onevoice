@@ -49,10 +49,6 @@ function createProjectFormSchema(
         ),
       whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
       allowedTools: z.array(z.string()),
-      // approvalOverrides. Zod-typed as a map of
-      // tool-name → "auto"|"manual". Absence = inherit (Overview invariant
-      // #8); the UI never produces a key whose value is the string
-      // "inherit".
       approvalOverrides: z.record(z.string(), z.enum(['auto', 'manual'])),
       quickActions: z.array(z.string().trim().min(1)).max(MAX_QUICK_ACTIONS),
     })
@@ -94,10 +90,6 @@ export function useProjectForm(
   const router = useRouter();
   const tForm = useTranslations('projects.form');
   const tValidation = useTranslations('validation');
-  // Memoize on translator identity (B1). react-hook-form passes the
-  // resolver reference into its internal cache, so rebuilding the schema
-  // on every render would defeat that cache; rebuilding ONLY on a
-  // locale-driven translator swap is the right granularity.
   const schema = useMemo(() => createProjectFormSchema(tValidation), [tValidation]);
   const isEdit = !!project;
 
@@ -118,9 +110,6 @@ export function useProjectForm(
   const systemPromptLen = form.watch('systemPrompt').length;
   const overCap = systemPromptLen > MAX_SYSTEM_PROMPT_CHARS;
 
-  // RBAC (plan 02-09): integrations are scoped per business. Switching the
-  // active business must surface a fresh list, hence the per-bizId query
-  // key and the `enabled` gate.
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const { data: integrations = [] } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
@@ -132,10 +121,6 @@ export function useProjectForm(
   });
   const activePlatforms = integrations.filter((i) => i.status === 'active').map((i) => i.platform);
 
-  // live registry (overrides section). Business
-  // approvals drive the inherit chip; both are loaded in the background
-  // and the form renders a loading note in the overrides section until
-  // they resolve.
   const { data: tools } = useTools();
   const { data: businessApprovals = {} } = useBusinessToolApprovals(project?.businessId ?? '');
 

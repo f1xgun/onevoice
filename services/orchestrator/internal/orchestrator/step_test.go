@@ -64,9 +64,6 @@ func (m *mockPendingRepo) Persist(_ context.Context, b *domain.PendingToolCallBa
 	if m.persistErr != nil {
 		return m.persistErr
 	}
-	// Real Persist promotes the batch to status=pending before returning;
-	// mirror that here so consumers observing GetByBatchID after Persist
-	// see the post-promote state.
 	b.Status = "pending"
 	m.insertedBatches = append(m.insertedBatches, b)
 	m.store[b.ID] = b
@@ -248,17 +245,12 @@ func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 
 	evts := drainEvents(events)
 
-	// Ordering invariant: Persist → pause event. Persist must complete
-	// (status=pending committed) BEFORE the SSE event fires; otherwise a
-	// crash between persist and emit leaves an unrecoverable in-flight
-	// batch from the user's POV.
 	repo.mu.Lock()
 	ops := append([]string{}, repo.ops...)
 	repo.mu.Unlock()
 	require.GreaterOrEqual(t, len(ops), 1, "must call Persist")
 	assert.Equal(t, "Persist", ops[0])
 
-	// Pause event emitted
 	pauseEvts := findEvents(evts, orchestrator.EventToolApprovalRequired)
 	require.Len(t, pauseEvts, 1, "must emit exactly one tool_approval_required event")
 	assert.NotEmpty(t, pauseEvts[0].BatchID)
@@ -267,8 +259,6 @@ func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 	assert.Equal(t, "manual_tool", pauseEvts[0].Calls[0].ToolName)
 	assert.Equal(t, domain.ToolFloorManual, pauseEvts[0].Calls[0].Floor)
 
-	// Batch was persisted with all identity fields (incl. ProjectID
-	// threading required by the TOCTOU re-check).
 	require.Len(t, repo.insertedBatches, 1)
 	b := repo.insertedBatches[0]
 	assert.Equal(t, "conv-1", b.ConversationID)
@@ -279,7 +269,6 @@ func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 	require.Len(t, b.Calls, 1)
 	assert.Equal(t, "call_m", b.Calls[0].CallID)
 
-	// No done/error event after pause (goroutine exited, OutcomePaused)
 	assert.Empty(t, findEvents(evts, orchestrator.EventDone))
 	assert.Empty(t, findEvents(evts, orchestrator.EventError))
 }
@@ -329,7 +318,6 @@ func TestStepRun_BusinessRaisesAutoToManual_PausesCorrectly(t *testing.T) {
 		},
 	}}
 
-	// Registry says auto; business flips it to manual.
 	reg := newRegistryWithFloor("raisable_tool", domain.ToolFloorAuto, nil)
 	repo := newMockPendingRepo()
 	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
@@ -386,14 +374,12 @@ func TestStepRun_ForbiddenTool_SynthesizesRejection_AndContinues(t *testing.T) {
 
 	evts := drainEvents(events)
 
-	// Forbidden emits tool_rejected
 	rejections := findEvents(evts, orchestrator.EventToolRejected)
 	require.Len(t, rejections, 1)
 	assert.Equal(t, "forbidden_tool", rejections[0].ToolName)
 	assert.Equal(t, "call_f", rejections[0].ToolCallID)
 	assert.Equal(t, "policy_forbidden", rejections[0].Content)
 
-	// Auto still executed, text still arrived, outcome == done
 	assert.NotEmpty(t, findEvents(evts, orchestrator.EventToolCall))
 	assert.NotEmpty(t, findEvents(evts, orchestrator.EventToolResult))
 	assert.NotEmpty(t, findEvents(evts, orchestrator.EventDone))
@@ -439,20 +425,17 @@ func TestStepRun_MixedAutoAndManual_PausesAfterAutoComplete(t *testing.T) {
 
 	evts := drainEvents(events)
 
-	// Auto tool executed first (tool_call + tool_result emitted)
 	toolCalls := findEvents(evts, orchestrator.EventToolCall)
 	toolResults := findEvents(evts, orchestrator.EventToolResult)
 	require.Len(t, toolCalls, 1, "only the auto tool should emit tool_call (manual tools go through approval card)")
 	require.Len(t, toolResults, 1)
 	assert.Equal(t, "auto_t", toolCalls[0].ToolName)
 
-	// Then manual pause
 	pauses := findEvents(evts, orchestrator.EventToolApprovalRequired)
 	require.Len(t, pauses, 1, "one card per turn for ALL manual calls")
 	require.Len(t, pauses[0].Calls, 1)
 	assert.Equal(t, "manual_t", pauses[0].Calls[0].ToolName)
 
-	// Outcome must be paused — no done event
 	assert.Empty(t, findEvents(evts, orchestrator.EventDone))
 }
 
@@ -470,7 +453,6 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 	}}
 
 	reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, nil)
-	// No pendingRepo — use plain New (nil repo)
 	orch := orchestrator.New(stub, reg)
 
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -502,7 +484,6 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	t.Setenv("LLM_MODEL", "anthropic/claude-sonnet-4-6")
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
 
-	// 1. httptest server that captures the POST.
 	type captureRec struct {
 		mu     sync.Mutex
 		bodies [][]byte
@@ -520,11 +501,8 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	// 2. Build pkg/billingclient pointed at the httptest server.
 	bc := billingclient.New(srv.URL, nil)
 
-	// 3. Build a router with fake provider + WithBilling. The fakeSelector
-	// returns a known entry so we control input/output cost.
 	fakeProv := &e2eFakeProvider{resp: &llm.ChatResponse{
 		Content: "ok", FinishReason: "stop",
 		Usage: llm.TokenUsage{InputTokens: 100, OutputTokens: 50},
@@ -541,7 +519,6 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// 4. Run stepRun via the orchestrator with a real BusinessID.
 	bizID := uuid.New()
 	reg := toolregistry.NewRegistry()
 	orch := orchestrator.New(router, reg)
@@ -555,7 +532,6 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	require.NoError(t, err)
 	_ = drainEvents(events)
 
-	// 5. Wait for the fire-and-forget goroutine to land its POST.
 	require.Eventually(t, func() bool {
 		rec.mu.Lock()
 		defer rec.mu.Unlock()
@@ -567,8 +543,6 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	rec.mu.Unlock()
 	require.Len(t, bodies, 1, "expected exactly one billing POST per Chat call")
 
-	// 6. Decode + assert the row carries the BusinessID and a real cost.
-	// providerCost = (100 × 3) / 1e6 + (50 × 15) / 1e6 = 3e-4 + 7.5e-4 = 1.05e-3
 	var got llm.UsageLog
 	require.NoError(t, json.Unmarshal(bodies[0], &got))
 	assert.Equal(t, bizID, got.BusinessID)
@@ -622,13 +596,12 @@ func TestStepRun_BillingSkippedWhenBusinessIDNil(t *testing.T) {
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
 		BusinessContext: prompt.BusinessContext{Name: "Test"},
 		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
-		BusinessID:      "", // intentionally empty
+		BusinessID:      "",
 		Model:           "anthropic/claude-sonnet-4-6",
 	})
 	require.NoError(t, err)
 	_ = drainEvents(events)
 
-	// Wait a beat so any pending goroutine has time to misbehave.
 	time.Sleep(200 * time.Millisecond)
 
 	rec.mu.Lock()
@@ -890,7 +863,6 @@ func TestStepRun_ConversationCap_PreIter(t *testing.T) {
 	assert.Equal(t, "conversation_token_cap", errs[0].Code)
 	assert.NotEmpty(t, errs[0].Content)
 
-	// Exactly three Chat calls were made (sums to 60k > 50k on the third).
 	assert.Equal(t, 3, stub.idx, "must make 3 LLM calls before tripping the cap")
 }
 
@@ -954,7 +926,6 @@ func TestStepRun_ConversationCap_Disabled(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
 		MaxIterations: 10,
-		// caps unset (zero) — gate disabled.
 	})
 
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -999,7 +970,6 @@ func TestStepRun_ConversationCap_FriendlyMessageEnglish(t *testing.T) {
 		MaxIterations:        5,
 		ConversationInputCap: 50000,
 	})
-	// language.English wins over middleware default.
 	ctx := i18nWithEnglish(t)
 	events, err := orch.Run(ctx, orchestrator.RunRequest{
 		BusinessContext: prompt.BusinessContext{Name: "Test"},

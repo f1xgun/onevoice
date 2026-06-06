@@ -40,9 +40,6 @@ function formatRelative(iso: string, tTable: AuditTableTranslator): string {
 function actorLabel(item: AuditLogDTO, tFilters: AuditFiltersTranslator): string {
   if (item.actor_display_name) return item.actor_display_name;
   if (item.actor_email) return item.actor_email;
-  // Failed-login: details may carry attempted_email (pkg/audit/details.go
-  // LoginFailedDetails). Falling back to "—" preserves the "Неизвестен"
-  // shape even when details is absent.
   const d = item.details as Record<string, unknown> | null;
   if (d && typeof d === 'object' && typeof d.attempted_email === 'string') {
     return tFilters('actorUnknown', { email: d.attempted_email });

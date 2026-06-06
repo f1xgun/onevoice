@@ -96,7 +96,6 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 		{ID: uuid.New(), BusinessID: businessID, Platform: "telegram", Status: "active"},
 	}
 
-	// Orchestrator that emits a tool_call then a tool_result with the same ID.
 	orchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
@@ -155,7 +154,6 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	// Assert repo interactions.
 	spy.mu.Lock()
 	defer spy.mu.Unlock()
 	require.Len(t, spy.created, 1, "expected one Create call")
@@ -170,7 +168,6 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 	assert.Equal(t, "done", spy.updated[0].Status)
 	require.NotNil(t, spy.updated[0].CompletedAt)
 
-	// Assert hub events: created then updated.
 	got := make([]taskhub.Event, 0, 2)
 	for len(got) < 2 {
 		select {

@@ -87,7 +87,6 @@ func TestBillingRepository_LogUsage_RejectsNilBusinessID(t *testing.T) {
 	err := repo.LogUsage(context.Background(), log)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "business_id is required")
-	// No Exec was expected — ExpectationsWereMet verifies zero queries fired.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -104,7 +103,7 @@ func TestBillingRepository_LogUsage_AssignsIDWhenNil(t *testing.T) {
 
 	mock.ExpectExec(`INSERT INTO usage_logs`).
 		WithArgs(
-			pgxmock.AnyArg(), // generated ID — caller asserts non-Nil below
+			pgxmock.AnyArg(),
 			log.BusinessID, log.UserID,
 			log.ConversationID, log.RequestID,
 			log.Model, log.Provider,
@@ -132,7 +131,7 @@ func TestBillingRepository_LogUsage_NullableUserID(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO usage_logs`).
 		WithArgs(
 			log.ID, log.BusinessID,
-			nil, // user_id → NULL
+			nil,
 			log.ConversationID, log.RequestID,
 			log.Model, log.Provider,
 			log.InputTokens, log.OutputTokens,
@@ -158,8 +157,8 @@ func TestBillingRepository_LogUsage_NullableConversationID(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO usage_logs`).
 		WithArgs(
 			log.ID, log.BusinessID, log.UserID,
-			nil, // conversation_id → NULL
-			nil, // request_id      → NULL
+			nil,
+			nil,
 			log.Model, log.Provider,
 			log.InputTokens, log.OutputTokens,
 			log.CacheReadTokens, log.CacheCreationTokens,
@@ -183,10 +182,6 @@ func TestBillingRepository_GetDailySpend_Success(t *testing.T) {
 	dayStart := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
 	dayEnd := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
 
-	// pgx encodes uuid.UUID via its driver.Valuer Value() method as the
-	// canonical 36-char hyphenated string, so pgxmock sees the arg as a
-	// string. Asserting on businessID.String() pins the value while still
-	// matching the wire shape pgx actually emits.
 	mock.ExpectQuery(`SELECT COALESCE\(SUM\(provider_cost_usd \+ commission_usd\), 0\) FROM usage_logs WHERE`).
 		WithArgs(businessID.String(), dayStart, dayEnd).
 		WillReturnRows(pgxmock.NewRows([]string{"sum"}).AddRow(12.50))
@@ -225,14 +220,10 @@ func TestBillingRepository_GetDailySpend_FiltersByUTCDay(t *testing.T) {
 	mock, repo := newBillingRepoMock(t)
 	businessID := uuid.New()
 
-	loc, err := time.LoadLocation("Europe/Moscow") // UTC+3
+	loc, err := time.LoadLocation("Europe/Moscow")
 	require.NoError(t, err)
 	day := time.Date(2026, 5, 30, 14, 0, 0, 0, loc)
 
-	// Repository builds bounds from day.Year()/Month()/Day() — Moscow's
-	// 2026-05-30 14:00 has Year=2026, Month=5, Day=30 (the local fields are
-	// what time.Date(... time.UTC) reads). The window is the UTC calendar
-	// day with those fields.
 	expectedLower := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
 	expectedUpper := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
 

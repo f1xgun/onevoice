@@ -74,7 +74,6 @@ func TestFirstTokenLatency_RecordsExactlyOnceOnFirstChunk(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ch)
 
-	// Drain the channel so the wrapper goroutine completes.
 	chunksReceived := 0
 	for range ch {
 		chunksReceived++

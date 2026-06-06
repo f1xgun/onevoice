@@ -159,7 +159,6 @@ describe('ProjectSection', () => {
     expect(screen.getByText('В проекте пока нет чатов')).toBeInTheDocument();
   });
 
-  // Roving-tabindex chat-list contract.
   it('chat-row links carry data-roving-item and roving tabindex (no listbox role)', () => {
     const convs = [
       makeConv('c-1', 'First chat'),
@@ -176,7 +175,6 @@ describe('ProjectSection', () => {
     items.forEach((item) => {
       expect(item.getAttribute('role')).toBeNull();
     });
-    // Initial tabindex distribution: first=0, rest=-1 (single Tab stop).
     expect(items[0].getAttribute('tabindex')).toBe('0');
     expect(items[1].getAttribute('tabindex')).toBe('-1');
     expect(items[2].getAttribute('tabindex')).toBe('-1');
@@ -190,8 +188,6 @@ describe('ProjectSection', () => {
         <ProjectSection project={sampleProject} conversations={convs} />
       </Wrapper>
     );
-    // The collapse button «Свернуть «Отзывы»» must live OUTSIDE the
-    // roving-tabindex container (separate Tab stop).
     const rovingItem = container.querySelector('[data-roving-item]');
     const rovingContainer = rovingItem?.parentElement?.parentElement ?? null;
     const collapseBtn = screen.getByRole('button', { name: /Свернуть «Отзывы»/ });

@@ -27,12 +27,6 @@ export interface AISummaryRailProps {
 
 export function AISummaryRail({ business, tones }: AISummaryRailProps) {
   const t = useTranslations('business.aiSummary');
-  // Request-scoped translators (B1). The summary text used to be assembled
-  // at module load via getTranslator; that pinned the copy to `ru`.
-  // Two namespaces are needed:
-  //   business.categoriesShort.* — short kind labels ("кофейня", "магазин")
-  //     distinct from business.categories.* which drives the form select.
-  //   business.aiSummaryRail.*   — the assembled-summary copy.
   const tCategoriesShort = useTranslations('business.categoriesShort');
   const tRail = useTranslations('business.aiSummaryRail');
   const tToneOptions = useTranslations('business.voiceTone.options');
@@ -51,9 +45,6 @@ export function AISummaryRail({ business, tones }: AISummaryRailProps) {
     const description = business.description?.trim();
 
     const parts: string[] = [];
-    // ICU select keeps the optional name/where fragments out of TS — the
-    // `hasName`/`hasWhere` boolean params drive whether the brace block is
-    // emitted, so the message stays a single key without four variants.
     parts.push(
       tRail('describes', {
         kind,

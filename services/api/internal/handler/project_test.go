@@ -251,7 +251,6 @@ func TestProjectHandler_Get_CrossBusinessReturns404(t *testing.T) {
 
 	ps := &mockProjectService{
 		getByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
-			// Service returns ErrProjectNotFound for cross-business access.
 			return nil, domain.ErrProjectNotFound
 		},
 	}
@@ -346,7 +345,6 @@ func TestProjectHandler_ConversationCount(t *testing.T) {
 }
 
 func TestProjectHandler_Endpoints_Require500WhenNoBusinessContext(t *testing.T) {
-	// No BusinessContext in context → 500 from misconfiguration guard.
 	ps := &mockProjectService{}
 	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
@@ -378,7 +376,6 @@ func TestProjectHandler_Endpoints_Require500WhenNoBusinessContext(t *testing.T) 
 			} else {
 				req = httptest.NewRequest(ep.method, ep.path, http.NoBody)
 			}
-			// No BusinessContext in context intentionally.
 
 			router := chi.NewRouter()
 			router.Method(ep.method, ep.pattern, ep.handler)

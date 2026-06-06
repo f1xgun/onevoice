@@ -101,8 +101,6 @@ func (r *invitationRepository) buildInsertSQL(inv *domain.Invitation) (sql strin
 func (r *invitationRepository) wrapInsertError(execErr error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(execErr, &pgErr) && pgErr.Code == "23505" {
-		// token_hash UNIQUE collision — astronomically rare with 256-bit entropy
-		// but correctly surfaced as a wrapped error for the handler's 500 path.
 		return fmt.Errorf("invitation token_hash unique violation: %w", execErr)
 	}
 	return fmt.Errorf("insert invitation: %w", execErr)
@@ -136,12 +134,6 @@ func (r *invitationRepository) GetByTokenHash(ctx context.Context, tokenHash str
 		}
 		return nil, fmt.Errorf("query invitation by hash: %w", scanErr)
 	}
-	// explicit subtle.ConstantTimeCompare on the (already-equal)
-	// retrieved hash. The B-tree UNIQUE index lookup already established
-	// equality, so this compare is structurally a no-op — but it satisfies
-	// the literal REQUIREMENTS.md contract phrase
-	// ("crypto/subtle.ConstantTimeCompare") and forecloses regressions if
-	// the lookup ever switches to a non-unique-index path.
 	if subtle.ConstantTimeCompare([]byte(inv.TokenHash), []byte(tokenHash)) != 1 {
 		return nil, domain.ErrInvitationNotFound
 	}
@@ -257,10 +249,6 @@ func (r *invitationRepository) Revoke(ctx context.Context, id, businessID uuid.U
 		return fmt.Errorf("revoke invitation: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		// Either: (a) row doesn't exist (or wrong businessID — cross-tenant)
-		// or (b) already accepted/revoked/expired.
-		// Re-classify by reading the row scoped by (id, businessID); if no row
-		// at all → ErrInvitationNotFound; otherwise the appropriate state error.
 		return r.classifyTerminalState(ctx, nil, id, businessID)
 	}
 	return nil
@@ -279,8 +267,6 @@ func (r *invitationRepository) MarkAccepted(ctx context.Context, id, accepterUse
 		return fmt.Errorf("mark accepted: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		// uuid.Nil = no business scoping for the accept-time classification path,
-		// where the handler has already loaded the row by token_hash.
 		return r.classifyTerminalState(ctx, nil, id, uuid.Nil)
 	}
 	return nil
@@ -371,8 +357,6 @@ func (r *invitationRepository) classifyTerminalState(ctx context.Context, tx pgx
 	case !expiresAt.After(now):
 		return domain.ErrInvitationExpired
 	default:
-		// Row exists, all gates pass — should not happen if the caller saw
-		// RowsAffected=0. Surface as a wrapped error so the handler 500s.
 		return fmt.Errorf("invitation %s: classify saw pending row after RowsAffected=0", id)
 	}
 }

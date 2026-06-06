@@ -29,19 +29,14 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
-  // Rejection takes visual priority over the platform accent (UI-SPEC
-  // §Post-submit Rejected tool). Expired keeps the platform color — the
-  // banner above the history carries the primary "expired" signal.
   const borderLeftColor = tool.status === 'rejected' ? 'hsl(var(--destructive))' : color;
 
-  // next-intl returns the key verbatim on miss; treat that as "no translation".
   const displayName = (() => {
     if (!tool.displayNameKey) return tool.name;
     const resolved = tToolNames(tool.displayNameKey);
     return resolved && resolved !== tool.displayNameKey ? resolved : tool.name;
   })();
 
-  // Struck-through name for both rejected and expired terminal states.
   const toolNameClasses = cn(
     'font-mono text-xs',
     tool.status === 'rejected' || tool.status === 'expired'
@@ -139,9 +134,6 @@ function summarizeResult(t: ToolCardTranslator, toolName: string, result: unknow
   if (!result || typeof result !== 'object') return null;
   const r = result as Record<string, unknown>;
 
-  // Common get-list shapes across platforms. ICU plural keys live under
-  // chat.toolCard.got* — one per noun (reviews / comments / posts / messages /
-  // items). Each key uses RU one/few/many/other and EN one/other categories.
   const lists: { key: string; tKey: string }[] = [
     { key: 'reviews', tKey: 'gotReviews' },
     { key: 'comments', tKey: 'gotComments' },
@@ -160,7 +152,6 @@ function summarizeResult(t: ToolCardTranslator, toolName: string, result: unknow
     return r.count === 0 ? t('nothingFound') : t('gotCount', { count: r.count });
   }
 
-  // Send-action shape — orchestrator returns ok/sent/posted booleans.
   if (toolName.includes('send') || toolName.includes('post') || toolName.includes('reply')) {
     if (r.ok === true || r.sent === true || r.posted === true) return t('sent');
   }

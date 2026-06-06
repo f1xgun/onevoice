@@ -50,10 +50,6 @@ func (h *ConnectHandler) probeVKCommunityToken(
 	if strings.TrimSpace(rawGroupInput) != "" {
 		resolved, err := h.resolveVKGroupID(ctx, rawGroupInput)
 		if err != nil {
-			// Surface as transport-level error wrapped with sentinel so the
-			// handler can map to the localized "community resolve failed"
-			// template via errors.Is. vkErrMsg stays empty in this branch
-			// (no VK-side error yet — we never reached the API).
 			return nil, "", fmt.Errorf("%w: %w", ErrVKCommunityResolveFailed, err)
 		}
 		groupParam = resolved
@@ -139,15 +135,12 @@ func (h *ConnectHandler) checkVKWallScope(ctx context.Context, accessToken strin
 			return nil
 		}
 	}
-	// Sentinel-only — the handler boundary maps this to the localized
-	// "wall permission missing" template via errors.Is.
 	return ErrVKWallPermissionMissing
 }
 
 // resolveVKGroupID turns user input (numeric id, screen_name, or full VK URL)
 // into a numeric VK group id via groups.getById with the Mini-App service key.
 func (h *ConnectHandler) resolveVKGroupID(ctx context.Context, input string) (string, error) {
-	// Strip URL prefix: https://vk.com/mygroup → mygroup
 	input = strings.TrimSpace(input)
 	for _, prefix := range vkapi.URLPrefixes {
 		input = strings.TrimPrefix(input, prefix)
@@ -159,7 +152,6 @@ func (h *ConnectHandler) resolveVKGroupID(ctx context.Context, input string) (st
 	if input == "" {
 		return "", fmt.Errorf("empty group id/URL")
 	}
-	// If already a positive numeric ID, return as-is.
 	if _, err := strconv.ParseUint(input, 10, 64); err == nil {
 		return input, nil
 	}

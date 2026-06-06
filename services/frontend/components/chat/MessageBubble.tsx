@@ -27,11 +27,6 @@ export function MessageBubble({ message }: { message: Message }) {
   const hasContent = !!message.content;
   const hasToolCalls = (message.toolCalls?.length ?? 0) > 0;
   const isStreamingEmpty = message.status === 'streaming' && !hasContent;
-  // Empty card suppression: once a message is `done` with no text, we hide
-  // the white bubble — otherwise a rejected/aborted run renders a blank box
-  // above the (possibly collapsed) tool-calls strip. If there's nothing to
-  // show at all (no content, no tool calls, not streaming), the whole row
-  // is suppressed.
   const isDoneEmpty = message.status === 'done' && !hasContent;
 
   if (isUser) {

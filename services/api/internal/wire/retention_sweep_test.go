@@ -42,8 +42,6 @@ func TestSweep_LockNotAcquired_NoDelete(t *testing.T) {
 
 	mock.ExpectQuery(`pg_try_advisory_lock`).
 		WillReturnRows(pgxmock.NewRows([]string{"pg_try_advisory_lock"}).AddRow(false))
-	// CRITICAL: no ExpectExec for pg_advisory_unlock — sweep must NOT
-	// release a lock it never acquired.
 
 	repo := &stubAuditRepo{}
 	sweep(context.Background(), mock, repo)
@@ -104,7 +102,6 @@ func TestSweep_LockQueryError(t *testing.T) {
 
 	mock.ExpectQuery(`pg_try_advisory_lock`).
 		WillReturnError(errors.New("pg down"))
-	// No ExpectExec for unlock — we never acquired.
 
 	repo := &stubAuditRepo{}
 	sweep(context.Background(), mock, repo)

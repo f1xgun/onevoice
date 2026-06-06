@@ -93,7 +93,6 @@ func (s *ConsentService) RecordRegistrationConsents(ctx context.Context, tx pgx.
 			return fmt.Errorf("record registration consents: %w", err)
 		}
 		purposes = append(purposes, p.Slug)
-		// First policy's (version, sha256) is canonical for the audit row — all three bump in lockstep.
 		if policyVersion == "" {
 			policyVersion = p.Version
 			policySHA256 = p.SHA256
@@ -145,7 +144,7 @@ func (s *ConsentService) ReConsent(ctx context.Context, userID uuid.UUID, ip, us
 			toVersion = p.Version
 		}
 	}
-	if err := audit.LogConsentReconsentedTx(ctx, tx, userID, purposes, "" /* fromVersion best-effort */, toVersion, ip, userAgent); err != nil {
+	if err := audit.LogConsentReconsentedTx(ctx, tx, userID, purposes, "", toVersion, ip, userAgent); err != nil {
 		return fmt.Errorf("reconsent audit: %w", err)
 	}
 
@@ -158,7 +157,6 @@ func (s *ConsentService) ReConsent(ctx context.Context, userID uuid.UUID, ip, us
 // WithdrawPDN handles POST /users/me/consents/pdn/withdraw — deletion + mark + audit (two tx).
 // See docs/services/consent.md.
 func (s *ConsentService) WithdrawPDN(ctx context.Context, userID uuid.UUID, ip, userAgent string) error {
-	// Empty password skips the password check — consent-withdrawal is its own authentication path.
 	if err := s.accountDeletion.RequestDeletion(ctx, userID, "", ip, userAgent, "consent_withdrawn"); err != nil {
 		return err
 	}
@@ -200,7 +198,6 @@ func (s *ConsentService) DiffAgainstCurrent(ctx context.Context, userID uuid.UUI
 		want, wantSHA := s.currentVersion(slug)
 		got, ok := bySlug[string(slug)]
 		if !ok {
-			// No row → pre-v22 backfill or user predates table → trigger re-consent.
 			diffs = append(diffs, PolicyDiff{
 				Slug:       string(slug),
 				OldVersion: "",
@@ -210,7 +207,6 @@ func (s *ConsentService) DiffAgainstCurrent(ctx context.Context, userID uuid.UUI
 			continue
 		}
 		if got.WithdrawnAt != nil {
-			// User is mid-deletion — no modal.
 			continue
 		}
 		if got.PolicyVersion != want {

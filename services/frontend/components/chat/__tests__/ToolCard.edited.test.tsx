@@ -17,17 +17,13 @@ function makeDone(overrides: Partial<ToolCall> = {}): ToolCall {
 describe('ToolCard — edited', () => {
   it("ZZ: done + wasEdited === true exposes a Pencil with aria-label 'Аргументы изменены пользователем'", () => {
     render(<ToolCard tool={makeDone({ wasEdited: true })} />);
-    // Pencil icon carries aria-label so SR users receive the tooltip text even
-    // without a hover event — we assert the label directly.
     const label = screen.getByLabelText('Аргументы изменены пользователем');
     expect(label).toBeInTheDocument();
   });
 
   it('ZZ bis: tooltip-wrapped Pencil preserves the existing green check for a done + edited tool', () => {
     render(<ToolCard tool={makeDone({ wasEdited: true })} />);
-    // Existing done branch continues to render the ✅ glyph.
     expect(screen.getByText('✅')).toBeInTheDocument();
-    // And the Pencil aria-label is still present alongside.
     expect(screen.getByLabelText('Аргументы изменены пользователем')).toBeInTheDocument();
   });
 
@@ -47,7 +43,6 @@ describe('ToolCard — edited', () => {
         }}
       />
     );
-    // Pending: spinner span with border-t-blue-500.
     expect(container.querySelector('.border-t-blue-500')).not.toBeNull();
 
     rerender(

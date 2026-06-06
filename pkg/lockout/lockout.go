@@ -114,9 +114,6 @@ func (l *Lockout) RecordFailure(ctx context.Context, email, ipNet16 string) (int
 	if _, err := pipe.Exec(ctx); err != nil {
 		return 0, fmt.Errorf("lockout: incr: %w", err)
 	}
-	// PTTL == -1 means the key exists but has no TTL — happens only on the
-	// first INCR. PTTL == -2 means the key vanished between INCR and PTTL,
-	// which only happens under explicit DEL; treat the same way (set TTL).
 	if ttl.Val() < 0 {
 		if err := l.rdb.PExpire(ctx, key, l.cfg.Duration).Err(); err != nil {
 			return 0, fmt.Errorf("lockout: expire: %w", err)

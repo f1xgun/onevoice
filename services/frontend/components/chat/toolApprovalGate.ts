@@ -31,13 +31,9 @@ export function evaluateEditGate(option: JsonEditOption, editableFields: string[
   if (option.type === 'key') {
     return false;
   }
-  // Root-only policy. parentName === undefined OR empty string counts as
-  // the root node; anything else is nested and must be rejected even if
-  // the nested key collides with a top-level allowlist entry.
   if (option.parentName !== undefined && option.parentName !== '') {
     return false;
   }
-  // Scalar-only. null has typeof 'object' and is rejected here.
   const t = typeof option.value;
   if (t !== 'string' && t !== 'number' && t !== 'boolean') {
     return false;

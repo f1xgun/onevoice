@@ -58,7 +58,6 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 // conversation history. Block 1 is byte-stable per locale — Anthropic stamps
 // cache_control on it. See docs/orchestrator/prompt.md.
 func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message) (platform, business string, msgs []llm.Message) {
-	// Normalize Locale ONCE here; internal helpers trust their tag.
 	tag := i18n.NormalizeToSupported(ctx.Locale)
 	platform = buildPlatformBlock(tag)
 	business = buildBusinessBlock(ctx, tag)
@@ -126,7 +125,6 @@ func buildPlatformBlockRu() string {
 	sb.WriteString("- Уважительный, деловой, на «вы» с пользователем-владельцем. Без излишнего пафоса и без фамильярности.\n")
 	sb.WriteString("- Если бизнес задаёт собственный тон (см. блок «Бизнес» ниже), он имеет приоритет над этим значением по умолчанию для исходящих публикаций и ответов клиентам, но не меняет твою манеру общения с самим пользователем-владельцем.\n")
 
-	// Load-bearing — MUST remain the final line of Block 1.
 	sb.WriteString("\n- Общайся на русском языке\n")
 	return sb.String()
 }
@@ -176,7 +174,6 @@ func buildPlatformBlockEn() string {
 	sb.WriteString("- Respectful, businesslike, and professional with the owner-user. Skip needless pomp and avoid familiarity.\n")
 	sb.WriteString("- If the business specifies its own tone (see the Business block below), that tone takes priority for outbound posts and customer replies, but it does not change how you address the owner-user.\n")
 
-	// Load-bearing — MUST remain the final line of Block 1.
 	sb.WriteString("\n- Respond in English\n")
 	return sb.String()
 }
@@ -297,7 +294,6 @@ func appendProjectBlock(base string, proj *ProjectContext, tag language.Tag) str
 	switch proj.WhitelistMode {
 	case domain.WhitelistModeExplicit:
 		if len(proj.AllowedTools) == 0 {
-			// Defensive: service layer rejects empty explicit via ErrProjectWhitelistEmpty.
 			sb.WriteString(restrictionsAllDisabled(tag))
 		} else {
 			sb.WriteString(restrictionsAllowedOnly(tag, proj.AllowedTools))
@@ -305,7 +301,6 @@ func appendProjectBlock(base string, proj *ProjectContext, tag language.Tag) str
 	case domain.WhitelistModeNone:
 		sb.WriteString(restrictionsAllDisabled(tag))
 	case domain.WhitelistModeAll, domain.WhitelistModeInherit, "":
-		// Permissive modes — no hint emitted.
 	}
 
 	return sb.String()

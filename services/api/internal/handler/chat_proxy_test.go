@@ -79,7 +79,6 @@ func TestChatProxy_EnrichesContext(t *testing.T) {
 		{ID: uuid.New(), BusinessID: businessID, Platform: "yandex", Status: "inactive"},
 	}
 
-	// Capture the forwarded request body
 	var capturedBody map[string]interface{}
 	orchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -105,10 +104,8 @@ func TestChatProxy_EnrichesContext(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-123", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	// Inject BusinessContext via authz helper
 	ctx := chatProxyBizCtx(businessID, userID)
 
-	// Set up chi URL param
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-123")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -231,7 +228,6 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"type":"error"`, "error event must be forwarded to the client")
 
-	// Two Create calls expected: 1 user message + 1 assistant error message.
 	require.GreaterOrEqual(t, len(created), 2, "user + assistant must both be persisted")
 	var assistant *domain.Message
 	for _, m := range created {
@@ -258,13 +254,8 @@ func TestChatProxy_LoadHistory_SkipsEmptyAssistant(t *testing.T) {
 				{ID: "u1", ConversationID: convID, Role: "user", Content: "hello"},
 				{ID: "a1", ConversationID: convID, Role: "assistant", Content: "hi there"},
 				{ID: "u2", ConversationID: convID, Role: "user", Content: "still there?"},
-				// Poison: empty assistant with no tool_calls. Pre-fix this would
-				// be passed straight through and the LLM would 400.
 				{ID: "a2", ConversationID: convID, Role: "assistant", Content: ""},
 				{ID: "u3", ConversationID: convID, Role: "user", Content: "?"},
-				// Tool-call assistant with empty content is LEGITIMATE and must
-				// be preserved (the assistant emits an empty content + tool_calls
-				// when it decides to call a tool).
 				{ID: "a3", ConversationID: convID, Role: "assistant", Content: "", ToolCalls: []domain.ToolCall{{ID: "tc-1", Name: "x"}}},
 			}, nil
 		},
@@ -333,7 +324,6 @@ func TestChatProxy_OrchestratorDown(t *testing.T) {
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	// Use a guaranteed unreachable address
 	h := newChatProxyNoProject(mockBiz, mockInteg, &MockMessageRepository{}, "http://127.0.0.1:1")
 
 	reqBody := `{"message":"hello"}`
@@ -388,7 +378,6 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: userID.String(), ProjectID: nil}, nil
 		},
 	}
-	// projectService never called because ProjectID is nil.
 	proj := &noopProjectService{
 		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
 			t.Fatal("projectService.GetByID should not be called when conversation.ProjectID is nil")
@@ -416,7 +405,6 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 	assert.Equal(t, "", captured["project_name"])
 	assert.Equal(t, "", captured["project_system_prompt"])
 	assert.Equal(t, "", captured["project_whitelist_mode"])
-	// Empty (not nil) so the JSON wire shape is `[]`, not `null`.
 	allowedTools, ok := captured["project_allowed_tools"].([]interface{})
 	require.True(t, ok, "project_allowed_tools must be a JSON array; got: %T", captured["project_allowed_tools"])
 	assert.Empty(t, allowedTools)
@@ -507,12 +495,10 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 
 	business := &domain.Business{ID: businessID, Name: "Biz"}
 
-	// Build a ~512KB JSON payload (well above the old 64KB limit).
 	bigText := strings.Repeat("a", 500_000)
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		// One tool_call, one giant tool_result, one done.
 		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"toolu_big","tool_name":"telegram__send_channel_post","tool_args":{"text":"x"}}` + "\n\n"))
 		payload := map[string]interface{}{"type": "tool_result", "tool_call_id": "toolu_big", "tool_name": tools.TelegramSendChannelPost, "result": map[string]interface{}{"echo": bigText}}
 		b, _ := json.Marshal(payload)
@@ -657,11 +643,9 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	h.Chat(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	// Client received the pause event.
 	assert.Contains(t, rr.Body.String(), `"type":"tool_approval_required"`)
 	assert.Contains(t, rr.Body.String(), `"batch_id":"batch-1"`)
 
-	// Pending-approval Message is persisted.
 	require.NotNil(t, persistedMsg, "assistant message must be persisted at pause time")
 	assert.Equal(t, domain.MessageStatusPendingApproval, persistedMsg.Status)
 	assert.Equal(t, "Here I'll post:", persistedMsg.Content)
@@ -698,7 +682,6 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 		Status: domain.MessageStatusPendingApproval,
 	}
 
-	// Orchestrator mock — assert resume URL + emit two tool_result events and done.
 	orchHits := 0
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orchHits++
@@ -761,7 +744,6 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, 1, orchHits, "orchestrator's resume endpoint must be invoked")
 
-	// The final Update carries the terminal state.
 	require.NotEmpty(t, persistedUpdates)
 	final := persistedUpdates[len(persistedUpdates)-1]
 	assert.Equal(t, "msg-1", final.ID, "same message ID preserved")
@@ -784,7 +766,6 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 
 	business := &domain.Business{ID: businessID, Name: "Biz"}
 
-	// Message exists but batch does not.
 	activeMsg := &domain.Message{
 		ID: "msg-1", ConversationID: convID, Role: "assistant",
 		Status: domain.MessageStatusPendingApproval,
@@ -861,9 +842,6 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 		Status: domain.MessageStatusPendingApproval,
 	}
 
-	// Orchestrator mock — emit a tool_rejected event then an error and close.
-	// Mirrors the real production trace: user rejected the call, orchestrator
-	// sent the rejection ack, then stepRun's LLM follow-up was canceled.
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"type":"tool_rejected","tool_call_id":"call-a","tool_name":"telegram__send_channel_post","content":"user_rejected"}` + "\n\n"))
@@ -916,12 +894,8 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 	h.Chat(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	// Error event must reach the client — frontend renders it via SSE handler.
 	assert.Contains(t, rr.Body.String(), `"type":"error"`)
 
-	// The persistResumeDone path triggered by the error event must have run,
-	// transitioning Status off pending_approval. Without this, the gate
-	// keeps blocking new turns.
 	require.NotEmpty(t, persistedUpdates, "Update must be called when error event fires")
 	final := persistedUpdates[len(persistedUpdates)-1]
 	assert.Equal(t, "msg-stuck", final.ID, "same message ID preserved")
@@ -955,7 +929,6 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"type":"tool_rejected","tool_call_id":"call-a","tool_name":"telegram__send_channel_post","content":"user_rejected"}` + "\n\n"))
-		// Connection closes without done or error.
 	}))
 	defer orch.Close()
 
@@ -1052,7 +1025,6 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 		CreateFunc: func(_ context.Context, _ *domain.Message) error { createCalls++; return nil },
 		UpdateFunc: func(_ context.Context, m *domain.Message) error {
 			updateCalls++
-			// ID preserved.
 			assert.Equal(t, "msg-2", m.ID)
 			return nil
 		},
@@ -1076,7 +1048,6 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{"message":"(empty resume body)"}`))
-	// NO ResumeBatchHeader here — implicit resume.
 	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
@@ -1145,7 +1116,6 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
-	// No resume header.
 	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
@@ -1195,7 +1165,7 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 	}
 	pendingRepo := &MockPendingToolCallRepository{
 		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
-			return nil, nil // no active batches
+			return nil, nil
 		},
 	}
 	convRepo := &MockConversationRepository{
@@ -1263,7 +1233,6 @@ func TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.Chat(rr, req)
 
-	// Client still got the pause event (no error event).
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"type":"tool_approval_required"`)
 	assert.NotContains(t, rr.Body.String(), `"type":"error"`)
@@ -1302,7 +1271,6 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 			return &domain.Conversation{ID: conversationID, UserID: userID.String(), ProjectID: &projIDStr}, nil
 		},
 	}
-	// Project was deleted or never existed — service returns ErrProjectNotFound.
 	proj := &noopProjectService{
 		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
 			return nil, domain.ErrProjectNotFound
@@ -1322,10 +1290,8 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.Chat(rr, req)
 
-	// Best-effort: chat still succeeds.
 	assert.Equal(t, http.StatusOK, rr.Code)
 	require.NotNil(t, captured)
-	// Fell through to no-project path.
 	assert.Equal(t, "", captured["project_id"])
 	assert.Equal(t, "", captured["project_name"])
 	assert.Equal(t, "", captured["project_whitelist_mode"])
@@ -1369,7 +1335,6 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		mockInteg := new(MockIntegrationService)
 		mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-		// Capture the userMsg.ID assigned by chat_proxy before Create.
 		var capturedUserMsgID string
 		msgRepo := &MockMessageRepository{
 			CreateFunc: func(_ context.Context, m *domain.Message) error {
@@ -1417,32 +1382,26 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		require.NotNil(t, captured, "orchestrator request body should be captured")
 
-		// All five keys MUST be present.
 		assert.Contains(t, captured, "user_id")
 		assert.Contains(t, captured, "message_id")
 		assert.Contains(t, captured, "tier")
 		assert.Contains(t, captured, "business_approvals")
 		assert.Contains(t, captured, "project_approval_overrides")
 
-		// user_id is the JWT subject (uuid).
 		assert.Equal(t, userID.String(), captured["user_id"])
 
-		// message_id matches the userMsg.ID set on the wire (non-empty).
 		mid, ok := captured["message_id"].(string)
 		require.True(t, ok, "message_id must be a string, got %T", captured["message_id"])
 		assert.NotEmpty(t, mid, "message_id must be non-empty")
 		assert.Equal(t, capturedUserMsgID, mid, "message_id must equal the just-saved userMsg.ID")
 
-		// tier — string (empty acceptable; v1.3 has no tier model).
 		_, ok = captured["tier"].(string)
 		assert.True(t, ok, "tier must be a string, got %T", captured["tier"])
 
-		// business_approvals: non-nil map echoing Business.ToolApprovals().
 		ba, ok := captured["business_approvals"].(map[string]interface{})
 		require.True(t, ok, "business_approvals must be a JSON object, got %T", captured["business_approvals"])
 		assert.Equal(t, "manual", ba[tools.TelegramSendChannelPost])
 
-		// project_approval_overrides: non-nil map echoing project.ApprovalOverrides.
 		po, ok := captured["project_approval_overrides"].(map[string]interface{})
 		require.True(t, ok, "project_approval_overrides must be a JSON object, got %T", captured["project_approval_overrides"])
 		assert.Equal(t, "auto", po[tools.VKPublishPost])
@@ -1493,21 +1452,16 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		require.NotNil(t, captured)
 
-		// project_approval_overrides MUST be present and a non-nil map (empty
-		// object) — never null. The frontend / orchestrator's JSON decode
-		// behaves differently for {} vs null.
 		require.Contains(t, captured, "project_approval_overrides")
 		po, ok := captured["project_approval_overrides"].(map[string]interface{})
 		require.True(t, ok, "project_approval_overrides must be a JSON object {}, not null. got %T", captured["project_approval_overrides"])
 		assert.Empty(t, po, "without project, project_approval_overrides must be an empty object")
 
-		// business_approvals also non-nil empty map.
 		require.Contains(t, captured, "business_approvals")
 		ba, ok := captured["business_approvals"].(map[string]interface{})
 		require.True(t, ok, "business_approvals must be a JSON object {}, not null. got %T", captured["business_approvals"])
 		assert.Empty(t, ba)
 
-		// user_id still populated from JWT subject.
 		assert.Equal(t, userID.String(), captured["user_id"])
 	})
 }
@@ -1535,8 +1489,6 @@ func TestFireAutoTitleIfPending(t *testing.T) {
 	userText := "помоги опубликовать пост"
 	assistantText := "конечно, какая платформа?"
 
-	// Helper: build ChatProxyHandler with a real *service.Titler driven by a
-	// FakeChatCaller, and a stub conversation repo with the given snapshot.
 	build := func(t *testing.T, conv *domain.Conversation, getByIDErr error, withTitler bool) (*ChatProxyHandler, *service.FakeChatCaller) {
 		t.Helper()
 		repo := &MockConversationRepository{
@@ -1563,8 +1515,6 @@ func TestFireAutoTitleIfPending(t *testing.T) {
 		return h, fc
 	}
 
-	// Settle helper: the goroutine spawned inside fireAutoTitleIfPending
-	// races us; poll the FakeChatCaller for up to 500ms.
 	waitForFire := func(fc *service.FakeChatCaller, want bool) bool {
 		deadline := time.Now().Add(500 * time.Millisecond)
 		for time.Now().Before(deadline) {
@@ -1598,7 +1548,6 @@ func TestFireAutoTitleIfPending(t *testing.T) {
 
 		h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
 
-		// Negative settle: ensure NO fire even after settle window.
 		require.True(t, waitForFire(fc, false), "manual must not fire titler; calls=%d", fc.Calls())
 		assert.Equal(t, 0, fc.Calls())
 	})
@@ -1621,13 +1570,10 @@ func TestFireAutoTitleIfPending(t *testing.T) {
 			ID: convID, BusinessID: bizID,
 			TitleStatus: domain.TitleStatusAutoPending,
 		}
-		h, fc := build(t, conv, nil, false) // titler nil — graceful disable
+		h, fc := build(t, conv, nil, false)
 		assert.NotPanics(t, func() {
 			h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
 		})
-		// fc isn't wired into the handler since titler is nil; just confirm
-		// no panic and no Chat dispatched (counter stays at 0 because no
-		// goroutine was spawned).
 		assert.Equal(t, 0, fc.Calls())
 	})
 

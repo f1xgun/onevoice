@@ -72,7 +72,6 @@ func (r *EmailOutboxRepository) Enqueue(ctx context.Context, tx pgx.Tx, in Outbo
 		RETURNING id`
 	var id uuid.UUID
 	if tx == nil {
-		// Sweeper fallback path. Single-statement INSERT is atomic at the row level; caller-side dedupe (ExistsBySubjectAndRecipient) precedes this call.
 		if err := r.pool.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML).Scan(&id); err != nil {
 			return uuid.Nil, fmt.Errorf("email_outbox: enqueue (nil tx): %w", err)
 		}
@@ -177,9 +176,7 @@ func (r *EmailOutboxRepository) MarkSent(ctx context.Context, id uuid.UUID, prov
 	if _, err := r.pool.Exec(ctx, q, id); err != nil {
 		return fmt.Errorf("email_outbox: mark sent: %w", err)
 	}
-	// providerJobID is deliberately discarded — column does not exist today.
 	_ = providerJobID
-	// We intentionally do not error on "no rows affected" — a concurrent boot/worker already marked it sent. Idempotent.
 	return nil
 }
 

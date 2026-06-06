@@ -67,9 +67,6 @@ async function renderAndOpenDrawer(pathname: string) {
       <Sidebar />
     </Providers>
   );
-  // Sidebar is mobile-only. The desktop layout is owned by
-  // app/(app)/layout.tsx (NavRail + ProjectPane). To assert
-  // projects-subtree visibility we open the mobile drawer first.
   const trigger = screen.getByRole('button', { name: 'Открыть боковое меню' });
   await userEvent.setup().click(trigger);
   return result;

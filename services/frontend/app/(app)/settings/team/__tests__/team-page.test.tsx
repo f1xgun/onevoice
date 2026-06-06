@@ -143,7 +143,6 @@ describe('TeamPage', () => {
 
   it('shows the «Пригласить» button when user has members.invite (admin role)', async () => {
     render(wrap(<TeamPage />));
-    // usePermission is async — wait for /me/permissions to settle.
     expect(await screen.findByRole('button', { name: /Пригласить/ })).toBeInTheDocument();
   });
 
@@ -156,8 +155,6 @@ describe('TeamPage', () => {
   it('shows «Покинуть организацию» for the current user row (self-row)', async () => {
     const user = userEvent.setup();
     render(wrap(<TeamPage />));
-    // usePermission is async — wait for /me/permissions to settle
-    // before reaching for permission-gated DOM (the dropdown trigger).
     await screen.findByRole('button', { name: /Пригласить/ });
     const triggers = screen.getAllByLabelText(/Действия для участника/);
     await user.click(triggers[0]);
@@ -172,9 +169,6 @@ describe('TeamPage', () => {
     } as any);
     const user = userEvent.setup();
     render(wrap(<TeamPage />));
-    // Wait for permissions to settle so the row's DropdownMenu renders
-    // (otherwise the disabled tooltip variant is rendered and the click
-    // is a no-op).
     await screen.findByRole('button', { name: /Пригласить/ });
     const triggers = screen.getAllByLabelText(/Действия для участника/);
     await user.click(triggers[1]);

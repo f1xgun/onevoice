@@ -59,7 +59,6 @@ func run() error {
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentVK, transport, handler.Handle)
 
-	// Health server
 	hc := health.New()
 	hc.AddCheck("nats", func(ctx context.Context) error {
 		if !nc.IsConnected() {
@@ -94,8 +93,8 @@ func run() error {
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutCancel()
 	_ = healthSrv.Shutdown(shutCtx)
-	transport.Close() // drain NATS — no new messages
-	ag.Stop()         // wait for in-flight handlers
+	transport.Close()
+	ag.Stop()
 	slog.Info("VK agent stopped")
 	return nil
 }

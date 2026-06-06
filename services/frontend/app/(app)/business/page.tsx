@@ -67,16 +67,11 @@ export default function BusinessPage() {
     retry: false,
   });
 
-  // Persisted in business.settings.voiceTone as stable enum ids
-  // ("warm", "businesslike", …). normalizeStoredTones() also accepts the
-  // legacy Russian-label form so pre-migration records ("Деловой") still
-  // light up the right chips — the next save flushes the canonical form.
   const persistedTones = useMemo<ToneId[]>(
     () => normalizeStoredTones(data?.settings?.voiceTone),
     [data?.settings?.voiceTone]
   );
   const [tones, setTones] = useState<ToneId[]>(persistedTones);
-  // Sync local state when the underlying business record changes.
   useEffect(() => setTones(persistedTones), [persistedTones]);
 
   const is404 = isError && isAxiosError(error) && error.response?.status === HTTP_STATUS.NOT_FOUND;
@@ -103,9 +98,6 @@ export default function BusinessPage() {
     | { schedule?: ScheduleDay[]; specialDates?: SpecialDate[] }
     | ScheduleDay[]
     | undefined;
-  // The /business/schedule handler stores the whole {schedule, specialDates}
-  // body under settings.schedule. Older records may store just the array —
-  // handle both shapes defensively.
   const initialSchedule = Array.isArray(schedule) ? schedule : schedule?.schedule;
   const initialSpecialDates = Array.isArray(schedule) ? undefined : schedule?.specialDates;
 

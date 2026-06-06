@@ -96,7 +96,6 @@ func (h *ProjectHandler) buildApprovalOverrides(body *map[string]openapi.Project
 		case "manual":
 			out[toolName] = domain.ToolFloorManual
 		case "inherit":
-			// Key absence encoding — do not persist.
 			continue
 		default:
 			return nil, http.StatusBadRequest, map[string]string{

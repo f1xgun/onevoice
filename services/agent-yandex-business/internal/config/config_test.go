@@ -5,7 +5,6 @@ import (
 )
 
 func TestConfig_BrowserPoolMaxContexts_Default(t *testing.T) {
-	// Clear the env so Load picks the default.
 	t.Setenv("BROWSER_POOL_MAX_CONTEXTS", "")
 
 	cfg, err := Load()

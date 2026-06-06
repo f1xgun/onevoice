@@ -31,7 +31,6 @@ func TestVerifyTelegramLogin_ValidHash(t *testing.T) {
 		"auth_date": authDate,
 	}
 	hash := buildTelegramHash(botToken, fields)
-	// Add hash to payload
 	payload := map[string]interface{}{
 		"id":        "123456",
 		"username":  "testuser",
@@ -208,7 +207,6 @@ func TestRefreshTelegramLinkedGroup_Success(t *testing.T) {
 	mockIntegration.On("UpdateMetadata", mock.Anything, integrationID, mock.MatchedBy(func(m map[string]interface{}) bool {
 		status, _ := m["linked_group_status"].(string)
 		linkedID, _ := m["linked_chat_id"].(int64)
-		// unrelated keys must survive
 		userIDv, _ := m["telegram_user_id"].(string)
 		return status == "ok" && linkedID == -1009876543210 && userIDv == "42"
 	})).Return(nil)
@@ -314,7 +312,7 @@ func TestConnectTelegram_Success(t *testing.T) {
 			p.Platform == "telegram" &&
 			p.ExternalID == "@mychannel" &&
 			title == "My Channel" &&
-			linkedStatus == "no_linked_group" // mock response omits linked_chat_id
+			linkedStatus == "no_linked_group"
 	})).Return(&domain.Integration{
 		ID:       integrationID,
 		Platform: "telegram",
@@ -408,7 +406,6 @@ func TestConnectTelegram_NoBusinessContext(t *testing.T) {
 	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(`{"channel_id":"@ch"}`))
-	// no BusinessContext seeded
 	rr := httptest.NewRecorder()
 	h.ConnectTelegram(rr, req)
 
@@ -425,7 +422,7 @@ func TestConnectTelegram_Forbidden(t *testing.T) {
 	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(`{"channel_id":"@ch"}`))
-	req = req.WithContext(connectBizCtx(businessID, userID /* no perms */))
+	req = req.WithContext(connectBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ConnectTelegram(rr, req)
 

@@ -128,14 +128,10 @@ describe('applySSEEvent', () => {
     });
     expect(result.toolCalls![0].status).toBe('rejected');
     expect(result.toolCalls![0].rejectReason).toBe('user said no');
-    // Args preserved on update — the operator should still see what was about to be sent.
     expect(result.toolCalls![0].args).toEqual({ text: 'hi' });
   });
 
   it('preserves a pre-populated rejectReason rather than overwriting with the server reason', () => {
-    // resolveApproval projects the operator's typed reason; the server's
-    // event carries the same (or a fallback like "user_rejected"). The
-    // update path keeps the pre-populated value when present.
     const msg: Message = {
       ...baseMessage,
       toolCalls: [
@@ -169,14 +165,10 @@ describe('applySSEEvent', () => {
     expect(result.toolCalls![0].name).toBe('vk__publish_post');
     expect(result.toolCalls![0].status).toBe('rejected');
     expect(result.toolCalls![0].rejectReason).toBe('policy_revoked');
-    // No args on TOCTOU-server-initiated rejections.
     expect(result.toolCalls![0].args).toEqual({});
   });
 
   it('synthesized rejection carries args when provided (usePendingApprovalFlow projection)', () => {
-    // The resume-flow projects a synthetic frame that mirrors the SSE
-    // shape but adds `args` so the rejected card still shows what was
-    // about to be sent (the operator's context after the fact).
     const result = applySSEEvent(baseMessage, {
       type: 'tool_rejected',
       tool_call_id: 'call_p',
@@ -200,8 +192,6 @@ describe('applySSEEvent', () => {
       tool_name: 'telegram__send_channel_post',
       tool_args: { text: 'second' },
     });
-    // Second tool finishes first — without tool_call_id correlation this
-    // would update the first entry instead.
     msg = applySSEEvent(msg, {
       type: 'tool_result',
       tool_call_id: 'call_b',

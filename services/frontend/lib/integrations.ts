@@ -40,15 +40,11 @@ export function getIntegrationDisplay(
   const field = PLATFORM_DISPLAY_FIELD[integration.platform as PlatformId];
   const friendly = field && typeof md[field] === 'string' ? (md[field] as string) : '';
 
-  // Yandex's externalId="default" is a placeholder, not a real identifier —
-  // never render it. Show the platform label as the name when no friendly
-  // value is available, with no identifier line at all.
   if (integration.platform === 'yandex_business' && id === 'default') {
     return { name: friendly || platformLabel, identifier: friendly ? '' : '' };
   }
 
   if (friendly) {
-    // Don't echo the same string on both lines.
     return { name: friendly, identifier: friendly === id ? '' : id };
   }
   return { name: id || platformLabel, identifier: '' };

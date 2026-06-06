@@ -25,14 +25,11 @@ type ContextEvictor interface {
 func checkSession(page playwright.Page, expectedURLPrefix string) error {
 	currentURL := page.URL()
 
-	// Primary signal: redirect to Yandex Passport login page
 	if strings.Contains(currentURL, "passport.yandex") {
 		return a2a.NewNonRetryableError(fmt.Errorf("%w: redirected to %s", ErrSessionExpired, currentURL))
 	}
 
-	// Secondary signal: unexpected URL (error page, CAPTCHA gate, etc.)
 	if !strings.HasPrefix(currentURL, expectedURLPrefix) {
-		// Check for CAPTCHA specifically
 		if strings.Contains(currentURL, "captcha") || strings.Contains(currentURL, "showcaptcha") {
 			return a2a.NewNonRetryableError(fmt.Errorf("yandex captcha detected at %s", currentURL))
 		}

@@ -54,22 +54,17 @@ func TestInvitations_Create_PendingCap_HardCeiling(t *testing.T) {
 	url := fmt.Sprintf("/api/v1/businesses/%s/invitations", bizID)
 	body := fmt.Sprintf(`{"role_id":"%s"}`, editorRoleID)
 
-	// Create 20 pending — must all succeed.
 	for i := 0; i < 20; i++ {
 		rec := doAuthedRequest(t, env, http.MethodPost, url, ownerJWT, []byte(body))
 		require.Equal(t, http.StatusCreated, rec.Code,
 			"create #%d should 201, got %d body=%q", i, rec.Code, rec.Body.String())
 	}
 
-	// 21st → 429.
 	rec := doAuthedRequest(t, env, http.MethodPost, url, ownerJWT, []byte(body))
 	require.Equal(t, http.StatusTooManyRequests, rec.Code,
 		"21st create should 429, got %d body=%q", rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "too_many_pending")
 
-	// Revoke one (pick the most-recently-created via SQL — simpler than parsing
-	// a random response). The pending count drops from 20 to 19, so the next
-	// create returns 201.
 	_, err := env.pool.Exec(context.Background(),
 		`UPDATE invitations SET revoked_at = NOW()
 		 WHERE id = (
@@ -79,7 +74,6 @@ func TestInvitations_Create_PendingCap_HardCeiling(t *testing.T) {
 		 )`, bizID)
 	require.NoError(t, err)
 
-	// 21st (re-attempt) → 201.
 	rec = doAuthedRequest(t, env, http.MethodPost, url, ownerJWT, []byte(body))
 	require.Equal(t, http.StatusCreated, rec.Code,
 		"after revoking one, next create should 201, got %d body=%q", rec.Code, rec.Body.String())
@@ -134,7 +128,7 @@ func TestInvitations_Create_StressCap(t *testing.T) {
 			case http.StatusTooManyRequests:
 				count429++
 			case http.StatusInternalServerError:
-				count500++ // sqlstate 40001 surfaces as 500 in v2.0; documented above.
+				count500++
 			default:
 				other = append(other, rec.Code)
 			}
@@ -149,7 +143,6 @@ func TestInvitations_Create_StressCap(t *testing.T) {
 	require.LessOrEqual(t, count201, 20,
 		"cap bypass: count201=%d > 20 — cap bypass under concurrency", count201)
 
-	// DB invariant: pending count must <= 20.
 	var dbPending int
 	err := env.pool.QueryRow(context.Background(),
 		`SELECT COUNT(*) FROM invitations
@@ -182,7 +175,6 @@ func TestInvitations_Accept_FreshSession200(t *testing.T) {
 	ownerJWT := mintJWT(t, env.jwtSecret, ownerID)
 	editorRoleID := uuid.MustParse(domain.SystemRoleEditorID)
 
-	// 1. Owner creates an invitation.
 	createURL := fmt.Sprintf("/api/v1/businesses/%s/invitations", bizID)
 	createBody := fmt.Sprintf(`{"role_id":"%s"}`, editorRoleID)
 	createRec := doAuthedRequest(t, env, http.MethodPost, createURL, ownerJWT, []byte(createBody))
@@ -195,38 +187,23 @@ func TestInvitations_Accept_FreshSession200(t *testing.T) {
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
 	require.NotEmpty(t, createResp.Token, "token must be present in create response")
 
-	// 2. New user — not yet a member — accepts.
 	newUserID := seedUser(t, env.pool)
 	newUserJWT := mintJWT(t, env.jwtSecret, newUserID)
 	acceptURL := fmt.Sprintf("/api/v1/invitations/%s/accept", createResp.Token)
 
-	// Pre-warm the authz cache for newUser by attempting a business-scoped GET
-	// BEFORE acceptance — this MUST be 404 (no membership yet). RequireBusinessAccess
-	// returns 404 (not 403) for non-members per AUTHZ-05.
 	getURL := fmt.Sprintf("/api/v1/businesses/%s/integrations", bizID)
 	rec := doAuthedRequest(t, env, http.MethodGet, getURL, newUserJWT, nil)
 	require.Equal(t, http.StatusNotFound, rec.Code,
 		"before accept, new user must get 404, got %d body=%q", rec.Code, rec.Body.String())
 
-	// 3. POST accept.
 	rec = doAuthedRequest(t, env, http.MethodPost, acceptURL, newUserJWT, nil)
 	require.Equal(t, http.StatusOK, rec.Code, "accept should 200, body=%q", rec.Body.String())
 
-	// 4. Next business-scoped GET MUST return 200 (cache invalidated post-commit).
-	// / SC-4 (one cache-refresh window): the editor role permissions
-	// include integrations.read, so this returns 200 with the (empty) integrations
-	// list. If the cache wasn't invalidated, RequireBusinessAccess would still
-	// see no membership and return 404.
 	rec = doAuthedRequest(t, env, http.MethodGet, getURL, newUserJWT, nil)
 	require.Equal(t, http.StatusOK, rec.Code,
 		"post-accept, new member's next GET MUST 200 within one cache-refresh window, got %d body=%q",
 		rec.Code, rec.Body.String())
 
-	// 5. Replay the same token. The handler pre-classifies AcceptedAt != nil
-	// and returns 410 with reason="accepted" (row "already accepted",
-	// single-use). The membership-check branch (which would have
-	// returned 409 already_member) is unreachable because pre-classify fires
-	// FIRST in invitations.go:501-504.
 	rec = doAuthedRequest(t, env, http.MethodPost, acceptURL, newUserJWT, nil)
 	require.Equal(t, http.StatusGone, rec.Code,
 		"replay (token already accepted) should 410, got %d body=%q", rec.Code, rec.Body.String())
@@ -252,7 +229,6 @@ func TestInvitations_RevokedThen410(t *testing.T) {
 	ownerJWT := mintJWT(t, env.jwtSecret, ownerID)
 	editorRoleID := uuid.MustParse(domain.SystemRoleEditorID)
 
-	// 1. Owner creates invitation.
 	createBody := fmt.Sprintf(`{"role_id":"%s"}`, editorRoleID)
 	createRec := doAuthedRequest(t, env, http.MethodPost,
 		fmt.Sprintf("/api/v1/businesses/%s/invitations", bizID), ownerJWT, []byte(createBody))
@@ -265,20 +241,15 @@ func TestInvitations_RevokedThen410(t *testing.T) {
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
 	require.NotEmpty(t, createResp.Token)
 
-	// 2. Owner revokes — 204.
 	revokeURL := fmt.Sprintf("/api/v1/businesses/%s/invitations/%s", bizID, createResp.ID)
 	rec := doAuthedRequest(t, env, http.MethodDelete, revokeURL, ownerJWT, nil)
 	require.Equal(t, http.StatusNoContent, rec.Code, "revoke should 204, body=%q", rec.Body.String())
 
-	// 3. Re-revoke (idempotency — 410 gone with reason=revoked).
 	rec = doAuthedRequest(t, env, http.MethodDelete, revokeURL, ownerJWT, nil)
 	require.Equal(t, http.StatusGone, rec.Code,
 		"re-revoke should 410 idempotent, got %d body=%q", rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), `"reason":"revoked"`)
 
-	// 4. New user attempts accept with the captured token → 410 with reason=revoked
-	// (round-trip — accept pre-classifies RevokedAt != nil before
-	// reaching membership-check / MarkAcceptedInTx).
 	newUserID := seedUser(t, env.pool)
 	newUserJWT := mintJWT(t, env.jwtSecret, newUserID)
 	acceptURL := fmt.Sprintf("/api/v1/invitations/%s/accept", createResp.Token)
@@ -301,14 +272,12 @@ func TestInvitations_RevokedThen410(t *testing.T) {
 // but the rate-limit middleware fires BEFORE the handler — so we don't need
 // a real invitation row, only a stable URL path that all 4 requests share.
 func TestInvitations_Preview_RateLimited(t *testing.T) {
-	env := setupTestEnvWithLoginRateLimit(t, 3) // 3-req-per-minute budget for fast test
+	env := setupTestEnvWithLoginRateLimit(t, 3)
 	teardownTestData(t, env.pool)
 
 	rawToken := "test-preview-token-" + uuid.New().String()
 	url := "/api/v1/invitations/" + rawToken
 
-	// Burn the budget: 3 requests, none of them rate-limited (they will 410
-	// with reason="unknown" but that's after the rate-limit check).
 	for i := 0; i < 3; i++ {
 		rec := doAuthedRequest(t, env, http.MethodGet, url, "", nil)
 		require.NotEqual(t, http.StatusTooManyRequests, rec.Code,
@@ -316,15 +285,11 @@ func TestInvitations_Preview_RateLimited(t *testing.T) {
 			i+1, rec.Code, rec.Body.String())
 	}
 
-	// 4th request → 429 (budget=3 exhausted).
 	rec := doAuthedRequest(t, env, http.MethodGet, url, "", nil)
 	require.Equal(t, http.StatusTooManyRequests, rec.Code,
 		"4th request must be 429 (budget=3 exhausted), got %d body=%q",
 		rec.Code, rec.Body.String())
 
-	// Sanity: ensure the helper computeTokenHash matches the production path
-	// — future regressions in lookup hashing show up here even though the
-	// row is missing.
 	sum := sha256.Sum256([]byte(rawToken))
 	require.NotEmpty(t, hex.EncodeToString(sum[:]))
 }

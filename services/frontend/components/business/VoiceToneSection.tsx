@@ -36,9 +36,6 @@ export interface VoiceToneSectionProps {
 export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
   const tVoice = useTranslations('business.voiceTone');
   const tToneOptions = useTranslations('business.voiceTone.options');
-  // Request-scoped tone options/labels (B1). The factory output gets a
-  // stable identity per translator-render so consumers that close over
-  // `toneLabel` don't tear when the locale switches.
   const TONE_OPTIONS = useMemo(() => createToneOptions(tToneOptions), [tToneOptions]);
   const toneLabel = useMemo(() => createToneLabel(tToneOptions), [tToneOptions]);
   const [selected, setSelected] = useState<Set<ToneId>>(new Set(initial ?? []));
@@ -47,9 +44,6 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const canEdit = usePermission('business.update').allowed;
 
-  // Sync internal state when the parent's `initial` prop changes — the
-  // /business query loads async, so `initial` arrives as [] on first render
-  // and updates to the persisted value once data lands.
   const initialKey = (initial ?? []).slice().sort().join('|');
   useEffect(() => {
     if (dirty) return; // user is mid-edit — don't clobber their selection

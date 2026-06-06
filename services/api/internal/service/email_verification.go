@@ -107,16 +107,12 @@ func (s *EmailVerificationService) RequestResend(ctx context.Context, userID uui
 		return domain.ErrAlreadyVerified
 	}
 
-	// Minute window first (cheaper short-circuit) — INCR + EXPIRE 60s pattern.
 	minKey := fmt.Sprintf("verify_resend:user:%s:min", userID)
 	cnt, err := s.redis.Incr(ctx, minKey).Result()
 	if err != nil {
 		return fmt.Errorf("verify_resend min incr: %w", err)
 	}
 	if cnt == 1 {
-		// First request in the window — set TTL. Discard the SET error;
-		// worst case the key lives forever and a subsequent INCR still
-		// returns 2, which trips the throttle.
 		_ = s.redis.Expire(ctx, minKey, verifyResendMinWindow).Err()
 	} else if cnt > 1 {
 		return domain.ErrResendThrottled
@@ -133,7 +129,6 @@ func (s *EmailVerificationService) RequestResend(ctx context.Context, userID uui
 		return domain.ErrResendThrottled
 	}
 
-	// Open a tx for the token + outbox so they commit atomically.
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("verify_resend begin tx: %w", err)
@@ -209,7 +204,6 @@ func (s *EmailVerificationService) ChangeEmailBeforeVerify(ctx context.Context, 
 	}
 	oldEmail = u.Email
 
-	// Friendly pre-check (UNIQUE constraint is still the source of truth).
 	if existing, err := s.users.GetByEmail(ctx, newEmail); err == nil && existing != nil {
 		return oldEmail, domain.ErrEmailTaken
 	} else if err != nil && !errors.Is(err, domain.ErrUserNotFound) {

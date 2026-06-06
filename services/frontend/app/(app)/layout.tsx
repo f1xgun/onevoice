@@ -47,8 +47,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const tSidebar = useTranslations('sidebar');
   const { setAuth } = useAuthStore();
-  // Start as true so we always show a loading state until the effect has run
-  // This prevents the brief flash of protected content
   const [ready, setReady] = useState(false);
   const isDesktop = useIsDesktop();
   const isMounted = useRef(true);
@@ -59,12 +57,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
     const accessToken = useAuthStore.getState().accessToken;
     if (accessToken) {
-      // Already have a valid token in memory — show the page
       setReady(true);
       return;
     }
 
-    // No access token in memory — attempt silent refresh via httpOnly cookie
     api
       .post('/auth/refresh', {}, { signal: controller.signal })
       .then((res) => {
@@ -97,12 +93,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [pathname, ready]);
 
-  // Cmd/Ctrl-K global focus listener. Steals focus from any input
-  // INCLUDING the chat composer — Slack/Linear convention. Mount-only.
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
-      // metaKey covers Cmd on macOS; ctrlKey covers Ctrl on every other
-      // platform. Match `K`/`k` — different keyboard layouts may emit either.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent(SIDEBAR_FOCUS_EVENT));
@@ -116,16 +108,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return null;
   }
 
-  // project-pane is route-conditional. Rendered on /chat/* and
-  // /projects/* only. Other authenticated routes show NavRail + content.
   const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
 
-  // ReConsentModal rendering condition. The
-  // EmailVerifiedRequiredModal still takes precedence —
-  // we must NOT render both. We read the user's email-verification
-  // state from emailVerified===false combined with the active
-  // verification deadline (existing convention; the explicit
-  // requiresEmailVerification flag is forward-compat).
   const user = useAuthStore.getState().user;
   const requiresEmailVerification =
     user?.requiresEmailVerification === true || user?.emailVerified === false;
@@ -210,8 +194,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </PanelGroup>
           </div>
         ) : (
-          // h-screen + flex-col gives <main> a real height — without it h-full
-          // children (chat composer) collapse to 0 and drift to content end.
           <div className="flex h-screen flex-col">
             <Sidebar />
             {/* tabIndex={-1}: see desktop branch above — required for the

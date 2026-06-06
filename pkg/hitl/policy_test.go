@@ -50,8 +50,6 @@ func TestBucket_ClassifiesByEffectiveFloor(t *testing.T) {
 }
 
 func TestBucket_BusinessApprovalRaisesFloor(t *testing.T) {
-	// Registry floor is Auto, but business policy escalates to Manual —
-	// the call must land in `manual`, mirroring the per-tool Resolve path.
 	floors := floorMap(map[string]domain.ToolFloor{
 		"telegram__send_channel_post": domain.ToolFloorAuto,
 	})
@@ -69,7 +67,6 @@ func TestBucket_BusinessApprovalRaisesFloor(t *testing.T) {
 }
 
 func TestBucket_ProjectOverrideRaisesFloor(t *testing.T) {
-	// Registry floor is Manual; project override escalates to Forbidden.
 	floors := floorMap(map[string]domain.ToolFloor{
 		"yandex__create_post": domain.ToolFloorManual,
 	})
@@ -87,9 +84,6 @@ func TestBucket_ProjectOverrideRaisesFloor(t *testing.T) {
 }
 
 func TestBucket_UnknownToolBucketsForbidden(t *testing.T) {
-	// Pre-extraction stepRun guard: unknown tools fall through to Forbidden
-	// (Registry.Floor returns Forbidden for missing entries). Bucket must
-	// preserve that fail-closed default.
 	floors := floorMap(map[string]domain.ToolFloor{})
 
 	_, _, forbidden := hitl.Bucket(floors, nil, nil, []llm.ToolCall{
@@ -109,9 +103,6 @@ func TestBucket_EmptyCallsReturnsEmptyBuckets(t *testing.T) {
 }
 
 func TestBucket_PreservesInputOrderWithinBuckets(t *testing.T) {
-	// Order within a single bucket must match input order — stepRun /
-	// resume rely on this when appending tool-role messages so that
-	// assistant.tool_calls[i].id ↔ tool[i] correspondence is preserved.
 	floors := floorMap(map[string]domain.ToolFloor{
 		"a__x": domain.ToolFloorAuto,
 		"a__y": domain.ToolFloorAuto,

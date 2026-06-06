@@ -30,9 +30,6 @@ describe('ToolCard — expired', () => {
     const { container } = render(<ToolCard tool={makeExpired()} />);
     const wrapper = container.firstElementChild as HTMLElement | null;
     expect(wrapper).not.toBeNull();
-    // jsdom normalizes hex inline styles to rgb(...) when round-tripped through
-    // getAttribute/style. Assert the platform accent via element.style which
-    // preserves the computed form, plus confirm no destructive override leaked.
     expect(wrapper?.style.borderLeftColor).toBe('rgb(42, 171, 238)'); // #2AABEE
     const styleAttr = wrapper?.getAttribute('style') ?? '';
     expect(styleAttr).not.toContain('hsl(var(--destructive))');

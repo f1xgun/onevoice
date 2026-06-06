@@ -63,9 +63,9 @@ func TestBuildPlatformReply_TelegramMissingMeta(t *testing.T) {
 	cases := []map[string]interface{}{
 		nil,
 		{},
-		{"chat_id": "x"},                 // missing message_id
-		{"message_id": float64(21)},      // missing chat_id
-		{"chat_id": "", "message_id": 1}, // empty chat_id
+		{"chat_id": "x"},
+		{"message_id": float64(21)},
+		{"chat_id": "", "message_id": 1},
 	}
 	for i, meta := range cases {
 		r := &domain.Review{Platform: a2a.AgentTelegram, ID: "r", PlatformMeta: meta}

@@ -67,8 +67,6 @@ function useConversationTitle(conversationId: string): string {
     select: (list) => {
       const conv = list.find((c) => c.id === conversationId);
       if (!conv) return '';
-      // Fallback encapsulated here so the header and the sidebar share
-      // exactly one definition of "what should the title look like right now?"
       return conv.title === '' || conv.titleStatus === 'auto_pending' ? fallback : conv.title;
     },
     enabled: !!conversationId && !!activeBusinessId,

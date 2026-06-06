@@ -99,7 +99,6 @@ func (s *ProjectService) Create(ctx context.Context, businessID, actorID uuid.UU
 		return nil, err
 	}
 
-	// emit project.created AFTER successful insert.
 	audit.LogProjectCreated(ctx, s.audit, businessID, actorID, p.ID, p.Name)
 
 	return p, nil
@@ -152,7 +151,6 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id, actorID uui
 		return nil, err
 	}
 
-	// emit project.updated AFTER successful repo write.
 	audit.LogProjectUpdated(ctx, s.audit, businessID, actorID, id)
 
 	return p, nil
@@ -177,8 +175,6 @@ func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id, acto
 		return convs, msgs, err
 	}
 
-	// emit project.deleted AFTER successful cascade.
-	// Details capture blast-radius (deletedConversations).
 	audit.LogProjectDeleted(ctx, s.audit, businessID, actorID, id, p.Name, convs)
 
 	return convs, msgs, nil

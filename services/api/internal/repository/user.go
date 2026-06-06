@@ -138,7 +138,6 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		// String-match fallback because pgconn may not classify before pgx attempts the bind.
 		if strings.Contains(err.Error(), "duplicate key") {
 			return domain.ErrUserExists
 		}
@@ -168,12 +167,10 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 		return fmt.Errorf("build insert tx: %w", err)
 	}
 	if _, err := tx.Exec(ctx, sql, args...); err != nil {
-		// Maps Postgres unique-violation on email to domain.ErrUserExists.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return domain.ErrUserExists
 		}
-		// pgconn may not classify before pgx attempts the bind — fall back to the string check.
 		if strings.Contains(err.Error(), "duplicate key") {
 			return domain.ErrUserExists
 		}
@@ -194,7 +191,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 			"created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"id": id}).
-		Where("deleted_at IS NULL"). // hides soft-deleted users from active read paths.
+		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
@@ -371,7 +368,6 @@ func (r *userRepository) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID 
 	}
 	cmdTag, err := tx.Exec(ctx, sqlStr, args...)
 	if err != nil {
-		// Postgres unique-violation maps to ErrEmailTaken so a race surfaces a friendly sentinel.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return domain.ErrEmailTaken
@@ -420,7 +416,6 @@ func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, use
 		return fmt.Errorf("request deletion: %w", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		// Zero matches could mean row missing OR already-pending; classify to map to the right sentinel.
 		var requestedAt *time.Time
 		var deletedAt *time.Time
 		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deleted_at FROM users WHERE id = $1`, userID).
@@ -443,7 +438,6 @@ func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, use
 // 30-day grace boundary. Distinguishes ErrAlreadyPurged from
 // ErrNoDeletionPending via a follow-up classify-read on zero matches.
 func (r *userRepository) CancelDeletion(ctx context.Context, userID uuid.UUID, graceDays int) (bool, error) {
-	// Grace interval is formatted inline because Postgres rejects parameterised INTERVAL literals.
 	sql := fmt.Sprintf(`UPDATE users
 	                       SET deletion_canceled_at = NOW(),
 	                           deleted_at = NULL,
@@ -461,14 +455,12 @@ func (r *userRepository) CancelDeletion(ctx context.Context, userID uuid.UUID, g
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return false, fmt.Errorf("cancel deletion: %w", err)
 	}
-	// 0 rows matched — distinguish "no pending deletion" from "too late".
 	var requestedAt *time.Time
 	var canceledAt *time.Time
 	err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deletion_canceled_at FROM users WHERE id = $1`, userID).
 		Scan(&requestedAt, &canceledAt)
 	if err2 != nil {
 		if errors.Is(err2, pgx.ErrNoRows) {
-			// Row gone — must have been hard-deleted.
 			return false, domain.ErrAlreadyPurged
 		}
 		return false, fmt.Errorf("classify cancel state: %w", err2)
@@ -477,7 +469,6 @@ func (r *userRepository) CancelDeletion(ctx context.Context, userID uuid.UUID, g
 		return false, domain.ErrNoDeletionPending
 	}
 	if canceledAt != nil {
-		// Idempotent re-cancel.
 		return true, nil
 	}
 	return false, domain.ErrAlreadyPurged

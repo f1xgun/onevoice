@@ -67,11 +67,9 @@ func TestSSECounter_Release_Decrements(t *testing.T) {
 	rel1, err := c.Acquire(context.Background(), uid, "free")
 	require.NoError(t, err)
 
-	// Second acquire should fail at cap.
 	_, err2 := c.Acquire(context.Background(), uid, "free")
 	require.ErrorIs(t, err2, ssecounter.ErrConcurrencyExceeded)
 
-	// Release, then re-acquire.
 	rel1()
 	rel2, err3 := c.Acquire(context.Background(), uid, "free")
 	require.NoError(t, err3)
@@ -87,9 +85,8 @@ func TestSSECounter_Release_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	rel()
-	rel() // second call must not double-decrement.
+	rel()
 
-	// Cap of 2 should still admit two more after the (single) release.
 	rel2, err2 := c.Acquire(context.Background(), uid, "free")
 	require.NoError(t, err2)
 	rel3, err3 := c.Acquire(context.Background(), uid, "free")
@@ -100,7 +97,7 @@ func TestSSECounter_Release_Idempotent(t *testing.T) {
 
 func TestSSECounter_RedisDown_Block_FailsClosed(t *testing.T) {
 	rdb, mr := newRedis(t)
-	mr.Close() // simulate Redis outage
+	mr.Close()
 
 	c := ssecounter.New(rdb, 3, ratelimit.Policy{Mode: ratelimit.PolicyBlock})
 	uid := uuid.New()
@@ -129,17 +126,15 @@ func TestSSECounter_RedisDown_LocalFallback_Exhausted_Rejects(t *testing.T) {
 	rdb, mr := newRedis(t)
 	mr.Close()
 
-	policy, err := ratelimit.PolicyFromEnv("local_fallback", 1) // burst=1
+	policy, err := ratelimit.PolicyFromEnv("local_fallback", 1)
 	require.NoError(t, err)
 	c := ssecounter.New(rdb, 3, policy)
 	uid := uuid.New()
 
-	// First call drains the bucket.
 	rel, err := c.Acquire(context.Background(), uid, "free")
 	require.NoError(t, err)
 	rel()
 
-	// Second call: bucket drained → ErrExceeded.
 	_, err2 := c.Acquire(context.Background(), uid, "free")
 	require.Error(t, err2)
 	assert.ErrorIs(t, err2, ratelimit.ErrExceeded)
@@ -152,12 +147,11 @@ func TestSSECounter_KeyExpiresAfterTTL(t *testing.T) {
 
 	rel, err := c.Acquire(context.Background(), uid, "free")
 	require.NoError(t, err)
-	_ = rel // intentionally do NOT release — simulate a crashed handler
+	_ = rel
 
 	key := "sse:user:" + uid.String() + ":active"
 	assert.True(t, mr.Exists(key), "key must exist immediately after acquire")
 
-	// Fast-forward past the default TTL.
 	mr.FastForward(6 * time.Minute)
 
 	assert.False(t, mr.Exists(key), "leaked key must expire after TTL")
@@ -177,7 +171,6 @@ func TestSSECounter_MaxZero_DisablesCap(t *testing.T) {
 }
 
 func TestSSECounter_NilRedis_DelegatesToPolicy(t *testing.T) {
-	// Nil client with PolicyBlock should fail closed without panic.
 	c := ssecounter.New(nil, 3, ratelimit.Policy{Mode: ratelimit.PolicyBlock})
 	_, err := c.Acquire(context.Background(), uuid.New(), "free")
 	require.Error(t, err)
@@ -189,13 +182,10 @@ func TestSSECounter_AcquireCtxCancelled_FailsClosed(t *testing.T) {
 	c := ssecounter.New(rdb, 3, ratelimit.Policy{Mode: ratelimit.PolicyBlock})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel before Acquire
+	cancel()
 
 	_, err := c.Acquire(ctx, uuid.New(), "free")
 	require.Error(t, err)
-	// Either ratelimit.ErrUnavailable (if redis Exec saw the cancel and
-	// surfaced as redis error) or context.Canceled wrapped — both are
-	// acceptable fail-closed signals.
 	assert.True(t,
 		errors.Is(err, ratelimit.ErrUnavailable) || errors.Is(err, context.Canceled),
 		"want unavailable or canceled, got %v", err,

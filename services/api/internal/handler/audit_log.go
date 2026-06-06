@@ -108,7 +108,6 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	bc, ok := authz.BusinessContextFromCtx(ctx)
 	if !ok {
-		// Programmer error: route must live inside /businesses/{id} subtree.
 		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
@@ -161,8 +160,6 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 	if cursor := q.Get("cursor"); cursor != "" {
 		t, id, err := audit.DecodeCursor(cursor)
 		if err != nil {
-			// All decode causes collapse to one 400 — distinguishing them
-			// client-side would only help an attacker probe the cursor format.
 			writeJSONError(w, http.StatusBadRequest, "invalid_cursor")
 			return
 		}
@@ -183,7 +180,6 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.repo.ListByBusinessWithActors(ctx, bc.BusinessID, filter)
 	if err != nil {
-		// NEVER surface repo errors — they could disclose SQL shape / schema.
 		slog.ErrorContext(ctx, "audit_log: list failed",
 			"error", err,
 			"business_id", bc.BusinessID,
@@ -197,7 +193,6 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toOpenAPIAuditEvent(l))
 	}
 
-	// Cursor only when the page is full; short page → next_cursor: null = end of stream.
 	var next *string
 	if len(rows) == limit {
 		last := rows[len(rows)-1]
@@ -236,8 +231,6 @@ func toOpenAPIAuditEvent(l repository.AuditLogRow) openapi.AuditEvent {
 		CreatedAt:      l.CreatedAt,
 		Details:        decodeAuditDetails(l.Details),
 	}
-	// "" → nil-pointer so JSON emits null. Covers failed-login (user_id NULL)
-	// and deleted-user (LEFT JOIN miss); frontend renders both as unknown.
 	if l.ActorEmail != "" {
 		email := openapi_types.Email(l.ActorEmail)
 		evt.ActorEmail = &email

@@ -62,9 +62,6 @@ func writeValidationError(w http.ResponseWriter, r *http.Request, err error) {
 			field := fieldErr.Field()
 			tag := fieldErr.Tag()
 
-			// Map validator/v10 tag → i18n catalog key. Unknown tags fall
-			// through to a generic "validation failed" message so a newly
-			// introduced struct tag never crashes the handler.
 			var key string
 			switch tag {
 			case "required":

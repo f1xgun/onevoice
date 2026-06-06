@@ -95,11 +95,9 @@ func TestExecute_SetsToolNameInRequest(t *testing.T) {
 }
 
 func TestNATSExecutor_ContextTimeout(t *testing.T) {
-	// Simulate a slow agent: the requester blocks for longer than the context deadline.
 	slowRequester := &fakeRequester{
 		response: &a2a.ToolResponse{TaskID: "t-slow", Success: true, Result: map[string]interface{}{}},
 	}
-	// Override Request to add a delay
 	exec := natsexec.New(a2a.AgentVK, tools.VKPublishPost, &delayedRequester{delay: 5 * time.Second})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -108,7 +106,7 @@ func TestNATSExecutor_ContextTimeout(t *testing.T) {
 	_, err := exec.Execute(ctx, map[string]interface{}{"text": "test"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "request to tasks.vk")
-	_ = slowRequester // suppress unused
+	_ = slowRequester
 }
 
 // delayedRequester simulates a slow agent that doesn't respond before context deadline.
@@ -196,9 +194,6 @@ func TestNATSExecutor_ExecuteWithApproval_EmptyApproval_DoesNotSetField(t *testi
 	_, err := exec.ExecuteWithApproval(context.Background(), map[string]interface{}{}, "")
 	require.NoError(t, err)
 
-	// The ApprovalID field has omitempty — when empty, the JSON key should
-	// be absent from the serialized wire payload (backward-compat with
-	// pre-Phase-16 agents).
 	assert.NotContains(t, string(fake.capturedReq), "approval_id")
 }
 
@@ -215,11 +210,8 @@ func TestNATSExecutor_Execute_IsBackwardCompatibleShim(t *testing.T) {
 	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hi"})
 	require.NoError(t, err)
 
-	// Execute delegates to ExecuteWithApproval(ctx, args, "") — no
-	// approval_id key in the wire payload.
 	assert.NotContains(t, string(fake.capturedReq), "approval_id")
 
-	// Sanity: the rest of the payload is well-formed
 	var toolReq a2a.ToolRequest
 	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
 	assert.Equal(t, a2a.AgentID(tools.TelegramSendChannelPost), toolReq.Tool)
@@ -273,7 +265,6 @@ func TestExecute_EmptyCorrelationID(t *testing.T) {
 
 	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 
-	// No correlation ID in context
 	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hello"})
 	require.NoError(t, err)
 

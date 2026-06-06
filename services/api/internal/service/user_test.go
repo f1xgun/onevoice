@@ -115,7 +115,6 @@ func TestUserService_Register(t *testing.T) {
 		assert.Empty(t, user.PasswordHash, "password hash should be sanitized")
 		assert.NotEqual(t, uuid.Nil, user.ID)
 
-		// Verify password was hashed
 		assert.NotNil(t, createdUser)
 		assert.NotEmpty(t, createdUser.PasswordHash)
 		assert.NotEqual(t, "password123", createdUser.PasswordHash)
@@ -204,7 +203,6 @@ func TestUserService_Login(t *testing.T) {
 	jwtSecret := "test-secret-must-be-32bytes-ok!!"
 
 	t.Run("success", func(t *testing.T) {
-		// Prepare user with hashed password
 		passwordHash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 		require.NoError(t, err)
 
@@ -236,7 +234,6 @@ func TestUserService_Login(t *testing.T) {
 		assert.NotEmpty(t, accessToken)
 		assert.NotEmpty(t, refreshToken)
 
-		// Verify access token
 		token, err := jwt.ParseWithClaims(accessToken, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
@@ -248,7 +245,6 @@ func TestUserService_Login(t *testing.T) {
 		assert.Equal(t, existingUser.ID, claims.UserID)
 		assert.Equal(t, existingUser.Email, claims.Email)
 
-		// Verify refresh token
 		refreshTokenParsed, err := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
@@ -260,16 +256,14 @@ func TestUserService_Login(t *testing.T) {
 		assert.Equal(t, existingUser.ID, refreshClaims.UserID)
 		assert.NotEqual(t, uuid.Nil, refreshClaims.TokenID)
 
-		// Verify refresh token stored in Redis
 		val, err := redisClient.Get(ctx, "onevoice:auth:refresh_token:"+refreshClaims.TokenID.String()).Result()
 		require.NoError(t, err)
 		assert.Equal(t, existingUser.ID.String(), val)
 
-		// Verify TTL is approximately 7 days
 		ttl, err := redisClient.TTL(ctx, "onevoice:auth:refresh_token:"+refreshClaims.TokenID.String()).Result()
 		require.NoError(t, err)
-		assert.Greater(t, ttl.Seconds(), float64(604700)) // ~7 days - 100s margin
-		assert.Less(t, ttl.Seconds(), float64(604900))    // ~7 days + 100s margin
+		assert.Greater(t, ttl.Seconds(), float64(604700))
+		assert.Less(t, ttl.Seconds(), float64(604900))
 	})
 
 	t.Run("user not found", func(t *testing.T) {
@@ -332,7 +326,6 @@ func TestUserService_Login(t *testing.T) {
 	})
 
 	t.Run("redis error", func(t *testing.T) {
-		// Close miniredis to simulate Redis failure
 		mr.Close()
 
 		passwordHash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -384,7 +377,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		// Generate a valid refresh token
 		tokenID := uuid.New()
 		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
@@ -401,11 +393,9 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		// Store in Redis
 		err = redisClient.Set(ctx, "onevoice:auth:refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
 		require.NoError(t, err)
 
-		// Call RefreshToken
 		user, newAccessToken, newRefreshToken, err := svc.RefreshToken(ctx, refreshTokenString)
 
 		require.NoError(t, err)
@@ -416,11 +406,9 @@ func TestUserService_RefreshToken(t *testing.T) {
 		assert.NotEmpty(t, newAccessToken)
 		assert.NotEmpty(t, newRefreshToken)
 
-		// Verify old refresh token was revoked
 		_, err = redisClient.Get(ctx, "onevoice:auth:refresh_token:"+tokenID.String()).Result()
 		assert.ErrorIs(t, err, redis.Nil)
 
-		// Verify new access token
 		token, err := jwt.ParseWithClaims(newAccessToken, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
@@ -432,7 +420,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 		assert.Equal(t, userID, claims.UserID)
 		assert.Equal(t, existingUser.Email, claims.Email)
 
-		// Verify new refresh token is valid and stored in Redis
 		newToken, err := jwt.ParseWithClaims(newRefreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
@@ -466,13 +453,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		repo := &mockUserRepository{}
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		// Generate expired refresh token
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)), // Expired
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 			},
 		}
@@ -496,7 +482,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 		repo := &mockUserRepository{}
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		// Generate valid token but don't store in Redis
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -531,7 +516,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		// Generate valid token and store in Redis
 		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
@@ -565,7 +549,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 		repo := &mockUserRepository{}
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		// Generate valid token
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -580,7 +563,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		// Close Redis to simulate error
 		mr.Close()
 
 		user, accessToken, newRefresh, err := svc.RefreshToken(ctx, refreshTokenString)
@@ -605,11 +587,9 @@ func TestUserService_Logout(t *testing.T) {
 		tokenID := uuid.New()
 		userID := uuid.New()
 
-		// Store refresh token in Redis
 		err := redisClient.Set(ctx, "onevoice:auth:refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
 		require.NoError(t, err)
 
-		// Generate refresh token
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -624,12 +604,10 @@ func TestUserService_Logout(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		// Logout
 		err = svc.Logout(ctx, refreshTokenString)
 
 		require.NoError(t, err)
 
-		// Verify token removed from Redis
 		_, err = redisClient.Get(ctx, "onevoice:auth:refresh_token:"+tokenID.String()).Result()
 		assert.ErrorIs(t, err, redis.Nil)
 	})
@@ -652,7 +630,6 @@ func TestUserService_Logout(t *testing.T) {
 		_ = uuid.New()
 		tokenID := uuid.New()
 
-		// Generate expired token
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -694,7 +671,6 @@ func TestUserService_Logout(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		// Close Redis to simulate connection error
 		mr.Close()
 
 		err = svc.Logout(ctx, refreshTokenString)
@@ -725,7 +701,6 @@ func TestUserService_Logout(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		// Don't store in Redis - should still succeed (idempotent)
 		err = svc.Logout(ctx, refreshTokenString)
 
 		require.NoError(t, err)
@@ -874,7 +849,6 @@ func TestSanitizeUser(t *testing.T) {
 	assert.Equal(t, user.Email, sanitized.Email)
 	assert.Empty(t, sanitized.PasswordHash)
 
-	// Ensure original user is not modified
 	assert.NotEmpty(t, user.PasswordHash)
 }
 
@@ -919,7 +893,6 @@ func TestGenerateTokens(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, token)
 
-		// Parse and verify
 		parsed, err := jwt.ParseWithClaims(token, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
@@ -938,7 +911,6 @@ func TestGenerateTokens(t *testing.T) {
 		assert.NotEmpty(t, token)
 		assert.NotEqual(t, uuid.Nil, tokenID)
 
-		// Parse and verify
 		parsed, err := jwt.ParseWithClaims(token, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
@@ -1030,7 +1002,7 @@ func (f *fakeVerifyIssuer) IssueAndEnqueueTx(_ context.Context, _ pgx.Tx, uid uu
 func TestUserService_Register_TxFlow_AtomicSuccess(t *testing.T) {
 	ctx := context.Background()
 	redisClient, _ := setupRedis(t)
-	repo := &mockUserRepository{} // legacy path repo — should NOT be called
+	repo := &mockUserRepository{}
 
 	svc, err := NewUserService(repo, redisClient, "test-secret-must-be-32bytes-ok!!")
 	require.NoError(t, err)
@@ -1047,20 +1019,16 @@ func TestUserService_Register_TxFlow_AtomicSuccess(t *testing.T) {
 	require.NotNil(t, user)
 	require.Equal(t, "alice@example.com", user.Email)
 
-	// Tx lifecycle: 1 Begin + 1 Commit; no extra Rollback (commit was clean).
 	require.Equal(t, 1, pool.beginCnt)
 	require.Equal(t, 1, pool.commitCnt)
 
-	// All collaborators called exactly once.
 	require.Equal(t, 1, userExt.createCnt)
 	require.Equal(t, 1, consents.insertCnt)
 	require.Equal(t, 1, verify.issueCnt)
 
-	// Consent shape matches.
 	require.Equal(t, "service_operation", consents.lastPurpose)
 	require.Equal(t, "pre-v22", consents.lastPolicy)
 
-	// Verify-issuer received the same email.
 	require.Equal(t, "alice@example.com", verify.lastMail)
 	require.Equal(t, user.ID, verify.lastUID)
 }
@@ -1084,8 +1052,6 @@ func TestUserService_Register_TxFlow_VerifyFailureRollsBack(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, user)
 
-	// User-create + consent-insert happened, but commit must NOT — the
-	// deferred Rollback fires (semantically the user row goes nowhere).
 	require.Equal(t, 1, pool.beginCnt)
 	require.Equal(t, 0, pool.commitCnt, "verify failure must short-circuit before commit")
 	require.GreaterOrEqual(t, pool.rollCnt, 1)

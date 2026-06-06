@@ -105,8 +105,6 @@ function Wrapper({ children }: { children: ReactNode }) {
 const FAIL_IMPACTS = new Set<string>(['critical', 'serious']);
 
 async function expectNoBlockingViolations(container: ElementContext) {
-  // axe-core run options. resultTypes=['violations'] skips the heavy
-  // passes/inapplicable lists.
   const results = await axe(container, { resultTypes: ['violations'] });
   const blocking = results.violations.filter((v) =>
     v.impact ? FAIL_IMPACTS.has(v.impact) : false
@@ -171,14 +169,10 @@ describe('a11y audit — sidebar surfaces (BLOCKING — critical+serious only)',
   it('audits open mobile drawer + chat list — no critical/serious violations', async () => {
     const user = userEvent.setup();
     render(<Sidebar />, { wrapper: Wrapper });
-    // Sidebar is mobile-only and starts closed; open the drawer first so
-    // the audit covers the OPEN drawer per directive (3 scenarios — one is
-    // the open mobile drawer).
     await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
-    // Audit document.body so the Radix Dialog Portal contents are included.
     await expectNoBlockingViolations(document.body);
   });
 
@@ -187,7 +181,6 @@ describe('a11y audit — sidebar surfaces (BLOCKING — critical+serious only)',
     render(<SidebarSearch />, { wrapper: Wrapper });
     await user.type(screen.getByRole('combobox'), 'тест');
     await waitFor(() => {
-      // Empty-state copy proves the Popover content is open.
       expect(screen.getByText(/Ничего не найдено по «тест»/)).toBeInTheDocument();
     });
     await expectNoBlockingViolations(document.body);
@@ -201,10 +194,6 @@ describe('a11y audit — sidebar surfaces (BLOCKING — critical+serious only)',
         <ProjectSection project={sampleProject} conversations={convs} />
       </Wrapper>
     );
-    // Open the first per-row DropdownMenu trigger («Меню чата …»). Radix
-    // renders the menu in a Portal; auditing document.body picks it up.
-    // userEvent (not fireEvent) is required because Radix DropdownMenu
-    // primitives gate on PointerEvents that fireEvent.click does not emit.
     const trigger = screen.getAllByRole('button', { name: /Меню чата/ })[0];
     await user.click(trigger);
     await waitFor(() => {

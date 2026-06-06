@@ -53,10 +53,6 @@ export function ProjectSection({
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
 
-  // roving-tabindex on the chat-list portion.
-  // Tab enters the list once (lands on the first row), ↑/↓/Home/End navigate.
-  // The project header (chevron / link / +) sits OUTSIDE the container — it
-  // remains a separate Tab stop.
   const { containerRef, onKeyDown } = useRovingTabIndex(visible.length);
 
   async function handleCreate() {
@@ -112,8 +108,6 @@ export function ProjectSection({
       </div>
 
       {!collapsed && visible.length === 0 && (
-        // Empty-state: NOT a listbox (a listbox MUST contain options —
-        // otherwise axe flags `aria-required-children` (critical)).
         <p className="ml-5 mt-0.5 px-2 py-1 text-xs italic text-ink-faint">
           {tSide('noChatsInProject')}
         </p>

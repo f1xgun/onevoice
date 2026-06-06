@@ -49,7 +49,6 @@ export function InvitationsTab({ businessId, invitations, sessionTokens }: Invit
       await navigator.clipboard.writeText(url);
       toast.success(tTeam('invite.copy.toastSuccess'));
     } catch {
-      // Browser refused clipboard write (no gesture / insecure context).
       toast.error(tTeam('invite.copy.toastError'));
     }
   };

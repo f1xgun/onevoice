@@ -56,7 +56,6 @@ func (r *auditLogRepository) Insert(ctx context.Context, log *domain.AuditLog) e
 	if len(details) == 0 {
 		details = json.RawMessage(`{}`)
 	}
-	// Persist NULL (not "") for empty emails so `IS NULL` queries stay useful.
 	var emailAtEvent any
 	if log.UserEmailAtEvent != "" {
 		emailAtEvent = log.UserEmailAtEvent
@@ -95,7 +94,6 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 		Where(squirrel.Eq{"business_id": businessID})
 
 	if f.Category != "" {
-		// "rbac" → action LIKE 'rbac.%'. The (category, verb_noun) split is enforced by pkg/audit.actions.
 		q = q.Where(squirrel.Like{"action": f.Category + ".%"})
 	}
 	if f.Action != "" {
@@ -111,7 +109,6 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 		q = q.Where(squirrel.Lt{"created_at": *f.To})
 	}
 	if f.CursorTime != nil && f.CursorID != nil {
-		// Row-value tuple comparison — Postgres handles natively against the composite index for O(log n) seek-then-scan.
 		q = q.Where("(created_at, id) < (?, ?)", *f.CursorTime, *f.CursorID)
 	}
 
@@ -174,9 +171,6 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 			"COALESCE(al.user_email_at_event, '') AS user_email_at_event",
 			"al.created_at",
 			"COALESCE(u.email, '') AS actor_email",
-			// users table has no display_name column today; emit '' so the
-			// scanner has a non-NULL string and the column stays in the SELECT
-			// list for forward compat with a future migration.
 			"'' AS actor_display_name",
 		).
 		From("audit_logs al").

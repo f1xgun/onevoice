@@ -62,9 +62,6 @@ export function ConversationItem({
     setEditing(false);
   };
 
-  // Placeholder when title is empty OR an auto-title job is in flight.
-  // NO shimmer / skeleton / animation — pins the literal Russian copy
-  // (resolved via i18n chat.newConversation).
   const displayTitle =
     conv.title === '' || conv.titleStatus === 'auto_pending'
       ? tChat('newConversation')

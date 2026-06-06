@@ -74,24 +74,16 @@ export const SmartCaptcha = forwardRef<SmartCaptchaHandle, Props>(function Smart
     };
 
     if (window.smartCaptcha) {
-      // Script already loaded by a previous mount — render directly.
       renderWidget();
       return;
     }
 
-    // First mount in this page lifetime. Inject the script and let
-    // Yandex call our onload hook. The script is idempotent so a
-    // duplicate inject (e.g. React StrictMode double-effect in dev) is
-    // a noop on the production runtime.
     window.__onSmartCaptchaLoad = renderWidget;
     const script = document.createElement('script');
     script.src =
       'https://smartcaptcha.yandexcloud.net/captcha.js?render=onload&onload=__onSmartCaptchaLoad';
     script.async = true;
     document.head.appendChild(script);
-    // No cleanup of widgetId — Yandex widget owns the container DOM and
-    // does not expose a destroy(). On unmount the container disappears
-    // with the React subtree.
   }, [siteKey]);
 
   useImperativeHandle(
@@ -103,9 +95,6 @@ export const SmartCaptcha = forwardRef<SmartCaptchaHandle, Props>(function Smart
           if (widgetIdRef.current !== null && window.smartCaptcha) {
             window.smartCaptcha.execute(widgetIdRef.current);
           }
-          // If the widget hasn't rendered yet, the resolver waits — the
-          // callback installed in renderWidget will pick it up when the
-          // user solves the challenge.
         }),
     }),
     []

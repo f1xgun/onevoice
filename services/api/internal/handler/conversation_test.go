@@ -342,11 +342,6 @@ func newRealConvSvcForMoveTest(t *testing.T, convRepo domain.ConversationReposit
 // PendingToolCallRepository mock so the pendingApprovals array is
 // always serialized as [] for legacy tests.
 func newTestConversationHandler(convRepo domain.ConversationRepository, msgRepo domain.MessageRepository) *ConversationHandler {
-	// Wire a real *service.ConversationService over the test's mocks so
-	// handler tests that use this helper (MoveConversation: missing-conv,
-	// wrong-user, invalid-body; ListMessages: ownership + projection)
-	// exercise the full handler→service path without re-deriving error
-	// mapping in the helper.
 	convSvc, err := service.NewConversationService(convRepo, msgRepo, &stubProjectRepoForHandler{}, &MockPendingToolCallRepository{})
 	if err != nil {
 		panic(err)
@@ -380,10 +375,8 @@ func convBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context
 
 // TestCreateConversation_Success tests successful conversation creation
 func TestCreateConversation_Success(t *testing.T) {
-	// Setup
 	mockRepo := &MockConversationRepository{
 		CreateFunc: func(ctx context.Context, conv *domain.Conversation) error {
-			// Verify conversation has required fields
 			assert.NotEmpty(t, conv.ID)
 			assert.NotEmpty(t, conv.UserID)
 			assert.Equal(t, "My New Conversation", conv.Title)
@@ -395,20 +388,16 @@ func TestCreateConversation_Success(t *testing.T) {
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	body, _ := json.Marshal(map[string]any{"title": "My New Conversation"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 
-	// Add user ID to context (simulating auth middleware)
 	userID := uuid.New()
 	ctx := convBizCtx(uuid.New(), userID)
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.CreateConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var response domain.Conversation
@@ -424,19 +413,15 @@ func TestCreateConversation_Success(t *testing.T) {
 
 // TestCreateConversation_NoBusinessContext tests creation without BusinessContext in context
 func TestCreateConversation_NoBusinessContext(t *testing.T) {
-	// Setup
 	mockRepo := &MockConversationRepository{}
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request without BusinessContext in context
 	body, _ := json.Marshal(map[string]any{"title": "My New Conversation"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.CreateConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
@@ -461,24 +446,19 @@ func TestCreateConversation_ValidationError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup
 			mockRepo := &MockConversationRepository{}
 			handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-			// Create request
 			body, _ := json.Marshal(tt.request)
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 
-			// Add user ID to context
 			userID := uuid.New()
 			ctx := convBizCtx(uuid.New(), userID)
 			req = req.WithContext(ctx)
 
-			// Execute
 			w := httptest.NewRecorder()
 			handler.CreateConversation(w, req)
 
-			// Assert
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 
 			var response ValidationErrorResponse
@@ -492,7 +472,6 @@ func TestCreateConversation_ValidationError(t *testing.T) {
 
 // TestCreateConversation_RepositoryError tests repository errors
 func TestCreateConversation_RepositoryError(t *testing.T) {
-	// Setup
 	mockRepo := &MockConversationRepository{
 		CreateFunc: func(ctx context.Context, conv *domain.Conversation) error {
 			return errors.New("database error")
@@ -500,20 +479,16 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 	}
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	body, _ := json.Marshal(map[string]any{"title": "My New Conversation"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 
-	// Add user ID to context
 	userID := uuid.New()
 	ctx := convBizCtx(uuid.New(), userID)
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.CreateConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var response ErrorResponse
@@ -556,7 +531,6 @@ func TestNewConversationHandler_NilConversationService(t *testing.T) {
 
 // TestListConversations_Success tests successful conversation list retrieval
 func TestListConversations_Success(t *testing.T) {
-	// Setup
 	userID := uuid.New()
 	conversations := []domain.Conversation{
 		{
@@ -578,26 +552,22 @@ func TestListConversations_Success(t *testing.T) {
 	mockRepo := &MockConversationRepository{
 		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
 			assert.Equal(t, userID.String(), uid)
-			assert.Equal(t, 20, limit) // Default limit
-			assert.Equal(t, 0, offset) // Default offset
+			assert.Equal(t, 20, limit)
+			assert.Equal(t, 0, offset)
 			return conversations, nil
 		},
 	}
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
-	// Add user ID to context
 	ctx := convBizCtx(uuid.New(), userID)
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.ListConversations(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response []domain.Conversation
@@ -610,7 +580,6 @@ func TestListConversations_Success(t *testing.T) {
 
 // TestListConversations_EmptyList tests empty conversation list
 func TestListConversations_EmptyList(t *testing.T) {
-	// Setup
 	userID := uuid.New()
 
 	mockRepo := &MockConversationRepository{
@@ -621,25 +590,21 @@ func TestListConversations_EmptyList(t *testing.T) {
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
-	// Add user ID to context
 	ctx := convBizCtx(uuid.New(), userID)
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.ListConversations(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response []domain.Conversation
 	err := json.NewDecoder(w.Body).Decode(&response)
 	require.NoError(t, err)
 	assert.Len(t, response, 0)
-	assert.NotNil(t, response) // Should be empty array, not null
+	assert.NotNil(t, response)
 }
 
 // TestListConversations_WithQueryParams tests list with limit and offset
@@ -659,26 +624,25 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 		{
 			name:           "max limit enforced",
 			queryParams:    "?limit=200",
-			expectedLimit:  100, // Max limit is 100
+			expectedLimit:  100,
 			expectedOffset: 0,
 		},
 		{
 			name:           "negative values treated as defaults",
 			queryParams:    "?limit=-10&offset=-5",
-			expectedLimit:  20, // Default limit
-			expectedOffset: 0,  // Default offset
+			expectedLimit:  20,
+			expectedOffset: 0,
 		},
 		{
 			name:           "invalid values treated as defaults",
 			queryParams:    "?limit=abc&offset=xyz",
-			expectedLimit:  20, // Default limit
-			expectedOffset: 0,  // Default offset
+			expectedLimit:  20,
+			expectedOffset: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup
 			userID := uuid.New()
 
 			mockRepo := &MockConversationRepository{
@@ -691,18 +655,14 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 
 			handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-			// Create request
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations"+tt.queryParams, http.NoBody)
 
-			// Add user ID to context
 			ctx := convBizCtx(uuid.New(), userID)
 			req = req.WithContext(ctx)
 
-			// Execute
 			w := httptest.NewRecorder()
 			handler.ListConversations(w, req)
 
-			// Assert
 			assert.Equal(t, http.StatusOK, w.Code)
 		})
 	}
@@ -710,24 +670,19 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 
 // TestListConversations_NoBusinessContext tests list without BusinessContext in context
 func TestListConversations_NoBusinessContext(t *testing.T) {
-	// Setup
 	mockRepo := &MockConversationRepository{}
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request without BusinessContext in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.ListConversations(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // TestListConversations_RepositoryError tests repository errors
 func TestListConversations_RepositoryError(t *testing.T) {
-	// Setup
 	userID := uuid.New()
 
 	mockRepo := &MockConversationRepository{
@@ -738,18 +693,14 @@ func TestListConversations_RepositoryError(t *testing.T) {
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
-	// Add user ID to context
 	ctx := convBizCtx(uuid.New(), userID)
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.ListConversations(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var response ErrorResponse
@@ -760,7 +711,6 @@ func TestListConversations_RepositoryError(t *testing.T) {
 
 // TestGetConversation_Success tests successful conversation retrieval
 func TestGetConversation_Success(t *testing.T) {
-	// Setup
 	userID := uuid.New()
 	conversationID := "507f1f77bcf86cd799439011"
 
@@ -781,24 +731,19 @@ func TestGetConversation_Success(t *testing.T) {
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
-	// Add user ID to context
 	ctx := convBizCtx(uuid.New(), userID)
 
-	// Add chi URL param
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.GetConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response domain.Conversation
@@ -811,14 +756,13 @@ func TestGetConversation_Success(t *testing.T) {
 
 // TestGetConversation_Unauthorized tests authorization check (different user)
 func TestGetConversation_Unauthorized(t *testing.T) {
-	// Setup
 	userID := uuid.New()
 	otherUserID := uuid.New()
 	conversationID := "507f1f77bcf86cd799439011"
 
 	conversation := &domain.Conversation{
 		ID:        conversationID,
-		UserID:    otherUserID.String(), // Different user
+		UserID:    otherUserID.String(),
 		Title:     "Test Conversation",
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
@@ -832,24 +776,19 @@ func TestGetConversation_Unauthorized(t *testing.T) {
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
-	// Add user ID to context
 	ctx := convBizCtx(uuid.New(), userID)
 
-	// Add chi URL param
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.GetConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusForbidden, w.Code)
 
 	var response ErrorResponse
@@ -860,7 +799,6 @@ func TestGetConversation_Unauthorized(t *testing.T) {
 
 // TestGetConversation_NotFound tests conversation not found
 func TestGetConversation_NotFound(t *testing.T) {
-	// Setup
 	userID := uuid.New()
 	conversationID := "507f1f77bcf86cd799439011"
 
@@ -872,24 +810,19 @@ func TestGetConversation_NotFound(t *testing.T) {
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
-	// Add user ID to context
 	ctx := convBizCtx(uuid.New(), userID)
 
-	// Add chi URL param
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.GetConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
 	var response ErrorResponse
@@ -900,31 +833,25 @@ func TestGetConversation_NotFound(t *testing.T) {
 
 // TestGetConversation_NoBusinessContext tests get without BusinessContext in context
 func TestGetConversation_NoBusinessContext(t *testing.T) {
-	// Setup
 	conversationID := "507f1f77bcf86cd799439011"
 	mockRepo := &MockConversationRepository{}
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request without BusinessContext in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
-	// Add chi URL param only
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
 	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.GetConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // TestGetConversation_RepositoryError tests repository errors
 func TestGetConversation_RepositoryError(t *testing.T) {
-	// Setup
 	userID := uuid.New()
 	conversationID := "507f1f77bcf86cd799439011"
 
@@ -936,24 +863,19 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
-	// Add user ID to context
 	ctx := convBizCtx(uuid.New(), userID)
 
-	// Add chi URL param
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 
 	req = req.WithContext(ctx)
 
-	// Execute
 	w := httptest.NewRecorder()
 	handler.GetConversation(w, req)
 
-	// Assert
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var response ErrorResponse
@@ -976,7 +898,7 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 		ProjectID:     ptr("p1"),
 		Title:         "Ошибки после обновления",
 		TitleStatus:   domain.TitleStatusAutoPending,
-		PinnedAt:      &pinnedAt, // replaces legacy `Pinned bool`
+		PinnedAt:      &pinnedAt,
 		LastMessageAt: &lastMsg,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -987,7 +909,6 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(raw, &m))
 
-	// The five keys the sidebar relies on (`pinned` was swapped for `pinnedAt`).
 	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := m[key]
 		assert.Truef(t, ok, "expected key %q in JSON shape; got keys: %v", key, keysOf(m))
@@ -995,7 +916,6 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	assert.Equal(t, "p1", m["projectId"])
 	assert.Equal(t, "b1", m["businessId"])
 	assert.Equal(t, string(domain.TitleStatusAutoPending), m["titleStatus"])
-	// Legacy `pinned` bool MUST NOT appear in the JSON output (single source of truth).
 	_, hasLegacy := m["pinned"]
 	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed")
 }
@@ -1009,7 +929,7 @@ func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 		ID:          "c2",
 		UserID:      "u2",
 		BusinessID:  "b2",
-		ProjectID:   nil, // virtual "Без проекта" bucket
+		ProjectID:   nil,
 		Title:       "t",
 		TitleStatus: domain.TitleStatusAutoPending,
 	}
@@ -1021,12 +941,10 @@ func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 
 	_, present := m["projectId"]
 	assert.False(t, present, "projectId must be elided when ProjectID is nil (omitempty); got: %v", m)
-	// businessId / titleStatus remain present.
 	_, ok := m["businessId"]
 	assert.True(t, ok)
 	_, ok = m["titleStatus"]
 	assert.True(t, ok)
-	// pinnedAt is omitempty; nil PinnedAt elides the key.
 	_, hasPinned := m["pinnedAt"]
 	assert.False(t, hasPinned, "pinnedAt must be elided when PinnedAt is nil (omitempty)")
 }
@@ -1048,7 +966,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 			ProjectID:     &projID,
 			Title:         "Pinned",
 			TitleStatus:   domain.TitleStatusAuto,
-			PinnedAt:      &pinnedAt, // replaces legacy `Pinned bool`
+			PinnedAt:      &pinnedAt,
 			LastMessageAt: &lastMsg,
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -1076,21 +994,16 @@ func TestListConversations_JSONShape(t *testing.T) {
 	require.Len(t, items, 1)
 
 	item := items[0]
-	// `pinned` was swapped for `pinnedAt` (single source of truth).
 	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := item[key]
 		assert.Truef(t, ok, "GET /api/v1/conversations item must carry key %q; got: %v", key, keysOf(item))
 	}
 	assert.Equal(t, "biz-1", item["businessId"])
 	assert.Equal(t, "proj-1", item["projectId"])
-	// `pinnedAt` is the timestamp string; assert merely that it's non-empty
-	// and parseable. Exact value depends on the test fixture (now at the
-	// pinnedAt := time.Now.UTC statement above).
 	pa, ok := item["pinnedAt"].(string)
 	require.True(t, ok, "pinnedAt must serialize as a string (ISO timestamp)")
 	assert.NotEmpty(t, pa)
 	assert.Equal(t, string(domain.TitleStatusAuto), item["titleStatus"])
-	// Legacy `pinned` JSON key MUST be absent.
 	_, hasLegacy := item["pinned"]
 	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed")
 }
@@ -1161,8 +1074,6 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 	assert.Equal(t, pid, *capturedConv.ProjectID)
 	assert.Equal(t, businessID.String(), capturedConv.BusinessID)
 	assert.Equal(t, domain.TitleStatusAutoPending, capturedConv.TitleStatus)
-	// Newly created chats are unpinned (PinnedAt == nil is the
-	// single source of truth; legacy `Pinned bool` removed).
 	assert.Nil(t, capturedConv.PinnedAt)
 }
 
@@ -1211,8 +1122,6 @@ func TestCreateConversation_ProjectCrossBusiness(t *testing.T) {
 	businessID := uuid.New()
 	projectID := uuid.New()
 
-	// Project belongs to a different business → service returns
-	// ErrProjectNotFound (anti-enumeration).
 	proj := &noopProjectService{
 		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
 			return nil, domain.ErrProjectNotFound
@@ -1256,10 +1165,8 @@ func TestMoveConversation_ToProject(t *testing.T) {
 			assert.Equal(t, convID, id)
 			getByIDCall++
 			if getByIDCall == 1 {
-				// first call (ownership check) — original state
 				return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
 			}
-			// second call (re-fetch after move)
 			return convAfterMove, nil
 		},
 		UpdateProjectAssignmentFunc: func(_ context.Context, id string, pid *string) error {
@@ -1305,10 +1212,8 @@ func TestMoveConversation_ToProject(t *testing.T) {
 	require.NotNil(t, capturedMsg, "system note must be appended")
 	assert.Equal(t, convID, capturedMsg.ConversationID)
 	assert.Equal(t, "system", capturedMsg.Role)
-	// Byte-exact Russian copy.
 	assert.Equal(t, "[Чат перемещён в «Отзывы» — с этого момента применяется новая политика]", capturedMsg.Content)
 
-	// Response body carries the re-fetched conversation.
 	var resp domain.Conversation
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.NotNil(t, resp.ProjectID)
@@ -1348,7 +1253,6 @@ func TestMoveConversation_ToNullBezProyekta(t *testing.T) {
 	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, newRealConvSvcForMoveTest(t, mockRepo, msgRepo, &stubProjectRepoForHandler{}))
 	require.NoError(t, err)
 
-	// null body
 	body := []byte(`{"projectId":null}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/move", bytes.NewReader(body))
 	rctx := chi.NewRouteContext()
@@ -1488,15 +1392,11 @@ func TestMoveConversation_ProjectCrossBusiness(t *testing.T) {
 			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
 		},
 	}
-	// Project belongs to a different business → ErrProjectNotFound.
 	proj := &noopProjectService{
 		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	// ConversationService gets a stub that returns the project as belonging
-	// to a DIFFERENT business — the cross-tenant guard inside MoveToProject
-	// surfaces ErrProjectNotFound (existence-enumeration defense).
 	projRepo := &stubProjectRepoForHandler{
 		GetByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Project, error) {
 			return &domain.Project{ID: id, BusinessID: uuid.New(), Name: "OtherBizProject"}, nil
@@ -1606,7 +1506,7 @@ func TestGetMessages_NoPendingApprovals_ReturnsEmptyArray(t *testing.T) {
 	}
 	pending := &MockPendingToolCallRepository{
 		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
-			return nil, nil // no active batches
+			return nil, nil
 		},
 	}
 	h := newConversationHandlerWithPending(t, convRepo, msgRepo, pending)
@@ -1618,7 +1518,6 @@ func TestGetMessages_NoPendingApprovals_ReturnsEmptyArray(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var body map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	// Must be an explicit [] not null or missing.
 	raw, ok := body["pendingApprovals"]
 	require.True(t, ok, "pendingApprovals key must be present; got keys: %v", body)
 	assert.Equal(t, "[]", string(raw), "pendingApprovals must serialize as [] when no batches active")
@@ -1675,8 +1574,6 @@ func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
 	require.Len(t, body.PendingApprovals[0].Calls, 1)
 	assert.Equal(t, "toolu_1", body.PendingApprovals[0].Calls[0].CallID)
 	assert.Equal(t, tools.TelegramSendChannelPost, body.PendingApprovals[0].Calls[0].ToolName)
-	// EditableFields is intentionally empty — population is deferred to
-	// the frontend's `['tools']` React Query (live map).
 	assert.NotNil(t, body.PendingApprovals[0].Calls[0].EditableFields, "EditableFields must be [] not null for stable contract")
 }
 
@@ -1694,8 +1591,6 @@ func TestGetMessages_ExpiredBatch_ReportsExpiredStatus(t *testing.T) {
 	}
 	pending := &MockPendingToolCallRepository{
 		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
-			// Simulate the repo's lazy virtualization: past expires_at with
-			// status="pending" is returned as status="expired".
 			return []*domain.PendingToolCallBatch{{
 				ID:             "batch-old",
 				ConversationID: convID,
@@ -1775,7 +1670,7 @@ func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 		UserID:      userID.String(),
 		BusinessID:  "biz-1",
 		Title:       "Старый",
-		TitleStatus: domain.TitleStatusAuto, // pre-rename
+		TitleStatus: domain.TitleStatusAuto,
 	}
 
 	var updated *domain.Conversation
@@ -1801,15 +1696,11 @@ func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
 	require.NotNil(t, updated, "repo Update must be invoked")
 
-	// Trust-critical assertion: TitleStatus is now "manual".
 	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
 		"PUT /conversations/{id} must unconditionally flip TitleStatus to manual")
 	assert.Equal(t, "Новый ручной заголовок", updated.Title,
 		"new title must be persisted alongside the manual flag")
 
-	// Response body also carries the post-update conversation; it must
-	// reflect the manual flag so the frontend updates its React Query cache
-	// without an extra refetch (the cache hydrates the sidebar header).
 	var resp domain.Conversation
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, domain.TitleStatusManual, resp.TitleStatus)
@@ -1827,7 +1718,7 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 		UserID:      userID.String(),
 		BusinessID:  "biz-1",
 		Title:       "",
-		TitleStatus: domain.TitleStatusAutoPending, // job mid-flight
+		TitleStatus: domain.TitleStatusAutoPending,
 	}
 
 	var updated *domain.Conversation
@@ -1919,9 +1810,6 @@ func TestConversation_Pin_Success(t *testing.T) {
 }
 
 func TestConversation_Pin_CrossTenant_Returns404(t *testing.T) {
-	// Repo's scope filter mismatch returns ErrConversationNotFound; the handler
-	// MUST map this to a uniform 404 (NEVER 403 — uniform 404 is the industry
-	// standard against existence enumeration; threat -01).
 	userID := uuid.New()
 	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439011"
@@ -1966,7 +1854,6 @@ func TestConversation_Pin_BadID_Returns400(t *testing.T) {
 	mockRepo := &MockConversationRepository{}
 	h := pinTestHandler(mockRepo, businessID, userID)
 
-	// 23 chars instead of 24 — same shape as the existing GetConversation guard.
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/short-id/pin", http.NoBody)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "short-id")

@@ -240,8 +240,6 @@ func LogConsentRecordedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purp
 	}
 	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
 	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
-	// user_email_at_event is empty: Register tx has no user resolver
-	// (the row doesn't exist yet at audit-write time).
 	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentRecorded, "user", d); err != nil {
 		return fmt.Errorf("audit: consent_recorded insert: %w", err)
 	}
@@ -307,7 +305,7 @@ func LogConsentPolicyVersionBumped(ctx context.Context, l Logger, slug, fromVers
 	l.Log(ctx, Entry{
 		Action:   ActionConsentPolicyVersionBumped,
 		Resource: "policy",
-		UserID:   nil, // system event — no actor.
+		UserID:   nil,
 		Details:  mustMarshal(ConsentPolicyVersionBumpedDetails{Slug: slug, FromVersion: fromVersion, ToVersion: toVersion, SHA256: sha256}),
 	})
 }

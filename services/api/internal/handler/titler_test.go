@@ -118,9 +118,6 @@ func (r *titlerConvRepo) TransitionToAutoPending(_ context.Context, _ string) er
 	if r.transitionErr != nil {
 		return r.transitionErr
 	}
-	// Reflect successful transition in the stored conversation snapshot so
-	// any subsequent caller observes the post-state. This lines up the fake
-	// with the production atomic update semantics.
 	if r.getByIDReturn != nil {
 		r.getByIDReturn.TitleStatus = domain.TitleStatusAutoPending
 	}
@@ -193,8 +190,6 @@ func TestRegenerateTitle_200_Success(t *testing.T) {
 	assert.Empty(t, rec.Body.String())
 	assert.Equal(t, 1, convRepo.transitionCalls, "must atomically transition to auto_pending")
 
-	// Goroutine settle. The titler is fire-and-forget; allow ~100ms for the
-	// FakeChatCaller to record the call.
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for fc.Calls() == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
@@ -222,10 +217,8 @@ func TestRegenerateTitle_409_Manual(t *testing.T) {
 	var body map[string]string
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "title_is_manual", body["error"])
-	// verbatim Russian copy locked in CONTEXT.md.
 	assert.Equal(t, "Нельзя регенерировать — вы уже переименовали чат вручную", body["message"])
 
-	// Negative assertions: no transition, no goroutine spawn.
 	assert.Equal(t, 0, convRepo.transitionCalls)
 	assert.Equal(t, 0, fc.Calls(), "manual must not fire the titler")
 }
@@ -243,7 +236,7 @@ func TestRegenerateTitle_409_InFlight(t *testing.T) {
 		UserID:      userID.String(),
 		BusinessID:  "biz-1",
 		TitleStatus: domain.TitleStatusAutoPending,
-		UpdatedAt:   time.Now(), // fresh pending — within the in-flight window
+		UpdatedAt:   time.Now(),
 	}
 	h, convRepo, fc := newTitlerHandlerWithRealTitler(t, conv, nil)
 
@@ -253,7 +246,6 @@ func TestRegenerateTitle_409_InFlight(t *testing.T) {
 	var body map[string]string
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "title_in_flight", body["error"])
-	// verbatim Russian copy locked in CONTEXT.md.
 	assert.Equal(t, "Заголовок уже генерируется", body["message"])
 
 	assert.Equal(t, 0, convRepo.transitionCalls)
@@ -273,8 +265,7 @@ func TestRegenerateTitle_StuckAutoPendingProceeds(t *testing.T) {
 		UserID:      userID.String(),
 		BusinessID:  "biz-1",
 		TitleStatus: domain.TitleStatusAutoPending,
-		// 1 hour stale — well past the 30s in-flight window.
-		UpdatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt:   time.Now().Add(-1 * time.Hour),
 	}
 	h, convRepo, _ := newTitlerHandlerWithRealTitler(t, conv, nil)
 
@@ -299,7 +290,7 @@ func TestRegenerateTitle_503_TitlerDisabled(t *testing.T) {
 	}
 	convRepo := &titlerConvRepo{getByIDReturn: conv}
 	msgRepo := &titlerMsgRepo{}
-	h := NewTitlerHandler(nil, convRepo, msgRepo) // titler nil — graceful disable.
+	h := NewTitlerHandler(nil, convRepo, msgRepo)
 
 	rec := titlerRoute(t, h, userID, convID)
 
@@ -319,7 +310,7 @@ func TestRegenerateTitle_403_Forbidden(t *testing.T) {
 	convID := "507f1f77bcf86cd799439023"
 	conv := &domain.Conversation{
 		ID:          convID,
-		UserID:      ownerID.String(), // different user
+		UserID:      ownerID.String(),
 		BusinessID:  "biz-1",
 		TitleStatus: domain.TitleStatusAuto,
 	}
@@ -371,7 +362,7 @@ func TestRegenerateTitle_409_TransitionRace(t *testing.T) {
 	}
 	convRepo := &titlerConvRepo{
 		getByIDReturn: conv,
-		transitionErr: domain.ErrConversationNotFound, // race-loss
+		transitionErr: domain.ErrConversationNotFound,
 	}
 	msgRepo := &titlerMsgRepo{}
 	fc := &service.FakeChatCaller{ReturnContent: "irrelevant"}
@@ -385,7 +376,6 @@ func TestRegenerateTitle_409_TransitionRace(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "title_state_changed", body["error"])
 	assert.NotEmpty(t, body["message"])
-	// Negative: no goroutine should spawn after a transition-race loss.
 	assert.Equal(t, 0, fc.Calls())
 }
 
@@ -442,18 +432,13 @@ func TestRegenerateTitle_BodyVerbatimRussianCopy(t *testing.T) {
 			conv := &domain.Conversation{
 				ID: convID, UserID: userID.String(), BusinessID: "biz-1",
 				TitleStatus: c.titleStatus,
-				// Fresh UpdatedAt so an auto_pending row hits the in-flight 409
-				// path (not the stuck-recovery 200 path) and the verbatim copy
-				// surfaces. Stuck-pending recovery is covered by a dedicated test.
-				UpdatedAt: time.Now(),
+				UpdatedAt:   time.Now(),
 			}
 			h, _, _ := newTitlerHandlerWithRealTitler(t, conv, nil)
 
 			rec := titlerRoute(t, h, userID, convID)
 
 			require.Equal(t, http.StatusConflict, rec.Code)
-			// Byte-exact comparison via strings.Contains so the test pinpoints
-			// any copy drift (different dash, missing space) instantly.
 			assert.True(t,
 				strings.Contains(rec.Body.String(), c.wantMessage),
 				"missing verbatim Russian copy %q in body %s",

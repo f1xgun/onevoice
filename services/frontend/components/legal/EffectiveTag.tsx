@@ -16,10 +16,6 @@ interface EffectiveTagProps {
 export function EffectiveTag({ effectiveFrom, version }: EffectiveTagProps) {
   const t = useTranslations('legal.shared');
   const format = useFormatter();
-  // Frontmatter ships effective_from as 'YYYY-MM-DD'; render in locale-aware
-  // long form ('1 июня 2026 г.' / 'June 1, 2026'). If the date string fails
-  // to parse, fall back to the raw value so the page still renders rather
-  // than crashing on legal pages (UI-SPEC §A edge case).
   let dateLabel = effectiveFrom;
   if (effectiveFrom) {
     const parsed = new Date(effectiveFrom);

@@ -150,7 +150,6 @@ func TestListIntegrations_NoBusinessContext(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
-	// no BusinessContext seeded
 
 	rr := httptest.NewRecorder()
 	h.ListIntegrations(rr, req)
@@ -172,8 +171,7 @@ func TestListIntegrations_Forbidden(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
-	// seed ctx without PermIntegrationsRead
-	req = req.WithContext(integrationBizCtx(businessID, userID /* no perms */))
+	req = req.WithContext(integrationBizCtx(businessID, userID))
 
 	rr := httptest.NewRecorder()
 	h.ListIntegrations(rr, req)
@@ -215,7 +213,6 @@ func TestListIntegrations_IntegrationServiceError(t *testing.T) {
 		t.Errorf("expected 'internal server error', got '%s'", response.Error)
 	}
 
-	// Verify no database details leaked
 	if strings.Contains(response.Error, "database") || strings.Contains(response.Error, "query") {
 		t.Error("error message should not leak internal details")
 	}
@@ -294,7 +291,7 @@ func TestDeleteIntegration_Forbidden(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
-	ctx := integrationBizCtx(businessID, userID /* no disconnect perm */)
+	ctx := integrationBizCtx(businessID, userID)
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("integrationId", integrationID.String())
@@ -316,7 +313,6 @@ func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
 	integrationID := uuid.New()
 
 	mockIntegrationService := new(MockIntegrationService)
-	// Return empty list — integration not in this business
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
 	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
@@ -383,7 +379,6 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 		t.Errorf("expected 'internal server error', got '%s'", response.Error)
 	}
 
-	// Verify no database/redis details leaked
 	if strings.Contains(response.Error, "redis") || strings.Contains(response.Error, "deletion") {
 		t.Error("error message should not leak internal details")
 	}

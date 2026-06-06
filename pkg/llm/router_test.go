@@ -362,7 +362,7 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 
 	billing := &MockBillingRepository{}
 	userID := uuid.New()
-	businessID := uuid.New() // Non-nil BusinessID required to bill.
+	businessID := uuid.New()
 
 	r := llm.NewRouter(registry,
 		llm.WithProvider(&stubProvider{
@@ -387,7 +387,6 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 
 	year, month := time.Now().Year(), int(time.Now().Month())
 
-	// Wait for async billing goroutine to complete.
 	assert.Eventually(t, func() bool {
 		logs, err := billing.GetMonthlyUsage(context.Background(), userID, year, month)
 		return err == nil && len(logs) == 1
@@ -469,11 +468,10 @@ func TestRouter_Billing_SkipsWhenBusinessIDNil(t *testing.T) {
 	_, err := r.Chat(context.Background(), llm.ChatRequest{
 		Model:      "gpt-4",
 		UserID:     uuid.New(),
-		BusinessID: uuid.Nil, // explicit nil — Router must skip billing
+		BusinessID: uuid.Nil,
 	})
 	require.NoError(t, err)
 
-	// Allow time for any (incorrectly fired) goroutine to land.
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 0, billing.CallCount(),
 		"LogUsage must NOT be called when ChatRequest.BusinessID is uuid.Nil")
@@ -618,12 +616,6 @@ func TestRouter_Billing_NotCalledWhenNil(t *testing.T) {
 }
 
 func TestRouter_FailureRecorded_WhenProviderErrors(t *testing.T) {
-	// Drives the Router with a failing provider 6 times — Router must
-	// call Selector.Record(Success:false) on each error, which the
-	// default Selector accumulates into a failure rate > 50% (down).
-	// Pre-refactor this test reached past Router and called
-	// registry.RecordFailure manually; the seam now makes the recording
-	// path observable end-to-end.
 	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
 	registry := newTestRegistry(entry)
 
@@ -801,7 +793,7 @@ func TestRouter_RetryOnce_NonTransientImmediate(t *testing.T) {
 	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
 		{nil, nonTransientAPIError(400)},
 	}}
-	provB := &sequenceProvider{name: "anthropic"} // must NOT be called
+	provB := &sequenceProvider{name: "anthropic"}
 	sel := &candidateSelector{candidates: []llm.Candidate{
 		{Entry: entryA, Provider: provA},
 		{Entry: entryB, Provider: provB},
@@ -873,7 +865,7 @@ func TestRouter_RetryOnce_FirstAttemptSucceeds(t *testing.T) {
 	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
 		{&llm.ChatResponse{Content: "first ok"}, nil},
 	}}
-	provB := &sequenceProvider{name: "anthropic"} // must NOT be called
+	provB := &sequenceProvider{name: "anthropic"}
 	sel := &candidateSelector{candidates: []llm.Candidate{
 		{Entry: entryA, Provider: provA},
 		{Entry: entryB, Provider: provB},
@@ -899,9 +891,6 @@ func TestRouter_RetryOnce_BillsOnlySuccess(t *testing.T) {
 	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter", InputCostPer1MTok: 1, OutputCostPer1MTok: 3}
 	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic", InputCostPer1MTok: 2, OutputCostPer1MTok: 6}
 	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
-		// Partial response with bogus Usage tagged onto the error path.
-		// The detector sees the wrapped APIError so the retry fires; if
-		// the router accidentally billed A, this row would surface.
 		{&llm.ChatResponse{Usage: llm.TokenUsage{InputTokens: 99, OutputTokens: 99}}, transientAPIError(503)},
 	}}
 	provB := &sequenceProvider{name: "anthropic", responses: []seqResponse{
@@ -977,7 +966,7 @@ func TestRouter_RetryOnce_NoCandidates(t *testing.T) {
 
 func TestRouter_RetryOnce_RateLimitErrorNotRetried(t *testing.T) {
 	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
-	provA := &sequenceProvider{name: "openrouter"} // must NOT be called
+	provA := &sequenceProvider{name: "openrouter"}
 
 	sel := &candidateSelector{candidates: []llm.Candidate{{Entry: entryA, Provider: provA}}}
 	r := llm.NewRouter(llm.NewRegistry(),

@@ -50,7 +50,6 @@ export default function VerifyEmailPage() {
       });
       if (res.status === HTTP_NO_CONTENT) {
         setState('verified');
-        // Redirect after a short pause so the success copy is legible.
         setTimeout(() => router.push('/'), POST_SUCCESS_REDIRECT_DELAY_MS);
         return;
       }
@@ -63,7 +62,6 @@ export default function VerifyEmailPage() {
     }
   }
 
-  // Success state replaces the page per UI-SPEC Surface 3.
   if (state === 'verified') {
     return (
       <AuthShell

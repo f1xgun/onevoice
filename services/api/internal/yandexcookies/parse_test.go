@@ -80,8 +80,6 @@ func TestParse_CookieHeader_WithCookiePrefix(t *testing.T) {
 }
 
 func TestParse_SingleCookieHeaderPair(t *testing.T) {
-	// "Session_id=..." with no other cookies — routes through the
-	// cookie-header parser as a single-element header.
 	input := "Session_id=" + validSessionID
 	got, err := Parse(input)
 	if err != nil {
@@ -165,9 +163,6 @@ func TestParsed_JSONIsValid(t *testing.T) {
 }
 
 func TestParsed_JSONShapeMatchesInjectCookies(t *testing.T) {
-	// The agent's injectCookies (services/agent-yandex-business/internal/yandex/pool.go)
-	// reads name, value, domain, path from each map. Make sure our JSON
-	// output carries those exact lowercase keys.
 	p, _ := Parse("Session_id=" + validSessionID)
 	out := p.JSON()
 	for _, key := range []string{`"name"`, `"value"`, `"domain"`, `"path"`} {

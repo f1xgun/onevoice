@@ -83,19 +83,12 @@ func StartRetentionSweep(ctx context.Context, pool lockExecutor, repo domain.Aud
 // stays a thin entry point and runRetention can be unit-tested if needed
 // (the load-bearing logic is in sweep, which has its own tests).
 func runRetention(ctx context.Context, pool lockExecutor, repo domain.AuditLogRepository) {
-	// Warmup window before the first sweep — readiness probes pass first,
-	// and the API has time to recover from any startup PG hiccups before
-	// we issue a long-running DELETE.
 	select {
 	case <-ctx.Done():
 		return
 	case <-time.After(retentionWarmup):
 	}
 
-	// First sweep immediately after warmup; subsequent sweeps on the
-	// 24h ticker. Aligns with the original pg_cron "0 3 * * *" cadence —
-	// the absolute clock time of the first tick doesn't matter for a
-	// 365d cutoff.
 	sweep(ctx, pool, repo)
 	t := time.NewTicker(retentionTick)
 	defer t.Stop()
@@ -123,19 +116,12 @@ func sweep(ctx context.Context, pool lockExecutor, repo domain.AuditLogRepositor
 		return
 	}
 	if !acquired {
-		// Another replica is sweeping this tick; expected behavior in a
-		// multi-replica deployment. Debug-level log (not warn) — this
-		// is steady-state, not an incident.
 		metrics.IncRetentionRun("locked")
 		slog.DebugContext(ctx, "audit_logs retention: lock held by another replica, skipping")
 		return
 	}
 	defer func() {
 		if _, err := pool.Exec(ctx, advisoryUnlockSQL); err != nil {
-			// Unlock failure is non-fatal — the session-scoped lock is
-			// released automatically when the pgx connection returns to
-			// the pool. Warn-level so it shows up on dashboards but
-			// doesn't page.
 			slog.WarnContext(ctx, "audit_logs retention: unlock failed", "error", err)
 		}
 	}()

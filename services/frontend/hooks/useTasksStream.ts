@@ -53,9 +53,7 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
             try {
               const parsed = JSON.parse(dataLine.slice(SSE_DATA_PREFIX.length)) as TaskStreamEvent;
               onEventRef.current(parsed);
-            } catch {
-              // malformed event — ignore
-            }
+            } catch {}
           }
         }
       } catch (err) {

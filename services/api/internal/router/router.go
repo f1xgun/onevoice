@@ -85,9 +85,6 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
-	// chi RealIP intentionally omitted: it rewrites RemoteAddr from XFF with
-	// no trust knob, defeating the TRUSTED_PROXY_CIDRS gate in
-	// middleware.ClientIP.
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
@@ -98,54 +95,38 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		AllowCredentials: true,
 		MaxAge:           corsMaxAge,
 	}))
-	// LocaleResolver must run before SecurityHeaders / metrics / auth so
-	// unauthenticated error responses are localized off Accept-Language.
 	r.Use(i18n.LocaleMiddleware)
 	r.Use(middleware.SecurityHeaders())
 	r.Use(metrics.HTTPMiddleware)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// public — no auth
 		r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).Post("/auth/register", handlers.Auth.Register)
 		if lock != nil {
-			// lockout BEFORE rate-limit so a locked account returns 423 (with
-			// retry_after_seconds), not 429.
 			r.With(middleware.LockoutMiddleware(lock)).
 				With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).
 				Post("/auth/login", handlers.Auth.Login)
 		} else {
-			// graceful disable: no Redis at boot → rate-limit-only legacy path
 			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/login", handlers.Auth.Login)
 		}
 		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
-		// password reset — no chi RateLimit wrapper; service-layer per-email
-		// limiter enforces timing-parity contract uniformly.
 		r.Post("/auth/password-reset/request", handlers.Auth.RequestPasswordReset)
-		// POST only — no GET handler; scanner-protection against link prefetch.
 		r.Post("/auth/password-reset/confirm", handlers.Auth.ConfirmPasswordReset)
 
-		// public — no JWT. Returns 204 with NO Set-Cookie. POST only —
-		// scanner-protection against link prefetch.
 		r.Post("/auth/verify-email/confirm", handlers.Auth.VerifyConfirm)
 
-		// public — state parameter validates session
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
 		r.Get("/oauth/vk/community-callback", handlers.OAuth.VKCommunityCallback)
 		r.Get("/oauth/yandex_business/callback", handlers.OAuth.YandexCallback)
 		r.Get("/oauth/google_business/callback", handlers.OAuth.GoogleCallback)
 
-		// public — returns only non-sensitive platform metadata
 		r.Get("/platforms", handlers.Platforms.List)
 
-		// public — token IS the auth. Rate-limited with Login budget.
 		if handlers.Invitations != nil {
 			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).
 				Get("/invitations/{token}", handlers.Invitations.Preview)
 		}
 
-		// auth-required, NEVER decorated by BlockWritesDuringGrace —
-		// escape hatches + idempotent reads.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(jwtSecret))
 			r.Post("/auth/logout", handlers.Auth.Logout)
@@ -156,8 +137,6 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Delete("/users/me", handlers.UserDeletion.Delete)
 				r.Post("/users/me/restore", handlers.UserDeletion.Restore)
 			}
-			// consents: right-to-withdraw cannot be gated by verification or grace
-			// per 152-ФЗ Art. 21.
 			if handlers.Consents != nil {
 				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Consents, time.Minute, "consents")).
 					Post("/auth/consents", handlers.Consents.Reconsent)
@@ -167,7 +146,6 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			}
 		})
 
-		// auth-required + write-gated by 30-day grace (GETs bypass)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(jwtSecret))
 			if pgPool != nil {
@@ -177,15 +155,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
 			r.Patch("/auth/locale", handlers.Auth.UpdatePreferredLocale)
 
-			// auth-only, no business scope
 			if handlers.Permissions != nil {
 				r.Get("/permissions", handlers.Permissions.List)
 			}
 
-			// auth-only, no business scope
 			r.Get("/businesses", handlers.Business.ListUserBusinesses)
-			// day-7 soft-restrict: unverified users get 7 days before
-			// business creation is blocked.
 			if users != nil {
 				r.With(middleware.RequireVerifiedEmailDay7(users)).
 					Post("/businesses", handlers.Business.CreateBusiness)
@@ -197,14 +171,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			r.Post("/telemetry", handlers.Telemetry.Ingest)
 
-			// auth-required, NOT business-scoped — {token} targets the business.
 			if handlers.Invitations != nil {
 				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Login, time.Minute, "invite_accept")).
 					Post("/invitations/{token}/accept", handlers.Invitations.Accept)
 			}
 
-			// business-scoped subtree — single chokepoint via RequireBusinessAccess
-			// (returns 404 on non-member, not 403).
 			r.Route("/businesses/{id}", func(r chi.Router) {
 				r.Use(authz.RequireBusinessAccess(authzCache, middleware.GetUserID))
 
@@ -216,11 +187,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/tool-approvals", handlers.Business.GetBusinessToolApprovals)
 				r.Put("/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
 
-				// integrations GET endpoints — never verification-gated
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
 				r.Delete("/integrations/{integrationId}", handlers.Integration.DeleteIntegration)
 
-				// auth-url generators need JWT + business context for state
 				r.Get("/integrations/vk/auth-url", handlers.OAuth.GetVKAuthURL)
 				r.Get("/integrations/vk/communities", handlers.OAuth.VKCommunities)
 				r.Get("/integrations/vk/community-auth-url", handlers.OAuth.VKCommunityAuthURL)
@@ -228,9 +197,6 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
 				r.Get("/integrations/google_business/locations", handlers.OAuth.GoogleLocations)
 
-				// day-0 hard-block on connect POSTs — attacker surface for spam
-				// token connection. Wrapped individually so decorator order stays
-				// explicit at the route declaration.
 				integWith := func() func(http.Handler) http.Handler {
 					if users == nil {
 						return passThroughMiddleware
@@ -248,8 +214,6 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(integWith).Post("/integrations/telegram/connect", handlers.Connect.ConnectTelegram)
 				r.With(integWith).Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
 
-				// chat — rate-limit BEFORE verify so throttled requests
-				// short-circuit before the DB lookup.
 				if users != nil {
 					r.With(
 						middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute, "chat"),
@@ -307,17 +271,13 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 				if handlers.Roles != nil {
 					r.Get("/roles", handlers.Roles.List)
-					// role CRUD gated by RequireBusinessAccess (inherited) +
-					// per-route Can check inside the handler.
 					r.Post("/roles", handlers.Roles.Create)
 					r.Patch("/roles/{roleId}", handlers.Roles.Update)
 					r.Delete("/roles/{roleId}", handlers.Roles.Delete)
-					// any member can read their own permissions
 					r.Get("/me/permissions", handlers.Roles.MyPermissions)
 				}
 
 				if handlers.Invitations != nil {
-					// POST gated by day-0 soft-restrict — spam vector
 					if users != nil {
 						r.With(middleware.RequireVerifiedEmailDay0(users)).
 							Post("/invitations", handlers.Invitations.Create)
@@ -328,15 +288,12 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 					r.Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
 				}
 
-				// PermAuditRead checked inside the handler (Owner+Admin via seed)
 				if handlers.AuditLog != nil {
 					r.Get("/audit-logs", handlers.AuditLog.List)
 				}
 			})
 		})
 
-		// public — outside the auth group so the marketing landing page can
-		// render without a token.
 		if handlers.Platforms != nil {
 			r.Get("/platforms", handlers.Platforms.List)
 		}
@@ -346,7 +303,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())
-	r.Get("/health", hc.LiveHandler()) // backward compat
+	r.Get("/health", hc.LiveHandler())
 
 	return r
 }
@@ -364,10 +321,8 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 
-	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken) // mTLS internal only
+	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
 
-	// mTLS internal only — RequireServiceIdentity is defense-in-depth on top
-	// of the listener-level handshake.
 	if handlers.InternalBilling != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))
@@ -378,7 +333,7 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())
-	r.Get("/health", hc.LiveHandler()) // backward compat
+	r.Get("/health", hc.LiveHandler())
 
 	return r
 }

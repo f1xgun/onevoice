@@ -80,7 +80,6 @@ func classifyGBPError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Preserve an already-typed code from upstream wrapping sites.
 	if a2a.CodeOf(err) != "" {
 		return err
 	}

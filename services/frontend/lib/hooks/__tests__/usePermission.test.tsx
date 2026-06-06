@@ -84,13 +84,6 @@ describe('usePermission (reads /me/permissions)', () => {
   });
 
   it('refetches when the query is invalidated (PermissionsCacheGuard contract)', async () => {
-    // Asserts the second leg of the freshness contract: explicit cache
-    // invalidation triggers a re-fetch. The first leg (passive 60 s polling
-    // via refetchInterval) is a React-Query primitive — verified by reading
-    // the option in source and by the hook's integration with the live API
-    // in dev. Driving the interval deterministically here would require
-    // mocking React-Query's internal tick scheduler, which couples the test
-    // to library internals.
     mockedGetMyPermissions.mockResolvedValue(['business.read']);
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },

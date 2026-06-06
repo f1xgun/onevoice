@@ -45,8 +45,6 @@ func newConcurrencyHarness(
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
-		// Block until the test releases — keeps the stream in-flight
-		// from the api's perspective so the SSE counter slot stays held.
 		if holdCh != nil {
 			select {
 			case <-holdCh:
@@ -91,17 +89,12 @@ func TestChatProxy_SSEConcurrencyCap_Rejects_BeforeSSEHeaders(t *testing.T) {
 	defer close(holdCh)
 	h, bizID, userID, mr := newConcurrencyHarness(t, 3, holdCh)
 
-	// Start 3 in-flight goroutines; each blocks inside the orchestrator
-	// upstream until holdCh closes (defer above).
 	for i := 0; i < 3; i++ {
 		go func() {
 			_ = sendChat(h, bizID, userID, "conv-"+uuid.NewString())
 		}()
 	}
 
-	// Wait until the redis counter actually shows 3 slots claimed —
-	// goroutine scheduling can lag well behind sendChat invocation. Hard
-	// cap the wait at ~3s so a regression surfaces as a clean failure.
 	key := "sse:user:" + userID.String() + ":active"
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
@@ -115,7 +108,6 @@ func TestChatProxy_SSEConcurrencyCap_Rejects_BeforeSSEHeaders(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "3", got, "all 3 background goroutines must claim a slot before the 4th call")
 
-	// Fire the 4th — should hit the cap.
 	rr := sendChat(h, bizID, userID, "conv-rejected")
 	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
@@ -131,18 +123,16 @@ func TestChatProxy_SSEConcurrencyCap_Rejects_BeforeSSEHeaders(t *testing.T) {
 func TestChatProxy_SSEConcurrencyCap_ReleasesOnDefer(t *testing.T) {
 	h, bizID, userID, _ := newConcurrencyHarness(t, 1, nil)
 
-	// First call completes (holdCh=nil → upstream returns immediately).
 	rr1 := sendChat(h, bizID, userID, "conv-1")
 	assert.Equal(t, http.StatusOK, rr1.Code)
 
-	// Second call must succeed after the first released the slot.
 	rr2 := sendChat(h, bizID, userID, "conv-2")
 	assert.Equal(t, http.StatusOK, rr2.Code)
 }
 
 func TestChatProxy_SSEConcurrencyCap_RedisDownBlock_Returns503RateLimitUnavailable(t *testing.T) {
 	h, bizID, userID, mr := newConcurrencyHarness(t, 3, nil)
-	mr.Close() // simulate Redis outage
+	mr.Close()
 
 	rr := sendChat(h, bizID, userID, "conv-redisdown")
 	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
@@ -157,7 +147,6 @@ func TestChatProxy_SSEConcurrencyCap_RedisDownBlock_Returns503RateLimitUnavailab
 func TestChatProxy_SSEConcurrencyCap_DisabledWhenMaxZero(t *testing.T) {
 	h, bizID, userID, _ := newConcurrencyHarness(t, 0, nil)
 
-	// With cap disabled, multiple sequential calls all succeed.
 	for i := 0; i < 5; i++ {
 		rr := sendChat(h, bizID, userID, "conv-"+uuid.NewString())
 		assert.Equal(t, http.StatusOK, rr.Code, "call %d", i+1)
@@ -165,9 +154,8 @@ func TestChatProxy_SSEConcurrencyCap_DisabledWhenMaxZero(t *testing.T) {
 }
 
 func TestChatProxy_SSEConcurrencyCap_NilCounter_NoOp(t *testing.T) {
-	// Without SetSSECounter, the handler must behave as before.
 	h, bizID, userID, _ := newConcurrencyHarness(t, 0, nil)
-	h.sseCounter = nil // explicit nil to exercise the guard
+	h.sseCounter = nil
 
 	rr := sendChat(h, bizID, userID, "conv-nocounter")
 	assert.Equal(t, http.StatusOK, rr.Code)

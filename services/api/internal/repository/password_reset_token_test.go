@@ -60,7 +60,7 @@ func TestPasswordResetTokenRepository_Insert_DuplicateHashFails(t *testing.T) {
 	mock, repo := newPasswordResetTokenRepoMock(t)
 	ctx := context.Background()
 	userID := uuid.New()
-	hash := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // 32 bytes
+	hash := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	expiresAt := time.Now().Add(30 * time.Minute)
 
 	mock.ExpectBegin()
@@ -168,10 +168,6 @@ func TestPasswordResetTokenRepository_ConsumeAtomic_ConcurrentRace(t *testing.T)
 	hash := []byte("hash-32-bytes-padded-with-zeros!")
 
 	const N = 50
-	// Pre-program the mock: each goroutine begins its own tx; the first
-	// query returns the user_id, all others get pgx.ErrNoRows.
-	// pgxmock matches expectations FIFO per connection; with N independent
-	// txs, we queue Begin / Query / Commit-or-Rollback sequences.
 	mock.MatchExpectationsInOrder(false)
 	for i := 0; i < N; i++ {
 		mock.ExpectBegin()
@@ -235,7 +231,6 @@ func TestPasswordResetTokenRepository_InvalidateAllForUser(t *testing.T) {
 	userID := uuid.New()
 
 	mock.ExpectBegin()
-	// 3 active tokens existed; UPDATE marks all 3 as consumed.
 	mock.ExpectExec(`UPDATE password_reset_tokens`).
 		WithArgs(userID).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 3))

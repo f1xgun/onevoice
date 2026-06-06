@@ -80,7 +80,6 @@ func NewInternalToolsAllHandler(reg *toolregistry.Registry) *InternalToolsAllHan
 func (h *InternalToolsAllHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tag := i18n.LocaleFromContext(r.Context())
 	entries := h.Registry.AllEntriesForLocale(tag)
-	// Normalize nil EditableFields to [] so the JSON array is non-null.
 	for i := range entries {
 		if entries[i].EditableFields == nil {
 			entries[i].EditableFields = []string{}

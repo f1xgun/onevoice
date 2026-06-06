@@ -69,19 +69,16 @@ func TestProject_JSON_CamelCaseKeys(t *testing.T) {
 	require.NoError(t, err)
 	out := string(data)
 
-	// camelCase keys — matches project's JSON convention (see models.go).
 	assert.Contains(t, out, `"businessId"`)
 	assert.Contains(t, out, `"systemPrompt"`)
 	assert.Contains(t, out, `"whitelistMode"`)
 	assert.Contains(t, out, `"allowedTools"`)
 	assert.Contains(t, out, `"quickActions"`)
 
-	// snake_case names must NOT appear in JSON (those are db tags).
 	assert.NotContains(t, out, `"business_id"`)
 	assert.NotContains(t, out, `"system_prompt"`)
 	assert.NotContains(t, out, `"whitelist_mode"`)
 
-	// Value round-trip.
 	var decoded Project
 	require.NoError(t, json.Unmarshal(data, &decoded))
 	assert.Equal(t, p.Name, decoded.Name)
@@ -103,7 +100,7 @@ func TestConversation_JSON_IncludesNewFields(t *testing.T) {
 		ProjectID:     &projID,
 		Title:         "Hello",
 		TitleStatus:   TitleStatusAuto,
-		PinnedAt:      &pinned, // replaced legacy `Pinned bool`
+		PinnedAt:      &pinned,
 		LastMessageAt: &lm,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -137,7 +134,6 @@ func TestConversation_JSON_OmitsNilLastMessageAt(t *testing.T) {
 }
 
 func TestConversation_JSON_OmitsNilProjectIDForJSON(t *testing.T) {
-	// For JSON we use omitempty on projectId so a nil pointer drops the key.
 	c := Conversation{
 		ID:          "conv-1",
 		UserID:      "user-1",
@@ -154,28 +150,16 @@ func TestConversation_JSON_OmitsNilProjectIDForJSON(t *testing.T) {
 }
 
 func TestConversation_BSONTags(t *testing.T) {
-	// pkg/ must stay free of the mongo driver (only shared *code* belongs
-	// here — repository implementations live in services/api). Verify the
-	// BSON tags via reflection so the invariant is enforced without pulling
-	// go.mongodb.org/mongo-driver/v2 into pkg/go.mod.
 	typ := reflect.TypeOf(Conversation{})
 
 	tests := []struct {
 		field string
 		want  string
 	}{
-		// No ,omitempty — nil pointer must serialize as explicit null so
-		// Mongo can distinguish "field not set" from "explicitly no project".
-		// Move-chat depends on this.
 		{"ProjectID", "project_id"},
 		{"BusinessID", "business_id"},
 		{"TitleStatus", "title_status"},
-		// `PinnedAt *time.Time` replaces legacy `Pinned bool`.
-		// `pinned_at,omitempty` so unpinned chats serialize without the key
-		// (the backfill's $exists:false guard relies on missing-key semantics
-		// — see services/api/internal/repository/mongo_backfill.go:BackfillConversationsV19).
 		{"PinnedAt", "pinned_at,omitempty"},
-		// last_message_at has ,omitempty — nil pointer omits the key.
 		{"LastMessageAt", "last_message_at,omitempty"},
 	}
 	for _, tt := range tests {

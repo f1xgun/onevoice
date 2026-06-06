@@ -244,9 +244,6 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusGone, map[string]string{"error": "approval_expired"})
 		return
 	}
-	// `resolving` is the legitimate first-resume state (Resolve transitions
-	// pending→resolving). Only `resolved` (already-dispatched) is conflict.
-	// See docs/api/handlers/hitl.md §"Resume vs status='resolving'".
 	if batch.Status == "resolved" {
 		writeJSON(w, http.StatusConflict, map[string]interface{}{
 			"error":  "batch already resolved",
@@ -255,7 +252,6 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fresh business + project state for the orchestrator's TOCTOU re-check.
 	bizApprovals := business.ToolApprovals()
 	var projectOverrides map[string]domain.ToolFloor
 	if batch.ProjectID != "" {
@@ -272,10 +268,6 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := json.Marshal(body)
 
-	// StreamSSE owns URL selection, headers, scanner buffer, drain loop.
-	// Pre-connect errors carry "stream resume:" so we can still emit 502
-	// before headers; mid-stream failures must be logged only. See
-	// docs/api/handlers/hitl.md §"SSE proxy ownership".
 	streamErr := h.hitlService.OrchClient().StreamSSE(r.Context(), orchestratorclient.StreamSSERequest{
 		ConversationID: conversationID,
 		BatchID:        batchID,
@@ -296,9 +288,7 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 // GetTools handles GET /tools — registry projection via 5-min cache.
 // See docs/api/handlers/hitl.md §"GetTools projection".
 func (h *HITLHandler) GetTools(w http.ResponseWriter, r *http.Request) {
-	// JWT-only; the registry is the same for every business so no per-user scope.
 	entries := h.hitlService.ToolsCache().List(r.Context())
-	// Coerce nil EditableFields → [] so downstream zod schemas never see null.
 	for i := range entries {
 		if entries[i].EditableFields == nil {
 			entries[i].EditableFields = []string{}

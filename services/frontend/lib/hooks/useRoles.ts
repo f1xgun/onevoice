@@ -48,10 +48,6 @@ export function useCreateRole(
     mutationFn: (input) => createRole(businessId as string, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.ROLES(businessId) });
-      // Creating a role does NOT directly mutate the actor's permissions,
-      // but we conservatively invalidate the per-business permissions cache
-      // so any UI reading from /me/permissions stays in lockstep —
-      // invalidation is cheap; staleness is not.
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.PERMISSIONS(businessId) });
     },
   });
@@ -69,8 +65,6 @@ export function useUpdateRole(
     mutationFn: ({ roleId, ...input }) => updateRole(businessId as string, roleId, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.ROLES(businessId) });
-      // Editing a role MAY change the actor's effective perms if the actor
-      // happens to hold the edited role — always invalidate.
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.PERMISSIONS(businessId) });
     },
   });
@@ -88,11 +82,6 @@ export function useDeleteRole(
   return useMutation<void, Error, DeleteRoleVars>({
     mutationFn: ({ roleId, reassignTo }) => deleteRole(businessId as string, roleId, reassignTo),
     onSuccess: () => {
-      // Multi-key invalidate:
-      //   - ROLES: the deleted row vanishes from the list.
-      //   - PERMISSIONS: any member reassigned to a different role may now
-      //     have different effective perms (including the current actor).
-      //   - MEMBERS: reassignment changes the role_id column on member rows.
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.ROLES(businessId) });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.PERMISSIONS(businessId) });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.MEMBERS(businessId) });

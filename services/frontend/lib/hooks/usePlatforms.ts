@@ -30,19 +30,9 @@ export function usePlatforms() {
     staleTime: PLATFORMS_STALE_TIME_MS,
   });
 
-  // Request-scoped platform metadata (B1). Used both to enrich the wire
-  // payload and to synthesize the offline fallback below.
   const platformMeta = usePlatformMeta();
 
   const enriched = useMemo<EnrichedPlatform[]>(() => {
-    // Fallback while the request is in-flight or if it fails outright.
-    // Status comes from PlatformMeta.defaultStatus, which mirrors the
-    // at-rest state of the Go registry. This avoids advertising connect
-    // cards for non-MVP platforms during the brief window before
-    // /api/v1/platforms resolves (or forever, if the deployment is
-    // misconfigured and the request 500s every time). The real
-    // per-deployment status — including oauth_not_configured downgrades —
-    // arrives on the next render.
     if (!query.data) {
       return PLATFORM_DISPLAY_ORDER.map((id) => {
         const meta = platformMeta[id];
@@ -55,11 +45,6 @@ export function usePlatforms() {
         };
       });
     }
-    // Backend already returns display order; we only attach UI metadata
-    // for ids we know about. Unknown ids are dropped — adding a platform
-    // to the backend without updating PLATFORM_STATIC_META is a
-    // programming error and the empty UI is the loud failure mode that
-    // surfaces it.
     return query.data.flatMap((p) => {
       const meta = platformMeta[p.id as PlatformId];
       if (!meta) return [];

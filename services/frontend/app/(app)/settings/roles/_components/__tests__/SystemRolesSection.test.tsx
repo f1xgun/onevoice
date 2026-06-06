@@ -32,8 +32,6 @@ function renderSection() {
       </QueryClientProvider>
     );
   }
-  // Pass roles intentionally OUT OF ORDER so the test can assert that the
-  // component reorders them by SYSTEM_ORDER (Owner→Admin→Editor→Viewer).
   const scrambled = [
     SYSTEM_ROLES[3], // viewer
     SYSTEM_ROLES[2], // editor
@@ -50,7 +48,6 @@ function renderSection() {
 beforeEach(() => {
   mockedGetMyPerms.mockReset();
   pushMock.mockReset();
-  // Full admin perms so the menu's «Дублировать» action surfaces.
   mockedGetMyPerms.mockResolvedValue([
     'roles.read',
     'roles.create',
@@ -91,21 +88,17 @@ describe('SystemRolesSection', () => {
   it('action menu shows «Дублировать» but NOT «Удалить» for system rows', async () => {
     renderSection();
     const user = userEvent.setup();
-    // Open the menu for the first row (owner).
     const triggers = screen.getAllByLabelText(/Действия для роли/);
     await user.click(triggers[0]);
     await waitFor(() => {
       expect(screen.getByText('Дублировать')).toBeInTheDocument();
     });
-    // «Удалить» MUST NOT appear — system roles are immutable.
     expect(screen.queryByText('Удалить')).not.toBeInTheDocument();
   });
 
   it('shows «все права» for owner and «N прав» summary for the other system roles', () => {
     renderSection();
-    // Owner has every perm — should render the all-perms badge.
     expect(screen.getByText('все права')).toBeInTheDocument();
-    // Admin in the fixture has 10 perms; expect "10 прав".
     expect(screen.getByText(/10 прав/)).toBeInTheDocument();
   });
 });

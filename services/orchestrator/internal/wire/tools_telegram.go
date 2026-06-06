@@ -13,8 +13,6 @@ import (
 // stays under SC-01's 500-LOC budget.
 func telegramTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
-		// Mutating public: posts to a Telegram channel. text + parse_mode
-		// editable; channel_id pinned from integration.
 		{
 			DisplayName:     "Отправить пост",
 			DisplayNameKey:  "tools.telegram.send_channel_post.name",
@@ -39,9 +37,6 @@ func telegramTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
 		},
-		// Mutating public: posts a photo + caption. caption editable;
-		// photo_url and channel_id pinned (redirecting either at edit
-		// time would be a footgun).
 		{
 			DisplayName:     "Отправить фото",
 			DisplayNameKey:  "tools.telegram.send_channel_photo.name",
@@ -68,8 +63,6 @@ func telegramTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"caption"},
 		},
-		// DM notification to owner. text editable; recipient pinned
-		// from the integration (never editable).
 		{
 			DisplayName:     "Уведомление владельцу",
 			DisplayNameKey:  "tools.telegram.send_notification.name",
@@ -92,7 +85,6 @@ func telegramTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
 		},
-		// Read-only query of recent messages. Auto, no edit needed.
 		{
 			DisplayName:     "Загрузить отзывы",
 			DisplayNameKey:  "tools.telegram.get_reviews.name",
@@ -114,9 +106,6 @@ func telegramTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorAuto,
 			EditableFields: nil,
 		},
-		// Mutating public: replies to a comment. text editable;
-		// message_id + chat_id + channel_id pinned (changing these
-		// would redirect the reply to an unrelated conversation).
 		{
 			DisplayName:     "Ответить на комментарий",
 			DisplayNameKey:  "tools.telegram.reply_to_comment.name",

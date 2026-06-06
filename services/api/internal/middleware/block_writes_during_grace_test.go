@@ -67,7 +67,6 @@ func TestBlockWrites_PassesThrough_NoPending(t *testing.T) {
 	userID := uuid.New()
 	pool := &fakePool{
 		scan: func(args ...any) error {
-			// no pending — both ptrs stay nil
 			return nil
 		},
 	}
@@ -81,10 +80,9 @@ func TestBlockWrites_PassesThrough_NoPending(t *testing.T) {
 
 func TestBlockWrites_Returns423_WhenPending(t *testing.T) {
 	userID := uuid.New()
-	requestedAt := time.Now().Add(-2 * 24 * time.Hour) // 2 days into grace
+	requestedAt := time.Now().Add(-2 * 24 * time.Hour)
 	pool := &fakePool{
 		scan: func(args ...any) error {
-			// args[0] = *deletion_requested_at, args[1] = *deletion_canceled_at
 			req, ok := args[0].(**time.Time)
 			require.True(t, ok)
 			*req = &requestedAt
@@ -148,7 +146,6 @@ func TestBlockWrites_PassesThrough_OnNoRows(t *testing.T) {
 	req := mkRequestWithUser(t, http.MethodPost, userID)
 	rec := httptest.NewRecorder()
 	mw(okHandler()).ServeHTTP(rec, req)
-	// User hard-deleted — should pass through (Auth would 401 elsewhere).
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
@@ -161,7 +158,6 @@ func TestBlockWrites_NoAuthCtx_PassesThrough(t *testing.T) {
 	}
 	mw := BlockWritesDuringGrace(pool, 30)
 	req := httptest.NewRequest(http.MethodPost, "/anything", http.NoBody)
-	// no userID in context — Auth would have caught earlier
 	rec := httptest.NewRecorder()
 	mw(okHandler()).ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -185,7 +181,6 @@ func TestBlockWrites_DeletionDateMath(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mw(okHandler()).ServeHTTP(rec, req)
 	require.Equal(t, http.StatusLocked, rec.Code)
-	// Expected: 2026-07-01T12:00:00Z
 	require.True(t, strings.Contains(rec.Body.String(), `"deletionDate":"2026-07-01T12:00:00Z"`),
 		"deletionDate math drift; got %s", rec.Body.String())
 }

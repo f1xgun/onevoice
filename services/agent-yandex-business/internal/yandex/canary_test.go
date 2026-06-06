@@ -30,7 +30,6 @@ func TestCheckSession_PassportRedirect(t *testing.T) {
 }
 
 func TestCheckSession_CaptchaRedirect(t *testing.T) {
-	// URL must NOT start with expected prefix so it falls into the unexpected-redirect branch
 	page := newMockPage("https://yandex.ru/showcaptcha?retpath=business.yandex.ru")
 	err := checkSession(page, "https://business.yandex.ru")
 	if err == nil {
@@ -59,7 +58,6 @@ func TestCheckSessionAndEvict_EvictsOnExpiry(t *testing.T) {
 	}
 	defer close(pool.stopEvict)
 
-	// Manually store a context entry with a mock browser context (EvictContext calls ctx.Close)
 	pool.contexts.Store("biz-1", &pooledContext{cookies: "[]", ctx: &mockBrowserContext{}})
 
 	page := newMockPage("https://passport.yandex.ru/auth")
@@ -68,7 +66,6 @@ func TestCheckSessionAndEvict_EvictsOnExpiry(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	// Verify context was evicted
 	if _, ok := pool.contexts.Load("biz-1"); ok {
 		t.Fatal("expected context to be evicted from pool")
 	}
@@ -89,7 +86,6 @@ func TestCheckSessionAndEvict_NoEvictOnValid(t *testing.T) {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
 
-	// Context should NOT be evicted
 	if _, ok := pool.contexts.Load("biz-1"); !ok {
 		t.Fatal("expected context to remain in pool")
 	}

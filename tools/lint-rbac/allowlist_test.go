@@ -56,7 +56,6 @@ func TestParseAllowlist_ExpiredEntry(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for expired entry, got nil")
 	}
-	// Error message should mention the route and the word "expired"
 	errStr := err.Error()
 	if len(errStr) == 0 {
 		t.Fatal("error message is empty")
@@ -88,11 +87,9 @@ func TestIsAllowed_ExactMatch(t *testing.T) {
 	entries := []AllowlistEntry{
 		{Route: "/businesses/{id}/foo/{userId}", Reason: "test", Expires: "2027-01-01"},
 	}
-	// Exact placeholder strings must match literally.
 	if !IsAllowed("/businesses/{id}/foo/{userId}", entries) {
 		t.Error("expected exact match to return true")
 	}
-	// A real URL with actual IDs should NOT match.
 	if IsAllowed("/businesses/123/foo/456", entries) {
 		t.Error("real URL should not match placeholder pattern in v2.0")
 	}

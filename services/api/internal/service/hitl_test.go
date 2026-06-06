@@ -45,9 +45,6 @@ func (s *stubPendingRepo) GetByBatchID(_ context.Context, batchID string) (*doma
 	if !ok {
 		return nil, domain.ErrBatchNotFound
 	}
-	// Deep-copy to avoid races in concurrent-resolve tests where one goroutine
-	// is still reading fields on the batch while another has already mutated
-	// Status via AtomicTransitionToResolving.
 	cp := *b
 	cp.Calls = append([]domain.PendingCall(nil), b.Calls...)
 	return &cp, nil
@@ -77,8 +74,6 @@ func (s *stubPendingRepo) RecordDecisions(_ context.Context, batchID string, cal
 	defer s.mu.Unlock()
 	s.RecordedBatchID = batchID
 	s.RecordedDecisions = calls
-	// Propagate verdicts onto the stored batch so later GetByBatchID returns
-	// the post-resolve state (mirrors real Mongo behavior).
 	if b, ok := s.Batches[batchID]; ok {
 		copyCalls := make([]domain.PendingCall, len(calls))
 		copy(copyCalls, calls)
@@ -307,8 +302,6 @@ func TestHITLService_Resolve_PartialDecisions_Returns400WithMissing(t *testing.T
 }
 
 func TestHITLService_Resolve_EditInvalidField_Returns400WithEditable(t *testing.T) {
-	// Anti-footgun #6: edit on non-editable field MUST surface ErrFieldNotEditable
-	// carrying the exact editable allowlist (so the handler can echo it in the 400 body).
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
@@ -403,7 +396,7 @@ func TestHITLService_Resolve_ConcurrentResolve_ExactlyOneWins_OtherGets409(t *te
 
 	worker := func() {
 		defer wg.Done()
-		<-start // release together for maximum contention
+		<-start
 		_, err := svc.Resolve(context.Background(), service.ResolveInput{
 			ConversationID:  "conv-1",
 			BatchID:         "batch-1",
@@ -456,7 +449,6 @@ func TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual(t *testing.T
 			FloorAtPause: domain.ToolFloorManual,
 		},
 	})
-	// Business has NO tool_approvals override — Resolve(Manual, {}, nil, ...) = Manual = not Forbidden.
 	biz := &stubBusinessRepo{Business: &domain.Business{ID: bizUUID}}
 	svc := newSvc(t, pr, biz, &stubProjectRepo{})
 
@@ -559,7 +551,7 @@ func TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.
 		ActorBusinessID: bizID,
 		Decisions: []service.DecisionInput{
 			{ID: "tc_a", Action: "edit", EditedArgs: map[string]interface{}{
-				"tool_name": tools.TelegramSendChannelPhoto, // attempted tool swap
+				"tool_name": tools.TelegramSendChannelPhoto,
 			}},
 		},
 	})
@@ -567,7 +559,6 @@ func TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.
 	if !errors.As(err, &ferr) {
 		t.Fatalf("want ErrFieldNotEditable for tool_name tamper, got %v", err)
 	}
-	// Persisted batch must keep the original tool_name (no mutation allowed).
 	b, _ := pr.GetByBatchID(context.Background(), "batch-1")
 	if b.Calls[0].ToolName != tools.TelegramSendChannelPost {
 		t.Fatalf("tool_name mutated: got %q", b.Calls[0].ToolName)
@@ -625,7 +616,6 @@ func TestHITLService_Resolve_EditCaseMismatch_Returns400(t *testing.T) {
 
 func TestToolsRegistryCache_FetchAndCache(t *testing.T) {
 	var callCount int
-	// Mock orchestrator /internal/tools endpoint.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
@@ -644,7 +634,6 @@ func TestToolsRegistryCache_FetchAndCache(t *testing.T) {
 	if callCount != 1 {
 		t.Errorf("expected 1 HTTP call, got %d", callCount)
 	}
-	// Second call within TTL — no additional HTTP.
 	_ = cache.List(context.Background())
 	if callCount != 1 {
 		t.Errorf("expected still 1 HTTP call after cache hit, got %d", callCount)

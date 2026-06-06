@@ -139,9 +139,6 @@ func TestRoleRepository_ListByBusiness_IncludesNullBusinessID(t *testing.T) {
 	ctx := context.Background()
 	r, mockPool := newTestRoleRepo(t)
 
-	// This test verifies the SQL WHERE clause includes "business_id IS NULL OR business_id = $1".
-	// We check this by inspecting role.go source (acceptance criteria) and verifying
-	// the query succeeds with a single arg (the businessID).
 	businessID := uuid.New()
 	permsJSON, _ := json.Marshal([]string{})
 
@@ -211,7 +208,6 @@ func TestRoleRepository_ListByBusinessWithCounts_Success(t *testing.T) {
 		AddRow(customRoleID, &businessID, "Reviewer", "", permsJSON, false,
 			time.Now(), time.Now(), (*uuid.UUID)(nil), (*uuid.UUID)(nil), 3)
 
-	// LEFT JOIN with the business_id parameter substituted twice (JOIN + WHERE).
 	mockPool.ExpectQuery(`SELECT .+ FROM roles r LEFT JOIN business_members m`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
@@ -219,7 +215,6 @@ func TestRoleRepository_ListByBusinessWithCounts_Success(t *testing.T) {
 	result, err := r.ListByBusinessWithCounts(ctx, businessID)
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
-	// System row appears first by ORDER BY is_system DESC.
 	assert.True(t, result[0].IsSystem)
 	assert.Equal(t, 1, result[0].MemberCount)
 	assert.False(t, result[1].IsSystem)
@@ -501,8 +496,6 @@ func TestRoleRepository_UpdateInTx_RefusesSystemRoleIsCoveredByNotFound(t *testi
 	tx, err := mockPool.Begin(ctx)
 	require.NoError(t, err)
 
-	// Simulate "row exists with is_system=true" — the WHERE id=$id AND
-	// is_system=false matches zero rows.
 	mockPool.ExpectExec(`UPDATE roles`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -575,9 +568,6 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		tx, err := mockPool.Begin(ctx)
 		require.NoError(t, err)
 
-		// pgxmock enforces expectation ORDER by default: ExpectExec(UPDATE) before
-		// ExpectExec(DELETE) means the production code MUST fire them in that
-		// sequence to satisfy ExpectationsWereMet().
 		mockPool.ExpectExec(`UPDATE business_members`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 3))
@@ -599,9 +589,6 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		tx, err := mockPool.Begin(ctx)
 		require.NoError(t, err)
 
-		// No ExpectExec calls — DeleteWithReassignInTx MUST fail BEFORE any
-		// tx.Exec when oldRoleID == reassignToID. If it fires Exec the test
-		// crashes with "unexpected call".
 		roleID := uuid.New()
 		err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), roleID, roleID, uuid.New())
 		require.Error(t, err)
@@ -649,7 +636,6 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		mockPool.ExpectExec(`UPDATE business_members`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnError(errors.New("connection reset"))
-		// No ExpectExec for DELETE — we must abort after UPDATE fails.
 
 		err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), uuid.New(), uuid.New(), uuid.New())
 		require.Error(t, err)
@@ -758,8 +744,6 @@ func TestRoleRepository_Delete_NotFound(t *testing.T) {
 // --- CountMembersByRole -------------------------------------------
 
 func TestRoleRepository_CountMembersByRole(t *testing.T) {
-	// WHERE clause carries 3 args: business_id, role_id, status='active'.
-	// Tests assert the status filter is bound.
 	t.Run("returns_count", func(t *testing.T) {
 		ctx := context.Background()
 		r, mockPool := newTestRoleRepo(t)

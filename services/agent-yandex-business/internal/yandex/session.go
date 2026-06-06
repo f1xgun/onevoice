@@ -39,15 +39,12 @@ func exchangeOAuthForSession(bCtx playwright.BrowserContext, oauthToken string) 
 	}
 	defer func() { _ = page.Close() }()
 
-	// Yandex's internal session creation: navigate to passport with OAuth token.
-	// The /auth/welcome endpoint with access_token creates a full session.
 	authURL := yandexPassportAuthURL
 	_, _ = page.Goto(authURL, playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 		Timeout:   playwright.Float(tabSwitchTimeoutMs),
 	})
 
-	// Use in-browser fetch to call Yandex session exchange API
 	script := fmt.Sprintf(`async () => {
 		try {
 			const resp = await fetch('https://passport.yandex.ru/auth/session/', {
@@ -68,14 +65,12 @@ func exchangeOAuthForSession(bCtx playwright.BrowserContext, oauthToken string) 
 
 	_, _ = page.Evaluate(script)
 
-	// Verify session was created by checking for Session_id cookie
 	cookies, err := bCtx.Cookies(yandexPassportCookieHost, yandexCookieHost)
 	if err != nil {
 		return fmt.Errorf("read cookies after exchange: %w", err)
 	}
 	for _, c := range cookies {
 		if c.Name == "Session_id" || c.Name == "sessionid2" {
-			// Session established — navigate to business to confirm
 			_, err = page.Goto(yandexBusinessBaseURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(pageHydrateTimeoutMs),
@@ -84,8 +79,6 @@ func exchangeOAuthForSession(bCtx playwright.BrowserContext, oauthToken string) 
 		}
 	}
 
-	// No session cookies — fall back to Authorization header approach
-	// This works for Yandex internal APIs but not for the full web UI
 	return fmt.Errorf("oauth session exchange failed: no Session_id cookie received (token may lack required scope)")
 }
 

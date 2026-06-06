@@ -36,10 +36,8 @@ describe('useDataTableFilters', () => {
       useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS })
     );
 
-    // Both filters at 'all' — empty query string.
     expect(result.current.queryString()).toBe('');
 
-    // Set status; platform still 'all' so it should be omitted.
     act(() => {
       result.current.setFilter('status', 'published');
     });
@@ -64,11 +62,9 @@ describe('useDataTableFilters', () => {
     );
 
     act(() => {
-      // A value containing characters URLSearchParams must encode.
       result.current.setFilter('platform', 'foo bar&baz');
     });
 
-    // URLSearchParams encodes space as '+' and '&' as '%26'.
     expect(result.current.queryString()).toBe('platform=foo+bar%26baz');
   });
 
@@ -94,7 +90,6 @@ describe('useDataTableFilters', () => {
     });
 
     const qs = result.current.queryString();
-    // Order of URLSearchParams entries follows insertion. Check by parsing.
     const params = new URLSearchParams(qs);
     expect(params.get('status')).toBe('scheduled');
     expect(params.get('platform')).toBe('telegram');

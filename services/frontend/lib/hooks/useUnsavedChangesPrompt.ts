@@ -23,9 +23,6 @@ export function useUnsavedChangesPrompt(isDirty: boolean, message: string): void
     if (!isDirty || typeof window === 'undefined') return;
     function handler(event: BeforeUnloadEvent) {
       event.preventDefault();
-      // Legacy browsers read `returnValue`; modern browsers ignore the
-      // string but still require it (or preventDefault) to actually show
-      // the prompt.
       event.returnValue = message;
       return message;
     }

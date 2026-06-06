@@ -75,7 +75,6 @@ func NewBusinessService(
 	if pool == nil {
 		panic("pool cannot be nil")
 	}
-	// auditLogger is nil-safe via audit.Nop so legacy tests can omit it.
 	if auditLogger == nil {
 		auditLogger = audit.Nop()
 	}
@@ -90,17 +89,14 @@ func NewBusinessService(
 
 // Create dual-writes businesses + owner business_members in one tx. See docs/services/business.md.
 func (s *businessService) Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error) {
-	// Check context
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Check nil pointer
 	if business == nil {
 		return nil, fmt.Errorf("business cannot be nil")
 	}
 
-	// Validate required fields
 	if business.Name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
@@ -114,8 +110,6 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
-		// Rollback on context.Background, not ctx: a canceled ctx skips the actual
-		// ROLLBACK and leaves the conn unusable, starving the pool under load.
 		_ = tx.Rollback(context.Background())
 	}()
 
@@ -128,7 +122,6 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 
 	ownerRoleID, parseErr := uuid.Parse(domain.SystemRoleOwnerID)
 	if parseErr != nil {
-		// Compile-time impossible: SystemRoleOwnerID is a literal valid UUID.
 		return nil, fmt.Errorf("parse SystemRoleOwnerID: %w", parseErr)
 	}
 
@@ -137,20 +130,17 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 		UserID:     ownerUserID,
 		RoleID:     ownerRoleID,
 		Status:     "active",
-		// JoinedAt left zero so the repo populates time.Now during Insert.
 	}
 	if memErr := s.membershipRepo.Insert(ctx, tx, member); memErr != nil {
 		if !errors.Is(memErr, domain.ErrMembershipExists) {
 			return nil, fmt.Errorf("insert owner membership: %w", memErr)
 		}
-		// Idempotent backfill-already-landed path: commit so the businesses row lands.
 	}
 
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		return nil, fmt.Errorf("commit business+membership: %w", commitErr)
 	}
 
-	// Emit business.created AFTER tx.Commit so audit failure cannot undo the durable write.
 	audit.LogBusinessCreated(ctx, s.audit, business.ID, ownerUserID, business.Name)
 
 	return business, nil
@@ -190,12 +180,10 @@ func (s *businessService) ListMembershipsByUser(ctx context.Context, userID uuid
 
 // GetByID retrieves a business by ID
 func (s *businessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
-	// Check context
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Validate business ID
 	if id == uuid.Nil {
 		return nil, fmt.Errorf("business id is required")
 	}
@@ -232,17 +220,14 @@ func (s *businessService) UpdateToolApprovals(ctx context.Context, businessID uu
 // Update updates a business profile and emits business.updated keyed on actorUserID.
 // See docs/services/business.md.
 func (s *businessService) Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error) {
-	// Check context
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Check nil pointer
 	if business == nil {
 		return nil, fmt.Errorf("business cannot be nil")
 	}
 
-	// Validate required fields
 	if business.Name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
@@ -251,7 +236,6 @@ func (s *businessService) Update(ctx context.Context, business *domain.Business,
 		return nil, fmt.Errorf("business id is required")
 	}
 
-	// Update business
 	err := s.repo.Update(ctx, business)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
@@ -260,7 +244,6 @@ func (s *businessService) Update(ctx context.Context, business *domain.Business,
 		return nil, fmt.Errorf("update business: %w", err)
 	}
 
-	// Emit AFTER the successful repo write; v1 ships without per-field diff.
 	audit.LogBusinessUpdated(ctx, s.audit, business.ID, actorUserID)
 
 	return business, nil

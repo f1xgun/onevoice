@@ -323,7 +323,7 @@ func TestBusinessHandler_GetBusiness(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			Permissions: []authz.Permission{}, // no read perm
+			Permissions: []authz.Permission{},
 		}
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req = withBizCtx(req, bc)
@@ -339,7 +339,6 @@ func TestBusinessHandler_GetBusiness(t *testing.T) {
 		require.NoError(t, err)
 
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-		// No business context injected.
 		w := httptest.NewRecorder()
 
 		h.GetBusiness(w, req)
@@ -401,7 +400,7 @@ func TestBusinessHandler_UpdateBusiness(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			Permissions: []authz.Permission{authz.PermBusinessRead}, // no update perm
+			Permissions: []authz.Permission{authz.PermBusinessRead},
 		}
 		body := `{"name":"New Name"}`
 		req := httptest.NewRequest(http.MethodPut, "/", bytes.NewBufferString(body))

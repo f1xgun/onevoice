@@ -54,8 +54,6 @@ export function parseAcceptLanguage(header: string): Locale {
     const parts = rawEntries[index].split(';');
     const tag = parts[0]?.trim().toLowerCase();
     if (!tag) continue;
-    // Validate language tag shape: letters and dashes only, plus an
-    // optional `*` wildcard which we treat as the default fallback.
     if (!/^[a-z*]+(-[a-z0-9]+)*$/i.test(tag)) continue;
     const q = parseQuality(parts[1]);
     if (q === null || q === 0) continue;

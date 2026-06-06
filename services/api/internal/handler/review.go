@@ -115,7 +115,6 @@ func (h *ReviewHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query parameters
 	filter := domain.ReviewFilter{
 		Platform:    r.URL.Query().Get("platform"),
 		ReplyStatus: r.URL.Query().Get("reply_status"),

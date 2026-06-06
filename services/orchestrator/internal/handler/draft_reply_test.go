@@ -80,7 +80,6 @@ func TestDraftReplyHandler_Happy(t *testing.T) {
 		t.Errorf("Provider = %q, want openrouter", got.Provider)
 	}
 
-	// Sanity: prompt has system + (1 example × 2) + user = 4 messages.
 	if got := len(chatter.gotReq.Messages); got != 4 {
 		t.Fatalf("messages = %d, want 4", got)
 	}
@@ -151,7 +150,6 @@ func TestBuildDraftReplyPrompt_DropsEmptyExamples(t *testing.T) {
 			{ReviewText: "  ", ReplyText: "whitespace-only"},
 		},
 	}, language.Russian)
-	// system + 1 valid pair (×2) + final user = 4 messages
 	if len(msgs) != 4 {
 		t.Errorf("messages = %d, want 4: %+v", len(msgs), msgs)
 	}
@@ -190,12 +188,10 @@ func TestBuildDraftReplyPrompt_EnglishLocale_SystemAndFraming(t *testing.T) {
 		},
 	}, language.English)
 
-	// system + 1 valid pair (×2) + final user = 4 messages
 	if len(msgs) != 4 {
 		t.Fatalf("messages = %d, want 4", len(msgs))
 	}
 	sys := msgs[0].Content
-	// Sample lock-in: EN-only phrases that must appear.
 	for _, want := range []string{
 		"You are an assistant",
 		"Preserve the tone",
@@ -219,7 +215,6 @@ func TestBuildDraftReplyPrompt_EnglishLocale_SystemAndFraming(t *testing.T) {
 		}
 	}
 
-	// Final user message uses EN framing.
 	last := msgs[len(msgs)-1].Content
 	if !strings.HasPrefix(last, "Review (5/5):") {
 		t.Errorf("EN final user framing missing: %q", last)
@@ -227,10 +222,6 @@ func TestBuildDraftReplyPrompt_EnglishLocale_SystemAndFraming(t *testing.T) {
 }
 
 func TestDraftReplyHandler_EnglishLocale_E2E(t *testing.T) {
-	// Drive the full handler with a request ctx carrying language.English to
-	// verify the locale → system prompt → LLM call wiring end-to-end. The
-	// LLM (fakeChatter) records the prompt it received; we assert on English
-	// framing in the captured request.
 	chatter := &fakeChatter{
 		resp: &llm.ChatResponse{Content: "Thanks for the review!", Provider: "openrouter"},
 	}
@@ -259,8 +250,6 @@ func TestDraftReplyHandler_EnglishLocale_E2E(t *testing.T) {
 }
 
 func TestBuildDraftReplyPrompt_RussianLocale_PreservesLegacyShape(t *testing.T) {
-	// Byte-compat regression: a RU-locale draft must contain every legacy
-	// substring tests + production rely on.
 	msgs := buildDraftReplyPrompt(DraftReplyRequest{
 		BusinessName: "Кофейня",
 		ReviewText:   "хороший кофе",
@@ -282,8 +271,6 @@ func TestBuildDraftReplyPrompt_RussianLocale_PreservesLegacyShape(t *testing.T) 
 // Smoke: end-to-end wire format match between the api drafter request and
 // the orchestrator handler. If field names ever diverge this test fails.
 func TestApiDrafterWireCompatibility(t *testing.T) {
-	// The api side sends a struct with these JSON field names. Match our
-	// handler's DraftReplyRequest by round-tripping through JSON.
 	apiSide := map[string]any{
 		"businessId":          "b",
 		"businessName":        "n",

@@ -60,7 +60,6 @@ func HTTPMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(rw, r)
 
-		// Use chi route pattern for path label to avoid cardinality explosion
 		path := r.URL.Path
 		if rctx := chi.RouteContext(r.Context()); rctx != nil {
 			if pattern := rctx.RoutePattern(); pattern != "" {

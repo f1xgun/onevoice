@@ -97,10 +97,6 @@ export default function PostsPage() {
   });
 
   const { data: posts = [], isLoading } = useQuery<Post[]>({
-    // Inline business-scoped key: ['businesses', bizId, 'posts', status,
-    // platform]. Centralising this in QUERY_KEYS would need a new factory
-    // that takes (bizId, status, platform); inline keeps the change local
-    // to the RBAC migration.
     queryKey: ['businesses', activeBusinessId, 'posts', filters.status, filters.platform],
     queryFn: () => {
       const qs = queryString();
@@ -109,31 +105,20 @@ export default function PostsPage() {
         .get<{ posts?: Post[] }>(url)
         .then((r) => (r.data.posts ?? []) as Post[]);
     },
-    // Gate the request on activeBusinessId so a null-keyed cache entry
-    // never resolves data; matches the pattern from useConversations.
     enabled: !!activeBusinessId,
   });
 
-  // Client-side text search over the (already server-filtered) list.
   const { query, setQuery, visibleRows } = useDataTableSearch<Post>({
     rows: posts,
     searchableFields: (p) => [p.content],
   });
 
-  // Status radiogroup keyboard handler — wires ArrowLeft/Right/Up/Down
-  // + Home/End so the `role="radiogroup"` chips below satisfy the
-  // WAI-ARIA radiogroup keyboard contract. Native <button role="radio">
-  // doesn't get this for free; only <input type="radio"> does.
   const statusRadio = useRadiogroupKeyboard<StatusKey>({
     options: POSTS_STATUS_OPTIONS,
     value: filters.status,
     onValueChange: (v) => setFilter('status', v),
   });
 
-  // TODO(api): aggregates should come from a /posts/stats endpoint so the
-  // counts reflect the full collection, not just the current filter slice.
-  // For now we derive them from `posts` (server-filtered) which matches the
-  // tab counts the user is currently looking at.
   const counts = useMemo(() => {
     const by = (s: string) => posts.filter((p) => p.status === s).length;
     return {
@@ -217,11 +202,6 @@ export default function PostsPage() {
         sub={tPosts('subtitle')}
         actions={
           canCreate ? (
-            // button is intentionally disabled
-            // until a chat-with-prefill flow exists. Tooltip directs users to
-            // the existing chat-based post-publishing path (telegram__send_channel_post
-            // tool already handles "опубликуй пост в Telegram" requests via the
-            // LLM agent loop). Re-enabling this button is tracked for v1.5+.
             <Button
               variant="primary"
               size="md"

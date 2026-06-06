@@ -50,13 +50,10 @@ func TestPermissionsHandler_List_HappyPath(t *testing.T) {
 	assert.Equal(t, "billing", body.Groups[5].Resource)
 	assert.Equal(t, "audit", body.Groups[6].Resource)
 
-	// Sample permission name format — first business permission must be
-	// `business.read` per pkg/authz.AllPermissions declaration order.
 	require.NotEmpty(t, body.Groups[0].Permissions)
 	assert.Equal(t, "business.read", body.Groups[0].Permissions[0].Name)
 	assert.NotEmpty(t, body.Groups[0].Permissions[0].Description, "descriptions populated for tooltip UX")
 
-	// audit group has exactly one permission, audit.read.
 	require.Len(t, body.Groups[6].Permissions, 1, "audit group has exactly one permission")
 	assert.Equal(t, "audit.read", body.Groups[6].Permissions[0].Name)
 	assert.NotEmpty(t, body.Groups[6].Permissions[0].Description, "audit.read must have a Russian description for tooltip UX")

@@ -96,8 +96,6 @@ func (d *ReviewDrafter) GenerateForBusiness(ctx context.Context, businessID uuid
 
 	examples, err := d.reviewRepo.ListRepliedExamples(ctx, businessID.String(), platform, d.maxExamples)
 	if err != nil {
-		// Don't abort the pass — examples are nice-to-have, the LLM still
-		// produces a reasonable draft from business context alone.
 		slog.Warn("review draft: replied examples lookup failed",
 			"business_id", businessID,
 			"platform", platform,
@@ -115,7 +113,6 @@ func (d *ReviewDrafter) GenerateForBusiness(ctx context.Context, businessID uuid
 				"platform", platform,
 				"error", err,
 			)
-			// generateOne already persisted draft_status=failed; loop on.
 		}
 	}
 	return nil
@@ -125,15 +122,10 @@ func (d *ReviewDrafter) GenerateForBusiness(ctx context.Context, businessID uuid
 // persists the outcome. Returns the orchestrator/HTTP error so callers can
 // log it; the draft_status update is best-effort and not part of the error.
 func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Business, review *domain.Review, examples []domain.Review) error {
-	// Claim the row first so a parallel sync pass skips it. If the claim
-	// itself fails (e.g. doc deleted between list and claim) we just bail —
-	// the next pass picks it up.
 	if err := d.reviewRepo.UpdateDraft(ctx, review.ID, "", domain.ReviewDraftStatusGenerating, ""); err != nil {
 		return fmt.Errorf("claim row: %w", err)
 	}
 
-	// Build the request to the orchestrator. Examples are filtered to drop
-	// any that match the current review (stale data shouldn't loop back).
 	reqBody := orchestratorclient.DraftReplyRequest{
 		BusinessID:          business.ID.String(),
 		BusinessName:        business.Name,
@@ -148,7 +140,6 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 
 	draft, err := d.callOrchestrator(ctx, reqBody)
 	if err != nil {
-		// Persist failure — best effort.
 		if updErr := d.reviewRepo.UpdateDraft(ctx, review.ID, "", domain.ReviewDraftStatusFailed, err.Error()); updErr != nil {
 			slog.Warn("review draft: failed to persist failure status",
 				"review_id", review.ID,

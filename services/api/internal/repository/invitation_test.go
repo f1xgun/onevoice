@@ -140,7 +140,7 @@ func TestInvitationRepo_CountPendingByBusinessInTx(t *testing.T) {
 
 	mock.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.Serializable})
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()). // business_id, expires_at>now
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(5))
 
 	tx, err := mock.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
@@ -281,7 +281,7 @@ func TestInvitationRepo_MarkAcceptedInTx_LosesRace_Expired(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 	userID := uuid.New()
-	expiredAt := time.Now().Add(-time.Hour).UTC() // already expired
+	expiredAt := time.Now().Add(-time.Hour).UTC()
 
 	mock.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	mock.ExpectExec(`UPDATE invitations SET accepted_at`).

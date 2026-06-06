@@ -151,9 +151,6 @@ func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookie
 		var count int
 		p.contexts.Range(func(_, _ any) bool { count++; return true })
 		if count >= p.maxContexts {
-			// Evict-or-wait loop. After waitForNonBusy returns, the freed
-			// context may already have been re-acquired by another caller,
-			// so we re-check the cap from scratch before falling through.
 			for !p.evictLRUUnlessBusy() {
 				if !p.waitForNonBusy(ctx, acquireWaitTimeout) {
 					return nil, ErrPoolExhausted
@@ -173,13 +170,11 @@ func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookie
 	}
 
 	if isOAuthToken(cookiesJSON) {
-		// OAuth token — exchange for browser session via passport
 		if err := exchangeOAuthForSession(bCtx, cookiesJSON); err != nil {
 			_ = bCtx.Close()
 			return nil, fmt.Errorf("playwright: oauth session exchange: %w", err)
 		}
 	} else {
-		// Legacy cookies JSON — inject directly
 		if err := injectCookies(bCtx, cookiesJSON); err != nil {
 			_ = bCtx.Close()
 			return nil, fmt.Errorf("playwright: set cookies: %w", err)
@@ -191,7 +186,6 @@ func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookie
 
 	actual, loaded := p.contexts.LoadOrStore(businessID, pc)
 	if loaded {
-		// Another goroutine raced us — close our context and use theirs.
 		_ = bCtx.Close()
 		existing := actual.(*pooledContext)
 		existing.touch()
@@ -225,8 +219,6 @@ func (p *BrowserPool) evictLRUUnlessBusy() bool {
 	}
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].lastUsed < candidates[j].lastUsed })
 	victim := candidates[0]
-	// Re-check busy under the per-context lock to avoid evicting a context
-	// that just became busy between the Range scan and the Delete.
 	if victim.pc.busy.Load() {
 		return false
 	}
@@ -272,9 +264,6 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 	if p.closed.Load() {
 		return fmt.Errorf("browser pool is closed")
 	}
-	// Test-only seam: when set (only in *_test.go via the unexported field),
-	// bypass the real Chromium path and execute fn against the test-injected
-	// page directly. Production code never sets withPageFn.
 	if p.withPageFn != nil {
 		return p.withPageFn(ctx, businessID, cookiesJSON, fn)
 	}
@@ -286,7 +275,6 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 		return err
 	}
 
-	// Serialize access per business to prevent navigation conflicts.
 	pc.mu.Lock()
 	pc.busy.Store(true)
 	defer func() {
@@ -329,7 +317,6 @@ func (p *BrowserPool) evictLoop() {
 				pc := value.(*pooledContext)
 				if now-pc.lastUsed.Load() > p.maxIdle.Milliseconds() {
 					if pc.busy.Load() {
-						// Don't evict a context that's mid-tool-call.
 						return true
 					}
 					p.contexts.Delete(key)
@@ -357,9 +344,6 @@ func (p *BrowserPool) Close() {
 		p.contexts.Delete(key)
 		return true
 	})
-	// Authoritative reset: avoid per-context Dec calls that can drive the
-	// gauge negative if a test (or another teardown path) has already reset
-	// it. The pool is closed; the gauge value is unambiguously 0.
 	metrics.BrowserPoolContexts.Set(0)
 	p.mu.Lock()
 	defer p.mu.Unlock()

@@ -70,10 +70,6 @@ export default function ChatListPage() {
       }),
   });
 
-  // Kicks off the auto-title goroutine on the API side. 200 → silently
-  // invalidates so the new title arrives via React Query; 409 →
-  // server-supplied Russian copy surfaced via sonner toast. Network failure
-  // → tCommon('connectionError') fallback.
   const { mutate: regenerateTitle } = useMutation({
     mutationFn: (id: string) =>
       bizApi(activeBusinessId!)
@@ -115,7 +111,6 @@ export default function ChatListPage() {
       </div>
 
       {isLoading ? (
-        // Static inbox-style skeleton per Linen loading rule (no shimmer).
         <SkeletonInbox rows={3} />
       ) : conversations.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">

@@ -53,14 +53,12 @@ func (h *ConnectHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Extract and remove hash
 	hash, _ := req["hash"].(string)
 	if hash == "" {
 		writeJSONError(w, http.StatusBadRequest, "hash is required")
 		return
 	}
 
-	// Check auth_date — JSON numbers arrive as float64
 	authDateStr, _ := req["auth_date"].(string)
 	if authDateStr == "" {
 		if authDateF, ok := req["auth_date"].(float64); ok {
@@ -73,7 +71,6 @@ func (h *ConnectHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Build check string (exclude hash)
 	delete(req, "hash")
 	keys := make([]string, 0, len(req))
 	for k := range req {
@@ -87,7 +84,6 @@ func (h *ConnectHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Requ
 	}
 	checkString := strings.Join(parts, "\n")
 
-	// Verify HMAC-SHA256
 	secretKey := sha256.Sum256([]byte(h.cfg.TelegramBotToken))
 	mac := hmac.New(sha256.New, secretKey[:])
 	mac.Write([]byte(checkString))
@@ -174,7 +170,6 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate bot access and fetch channel title + linked discussion chat
 	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelId)
 	if err != nil {
 		slog.Warn("telegram getChat failed", "error", err, "channel_id", req.ChannelId)
@@ -240,7 +235,6 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Find the specific integration by external_id.
 	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), bc.BusinessID, a2a.AgentTelegram)
 	if err != nil {
 		slog.Error("failed to list telegram integrations for refresh", "error", err)
@@ -268,8 +262,6 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 
 	linkedStatus := h.probeTelegramLinkedGroup(h.cfg.TelegramBotToken, channelInfo.LinkedChatID)
 
-	// Merge into existing metadata so unrelated keys (telegram_user_id etc.)
-	// are preserved.
 	metadata := map[string]interface{}{}
 	for k, v := range target.Metadata {
 		metadata[k] = v

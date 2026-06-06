@@ -122,7 +122,7 @@ func TestGetGoogleAuthURL_Forbidden(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/google", http.NoBody)
-	req = req.WithContext(oauthBizCtx(businessID, userID /* no perms */))
+	req = req.WithContext(oauthBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.GetGoogleAuthURL(rr, req)
 
@@ -260,7 +260,6 @@ func TestGoogleCallback_MultipleLocations_RedirectsToSelection(t *testing.T) {
 		t.Errorf("expected redirect to google_step=select_location, got: %s", location)
 	}
 
-	// Verify temp data was stored in Redis
 	val, err := redisClient.Get(context.Background(), "google_temp:"+businessID.String()).Result()
 	if err != nil {
 		t.Fatalf("expected temp data in Redis: %v", err)
@@ -321,8 +320,7 @@ func TestGoogleCallback_NoRefreshToken(t *testing.T) {
 	server := newGoogleMockServer(t,
 		map[string]interface{}{
 			"access_token": "google_access_token",
-			// No refresh_token — user didn't consent to offline access
-			"expires_in": 3600,
+			"expires_in":   3600,
 		},
 		nil, nil,
 	)
@@ -366,7 +364,6 @@ func TestGoogleLocations_ReturnsTempData(t *testing.T) {
 	mr := miniredis.RunT(t)
 	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 
-	// Store temp data
 	tempData := `{"access_token":"tok","refresh_token":"ref","expires_in":3600,"business_id":"` + businessID.String() + `","locations":[{"account_name":"accounts/1","location_name":"locations/2","title":"Test Shop"}]}`
 	_ = mr.Set("google_temp:"+businessID.String(), tempData)
 
@@ -406,7 +403,6 @@ func TestGoogleLocations_Expired(t *testing.T) {
 
 	mr := miniredis.RunT(t)
 	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
-	// No temp data stored — simulates expired/missing
 
 	mockBusiness := new(MockBusinessService)
 
@@ -431,7 +427,6 @@ func TestGoogleSelectLocation_ConnectsAndCleansUp(t *testing.T) {
 	mr := miniredis.RunT(t)
 	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 
-	// Store temp data
 	tempData := `{"access_token":"tok","refresh_token":"ref","expires_in":3600,"business_id":"` + businessID.String() + `","locations":[{"account_name":"accounts/1","location_name":"locations/2","title":"Test Shop"},{"account_name":"accounts/1","location_name":"locations/3","title":"Other Shop"}]}`
 	_ = mr.Set("google_temp:"+businessID.String(), tempData)
 
@@ -469,7 +464,6 @@ func TestGoogleSelectLocation_ConnectsAndCleansUp(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// Verify Redis temp key was deleted
 	exists := mr.Exists("google_temp:" + businessID.String())
 	if exists {
 		t.Error("expected Redis temp key to be deleted after select-location")

@@ -123,8 +123,6 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Defensive default + clamp so an operator typo (zero/negative explicit
-	// value) can't disable the readiness-check safety net.
 	healthCheckTimeout := 2 * time.Second
 	if v := os.Getenv("HEALTH_CHECK_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
@@ -132,16 +130,11 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// DraftReplyModel fallback resolved at Load (not in the handler) so the
-	// redacted startup log records the effective model.
 	draftReplyModel := os.Getenv("DRAFT_REPLY_MODEL")
 	if draftReplyModel == "" {
 		draftReplyModel = model
 	}
 
-	// Cost-guard knobs: parse errors keep the default; semantically invalid
-	// combinations are hard boot errors so a misconfigured deploy refuses to
-	// start instead of silently disabling the limiter.
 	conversationInputCap := defaultConversationInputCap
 	if v := os.Getenv("LLM_CONVERSATION_INPUT_CAP"); v != "" {
 		if n, perr := strconv.Atoi(v); perr == nil && n >= 0 {
@@ -232,7 +225,6 @@ func (c *Config) RedactMongoURI() string {
 	if uri == "" {
 		return ""
 	}
-	// Locate the scheme separator (mongodb:// or mongodb+srv://).
 	schemeEnd := -1
 	for i := 0; i+2 < len(uri); i++ {
 		if uri[i] == ':' && uri[i+1] == '/' && uri[i+2] == '/' {
@@ -250,7 +242,6 @@ func (c *Config) RedactMongoURI() string {
 			atIdx = i
 		case '/':
 			if atIdx < 0 {
-				// Path started before any '@' — no user-info segment to redact.
 				return uri
 			}
 		}

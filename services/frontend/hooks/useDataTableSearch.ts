@@ -30,11 +30,6 @@ export function useDataTableSearch<T>(
   opts: UseDataTableSearchOptions<T>
 ): UseDataTableSearchResult<T> {
   const [query, setQuery] = useState('');
-  // Skip the useDebouncedValue indirection when debounceMs is unset / 0:
-  // useDebouncedValue uses setTimeout even at 0ms, which makes the filter
-  // application asynchronous even when the caller asked for synchronous
-  // behavior. The pre-split posts/page.tsx (lines 88-92) is synchronous;
-  // preserving that means consumers without debounceMs see updates inline.
   const debouncedQuery = useDebouncedValue(query, opts.debounceMs ?? 0);
   const effectiveQuery = opts.debounceMs && opts.debounceMs > 0 ? debouncedQuery : query;
 

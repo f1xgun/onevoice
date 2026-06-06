@@ -19,7 +19,6 @@ func TestContainsPII(t *testing.T) {
 		wantHit   bool
 		wantClass string
 	}{
-		// --- True positives (must hit, with the named class). ---
 		{"valid CC (luhn-valid 4111...)", "Спросил про 4111111111111111", true, "cc"},
 		{"valid CC dashed (luhn-valid)", "Платёж 4111-1111-1111-1111", true, "cc"},
 		{"RU phone +7 fmt", "Связь +7 (495) 123-45-67", true, "phone"},
@@ -31,18 +30,17 @@ func TestContainsPII(t *testing.T) {
 		{"passport with Cyrillic prefix", "паспорт 1234 567890 РФ", true, "passport"},
 		{"passport strict 4+6 whitespace form", "Серия: 1234 567890", true, "passport"},
 
-		// --- False positives — Russian numeric titles MUST NOT match. ---
 		{"Заказ 12345", "Заказ 12345 от вторника", false, ""},
 		{"Чек 9876543", "Чек 9876543", false, ""},
 		{"Звонок with date", "Звонок 2026-04-15 10:30", false, ""},
-		{"Заявка 10 digits no prefix", "Заявка 7654321098", false, ""}, // 10 digits but no INN/passport prefix
+		{"Заявка 10 digits no prefix", "Заявка 7654321098", false, ""},
 		{"Артикул 9 digits", "Артикул 123456789", false, ""},
 		{"Счёт 13 digits no prefix", "Счёт 1234567890123", false, ""},
 		{"Доход за 2025", "Доход за 2025 квартал 1", false, ""},
 		{"Платёж 100500", "Платёж 100500", false, ""},
 		{"random short num", "Стол 5", false, ""},
 		{"4-digit year alone", "Отчёт 2025", false, ""},
-		{"non-luhn 16 digit", "Идентификатор 1234567890123456", false, ""}, // 16 digits but fails Luhn
+		{"non-luhn 16 digit", "Идентификатор 1234567890123456", false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -53,7 +51,6 @@ func TestContainsPII(t *testing.T) {
 			if hit && class != c.wantClass {
 				t.Fatalf("ContainsPIIClass(%q) class=%q want=%q", c.input, class, c.wantClass)
 			}
-			// ContainsPII must agree with hit.
 			if got := ContainsPII(c.input); got != c.wantHit {
 				t.Fatalf("ContainsPII(%q) = %v want %v", c.input, got, c.wantHit)
 			}

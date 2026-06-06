@@ -117,8 +117,6 @@ func TestBusinessMembershipRepository_GetByBusinessUser_Found(t *testing.T) {
 		(*uuid.UUID)(nil), (*time.Time)(nil), now,
 		(*time.Time)(nil), (*uuid.UUID)(nil))
 
-	// squirrel passes uuid.UUID through driver.Valuer → string; match with AnyArg
-	// (matches the existing integration_test.go pattern).
 	mockPool.ExpectQuery(`SELECT .+ FROM business_members WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
@@ -335,9 +333,6 @@ func TestBusinessMembershipRepository_CountOwnersByBusiness_UsesSystemRoleOwnerI
 
 	businessID := uuid.New()
 
-	// squirrel serializes uuid.UUID via driver.Valuer → string representation.
-	// We verify the correct owner role ID is used by checking it matches the
-	// parsed SystemRoleOwnerID string value via AnyArg (type mismatch otherwise).
 	rows := pgxmock.NewRows([]string{"count"}).AddRow(1)
 	mockPool.ExpectQuery(`SELECT .+ FROM business_members WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "active").
@@ -346,8 +341,6 @@ func TestBusinessMembershipRepository_CountOwnersByBusiness_UsesSystemRoleOwnerI
 	count, err := r.CountOwnersByBusiness(ctx, businessID)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
-	// Verify the function uses SystemRoleOwnerID by ensuring it compiles and
-	// runs without error — the WHERE clause arg is validated above.
 	_ = businessID
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }

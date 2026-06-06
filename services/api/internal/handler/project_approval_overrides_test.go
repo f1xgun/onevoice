@@ -172,7 +172,6 @@ func TestUpdateProject_ApprovalOverridesInheritValue_EncodedAsAbsence(t *testing
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
 	require.NotNil(t, svc.UpdateInput)
-	// vk__publish_post key MUST be absent — inherit == key-absence.
 	if _, has := svc.UpdateInput.ApprovalOverrides[tools.VKPublishPost]; has {
 		t.Errorf("vk__publish_post should be absent (inherit), got: %v", svc.UpdateInput.ApprovalOverrides)
 	}

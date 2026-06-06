@@ -121,22 +121,16 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 	if err != nil {
 		return err
 	}
-	// Idempotency guard: already pending and not canceled → 423.
 	if user.DeletionRequestedAt != nil && user.DeletionCanceledAt == nil {
 		return domain.ErrDeletionAlreadyPending
 	}
 
-	// Constant-time bcrypt compare. Skipped on consent_withdrawn — 152-ФЗ
-	// Art. 21 forbids friction barriers on the withdrawal path.
 	if reason != "consent_withdrawn" {
 		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 			return domain.ErrInvalidCredentials
 		}
 	}
 
-	// Sole-owner enumeration runs BEFORE any mutation: friendly 409 path
-	// returns without touching the users row. Migration 000007 trigger
-	// stays as defense-in-depth.
 	soleOwners, err := s.EnumerateSoleOwnerBusinesses(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("enumerate sole-owner businesses: %w", err)
@@ -160,8 +154,6 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 		return err
 	}
 
-	// Revoke pending invitations sent by this user. Schema uses `created_by`
-	// (not `invited_by`) per migration 000007.
 	if _, err := tx.Exec(ctx, `UPDATE invitations
 	                              SET revoked_at = NOW()
 	                            WHERE created_by = $1
@@ -182,8 +174,6 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 		return fmt.Errorf("enqueue confirmation email: %w", err)
 	}
 
-	// T-7 deferred enqueue inside the same TX gives atomicity; WarningSweeper
-	// is a separate safety-net that dedupes via ExistsBySubjectAndRecipient.
 	warnIn := repository.OutboxEnqueueInput{
 		ToEmail:  user.Email,
 		Subject:  templates.DeletionT7WarningSubject,
@@ -199,8 +189,6 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 		return fmt.Errorf("commit deletion tx: %w", err)
 	}
 
-	// Audit row fires fire-and-forget post-commit. businesses_orphaned is
-	// always [] in v1.4 (the 409 path returns earlier on any sole-owner case).
 	audit.LogDeletionRequested(ctx, s.auditLog, userID, clientIP, userAgent, nil)
 	return nil
 }
@@ -214,12 +202,9 @@ func (s *AccountDeletionService) CancelDeletion(ctx context.Context, userID uuid
 		return err
 	}
 	if !canceled {
-		// Defensive: repo should have surfaced a sentinel; cover (false, nil).
 		return domain.ErrAlreadyPurged
 	}
 
-	// Best-effort cancel of the pending T-7 outbox row. Failure is non-fatal
-	// — the worker sees status='canceled' on next drain and skips the row.
 	user, getErr := s.users.GetByIDIncludingDeleted(ctx, userID)
 	if getErr == nil && user != nil {
 		if cancelErr := s.outbox.CancelPendingBySubjectAndRecipient(ctx, user.Email, templates.DeletionT7WarningSubject); cancelErr != nil {
@@ -291,7 +276,6 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// FOR UPDATE SKIP LOCKED lets concurrent CancelDeletion race-win the row.
 	userIDs, err := s.users.EnumeratePendingDeletionsInTx(ctx, tx, before, batchSize)
 	if err != nil {
 		return 0, fmt.Errorf("enumerate pending deletions: %w", err)
@@ -303,8 +287,6 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 	}
 	var purged []purgedPair
 	for _, uid := range userIDs {
-		// Defense-in-depth re-read: if a concurrent cancel flipped
-		// deletion_canceled_at after we claimed the lock, skip.
 		user, err := s.users.GetByIDIncludingDeleted(ctx, uid)
 		if err != nil {
 			slog.WarnContext(ctx, "hard delete sweeper: get user failed", "userID", uid, "err", err)
@@ -315,8 +297,6 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 		}
 		originalEmail := user.Email
 
-		// Audit INSERT MUST happen before the user DELETE — FK is SET NULL
-		// with user_email_at_event; reversing the order nulls the audit row.
 		if err := audit.LogUserSelfDeletedTx(ctx, tx, uid, originalEmail); err != nil {
 			slog.ErrorContext(ctx, "hard delete sweeper: audit insert failed", "userID", uid, "err", err)
 			continue
@@ -332,8 +312,6 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 		return 0, fmt.Errorf("commit sweeper tx: %w", err)
 	}
 
-	// Post-TX best-effort Mongo cleanup. PG is source of truth (T-DEL-05);
-	// Mongo failure is logged but does NOT roll back the committed PG state.
 	for _, p := range purged {
 		if _, err := s.conversations.MongoConversationsCleanup(ctx, p.userID.String(), p.email); err != nil {
 			slog.WarnContext(ctx, "mongo conversations cleanup failed after hard delete (PG row already gone)",
@@ -378,8 +356,6 @@ func (s *AccountDeletionService) WarningSweeper(ctx context.Context) (int, error
 			BodyText: templates.DeletionT7WarningText(u.Email, deletionAt),
 			BodyHTML: templates.DeletionT7WarningHTML(u.Email, deletionAt),
 		}
-		// nil tx is intentional — sweeper runs outside any user-initiated
-		// transaction; Enqueue falls back to pool.Exec.
 		if _, err := s.outbox.Enqueue(ctx, nil, in); err != nil {
 			slog.WarnContext(ctx, "warning sweeper: enqueue failed", "email", u.Email, "err", err)
 			continue

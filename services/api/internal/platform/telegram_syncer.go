@@ -170,13 +170,11 @@ func (t *TelegramSyncer) syncTelegramPhoto(ctx context.Context, businessID uuid.
 		return fmt.Errorf("get token: %w", err)
 	}
 
-	// Resolve relative paths to absolute URL using publicURL.
 	fullURL := logoURL
 	if logoURL != "" && logoURL[0] == '/' {
 		fullURL = t.publicURL + logoURL
 	}
 
-	// Download the image.
 	imgReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, http.NoBody)
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: telegram: build image download request failed", "error", err)
@@ -189,7 +187,6 @@ func (t *TelegramSyncer) syncTelegramPhoto(ctx context.Context, businessID uuid.
 	}
 	defer func() { _ = imgResp.Body.Close() }()
 
-	// Build multipart body with the image.
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	if err := mw.WriteField("chat_id", channelID); err != nil {

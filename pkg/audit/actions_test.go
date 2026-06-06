@@ -8,48 +8,42 @@ import (
 
 func TestActionConstants(t *testing.T) {
 	tests := map[string]string{
-		"rbac.role_granted":        ActionRoleGranted,
-		"rbac.member_removed":      ActionMemberRemoved,
-		"rbac.role_created":        ActionRoleCreated,
-		"rbac.role_updated":        ActionRoleUpdated,
-		"rbac.role_deleted":        ActionRoleDeleted,
-		"rbac.invitation_created":  ActionInvitationCreated,
-		"rbac.invitation_revoked":  ActionInvitationRevoked,
-		"rbac.invitation_accepted": ActionInvitationAccepted,
-		"auth.login_success":       ActionLoginSuccess,
-		"auth.login_failed":        ActionLoginFailed,
-		"auth.logout":              ActionLogout,
-		"auth.password_changed":    ActionPasswordChanged,
-		"auth.user_registered":     ActionUserRegistered,
-		// Password reset.
+		"rbac.role_granted":                         ActionRoleGranted,
+		"rbac.member_removed":                       ActionMemberRemoved,
+		"rbac.role_created":                         ActionRoleCreated,
+		"rbac.role_updated":                         ActionRoleUpdated,
+		"rbac.role_deleted":                         ActionRoleDeleted,
+		"rbac.invitation_created":                   ActionInvitationCreated,
+		"rbac.invitation_revoked":                   ActionInvitationRevoked,
+		"rbac.invitation_accepted":                  ActionInvitationAccepted,
+		"auth.login_success":                        ActionLoginSuccess,
+		"auth.login_failed":                         ActionLoginFailed,
+		"auth.logout":                               ActionLogout,
+		"auth.password_changed":                     ActionPasswordChanged,
+		"auth.user_registered":                      ActionUserRegistered,
 		"auth.password_reset_requested":             ActionPasswordResetRequested,
 		"auth.password_reset_completed":             ActionPasswordResetCompleted,
 		"auth.password_reset_request_unknown_email": ActionPasswordResetUnknownEmail,
-		// Email verification + soft-restrict.
-		"auth.email_verification_link_viewed": ActionEmailVerificationLinkViewed,
-		"auth.email_verified":                 ActionEmailVerified,
-		"auth.email_changed_before_verify":    ActionEmailChangedBeforeVerify,
-		"auth.consent_recorded":               ActionConsentRecorded,
-		// Account deletion lifecycle.
-		"account.deletion_requested": ActionDeletionRequested,
-		"account.deletion_canceled":  ActionDeletionCanceled,
-		"account.sole_owner_blocked": ActionSoleOwnerBlocked,
-		"account.user_self_deleted":  ActionUserSelfDeleted,
-		// Legal compliance scaffolding.
-		// ActionConsentRecorded above is reused with new purposes
-		// (tos/privacy/pdn) — same constant, new Details.Purposes.
-		"auth.consent_reconsent_required":    ActionConsentReconsentRequired,
-		"auth.consent_reconsented":           ActionConsentReconsented,
-		"auth.consent_withdrawn":             ActionConsentWithdrawn,
-		"auth.consent_policy_version_bumped": ActionConsentPolicyVersionBumped,
-		"integration.connected":              ActionIntegrationConnected,
-		"integration.disconnected":           ActionIntegrationDisconnected,
-		"integration.token_rotated":          ActionIntegrationTokenRotated,
-		"business.created":                   ActionBusinessCreated,
-		"business.updated":                   ActionBusinessUpdated,
-		"project.created":                    ActionProjectCreated,
-		"project.updated":                    ActionProjectUpdated,
-		"project.deleted":                    ActionProjectDeleted,
+		"auth.email_verification_link_viewed":       ActionEmailVerificationLinkViewed,
+		"auth.email_verified":                       ActionEmailVerified,
+		"auth.email_changed_before_verify":          ActionEmailChangedBeforeVerify,
+		"auth.consent_recorded":                     ActionConsentRecorded,
+		"account.deletion_requested":                ActionDeletionRequested,
+		"account.deletion_canceled":                 ActionDeletionCanceled,
+		"account.sole_owner_blocked":                ActionSoleOwnerBlocked,
+		"account.user_self_deleted":                 ActionUserSelfDeleted,
+		"auth.consent_reconsent_required":           ActionConsentReconsentRequired,
+		"auth.consent_reconsented":                  ActionConsentReconsented,
+		"auth.consent_withdrawn":                    ActionConsentWithdrawn,
+		"auth.consent_policy_version_bumped":        ActionConsentPolicyVersionBumped,
+		"integration.connected":                     ActionIntegrationConnected,
+		"integration.disconnected":                  ActionIntegrationDisconnected,
+		"integration.token_rotated":                 ActionIntegrationTokenRotated,
+		"business.created":                          ActionBusinessCreated,
+		"business.updated":                          ActionBusinessUpdated,
+		"project.created":                           ActionProjectCreated,
+		"project.updated":                           ActionProjectUpdated,
+		"project.deleted":                           ActionProjectDeleted,
 	}
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
@@ -66,7 +60,6 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "integration", ActionCategory(ActionIntegrationTokenRotated))
 	require.Equal(t, "business", ActionCategory(ActionBusinessCreated))
 	require.Equal(t, "project", ActionCategory(ActionProjectDeleted))
-	// (account.* lifecycle).
 	require.Equal(t, "account", ActionCategory(ActionDeletionRequested))
 	require.Equal(t, "account", ActionCategory(ActionDeletionCanceled))
 	require.Equal(t, "account", ActionCategory(ActionSoleOwnerBlocked))

@@ -190,7 +190,7 @@ func cleanupPasswordReset(t *testing.T) {
 			t.Logf("warn: cleanupPasswordReset: %v", err)
 		}
 	}
-	cleanupDatabase(t) // users + businesses + Redis flush
+	cleanupDatabase(t)
 }
 
 // --- Test 1: TIMING PARITY --------------------------------------
@@ -202,8 +202,6 @@ func TestPasswordReset_TimingParity(t *testing.T) {
 	cleanupPasswordReset(t)
 	_ = setupTestUser(t, "known@example.com", "validpassword123")
 
-	// Warm up the connection pool + JIT so the first iteration's bcrypt
-	// path doesn't skew p50.
 	for i := 0; i < timingParityWarmup; i++ {
 		_ = postReset(t, "known@example.com")
 		_ = postReset(t, fmt.Sprintf("warmup-%d@example.com", i))
@@ -219,8 +217,6 @@ func TestPasswordReset_TimingParity(t *testing.T) {
 		res.Body.Close()
 		knownDurations = append(knownDurations, time.Since(start))
 
-		// Rotate the unknown email each iteration so a single rate-limit
-		// counter doesn't dominate either branch.
 		unknownEmail := fmt.Sprintf("missing-%d@example.com", i)
 		start = time.Now()
 		res = postReset(t, unknownEmail)
@@ -238,9 +234,6 @@ func TestPasswordReset_TimingParity(t *testing.T) {
 	t.Logf("unknown p50=%v p99=%v", unknownP50, unknownP99)
 	t.Logf("delta   p50=%v p99=%v (cap %v)", deltaP50, deltaP99, timingParityMaxDelta)
 
-	// p99 must be human-imperceptible AND survive CI noise; 50ms is the
-	// floor that achieves both. If CI flakes, raise to 75ms; do NOT lower
-	// below 30ms (creates false sense of security).
 	require.LessOrEqual(t, deltaP50, timingParityMaxDelta,
 		"p50 timing delta exceeds cap — email enumeration possible")
 	require.LessOrEqual(t, deltaP99, timingParityMaxDelta,
@@ -256,32 +249,26 @@ func TestPasswordReset_HappyPath(t *testing.T) {
 	cleanupPasswordReset(t)
 	_ = setupTestUser(t, "alice@example.com", "oldpassword123")
 
-	// 1. Request reset.
 	res := postReset(t, "alice@example.com")
 	require.Equal(t, httpStatusNoContentOK, res.StatusCode)
 	res.Body.Close()
 
-	// 2. Pull token from email_outbox.
 	body := fetchLatestOutboxBody(t, "alice@example.com")
 	token := extractTokenFromEmailBody(t, body)
 	require.NotEmpty(t, token)
 
-	// 3. Confirm with new password.
 	res = postConfirm(t, token, "newpassword456")
 	require.Equal(t, httpStatusNoContentOK, res.StatusCode)
 	res.Body.Close()
 
-	// 4. Login with new password — succeeds.
 	loginRes := postLogin(t, "alice@example.com", "newpassword456")
 	require.Equal(t, http.StatusOK, loginRes.StatusCode)
 	loginRes.Body.Close()
 
-	// 5. Login with old password — fails.
 	loginOldRes := postLogin(t, "alice@example.com", "oldpassword123")
 	require.Equal(t, http.StatusUnauthorized, loginOldRes.StatusCode)
 	loginOldRes.Body.Close()
 
-	// 6. Audit log has the right two actions.
 	userID := fetchUserIDByEmail(t, "alice@example.com")
 	actions := fetchAuditActionsForUser(t, userID)
 	require.Contains(t, actions, "auth.password_reset_requested")
@@ -301,12 +288,10 @@ func TestPasswordReset_TokenReuse_Defense(t *testing.T) {
 	res.Body.Close()
 	token := extractTokenFromEmailBody(t, fetchLatestOutboxBody(t, "bob@example.com"))
 
-	// First consume — succeeds.
 	res = postConfirm(t, token, "newpassword456")
 	require.Equal(t, httpStatusNoContentOK, res.StatusCode)
 	res.Body.Close()
 
-	// Second consume — must fail with reset_token_invalid.
 	res = postConfirm(t, token, "anotherpassword789")
 	require.Equal(t, http.StatusBadRequest, res.StatusCode)
 	body := decodeJSON(t, res)
@@ -327,7 +312,6 @@ func TestPasswordReset_ExpiredToken_Defense(t *testing.T) {
 	res.Body.Close()
 	token := extractTokenFromEmailBody(t, fetchLatestOutboxBody(t, "carol@example.com"))
 
-	// Manually expire the token in-place.
 	hash := sha256.Sum256([]byte(token))
 	_, err := pgPool.Exec(context.Background(),
 		`UPDATE password_reset_tokens SET expires_at = NOW() - INTERVAL '1 minute' WHERE token_hash = $1`,

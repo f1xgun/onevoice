@@ -73,7 +73,6 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
     expect(screen.getByText('Новый чат')).toBeInTheDocument();
     unmount();
 
-    // titleStatus='auto_pending' wins even with a non-empty title.
     const { wrapper: w2 } = setup([
       { id: 'c2', title: 'Stale title', titleStatus: 'auto_pending' },
     ]);
@@ -99,12 +98,8 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
       { wrapper }
     );
 
-    // Initial mount: exactly 1 commit.
     expect(onRender).toHaveBeenCalledTimes(1);
 
-    // Mutate a NON-title field on the same conv. The select projection
-    // returns the same primitive string; memo(ChatHeaderImpl) prevents a
-    // commit because props are unchanged.
     act(() => {
       qc.setQueryData(
         ['businesses', BUSINESS_ID, 'conversations'],
@@ -119,8 +114,6 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
       );
     });
 
-    // After the unrelated mutation: STILL exactly 1 commit.
-    // This is the trust-critical isolation assertion.
     expect(onRender).toHaveBeenCalledTimes(1);
   });
 
@@ -142,31 +135,17 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
         ['businesses', BUSINESS_ID, 'conversations'],
         [{ id: 'c1', title: 'Запланировать пост', titleStatus: 'auto' }]
       );
-      // Yield a microtask so React Query's observer flushes the new data
-      // through the React 18 scheduler before we sample assertions.
       await Promise.resolve();
     });
 
-    // Wait for the re-render: in jsdom + React Query 5 the observer push is
-    // microtask-deferred. waitFor polls until the DOM and the spy agree.
     await waitFor(() => {
       expect(screen.getByText('Запланировать пост')).toBeInTheDocument();
     });
 
-    // Title change is the SOLE legitimate trigger for a re-render. The
-    // negative control above (no commit on unrelated mutation) is only
-    // meaningful if THIS positive control proves the harness can detect
-    // a re-render at all.
     expect(onRender).toHaveBeenCalledTimes(2);
   });
 
   it("DOES re-render when titleStatus flips out of 'auto_pending' even if title string is unchanged", async () => {
-    // Edge case: backend could land titleStatus='auto' WITHOUT changing the
-    // title (e.g., manual rename promoted to terminal auto). The select
-    // projection's output string changes because the placeholder rule
-    // depends on titleStatus AS WELL AS title. This positive-control test
-    // covers that branch so we don't ship a regression where the auto-title
-    // FAILED placeholder ('Новый чат') sticks forever.
     const { qc, wrapper } = setup([
       { id: 'c1', title: 'Backend-supplied title', titleStatus: 'auto_pending' },
     ]);

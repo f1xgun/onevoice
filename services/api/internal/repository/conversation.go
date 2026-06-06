@@ -89,7 +89,7 @@ func (r *conversationRepository) Update(ctx context.Context, conv *domain.Conver
 		"$set": bson.M{
 			"user_id":      conv.UserID,
 			"title":        conv.Title,
-			"title_status": conv.TitleStatus, // persist title_status so handler-level flip to "manual" is durable; otherwise an in-flight titler could clobber the user's chosen title.
+			"title_status": conv.TitleStatus,
 			"updated_at":   conv.UpdatedAt,
 		},
 	}
@@ -147,8 +147,6 @@ func (r *conversationRepository) UpdateTitleIfPending(ctx context.Context, id, t
 	filter := bson.M{
 		"_id": id,
 		"title_status": bson.M{
-			// $in over [auto_pending, nil] covers legacy rows that never had title_status written.
-			// Relies on Conversation.TitleStatus carrying NO bson `omitempty` so legacy null docs surface as `null` (not missing) and the $in match is stable across drivers.
 			"$in": []interface{}{domain.TitleStatusAutoPending, nil},
 		},
 	}
@@ -175,7 +173,6 @@ func (r *conversationRepository) TransitionToAutoPending(ctx context.Context, id
 	filter := bson.M{
 		"_id": id,
 		"title_status": bson.M{
-			// auto_pending is included so the handler's stuck-pending recovery path is a deterministic no-op-then-bump rather than a 404-shaped error.
 			"$in": []interface{}{
 				domain.TitleStatusAuto,
 				domain.TitleStatusAutoPending,
@@ -206,8 +203,6 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("conversations")
 	models := []mongo.IndexModel{
 		{
-			// conversations_user_biz_title_status — DO NOT MODIFY.
-			// Hot-pathed by the auto-titler's UpdateTitleIfPending.
 			Keys: bson.D{
 				{Key: "user_id", Value: 1},
 				{Key: "business_id", Value: 1},
@@ -216,8 +211,6 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 			Options: options.Index().SetName("conversations_user_biz_title_status"),
 		},
 		{
-			// conversations_user_biz_proj_pinned_recency — sidebar PinnedSection compound index.
-			// ESR layout: equality on (user_id, business_id, project_id) then descending sort on (pinned_at, last_message_at).
 			Keys: bson.D{
 				{Key: "user_id", Value: 1},
 				{Key: "business_id", Value: 1},
@@ -229,8 +222,6 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 		},
 	}
 	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
-		// Swallow defensively even though name-conflict is the more likely failure
-		// mode — CreateMany silently succeeds when specs match existing indexes.
 		if mongo.IsDuplicateKeyError(err) {
 			return nil
 		}
@@ -243,7 +234,6 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 // Sets user_id=null, snapshots the original email, marks deleted_owner=true.
 // Documents themselves are NOT deleted — business-level history persists.
 func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, userID, originalEmail string) (int64, error) {
-	// Runs AFTER the PG TX commits — Mongo does not participate in the PG TX so this is best-effort by construction.
 	filter := bson.M{"user_id": userID}
 	update := bson.M{"$set": bson.M{
 		"user_id":              nil,
@@ -262,7 +252,6 @@ func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, 
 // for defense-in-depth against cross-tenant pin manipulation.
 func (r *conversationRepository) Pin(ctx context.Context, id, businessID, userID string) error {
 	now := time.Now().UTC()
-	// Scope filter prevents cross-tenant manipulation; MatchedCount==0 maps to ErrConversationNotFound (handler → uniform 404, never 403).
 	filter := bson.M{"_id": id, "business_id": businessID, "user_id": userID}
 	update := bson.M{"$set": bson.M{"pinned_at": now, "updated_at": now}}
 	res, err := r.collection.UpdateOne(ctx, filter, update)
@@ -305,7 +294,6 @@ func (r *conversationRepository) SearchTitles(
 	projectID *string,
 	limit int,
 ) ([]domain.ConversationTitleHit, []string, error) {
-	// Defense-in-depth: repo-level scope guard parallels the service-layer guard.
 	if businessID == "" || userID == "" {
 		return nil, nil, domain.ErrInvalidScope
 	}
@@ -314,7 +302,6 @@ func (r *conversationRepository) SearchTitles(
 	}
 	tokens := tokenizeQuery(query)
 	if len(tokens) == 0 {
-		// Handler enforces len(q) >= 2; this short-circuits the whitespace-only edge.
 		return []domain.ConversationTitleHit{}, nil, nil
 	}
 
@@ -355,7 +342,6 @@ func (r *conversationRepository) SearchTitles(
 		return nil, nil, fmt.Errorf("decode title hits: %w", err)
 	}
 	for i := range hits {
-		// Stable, non-zero score so mergeAndRank's `t.Score * titleW` keeps title hits ranked above zero-content matches.
 		hits[i].Score = 1.0
 	}
 	ids := make([]string, len(hits))
@@ -396,7 +382,6 @@ func (r *conversationRepository) ScopedConversationIDs(
 		return nil, fmt.Errorf("decode scoped ids: %w", err)
 	}
 	if len(rows) > MaxScopedConversations {
-		// Metadata-only log: never the query, never the IDs.
 		slog.WarnContext(ctx, "search: scoped conversation set exceeds cap",
 			"user_id", userID, "business_id", businessID,
 			"count", len(rows), "cap", MaxScopedConversations)

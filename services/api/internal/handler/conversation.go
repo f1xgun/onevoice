@@ -91,7 +91,6 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Cross-business project → uniform 404 (no existence leak via 403).
 	if req.ProjectId != nil && *req.ProjectId != "" {
 		projUUID, parseErr := uuid.Parse(*req.ProjectId)
 		if parseErr != nil {
@@ -109,14 +108,12 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		}
 	}
 
-	// Newly created chats start unpinned; PinnedAt==nil IS the unpinned
-	// signal. Legacy `Pinned bool` was removed — do not re-introduce.
 	now := time.Now()
 	conversation := &domain.Conversation{
 		ID:          primitive.NewObjectID().Hex(),
 		UserID:      bc.UserID.String(),
 		BusinessID:  bc.BusinessID.String(),
-		ProjectID:   req.ProjectId, // nil → "Без проекта" bucket
+		ProjectID:   req.ProjectId,
 		Title:       req.Title,
 		TitleStatus: domain.TitleStatusAutoPending,
 		CreatedAt:   now,
@@ -150,7 +147,6 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
-			// Silently clamp — a frontend bug must never block the list view.
 			if limit > MaxConversationLimit {
 				limit = MaxConversationLimit
 			}
@@ -162,7 +158,6 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// ListByUserID is the cross-tenant defense for this route.
 	conversations, err := h.conversationRepo.ListByUserID(r.Context(), bc.UserID.String(), limit, offset)
 	if err != nil {
 		slog.Error("failed to list conversations", "error", err)
@@ -186,7 +181,6 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 	}
 
 	conversationID := chi.URLParam(r, "id")
-	// Fast 400 BEFORE driver call: ObjectID is exactly 24 hex chars.
 	if len(conversationID) != mongoObjectIDHexLen {
 		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
 		return
@@ -207,7 +201,6 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Owner-only: existence already confirmed by GET so 403 doesn't leak.
 	if conversation.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
@@ -258,7 +251,6 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 	}
 
 	conversation.Title = req.Title
-	// Manual rename: pins TitleStatus so the auto-titler will never overwrite.
 	conversation.TitleStatus = domain.TitleStatusManual
 	if err := h.conversationRepo.Update(r.Context(), conversation); err != nil {
 		slog.Error("failed to update conversation", "error", err)

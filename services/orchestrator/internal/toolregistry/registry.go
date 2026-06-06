@@ -89,9 +89,8 @@ func (r *Registry) Register(spec ToolSpec, exec Executor) {
 		descriptionEn:           spec.DescriptionEn,
 		parameterDescriptionsEn: paramsEn,
 		executor:                exec,
-		// Defensive copy — caller-side mutations after Register MUST NOT change registered behavior.
-		floor:          spec.Floor,
-		editableFields: append([]string(nil), spec.EditableFields...),
+		floor:                   spec.Floor,
+		editableFields:          append([]string(nil), spec.EditableFields...),
 	}
 }
 
@@ -129,7 +128,6 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 		name := e.def.Function.Name
 		idx := strings.Index(name, "__")
 		if idx == -1 {
-			// Bare name = internal tool, always available.
 			result = append(result, e.def)
 			continue
 		}
@@ -231,7 +229,6 @@ func (r *Registry) AvailableForWhitelist(
 		allowSet := make(map[string]bool, len(allowed))
 		for _, name := range allowed {
 			if !known[name] {
-				// Safe-default: whitelist drift drops unknown names rather than erroring.
 				slog.WarnContext(ctx, "project whitelist contains unknown tool",
 					"tool", name,
 				)
@@ -242,7 +239,6 @@ func (r *Registry) AvailableForWhitelist(
 		result := make([]llm.ToolDefinition, 0, len(base))
 		for _, def := range base {
 			name := def.Function.Name
-			// Auto-floor read tools are always included — see docs.
 			if allowSet[name] || r.tools[name].floor == domain.ToolFloorAuto {
 				result = append(result, def)
 			}
@@ -306,7 +302,6 @@ func (r *Registry) ExecuteWithApproval(ctx context.Context, name string, args ma
 	if ae, ok := e.executor.(ApprovalExecutor); ok {
 		return ae.ExecuteWithApproval(ctx, args, approvalID)
 	}
-	// Executor doesn't carry approval metadata — safe for internal/stub tools.
 	return e.executor.Execute(ctx, args)
 }
 

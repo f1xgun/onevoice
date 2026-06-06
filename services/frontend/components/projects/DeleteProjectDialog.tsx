@@ -33,8 +33,6 @@ export function DeleteProjectDialog({
   const tDelete = useTranslations('projects.deleteDialog');
   const [pending, setPending] = useState(false);
 
-  // Description switches on chatCount — ICU pluralizes the chat count for
-  // the non-zero variant (one/few/many/other in RU, one/other in EN).
   const description =
     chatCount > 0
       ? tDelete('descriptionWithChats', { count: chatCount })
@@ -67,7 +65,6 @@ export function DeleteProjectDialog({
             className="hover:bg-destructive/90 bg-destructive text-destructive-foreground"
             disabled={pending}
             onClick={(e) => {
-              // Prevent default close so we can await the mutation.
               e.preventDefault();
               void handleConfirm();
             }}

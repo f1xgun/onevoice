@@ -93,33 +93,24 @@ func classifyTelegramError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Preserve an already-typed code from upstream wrapping sites
-	// (e.g. inline channel-id parse failures wrapped as channel_not_found
-	// before the classifier runs at the dispatcher seam).
 	if a2a.CodeOf(err) != "" {
 		return err
 	}
 	msg := err.Error()
 	lower := strings.ToLower(msg)
-	// Permanent: unauthorized, forbidden — token invalid.
 	if strings.Contains(msg, "Unauthorized") || strings.Contains(msg, "Forbidden") {
 		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
 	}
-	// Rate-limited: too many requests — non-retryable, surface to user.
 	if strings.Contains(msg, "Too Many Requests") || strings.Contains(msg, "retry after") {
 		return a2a.NewCodedError("rate_limit_exceeded", a2a.NewNonRetryableError(fmt.Errorf("telegram rate limit: %w", err)))
 	}
-	// Media constraint: image too large or rejected by Telegram.
 	if strings.Contains(lower, "photo_invalid_dimensions") || strings.Contains(lower, "photo dimensions") ||
 		strings.Contains(lower, "file too big") || strings.Contains(lower, "photo_save_file_invalid") {
 		return a2a.NewCodedError("media_too_large", a2a.NewNonRetryableError(err))
 	}
-	// Chat/channel not found — permanent.
 	if strings.Contains(msg, "chat not found") || strings.Contains(msg, "Bad Request: chat_id is empty") {
 		return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
 	}
-	// Transient (network, 5xx, etc.) — withRetry will still retry because the
-	// inner error is not wrapped in NonRetryableError.
 	return a2a.NewCodedError("transient", err)
 }
 

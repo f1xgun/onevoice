@@ -27,7 +27,7 @@ func startEmbeddedNATS(t *testing.T) *natsserver.Server {
 	t.Helper()
 	opts := &natsserver.Options{
 		Host:       "127.0.0.1",
-		Port:       -1, // random free port
+		Port:       -1,
 		NoLog:      true,
 		NoSigs:     true,
 		MaxPending: 64 << 20,
@@ -57,7 +57,6 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 	ns := startEmbeddedNATS(t)
 	natsURL := ns.ClientURL()
 
-	// --- Mock VK agent ---
 	agentNC := connectNATS(t, natsURL)
 	mockHandler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		return &a2a.ToolResponse{
@@ -72,7 +71,6 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 	agent := a2a.NewAgent(a2a.AgentVK, a2a.NewNATSTransport(agentNC), mockHandler)
 	require.NoError(t, agent.Start(context.Background()))
 
-	// --- Orchestrator side ---
 	orchNC := connectNATS(t, natsURL)
 	conn := natsexec.NewNATSConn(orchNC)
 
@@ -93,7 +91,6 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 		},
 	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, natsexec.New(a2a.AgentVK, tools.VKPublishPost, conn))
 
-	// Stub LLM: first call → tool_call, second call → text answer
 	toolArgs, _ := json.Marshal(map[string]interface{}{
 		"text":     "Привет, мир!",
 		"group_id": "123456",
@@ -126,7 +123,6 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Collect events
 	var toolCalls, toolResults, texts []orchestrator.Event
 	var gotDone bool
 	for e := range events {
@@ -140,18 +136,14 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 		case orchestrator.EventDone:
 			gotDone = true
 		case orchestrator.EventError:
-			// ignore in this test
 		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
-			// Not relevant for this test — ignored.
 		}
 	}
 
-	// tool_call emitted
 	require.Len(t, toolCalls, 1)
 	assert.Equal(t, tools.VKPublishPost, toolCalls[0].ToolName)
 	assert.Equal(t, "Привет, мир!", toolCalls[0].ToolArgs["text"])
 
-	// tool_result from agent came back
 	require.Len(t, toolResults, 1)
 	assert.Equal(t, tools.VKPublishPost, toolResults[0].ToolName)
 	assert.Empty(t, toolResults[0].ToolError)
@@ -160,7 +152,6 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 	assert.Equal(t, "12345", resultMap["post_id"])
 	assert.Equal(t, "published", resultMap["status"])
 
-	// text response after tool execution
 	require.NotEmpty(t, texts)
 	assert.Contains(t, texts[0].Content, "Пост успешно опубликован")
 
@@ -172,7 +163,6 @@ func TestE2E_AgentError(t *testing.T) {
 	ns := startEmbeddedNATS(t)
 	natsURL := ns.ClientURL()
 
-	// Agent that returns an error
 	agentNC := connectNATS(t, natsURL)
 	errHandler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		return &a2a.ToolResponse{
@@ -239,7 +229,6 @@ func TestE2E_MultipleAgents(t *testing.T) {
 	ns := startEmbeddedNATS(t)
 	natsURL := ns.ClientURL()
 
-	// --- Telegram agent ---
 	tgNC := connectNATS(t, natsURL)
 	tgAgent := a2a.NewAgent(a2a.AgentTelegram, a2a.NewNATSTransport(tgNC),
 		a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -252,7 +241,6 @@ func TestE2E_MultipleAgents(t *testing.T) {
 	)
 	require.NoError(t, tgAgent.Start(context.Background()))
 
-	// --- VK agent ---
 	vkNC := connectNATS(t, natsURL)
 	vkAgent := a2a.NewAgent(a2a.AgentVK, a2a.NewNATSTransport(vkNC),
 		a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -265,7 +253,6 @@ func TestE2E_MultipleAgents(t *testing.T) {
 	)
 	require.NoError(t, vkAgent.Start(context.Background()))
 
-	// --- Orchestrator ---
 	orchNC := connectNATS(t, natsURL)
 	conn := natsexec.NewNATSConn(orchNC)
 
@@ -279,7 +266,6 @@ func TestE2E_MultipleAgents(t *testing.T) {
 		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "Send VK post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
 	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, natsexec.New(a2a.AgentVK, tools.VKPublishPost, conn))
 
-	// LLM calls telegram tool first, then vk, then answers
 	tgArgs, _ := json.Marshal(map[string]interface{}{"text": "tg post"})
 	vkArgs, _ := json.Marshal(map[string]interface{}{"text": "vk post"})
 	stub := &stubLLM{responses: []*llm.ChatResponse{
@@ -323,7 +309,6 @@ func TestE2E_MultipleAgents(t *testing.T) {
 
 	require.Len(t, toolResults, 2)
 
-	// Verify each result came from the correct agent
 	platforms := map[string]string{}
 	for _, tr := range toolResults {
 		rm, ok := tr.ToolResult.(map[string]interface{})
@@ -380,7 +365,6 @@ func TestE2E_BusinessIDPropagation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Drain events
 	for range events {
 	}
 

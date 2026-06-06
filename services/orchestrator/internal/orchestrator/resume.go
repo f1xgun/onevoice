@@ -53,7 +53,6 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 	if batch.Status == "expired" {
 		go func() {
 			defer close(ch)
-			// "approval_expired" is the sentinel the API proxy maps to the public expired-batch status.
 			ch <- Event{Type: EventError, Content: "approval_expired"}
 		}()
 		return ch, nil
@@ -85,7 +84,6 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 	if len(raw) == 0 {
 		return out, nil
 	}
-	// Skip leading whitespace to find the first JSON token.
 	i := 0
 	for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\n' || raw[i] == '\r') {
 		i++
@@ -105,7 +103,6 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 		out.AccumulatedOutputTokens = env.AccumulatedOutputTokens
 		return out, nil
 	}
-	// Legacy raw-array shape (V1) — leading role:"system" stays in Messages.
 	var msgs []llm.Message
 	if uErr := json.Unmarshal(raw, &msgs); uErr != nil {
 		return snapshotDecoded{}, uErr
@@ -144,21 +141,14 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		Model:                    req.Model,
 		Tier:                     req.Tier,
 		Iter:                     batch.IterationIdx + 1,
-		// Hydrate accumulated counts so the per-conversation cap measures from
-		// the pre-pause budget. Legacy snapshots land at zero — correct because
-		// pre-cap turns were not subject to enforcement.
-		AccumulatedInputTokens:  snap.AccumulatedInputTokens,
-		AccumulatedOutputTokens: snap.AccumulatedOutputTokens,
+		AccumulatedInputTokens:   snap.AccumulatedInputTokens,
+		AccumulatedOutputTokens:  snap.AccumulatedOutputTokens,
 	}
 
-	// MUST inject batch.BusinessID before dispatch — handler/chat.go does this
-	// on the fresh-turn path; without it, agents see business_id="" and fail
-	// token resolution.
 	ctx = a2a.WithBusinessID(ctx, batch.BusinessID)
 
 	o.dispatchApprovedCalls(ctx, batch, req, state, out)
 
-	// Best-effort — not load-bearing. Mongo TTL / reconciliation reaps stragglers.
 	if err := o.pendingRepo.MarkResolved(ctx, batch.ID); err != nil {
 		slog.WarnContext(ctx, "resume: failed to mark batch resolved",
 			"error", err,
@@ -184,8 +174,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	// Mirrors the gate used by dispatchToolCalls in orchestrator.go so a hung-up
-	// caller cannot block goroutines on a full channel buffer.
 	sendOrCancel := func(ev Event) bool {
 		select {
 		case out <- ev:
@@ -196,7 +184,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	}
 
 	for i := range batch.Calls {
-		// Bail early if caller hung up — avoid queueing rejections / spawning goroutines.
 		if ctx.Err() != nil {
 			break
 		}
@@ -226,9 +213,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			continue
 		}
 
-		// TOCTOU re-check — MUST run against FRESH maps from ResumeRequest,
-		// never the snapshot's embedded copy. Forbidden-after-pause → synthetic
-		// policy_revoked rejection.
 		floor := o.tools.Floor(call.ToolName)
 		effective := hitl.Resolve(floor, req.BusinessApprovals, req.ProjectApprovalOverrides, call.ToolName)
 		if effective == domain.ToolFloorForbidden {
@@ -251,7 +235,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			continue
 		}
 
-		// Crash-recovery — belt-and-suspenders with the agent's Redis SetNX.
 		if call.Dispatched {
 			continue
 		}
@@ -262,7 +245,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 
 			args := c.Arguments
 			if c.Verdict == "edit" && c.EditedArgs != nil {
-				// EditableFields was enforced at resolve time — overwrite is safe.
 				merged := make(map[string]interface{}, len(args)+len(c.EditedArgs))
 				for k, v := range args {
 					merged[k] = v
@@ -308,7 +290,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			})
 			mu.Unlock()
 
-			// Best-effort — Redis dedupe at the agent is primary; this is the Mongo belt-and-suspenders.
 			if markErr := o.pendingRepo.MarkDispatched(ctx, batch.ID, c.CallID); markErr != nil {
 				slog.WarnContext(ctx, "resume: failed to mark call dispatched",
 					"error", markErr,

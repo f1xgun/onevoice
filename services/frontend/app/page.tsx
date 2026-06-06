@@ -149,9 +149,6 @@ const INBOX_ROW_META: Array<{
 function HeroPreview() {
   const tPreview = useTranslations('landing.preview');
   const tDemo = useTranslations('landing.demo');
-  // Channel labels: Telegram and VK are brand names that pass through
-  // both locales unchanged; only "Yandex"/"Яндекс" actually differs by
-  // locale, so we resolve the labels through tDemo to keep one source.
   const channelLabel: Record<'telegram' | 'vk' | 'yandex', string> = {
     telegram: 'Telegram',
     vk: 'VK',
@@ -233,9 +230,6 @@ function Belief() {
 
 function Features() {
   const tF = useTranslations('landing.features');
-  // Sample components stay in code (they're React nodes); textual fields
-  // come from `landing.features.items.<idx>` so the headline copy follows
-  // the active locale.
   const samples: React.ReactNode[] = [
     <SampleInbox key="inbox" />,
     <SampleDraft key="draft" />,

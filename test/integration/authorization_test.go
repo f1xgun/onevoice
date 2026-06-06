@@ -13,17 +13,13 @@ import (
 func TestMultiUserAuthorization(t *testing.T) {
 	cleanupDatabase(t)
 
-	// Setup: create two users
 	accessTokenA := setupTestUser(t, "userA@example.com", "password123")
 	accessTokenB := setupTestUser(t, "userB@example.com", "password123")
 
-	// User A creates business
 	setupTestBusiness(t, accessTokenA)
 
-	// User B creates business
 	setupTestBusiness(t, accessTokenB)
 
-	// User A creates conversation
 	var conversationIDA string
 	t.Run("UserACreatesConversation", func(t *testing.T) {
 		payload := map[string]interface{}{
@@ -46,7 +42,6 @@ func TestMultiUserAuthorization(t *testing.T) {
 		conversationIDA = result["id"].(string)
 	})
 
-	// User B creates conversation
 	var conversationIDB string
 	t.Run("UserBCreatesConversation", func(t *testing.T) {
 		payload := map[string]interface{}{
@@ -77,7 +72,6 @@ func TestMultiUserAuthorization(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should return 403 Forbidden (authorization check in handler)
 		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	})
 
@@ -89,7 +83,6 @@ func TestMultiUserAuthorization(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should return 403 Forbidden (authorization check in handler)
 		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	})
 
@@ -148,8 +141,6 @@ func TestMultiUserAuthorization(t *testing.T) {
 	})
 
 	t.Run("UserBCannotAccessUserABusiness", func(t *testing.T) {
-		// User B tries to get User A's business
-		// Since business is tied to user, User B should see their own business, not A's
 		req, _ := http.NewRequest("GET", baseURL+"/api/v1/business", nil)
 		req.Header.Set("Authorization", "Bearer "+accessTokenB)
 
@@ -161,7 +152,6 @@ func TestMultiUserAuthorization(t *testing.T) {
 
 		var result map[string]interface{}
 		json.NewDecoder(resp.Body).Decode(&result)
-		// The business should belong to User B
 		assert.NotNil(t, result["userId"])
 	})
 
@@ -188,7 +178,6 @@ func TestMultiUserAuthorization(t *testing.T) {
 
 		var result []interface{}
 		json.NewDecoder(resp.Body).Decode(&result)
-		// Should be empty or contain only User A's integrations
 		assert.NotNil(t, result)
 	})
 }

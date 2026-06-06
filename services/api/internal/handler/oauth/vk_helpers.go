@@ -16,7 +16,6 @@ import (
 // resolveVKGroupID turns user input (numeric id, screen_name, or full VK URL)
 // into a numeric VK group id via groups.getById with the Mini-App service key.
 func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (string, error) {
-	// Strip URL prefix: https://vk.com/mygroup → mygroup
 	input = strings.TrimSpace(input)
 	for _, prefix := range vkapi.URLPrefixes {
 		input = strings.TrimPrefix(input, prefix)
@@ -28,7 +27,6 @@ func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (stri
 	if input == "" {
 		return "", fmt.Errorf("empty group id/URL")
 	}
-	// If already a positive numeric ID, return as-is.
 	if _, err := strconv.ParseUint(input, 10, 64); err == nil {
 		return input, nil
 	}

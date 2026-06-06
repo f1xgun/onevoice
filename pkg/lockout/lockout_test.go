@@ -27,10 +27,6 @@ func newTestLockout(t *testing.T, cfg lockout.Config) (*lockout.Lockout, *minire
 }
 
 func TestRecordFailure_IncrementsAtomically(t *testing.T) {
-	// 50 concurrent goroutines each INCR once. INCR is atomic in Redis
-	// (PITFALL §6.4) so the final count MUST be exactly 50, not "around 50".
-	// This catches the classic GET → +1 → SET regression where two callers
-	// observe the same baseline and lose increments.
 	l, _ := newTestLockout(t, lockout.Config{})
 	ctx := context.Background()
 
@@ -52,9 +48,6 @@ func TestRecordFailure_IncrementsAtomically(t *testing.T) {
 }
 
 func TestGetTier_Boundaries(t *testing.T) {
-	// Hit every transition exactly: 0→Normal, 3→Normal, 4→Captcha,
-	// 9→Captcha, 10→Locked, 100→Locked. Fence-post bugs in the threshold
-	// comparison (>= vs >) would surface here.
 	tests := []struct {
 		failures int
 		want     lockout.Tier
@@ -99,9 +92,6 @@ func TestClear_RemovesKey(t *testing.T) {
 }
 
 func TestClearAllForEmail_RemovesPerIPVariants(t *testing.T) {
-	// Self-unlock: password-reset doesn't know which /16 buckets hold the
-	// failure counts. ClearAllForEmail must enumerate via SCAN and remove
-	// every variant for the email_hash.
 	l, _ := newTestLockout(t, lockout.Config{})
 	ctx := context.Background()
 
@@ -120,9 +110,6 @@ func TestClearAllForEmail_RemovesPerIPVariants(t *testing.T) {
 }
 
 func TestKeyFormat_HashesEmailLowercase(t *testing.T) {
-	// Case-insensitive folding: "Foo@Example.COM" and "foo@example.com"
-	// MUST resolve to the same Redis key — otherwise an attacker rotating
-	// case avoids the counter entirely.
 	l, _ := newTestLockout(t, lockout.Config{})
 	ctx := context.Background()
 
@@ -133,20 +120,13 @@ func TestKeyFormat_HashesEmailLowercase(t *testing.T) {
 
 	tier, err := l.GetTier(ctx, "FOO@example.com", "1.2.0.0/16")
 	require.NoError(t, err)
-	// 2 failures → still TierNormal. The point is that we observed BOTH
-	// increments on the same key, not that the threshold tripped.
 	assert.Equal(t, lockout.TierNormal, tier)
-	// Sanity check: a third increment of yet another casing variant lands
-	// us at 3 (still Normal under default thresholds), confirming key collision.
 	count, err := l.RecordFailure(ctx, "FOO@EXAMPLE.com", "1.2.0.0/16")
 	require.NoError(t, err)
 	assert.Equal(t, 3, count, "case variants must share one counter")
 }
 
 func TestRecordFailure_TTLSet(t *testing.T) {
-	// First INCR must arm an EXPIRE so the lock auto-clears after Duration.
-	// Without this, a counter would persist forever and 11 failures across
-	// a year would still surface as Locked.
 	l, mr := newTestLockout(t, lockout.Config{Duration: 5 * time.Minute})
 	ctx := context.Background()
 
@@ -158,7 +138,6 @@ func TestRecordFailure_TTLSet(t *testing.T) {
 	assert.Positive(t, ttl.Nanoseconds(), "TTL must be set on first failure")
 	assert.LessOrEqual(t, ttl, 5*time.Minute, "TTL must not exceed configured Duration")
 
-	// Advance miniredis clock past Duration — key should vanish, tier → Normal.
 	mr.FastForward(6 * time.Minute)
 	tier, err := l.GetTier(ctx, "alice@example.com", "1.2.0.0/16")
 	require.NoError(t, err)
@@ -166,9 +145,6 @@ func TestRecordFailure_TTLSet(t *testing.T) {
 }
 
 func TestRecordFailure_TTLNotResetOnSubsequentFailures(t *testing.T) {
-	// The EXPIRE-on-first-create pattern: subsequent INCRs do NOT reset the
-	// TTL. This guards against an attacker keeping the lock "fresh" forever
-	// by hammering one failure every 14 minutes.
 	l, _ := newTestLockout(t, lockout.Config{Duration: 10 * time.Minute})
 	ctx := context.Background()
 
@@ -182,8 +158,5 @@ func TestRecordFailure_TTLNotResetOnSubsequentFailures(t *testing.T) {
 	ttl2, err := l.TTL(ctx, "alice@example.com", "1.2.0.0/16")
 	require.NoError(t, err)
 
-	// ttl2 must not exceed ttl1 (it should be ≤ since time has elapsed).
-	// Without the "if ttl<0 then expire" guard, a re-EXPIRE would happen on
-	// every INCR and ttl2 would equal Duration.
 	assert.LessOrEqual(t, ttl2, ttl1, "TTL must not be re-armed on subsequent failures")
 }

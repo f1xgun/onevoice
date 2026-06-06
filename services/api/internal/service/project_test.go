@@ -137,8 +137,6 @@ func TestProjectService_Create(t *testing.T) {
 			Name:          "Reviews",
 			SystemPrompt:  "you reply",
 			WhitelistMode: domain.WhitelistModeAll,
-			// AllowedTools + QuickActions intentionally nil — service must
-			// normalize to empty slices so JSON serializes as `[]` not `null`.
 		})
 		require.NoError(t, err)
 		require.NotNil(t, got)

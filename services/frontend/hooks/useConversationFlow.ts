@@ -125,11 +125,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
   const accessToken = useAuthStore((s) => s.accessToken);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  // Separate abort controllers so send and resolve/resume flows never cancel each other.
   const sendAbortRef = useRef<AbortController | null>(null);
   const resumeAbortRef = useRef<AbortController | null>(null);
-  // SSE 'done' invalidates the conversations cache for out-of-band auto-title pickup.
-  // NEVER mux titles into chat SSE.
   const queryClient = useQueryClient();
 
   const applyEventToLastAssistant = useCallback((event: Record<string, unknown>) => {
@@ -140,8 +137,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     });
   }, []);
 
-  // Mount-load accepts legacy ApiMessage[] or {messages, pendingApprovals} envelope.
-  // Sole /messages round trip; envelope's first batch flows into pendingApproval.
   useEffect(() => {
     setIsLoading(true);
     fetch(messagesUrl(activeBusinessId, conversationId), {
@@ -166,8 +161,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
                 m.toolCalls && m.toolCalls.length > 0
                   ? m.toolCalls.map((tc) => {
                       const result = m.toolResults?.find((r) => r.toolCallId === tc.id);
-                      // No tool_result → run was interrupted; mark 'aborted'
-                      // so the UI doesn't show a green checkmark.
                       const status: ToolCall['status'] = result
                         ? result.isError
                           ? 'error'
@@ -196,7 +189,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
             })
           );
         }
-        // Hydration: surface the first persisted batch into pendingApproval.
         if (payload && !Array.isArray(payload)) {
           const pendings = (payload as { pendingApprovals?: unknown[] }).pendingApprovals;
           if (Array.isArray(pendings) && pendings.length > 0) {
@@ -209,10 +201,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       .finally(() => setIsLoading(false));
   }, [conversationId, accessToken, activeBusinessId]);
 
-  // handleChatSSEEvent — invariant for the LIVE send-message stream.
-  // tool_approval_required flips pendingApproval and the goroutine on
-  // the server closes naturally afterwards (the orchestrator already
-  // persisted the batch).
   const handleChatSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
       if (event.type === 'done') {
@@ -226,7 +214,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           batchId: event.batch_id as string,
           status: 'pending',
           createdAt: new Date().toISOString(),
-          // expiresAt set by GET /messages hydration path, not SSE.
           calls: rawCalls.map((c) => ({
             callId: c.call_id as string,
             toolName: c.tool_name as string,
@@ -236,7 +223,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           })),
         };
         setPendingApproval(approval);
-        // Do NOT abort — orchestrator closes naturally; aborting masks errors.
         return;
       }
       applyEventToLastAssistant(event);
@@ -244,20 +230,11 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     [queryClient, activeBusinessId, applyEventToLastAssistant]
   );
 
-  // Stable ref so the send-message closure can dispatch to the latest
-  // handler without being recreated when handleChatSSEEvent's identity
-  // changes between renders.
   const onEventRef = useRef<(event: Record<string, unknown>) => void>(handleChatSSEEvent);
   useEffect(() => {
     onEventRef.current = handleChatSSEEvent;
   });
 
-  // Force the last assistant message (if still in `streaming` state) into
-  // `done`. Used by sendMessage's finally-block so a stream that closes
-  // without an explicit `done` event (HITL pause path on
-  // tool_approval_required or a hung provider) still clears the typing
-  // indicator. No-op when the last message is the user turn or already
-  // done.
   const finalizeStreamingAssistant = useCallback(() => {
     setMessages((prev) => {
       const last = prev[prev.length - 1];
@@ -319,11 +296,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           ];
         });
       } finally {
-        // Server-side closes the stream without a `done` event in two
-        // legitimate cases: tool_approval_required (HITL pause) and a
-        // hung upstream provider. Force the bubble out of streaming so
-        // the typing indicator clears; the resume stream below will
-        // re-flip back to streaming if it reopens.
         finalizeStreamingAssistant();
         setIsStreaming(false);
         isStreamingRef.current = false;
@@ -336,21 +308,11 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     sendAbortRef.current?.abort();
   }, []);
 
-  // resolveApproval — submit the user's per-call decisions to the API,
-  // project synthetic rejection frames into the assistant message
-  // immediately so rejected calls leave a visible trail, then open the
-  // resume SSE that extends the same assistant message via
-  // applyEventToLastAssistant. The persisted batch on the server is the
-  // source of truth — a reload re-hydrates from GET /messages, so
-  // pendingApproval is cleared on completion regardless of SSE outcome.
   const resolveApproval = useCallback(
     async (decisions: ApprovalDecision[]) => {
       if (!pendingApproval) return;
       if (isResolvingRef.current) return; // debounce — composer is also disabled
 
-      // Defensive sanitization at the trust boundary. toolName is pinned
-      // server-side; we never echo the `tool_name` key from edited_args.
-      // reject_reason is clamped to 500 chars (server caps too).
       const sanitizedDecisions: ApprovalDecision[] = decisions.map((d) => {
         const copy: ApprovalDecision = { id: d.id, action: d.action };
         if (d.action === 'edit' && d.edited_args) {
@@ -370,7 +332,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       isResolvingRef.current = true;
       setIsResolving(true);
 
-      // 1) POST resolve — plain JSON.
       let resolveRes: Response;
       try {
         resolveRes = await fetch(
@@ -395,26 +356,13 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         let errBody: unknown = null;
         try {
           errBody = await resolveRes.json();
-        } catch {
-          // ignore parse failure — resolveError handles null body
-        }
+        } catch {}
         toast.error(resolveError(resolveRes.status, errBody));
-        // card stays open; ToolApprovalCard re-enables Submit.
         isResolvingRef.current = false;
         setIsResolving(false);
         return;
       }
 
-      // Project the user's rejection decisions into the assistant message
-      // before the resume SSE opens so a rejected call leaves a visible
-      // trail (red-bordered card with the "Отклонено пользователем" badge
-      // and the operator's reason). Without this the rejected call would
-      // live only in pendingApproval and vanish on clear — the empty
-      // bubble would then be suppressed entirely, leaving no record at
-      // all that a tool was invoked and refused. applySSEEvent dedupes
-      // by tool_call_id when the server emits its own tool_rejected event
-      // during resume. Only `reject` decisions are projected —
-      // approve/edit calls produce their own real frames on the stream.
       for (const c of pendingApproval.calls) {
         const dec = sanitizedDecisions.find((d) => d.id === c.callId);
         if (dec?.action !== 'reject') continue;
@@ -427,15 +375,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         });
       }
 
-      // 2) Open the resume SSE — extends the existing assistant message
-      // via applyEventToLastAssistant. Each `done` frame triggers the
-      // same conversations cache invalidation as the live path.
       const controller = new AbortController();
       resumeAbortRef.current = controller;
-      // Track whether the server emitted a real `done` so the finally
-      // block doesn't double-fire one. The synthetic frame is a fallback
-      // for the case where the resume stream closes after tool_rejected
-      // without a terminal `done` event.
       let sawDone = false;
 
       try {
@@ -460,14 +401,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         if ((err as Error).name === 'AbortError') return;
         toast.error(resumeStreamError);
       } finally {
-        // Clear pendingApproval whether resume completed or errored. The
-        // persisted batch on the server is the source of truth; a reload
-        // re-hydrates from GET /messages.
         setPendingApproval(null);
         if (!sawDone) {
-          // Fallback: server closed without a terminal `done` (legit
-          // after a synthetic tool_rejected). Flip the bubble out of
-          // streaming so the typing indicator clears.
           applyEventToLastAssistant({ type: 'done' });
         }
         isResolvingRef.current = false;

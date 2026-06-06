@@ -86,7 +86,6 @@ vi.mock('@/lib/api', () => ({
 }));
 
 function setupApi() {
-  // Business-scoped calls via bizApi
   bizApiGet.mockImplementation((_bizId: string, path: string) => {
     if (path === '/conversations' || path.startsWith('/conversations')) {
       return Promise.resolve({ data: [sampleConv] });
@@ -100,7 +99,6 @@ function setupApi() {
     return Promise.resolve({ data: null });
   });
 
-  // Non-business-scoped calls via plain api (NavRail integration badge)
   apiGet.mockImplementation((url: string) => {
     if (url === '/integrations') {
       return Promise.resolve({ data: [] });
@@ -133,20 +131,16 @@ describe('mobile drawer', () => {
     const user = userEvent.setup();
     render(<Sidebar />, { wrapper: Wrapper });
 
-    // Open the drawer.
     await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
-    // Wait for the conversation list to hydrate.
     await waitFor(() => {
       expect(screen.getByText('Первый чат')).toBeInTheDocument();
     });
 
-    // Click the chat-row Link → onNavigate → setOpen(false).
     await user.click(screen.getByRole('link', { name: /Первый чат/ }));
 
-    // Radix unmounts the dialog from the DOM after close-state animation.
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
@@ -160,17 +154,13 @@ describe('mobile drawer', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
-    // Wait for the project list to hydrate.
     await waitFor(() => {
       expect(screen.getByText('Отзывы')).toBeInTheDocument();
     });
 
-    // Click the «Свернуть «Отзывы»» chevron — local-state toggle, NOT
-    // a navigation event. Drawer must stay open.
     const collapseBtn = screen.getByRole('button', { name: /Свернуть «Отзывы»/ });
     await user.click(collapseBtn);
 
-    // Drawer is still in the DOM.
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
@@ -186,19 +176,11 @@ describe('mobile drawer', () => {
       expect(screen.getByText('Первый чат')).toBeInTheDocument();
     });
 
-    // Open the «Меню чата …» dropdown trigger. The drawer must remain open
-    // — opening a context menu is not a navigation event.
     const menuTriggers = screen.getAllByRole('button', { name: /Меню чата/ });
     await user.click(menuTriggers[0]);
 
-    // When the DropdownMenu opens, Radix sets aria-hidden=true on background
-    // elements (including the parent Sheet) — so `screen.getByRole('dialog')`
-    // would not find it. The dialog is still IN THE DOM though; we assert
-    // its physical presence via querySelector. The menu role="menu" being
-    // present is the proxy for "menu opened".
     const dialog = container.ownerDocument.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
-    // Sanity check: the menu is open (this is what made aria-hidden flip).
     expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 });

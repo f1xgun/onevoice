@@ -52,7 +52,6 @@ func run() error {
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentGoogleBusiness, transport, handler.Handle)
 
-	// Health server
 	hc := health.New()
 	hc.AddCheck("nats", func(ctx context.Context) error {
 		if !nc.IsConnected() {

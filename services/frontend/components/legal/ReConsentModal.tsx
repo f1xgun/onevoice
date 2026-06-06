@@ -42,17 +42,12 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
       await postReconsent(
         policies.map((p) => ({ slug: p.slug, version: p.newVersion, sha256: p.sha256 }))
       );
-      // 204: clear server-side flag, reload so /auth/me re-fetches and
-      // the modal unmounts (router.refresh is insufficient because the
-      // browser-side auth store still carries the old requiresReconsent).
       window.location.reload();
     } catch (e) {
       const err = e as ConsentError;
       setSubmitting(false);
       if (err.code === 'version_mismatch') {
         toast.error(t('error.versionMismatch'));
-        // Conditions bumped mid-review — reload so the user sees the
-        // fresh diff and re-confirms.
         window.location.reload();
         return;
       }
@@ -64,9 +59,6 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      // Best-effort server-side logout to invalidate the refresh
-      // cookie. If it fails (network, 5xx) we still bounce to /login —
-      // the in-memory token is dropped via logout.
       await api.post('/auth/logout').catch(() => undefined);
     } finally {
       logout();
@@ -79,10 +71,6 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[oklch(0.20_0.012_60/0.55)] data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
-          // UI-SPEC §E: aria contract uses role="alertdialog"
-          // (forced interruption requiring acknowledgement, not just
-          // "dialog"). Both Escape AND outside-click are explicit no-ops
-          // so the user has no involuntary exit path.
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="reconsent-heading"
@@ -132,14 +120,7 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
           </div>
 
           <label className="flex cursor-pointer items-start gap-3 py-2">
-            <Checkbox
-              checked={checked}
-              onCheckedChange={(v) => setChecked(v === true)}
-              // Focus this checkbox on mount per UI-SPEC §E "first focusable
-              // element on mount is the checkbox (NOT the logout button — user
-              // should review first then tick)".
-              autoFocus
-            />
+            <Checkbox checked={checked} onCheckedChange={(v) => setChecked(v === true)} autoFocus />
             <span className="text-[14px] leading-[1.4] text-[var(--ov-ink)]">{t('checkbox')}</span>
           </label>
 

@@ -51,10 +51,6 @@ export function ToolApprovalAccordionEntry({
   const t = useTranslations('chat.toolApproval');
   const [open, setOpen] = useState(false);
 
-  // Auto-expand when the user picks Edit or Reject — per UI-SPEC the
-  // relevant body (form or textarea) must reveal itself the moment the
-  // decision is selected. Switching back to Approve does NOT force close;
-  // the user may have other context they want to keep visible.
   useEffect(() => {
     if (draft.decision === 'edit' || draft.decision === 'reject') {
       setOpen(true);
@@ -71,9 +67,6 @@ export function ToolApprovalAccordionEntry({
   return (
     <div
       className={cn('rounded-md border', amberHighlighted && 'ring-2 ring-amber-400')}
-      // Dynamic per-platform border color — sanctioned inline-style
-      // exception shared with ToolCard.tsx / ToolCallsBlock.tsx. AGENTS.md
-      // "Tailwind only" rule allows this for dynamic values.
       style={{ borderLeftColor: color, borderLeftWidth: 3 }}
     >
       <Collapsible open={open} onOpenChange={setOpen}>

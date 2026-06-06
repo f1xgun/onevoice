@@ -44,7 +44,7 @@ func (r *messageRepository) ListByConversationID(ctx context.Context, conversati
 	opts := options.Find().
 		SetLimit(int64(limit)).
 		SetSkip(int64(offset)).
-		SetSort(bson.M{"created_at": 1}) // Chronological order (oldest first)
+		SetSort(bson.M{"created_at": 1})
 
 	cursor, err := r.collection.Find(ctx, bson.M{"conversation_id": conversationID}, opts)
 	if err != nil {
@@ -173,8 +173,6 @@ func (r *messageRepository) SearchByConversationIDs(
 
 	pipeline := mongo.Pipeline{
 		bson.D{{Key: "$match", Value: matchStage}},
-		// Sort by recency so $group's $first picks the most-recently-created
-		// matching message per conversation — best snippet for chat search.
 		bson.D{{Key: "$sort", Value: bson.D{{Key: "created_at", Value: -1}}}},
 		bson.D{{Key: "$group", Value: bson.D{
 			{Key: "_id", Value: "$conversation_id"},
@@ -182,9 +180,6 @@ func (r *messageRepository) SearchByConversationIDs(
 			{Key: "top_content", Value: bson.D{{Key: "$first", Value: "$content"}}},
 			{Key: "match_count", Value: bson.D{{Key: "$sum", Value: 1}}},
 		}}},
-		// `top_score` exists in domain.MessageSearchHit for compat with the
-		// previous $text-based ranking. Bind it to match_count so the
-		// downstream merge in service.Searcher keeps a stable contract.
 		bson.D{{Key: "$addFields", Value: bson.M{
 			"top_score": "$match_count",
 		}}},
