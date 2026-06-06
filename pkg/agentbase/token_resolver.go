@@ -34,7 +34,7 @@ type TokenInfo struct {
 // what every agent handler in this repo uses — prefer it over rolling a
 // new classification.
 type TokenResolver interface {
-	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
+	GetToken(ctx context.Context, businessID, platform, externalID, reason string) (TokenInfo, error)
 }
 
 // WrapTokenFetchError classifies a token-fetch error for the agent retry
@@ -87,12 +87,13 @@ func NewTokenResolver(c *tokenclient.Client) TokenResolver {
 // GetToken delegates to the wrapped *tokenclient.Client and remaps the
 // response into a TokenInfo. The mapping is the same one repeated across the
 // four agent tokenAdapter implementations: AccessToken / UserToken /
-// ExternalID. Any other fields on tokenclient.TokenResponse (Metadata,
-// ExpiresAt, UserTokenExpires, IntegrationID) are intentionally NOT exposed
-// because no agent currently consumes them — adding them would violate the
-// "no speculative surface" rule.
-func (r *tokenResolverImpl) GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error) {
-	resp, err := r.client.GetToken(ctx, businessID, platform, externalID)
+// ExternalID. reason is forwarded verbatim to the client so the server-side
+// decrypt audit row records the caller's purpose. Any other fields on
+// tokenclient.TokenResponse (Metadata, ExpiresAt, UserTokenExpires,
+// IntegrationID) are intentionally NOT exposed because no agent currently
+// consumes them — adding them would violate the "no speculative surface" rule.
+func (r *tokenResolverImpl) GetToken(ctx context.Context, businessID, platform, externalID, reason string) (TokenInfo, error) {
+	resp, err := r.client.GetToken(ctx, businessID, platform, externalID, reason)
 	if err != nil {
 		return TokenInfo{}, err
 	}

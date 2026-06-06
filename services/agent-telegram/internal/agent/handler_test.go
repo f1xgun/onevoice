@@ -30,7 +30,7 @@ type fakeTokenFetcher struct {
 	lastExtID    string
 }
 
-func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, externalID string) (agent.TokenInfo, error) {
+func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, externalID, _ string) (agent.TokenInfo, error) {
 	f.lastBizID = businessID
 	f.lastPlatform = platform
 	f.lastExtID = externalID

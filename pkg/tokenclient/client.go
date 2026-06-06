@@ -82,7 +82,11 @@ func cacheKey(businessID, platform, externalID string) string {
 	return businessID + ":" + platform + ":" + externalID
 }
 
-func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID string) (*TokenResponse, error) {
+// GetToken fetches a decrypted token from the API internal endpoint, caching
+// the result by (businessID, platform, externalID). reason records the caller's
+// purpose for the server-side decrypt audit row; it is forwarded as a URL query
+// param and deliberately does NOT participate in the cache key.
+func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID, reason string) (*TokenResponse, error) {
 	key := cacheKey(businessID, platform, externalID)
 
 	c.mu.RLock()
@@ -95,11 +99,12 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 	}
 	c.mu.RUnlock()
 
-	u := fmt.Sprintf("%s/internal/v1/tokens?business_id=%s&platform=%s&external_id=%s",
+	u := fmt.Sprintf("%s/internal/v1/tokens?business_id=%s&platform=%s&external_id=%s&reason=%s",
 		c.baseURL,
 		url.QueryEscape(businessID),
 		url.QueryEscape(platform),
 		url.QueryEscape(externalID),
+		url.QueryEscape(reason),
 	)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", u, http.NoBody)

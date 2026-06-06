@@ -46,7 +46,7 @@ func TestGetToken_FetchesFromAPI(t *testing.T) {
 
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
-	got, err := client.GetToken(context.Background(), "biz-1", "vk", "group-456")
+	got, err := client.GetToken(context.Background(), "biz-1", "vk", "group-456", "test")
 	require.NoError(t, err)
 	assert.Equal(t, "secret-token", got.AccessToken)
 	assert.Equal(t, "group-456", got.ExternalID)
@@ -64,10 +64,10 @@ func TestGetToken_CachesResult(t *testing.T) {
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
 
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.NoError(t, err)
 
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(1), callCount.Load(), "should only call API once due to caching")
@@ -85,11 +85,11 @@ func TestGetToken_CallerMutationDoesNotCorruptCache(t *testing.T) {
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
 
-	first, err := client.GetToken(context.Background(), "b", "vk", "g")
+	first, err := client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.NoError(t, err)
 	first.AccessToken = "tampered"
 
-	second, err := client.GetToken(context.Background(), "b", "vk", "g")
+	second, err := client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.NoError(t, err)
 	assert.Equal(t, "secret", second.AccessToken, "cache must not reflect caller mutation of a prior return value")
 	assert.Equal(t, int32(1), callCount.Load(), "second call must still be cache-served")
@@ -103,7 +103,7 @@ func TestGetToken_NotFound(t *testing.T) {
 
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrIntegrationNotFound),
 		"404 must surface as ErrIntegrationNotFound; got %v", err)
@@ -118,7 +118,7 @@ func TestGetToken_Gone(t *testing.T) {
 
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrTokenExpired),
 		"410 must surface as ErrTokenExpired; got %v", err)
@@ -138,7 +138,7 @@ func TestGetToken_ServerError_IsTransient(t *testing.T) {
 
 			client, err := New(srv.URL, nil)
 			require.NoError(t, err)
-			_, err = client.GetToken(context.Background(), "b", "vk", "g")
+			_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 			require.Error(t, err)
 			assert.True(t, errors.Is(err, ErrTransient),
 				"%d must surface as ErrTransient; got %v", status, err)
@@ -157,7 +157,7 @@ func TestGetToken_NetworkError_IsTransient(t *testing.T) {
 
 	client, err := New("http://"+addr, &http.Client{Timeout: 500 * time.Millisecond})
 	require.NoError(t, err)
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrTransient),
 		"network failure must surface as ErrTransient; got %v", err)
@@ -174,7 +174,7 @@ func TestGetToken_UnexpectedNon5xx_NoSentinel(t *testing.T) {
 
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, ErrTransient),
 		"4xx other than 404/410 must NOT chain ErrTransient — likely a bug not a blip")
@@ -318,7 +318,7 @@ func TestGetToken_mTLS_Success(t *testing.T) {
 
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
-	got, err := client.GetToken(context.Background(), "b", "vk", "g")
+	got, err := client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.NoError(t, err)
 	assert.Equal(t, "mtls-ok", got.AccessToken)
 }
@@ -344,7 +344,7 @@ func TestGetToken_mTLS_RejectsUnsignedClient(t *testing.T) {
 
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrTransient),
 		"unsigned client cert handshake failure must surface as ErrTransient; got %v", err)
@@ -378,7 +378,7 @@ func TestGetToken_mTLS_PlainHTTPRejected(t *testing.T) {
 
 	client, err := New(plainURL, &http.Client{Timeout: 2 * time.Second})
 	require.NoError(t, err)
-	tok, err := client.GetToken(context.Background(), "b", "vk", "g")
+	tok, err := client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.Error(t, err, "TLS-only listener must NEVER serve a useful response to a plain-HTTP client")
 	assert.Nil(t, tok, "no token should leak through a plain-HTTP attempt against a TLS-only listener")
 	assert.False(t, errors.Is(err, ErrIntegrationNotFound))
@@ -401,10 +401,10 @@ func TestGetToken_CacheEvictsExpiringSoon(t *testing.T) {
 	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
 
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.NoError(t, err)
 
-	_, err = client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "test")
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(2), callCount.Load(), "should call API twice since token is expiring soon")
@@ -470,4 +470,60 @@ func TestNew_CallerProvidedClient_BypassesMTLSCheck(t *testing.T) {
 	c, err := New("https://api.test", custom)
 	require.NoError(t, err, "caller-supplied client must bypass mTLS env loading")
 	require.NotNil(t, c)
+}
+
+// TestGetToken_PassesReasonAsQueryParam verifies the reason is forwarded as a
+// URL-escaped query param so the server-side decrypt audit row records purpose.
+func TestGetToken_PassesReasonAsQueryParam(t *testing.T) {
+	var gotReason string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotReason = r.URL.Query().Get("reason")
+		require.NoError(t, json.NewEncoder(w).Encode(&TokenResponse{AccessToken: "tok"}))
+	}))
+	defer srv.Close()
+
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "vk__create_post")
+	require.NoError(t, err)
+	assert.Equal(t, "vk__create_post", gotReason, "reason must reach the server as a query param")
+}
+
+// TestGetToken_ReasonURLEscaped verifies a reason containing URL-special
+// characters is escaped in the outgoing request and decodes back intact.
+func TestGetToken_ReasonURLEscaped(t *testing.T) {
+	var gotReason string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotReason = r.URL.Query().Get("reason")
+		require.NoError(t, json.NewEncoder(w).Encode(&TokenResponse{AccessToken: "tok"}))
+	}))
+	defer srv.Close()
+
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "probe with spaces & symbols")
+	require.NoError(t, err)
+	assert.Equal(t, "probe with spaces & symbols", gotReason, "escaped reason must decode back intact")
+}
+
+// TestGetToken_ReasonDoesNotAffectCacheKey verifies that two calls with the
+// same (businessID, platform, externalID) but different reasons return the
+// cached entry — reason must NOT participate in the cache key.
+func TestGetToken_ReasonDoesNotAffectCacheKey(t *testing.T) {
+	var callCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		callCount.Add(1)
+		require.NoError(t, json.NewEncoder(w).Encode(&TokenResponse{AccessToken: "tok"}))
+	}))
+	defer srv.Close()
+
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "reason_one")
+	require.NoError(t, err)
+	_, err = client.GetToken(context.Background(), "b", "vk", "g", "reason_two")
+	require.NoError(t, err)
+
+	assert.Equal(t, int32(1), callCount.Load(), "different reasons must still hit the same cache entry")
 }
