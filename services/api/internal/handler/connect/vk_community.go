@@ -158,7 +158,7 @@ func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.R
 	}
 
 	accessToken := ""
-	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID); tokErr == nil && tok != nil {
+	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID, "vk_community_probe"); tokErr == nil && tok != nil {
 		accessToken = tok.AccessToken
 	}
 

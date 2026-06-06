@@ -82,7 +82,7 @@ func (t *TelegramSyncer) SyncPhoto(ctx context.Context, b *domain.Business, inte
 }
 
 func (t *TelegramSyncer) syncTelegramTitle(ctx context.Context, businessID uuid.UUID, channelID, title string) error {
-	botToken, err := t.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID)
+	botToken, err := t.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID, "telegram_sync_chats")
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
 		return fmt.Errorf("get token: %w", err)
@@ -123,7 +123,7 @@ func (t *TelegramSyncer) syncTelegramTitle(ctx context.Context, businessID uuid.
 }
 
 func (t *TelegramSyncer) syncTelegramDescription(ctx context.Context, businessID uuid.UUID, channelID, description string) error {
-	botToken, err := t.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID)
+	botToken, err := t.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID, "telegram_sync_channel_meta")
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
 		return fmt.Errorf("get token: %w", err)
@@ -164,7 +164,7 @@ func (t *TelegramSyncer) syncTelegramDescription(ctx context.Context, businessID
 }
 
 func (t *TelegramSyncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, channelID, logoURL string) error {
-	botToken, err := t.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID)
+	botToken, err := t.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID, "telegram_sync_users")
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
 		return fmt.Errorf("get token: %w", err)
