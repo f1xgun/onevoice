@@ -17,8 +17,6 @@ import (
 // placeholder "Введите в формате «Пн-Пт 9:00-18:00»".
 // hoursJSON is passed from the LLM — we convert it to the Yandex text format.
 func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) error {
-	// Convert whatever JSON the LLM sends into a simple text string
-	// for the Yandex input field (e.g. "Пн-Пт 9:00-18:00, Сб 10:00-15:00")
 	hoursText := formatHoursForYandex(hoursJSON)
 	if hoursText == "" {
 		return a2a.NewNonRetryableError(fmt.Errorf("could not parse hours from: %s", hoursJSON))
@@ -31,7 +29,6 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 					return err
 				}
 
-				// Find the hours input field
 				hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
 				if err := hoursInput.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(listItemTimeoutMs),
@@ -41,14 +38,12 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 					return fmt.Errorf("hours input not found — DOM may have changed")
 				}
 
-				// Triple-click to select all, then type new value
 				if err := hoursInput.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
 					return fmt.Errorf("click hours input: %w", err)
 				}
 				if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(keyboardDelayDefaultMs)}); err != nil {
 					return fmt.Errorf("type hours: %w", err)
 				}
-				// Blur to trigger Yandex auto-format and show save button
 				_ = page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
 					Timeout: playwright.Float(uiPollTimeoutMs),
 				})
@@ -68,14 +63,11 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 // formatHoursForYandex converts LLM-generated hours JSON into the text format
 // that Yandex.Business expects: "Пн-Пт 9:00-18:00, Сб 10:00-15:00"
 func formatHoursForYandex(hoursJSON string) string {
-	// Try parsing as structured JSON first
 	var structured map[string]interface{}
 	if err := json.Unmarshal([]byte(hoursJSON), &structured); err != nil {
-		// If not valid JSON, assume it's already a text string
 		return hoursJSON
 	}
 
-	// Map day names to Russian abbreviations
 	dayMap := map[string]string{
 		"monday": "Пн", "tuesday": "Вт", "wednesday": "Ср",
 		"thursday": "Чт", "friday": "Пт", "saturday": "Сб", "sunday": "Вс",
@@ -86,7 +78,6 @@ func formatHoursForYandex(hoursJSON string) string {
 	}
 	dayOrder := []string{"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"}
 
-	// Build per-day hours
 	type dayHrs struct {
 		open, close string
 	}
@@ -130,7 +121,6 @@ func formatHoursForYandex(hoursJSON string) string {
 		}
 	}
 
-	// Group consecutive days with same hours
 	var parts []string
 	i := 0
 	for i < len(dayOrder) {
@@ -140,7 +130,6 @@ func formatHoursForYandex(hoursJSON string) string {
 			i++
 			continue
 		}
-		// Find consecutive days with same hours
 		j := i + 1
 		for j < len(dayOrder) {
 			nextH, ok := days[dayOrder[j]]

@@ -89,7 +89,6 @@ func Tr(ctx context.Context, key string, args ...any) string {
 func TrTag(tag language.Tag, key string, args ...any) string {
 	template, ok := lookup(tag, key)
 	if !ok {
-		// EN miss → RU fallback. If RU also misses, surface the key.
 		if template, ok = ru[key]; !ok {
 			return key
 		}
@@ -162,11 +161,6 @@ func MatchAcceptLanguage(header string) language.Tag {
 		return DefaultTag
 	}
 	matched, _, conf := Matcher.Match(tags...)
-	// `language.NewMatcher` falls back to English for any unmatched input
-	// regardless of Supported order (its "neutral" default), so the
-	// confidence value is what actually tells us if a real match happened.
-	// Anything below Low is effectively a guess — treat it as "no match" and
-	// honor our own DefaultTag instead.
 	if conf == language.No {
 		return DefaultTag
 	}

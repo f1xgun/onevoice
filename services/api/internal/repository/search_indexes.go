@@ -25,7 +25,6 @@ func EnsureSearchIndexes(ctx context.Context, db *mongo.Database) error {
 			if errors.As(err, &cmdErr) && cmdErr.Code == 27 {
 				return
 			}
-			// Non-fatal: search itself doesn't need these indexes any more.
 			_ = err
 		}
 	}

@@ -80,8 +80,6 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 	case "text":
 		state.assistantText.WriteString(ev.Content)
 	case "tool_call":
-		// anti-footgun #4: propagate the LLM's real tool_call.id so
-		// tool_result correlation works downstream.
 		state.toolCalls = append(state.toolCalls, domain.ToolCall{
 			ID:        ev.ToolCallID,
 			Name:      ev.ToolName,
@@ -103,15 +101,11 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 		})
 		t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, ev.Code, state.idMap)
 	case "tool_approval_required":
-		// copy so the post-loop branch can read BatchID.
 		evCopy := ev
 		state.pauseEvent = &evCopy
 	case "error":
-		// Captured for assistant Message persist (avoids empty content
-		// poisoning loadHistory on the next turn).
 		state.streamErrContent = ev.Content
 	}
-	// "tool_rejected": forward-only — paired Message persisted in pause/done path.
 }
 
 // buildOrchestratorRequest assembles the JSON body forwarded to /chat/{id}.

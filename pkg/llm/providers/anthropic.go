@@ -63,7 +63,7 @@ func (p *AnthropicProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, er
 	opus47In, opus47Out := 5.0, 25.0
 	return []llm.ModelInfo{
 		{
-			ID:                 "claude-sonnet-4-6", // no SDK const yet — see anthropic_models.go ::SDK NOTE
+			ID:                 "claude-sonnet-4-6",
 			Name:               "Claude Sonnet 4.6",
 			Provider:           "anthropic",
 			ContextLength:      claudeSonnet4_6ContextLength,
@@ -85,7 +85,7 @@ func (p *AnthropicProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, er
 			SupportsVision:     true,
 		},
 		{
-			ID:                 "claude-opus-4-7", // no SDK const yet — see anthropic_models.go ::SDK NOTE
+			ID:                 "claude-opus-4-7",
 			Name:               "Claude Opus 4.7",
 			Provider:           "anthropic",
 			ContextLength:      claudeOpus4_7ContextLength,
@@ -182,10 +182,6 @@ func buildAnthropicMessagesV2(req llm.ChatRequest) ([]anthropic.TextBlockParam, 
 		switch m.Role {
 		case "system":
 			if preferSystemBlocks {
-				// Wiring bug: caller populated SystemBlocks AND left a
-				// role:"system" entry in Messages. Append it for safety so
-				// no content is silently dropped, but the canonical channel
-				// (SystemBlocks) leads the cache prefix.
 				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{
 					Text: m.Content,
 					Type: "text",
@@ -204,9 +200,6 @@ func buildAnthropicMessagesV2(req llm.ChatRequest) ([]anthropic.TextBlockParam, 
 				blocks = append(blocks, anthropic.NewTextBlock(m.Content))
 			}
 			for _, tc := range m.ToolCalls {
-				// Anthropic NewToolUseBlock accepts `input any`; the SDK's
-				// MarshalObject serializes json.RawMessage inline so the
-				// arguments JSON reaches the API unmodified.
 				var input any
 				if tc.Function.Arguments != "" {
 					input = json.RawMessage(tc.Function.Arguments)
@@ -244,11 +237,6 @@ func stampSystemCacheControl(req llm.ChatRequest, systemBlocks []anthropic.TextB
 		return
 	}
 	if len(req.SystemBlocks) > 0 {
-		// Walk req.SystemBlocks backwards for the last CacheBoundary=true
-		// index. The positional alignment with systemBlocks holds because
-		// buildAnthropicMessagesV2 emits exactly one TextBlockParam per
-		// SystemBlock (in order) before any defensive Messages-system
-		// appends.
 		for i := len(req.SystemBlocks) - 1; i >= 0; i-- {
 			if req.SystemBlocks[i].CacheBoundary {
 				if i < len(systemBlocks) {
@@ -259,7 +247,6 @@ func stampSystemCacheControl(req llm.ChatRequest, systemBlocks []anthropic.TextB
 		}
 		return
 	}
-	// Legacy scrub path — stamp the last block.
 	systemBlocks[len(systemBlocks)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
 }
 
@@ -268,8 +255,6 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 	start := time.Now()
 	systemBlocks, msgs := buildAnthropicMessagesV2(req)
 
-	// Stamp cache_control on the LAST CacheBoundary=true system block (or the
-	// last legacy-scrub block when SystemBlocks is empty).
 	stampSystemCacheControl(req, systemBlocks)
 
 	maxTokens := int64(req.MaxTokens)
@@ -314,8 +299,6 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 		}
 	}
 
-	// Prompt-cache metric emission. Safe even on cache misses — the helper
-	// skips zero-valued counters so we don't pollute Grafana with empty series.
 	metrics.RecordLLMCacheUsage(
 		req.Model,
 		int(resp.Usage.CacheReadInputTokens),

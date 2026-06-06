@@ -78,12 +78,7 @@ func walk(n *yaml.Node) {
 	}
 	switch n.Kind {
 	case yaml.MappingNode:
-		// A schema is recognised by having a `properties` map. We do not
-		// rely on the JSON pointer path because schemas appear under many
-		// locations: components.schemas.*, requestBody.content.*.schema,
-		// nested allOf entries, items, etc.
 		annotateSchemaProperties(n)
-		// Recurse into all values.
 		for i := 1; i < len(n.Content); i += 2 {
 			walk(n.Content[i])
 		}
@@ -181,15 +176,6 @@ func buildValidateTag(prop *yaml.Node, isRequired bool) string {
 
 	var rules []string
 
-	// validator.v10 ordering convention: required/omitempty first, then
-	// content rules. omitempty means "skip if zero", which matches the
-	// json:",omitempty" tag oapi-codegen emits for optional fields.
-	//
-	// nullable: true means the field accepts JSON null. We treat
-	// nullable as "optional for validation purposes" — even if the
-	// spec lists the field as required, an explicit null should not
-	// fail content rules like email/uuid. The handler can still
-	// enforce presence-of-pointer separately if needed.
 	if isRequired && !nullable {
 		rules = append(rules, "required")
 	} else {
@@ -226,7 +212,6 @@ func buildValidateTag(prop *yaml.Node, isRequired bool) string {
 				rules = append(rules, "max="+maximumNode.Value)
 			}
 		}
-		// enum applies to any scalar type.
 		if enumNode != nil && enumNode.Kind == yaml.SequenceNode && len(enumNode.Content) > 0 {
 			if v := enumOneof(enumNode); v != "" {
 				rules = append(rules, v)
@@ -234,14 +219,9 @@ func buildValidateTag(prop *yaml.Node, isRequired bool) string {
 		}
 	}
 
-	// Drop a lone "omitempty" — there is no point telling the
-	// validator to skip a zero value when there is nothing to check.
 	if len(rules) == 1 && rules[0] == "omitempty" {
 		return ""
 	}
-	// Likewise drop a lone "required" only if the field has nothing
-	// further to enforce AND it is a ref. For scalar required fields
-	// we keep `required` so the handler can rely on presence.
 	if len(rules) == 0 {
 		return ""
 	}
@@ -256,14 +236,9 @@ func enumOneof(seq *yaml.Node) string {
 	parts := make([]string, 0, len(seq.Content))
 	for _, n := range seq.Content {
 		if n.Kind != yaml.ScalarNode {
-			return "" // non-scalar enum (object literals) — skip rule entirely.
+			return ""
 		}
 		if n.Value == "" {
-			// Empty-string enum value (e.g. tri-state "inherit|all|...|''")
-			// cannot be expressed in `oneof=` because validator splits on
-			// whitespace with no escape. Skip the empty entry; the
-			// matching field is already optional (omitempty) so the empty
-			// string passes through without a tag rule.
 			continue
 		}
 		if strings.ContainsAny(n.Value, " \t\r\n") {
@@ -274,9 +249,6 @@ func enumOneof(seq *yaml.Node) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	// Stable ordering — independent of YAML node ordering churn would
-	// hide spec changes from CI; keep spec order so a reordered enum
-	// in the spec surfaces as a generator diff.
 	return "oneof=" + strings.Join(parts, " ")
 }
 
@@ -293,7 +265,6 @@ func setExtraValidateTag(prop *yaml.Node, tag string) {
 			extras,
 		)
 	}
-	// Replace existing validate key if present.
 	for i := 0; i+1 < len(extras.Content); i += 2 {
 		if extras.Content[i].Value == "validate" {
 			extras.Content[i+1].Value = tag
@@ -306,4 +277,3 @@ func setExtraValidateTag(prop *yaml.Node, tag string) {
 		&yaml.Node{Kind: yaml.ScalarNode, Value: tag, Style: yaml.DoubleQuotedStyle},
 	)
 }
-

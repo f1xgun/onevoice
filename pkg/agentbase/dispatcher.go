@@ -104,12 +104,9 @@ func (d *dispatcherImpl) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*
 				"error", uerr)
 			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
 		}
-		// The cached response was stored for the original TaskID; rewrite to
-		// this replay's TaskID so the orchestrator correlates correctly.
 		cachedResp.TaskID = req.TaskID
 		return &cachedResp, true
 	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
-		// Proceed with execution — no cached response.
 	}
 	return nil, false
 }

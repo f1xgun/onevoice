@@ -100,7 +100,6 @@ func (h *PostHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query parameters
 	filter := domain.PostFilter{
 		Platform: r.URL.Query().Get("platform"),
 		Status:   r.URL.Query().Get("status"),

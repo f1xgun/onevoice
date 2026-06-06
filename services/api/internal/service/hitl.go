@@ -183,8 +183,6 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 	for _, c := range batch.Calls {
 		d := decisionByID[c.CallID]
 		if d.Action == "edit" {
-			// tool_name pinned to c.ToolName from the persisted PendingCall;
-			// the client body's tool_name is never read here.
 			editable := s.toolsCache.EditableFields(c.ToolName)
 			if err := tools.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
 				return nil, err
@@ -198,7 +196,6 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		}
 	}
 
-	// Atomic status transition → 409 on concurrent-resolve race (anti-footgun).
 	if _, err := s.pendingRepo.AtomicTransitionToResolving(ctx, in.BatchID); err != nil {
 		if errors.Is(err, domain.ErrBatchNotPending) {
 			return nil, ErrHITLBatchAlreadyResolving
@@ -233,22 +230,15 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 
 	for i, c := range batch.Calls {
 		d := decisionByID[c.CallID]
-		// Copy the persisted call verbatim — tool_name, arguments, call_id stay pinned.
 		finalized[i] = c
 		finalized[i].Verdict = d.Action
 		finalized[i].EditedArgs = d.EditedArgs
 		finalized[i].RejectReason = d.RejectReason
 
 		if d.Action == "approve" || d.Action == "edit" {
-			// Use the orchestrator-persisted FloorAtPause rather than
-			// s.toolsCache.Floor: the api-side cache is HTTP-backed and only
-			// warms on GET /api/v1/tools, so it would spuriously return
-			// Forbidden whenever the settings page had not been visited in
-			// this api process lifetime. See docs/services/hitl.md.
 			floor := c.FloorAtPause
 			effective := pkghitl.Resolve(floor, businessApprovals, projectOverrides, c.ToolName)
 			if effective == domain.ToolFloorForbidden {
-				// TOCTOU: post-pause forbidden → synthetic rejection; LLM sees it on resume.
 				finalized[i].Verdict = "reject"
 				finalized[i].RejectReason = "policy_revoked"
 				result.Decisions = append(result.Decisions, ResolvedCall{
@@ -286,8 +276,6 @@ func missingCallIDs(calls []domain.PendingCall, decisions []DecisionInput) []str
 		}
 	}
 	if len(missing) == 0 && len(decisions) != len(calls) {
-		// Extra/duplicate decisions: batch call_ids are unique and decisionByID
-		// overwrites on duplicate IDs, so no "missing" surfaces here.
 		return nil
 	}
 	return missing
@@ -348,8 +336,6 @@ func (c *ToolsRegistryCache) Seed(entries []ToolsRegistryEntry) {
 	defer c.mu.Unlock()
 	copied := append([]ToolsRegistryEntry(nil), entries...)
 	c.latestEntries = copied
-	// Seed every supported tag so List(ctx) returns the seeded data
-	// regardless of the caller's locale.
 	now := time.Now()
 	c.byLocale[""] = localeSnapshot{entries: copied, loadedAt: now}
 	c.byLocale["ru"] = localeSnapshot{entries: copied, loadedAt: now}
@@ -371,7 +357,6 @@ func (c *ToolsRegistryCache) List(ctx context.Context) []ToolsRegistryEntry {
 	}
 	c.mu.RUnlock()
 
-	// Refresh (best-effort; stale-on-error).
 	c.refresh(ctx, key)
 
 	c.mu.RLock()
@@ -428,7 +413,6 @@ func (c *ToolsRegistryCache) Has(toolName string) bool {
 func (c *ToolsRegistryCache) refresh(ctx context.Context, localeKey string) {
 	c.mu.Lock()
 	if ch, ok := c.inFlight[localeKey]; ok {
-		// Another goroutine is refreshing this locale; wait for it.
 		c.mu.Unlock()
 		select {
 		case <-ch:
@@ -447,7 +431,6 @@ func (c *ToolsRegistryCache) refresh(ctx context.Context, localeKey string) {
 		c.mu.Unlock()
 	}()
 
-	// No network call during tests that only Seed — detect by nil orch.
 	if c.orch == nil {
 		return
 	}

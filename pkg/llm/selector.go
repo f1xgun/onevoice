@@ -109,7 +109,6 @@ func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Can
 		}
 		p, ok := s.providers[e.Provider]
 		if !ok {
-			// An entry with no resolvable Provider is invisible to the Router.
 			continue
 		}
 		out = append(out, Candidate{Entry: e, Provider: p})
@@ -118,8 +117,6 @@ func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Can
 		return nil
 	}
 
-	// Stable sort: healthy first, then strategy tie-break inside each bucket.
-	// Stability preserves registry order for equal keys → deterministic output.
 	sort.SliceStable(out, func(i, j int) bool {
 		hi := out[i].Entry.HealthStatus == HealthStatusHealthy
 		hj := out[j].Entry.HealthStatus == HealthStatusHealthy
@@ -179,7 +176,6 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 			}
 			m.avgLatencyMs = int(sum / int64(len(m.lastLatencies)))
 		}
-		// Recovery: enough consecutive successes flip a degraded/down provider back to healthy.
 		if m.healthStatus != HealthStatusHealthy && m.successCount >= healthRecoverySuccessMin {
 			m.healthStatus = HealthStatusHealthy
 		}
@@ -202,8 +198,6 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 	}
 	entry.LastCheckedAt = time.Now()
 
-	// Gated on outcome.Model so direct Record callers (integration tests)
-	// don't leak empty-label series into the histogram.
 	if outcome.Model != "" {
 		status := "success"
 		if !outcome.Success {
@@ -224,8 +218,6 @@ func Invoke[T any](
 	var zero T
 	entry, provider, err := s.Pick(model, strategy)
 	if err != nil {
-		// On Pick failure fn is not called and Record is not invoked — the
-		// error has no provider entry to attribute.
 		return nil, zero, err
 	}
 	start := time.Now()

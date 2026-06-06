@@ -73,7 +73,6 @@ func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Reques
 		Warnings: optStrings(cookieWarnings(r, parsed.Cookies)),
 	}
 
-	// Best-effort live probe; 3s wall-clock cap. Inconclusive → SessionValid=nil.
 	probeCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	valid, username, probeErr := h.probeYandexSession(probeCtx, parsed.Cookies)
@@ -116,8 +115,6 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Picker-supplied permalink wins so agent edit URLs work from call #1.
-	// Legacy callers get the "default" placeholder; refresh-name heals later.
 	externalID := "default"
 	if req.Permalink != nil {
 		if p := strings.TrimSpace(*req.Permalink); p != "" {
@@ -269,8 +266,6 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Detached ctx so the RPA survives r.Context() cancellation (mid-flight
-	// navigations) and outlives axios idle timeouts.
 	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexListCompaniesTimeout+15*time.Second)
 	go h.runYandexListCompaniesRefresh(bgCtx, bgCancel, integrationID, *target, bc.BusinessID)
 
@@ -321,8 +316,6 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 	permalink = strings.TrimSpace(permalink)
 	name = strings.TrimSpace(name)
 
-	// Agent's list_companies permalink IS the canonical Sprav id; always
-	// overwrite differences (legacy "default" or ad-campaign permalinks).
 	if permalink != "" && permalink != target.ExternalID {
 		if updateErr := h.integrationService.UpdateExternalID(ctx, integrationID, permalink); updateErr != nil {
 			slog.Error("yandex name refresh: failed to persist healed external_id",
@@ -381,7 +374,6 @@ func yandexCookiesErrorMessage(r *http.Request, err error) string {
 	case errors.Is(err, yandexcookies.ErrSessionIDInvalid):
 		return i18n.Tr(ctx, "yandex.cookies.invalid_sessionid")
 	case errors.Is(err, yandexcookies.ErrJSONUnmarshal):
-		// Strip prefix so the localized template carries only the json detail.
 		detail := strings.TrimPrefix(err.Error(), yandexcookies.ErrJSONUnmarshal.Error()+": ")
 		return i18n.Tr(ctx, "yandex.cookies.json_error", detail)
 	default:
@@ -400,12 +392,10 @@ func (h *OAuthHandler) probeYandexSession(ctx context.Context, cookies []yandexc
 		return false, "", err
 	}
 	req.Header.Set("Cookie", buildCookieHeader(cookies))
-	// Realistic UA reduces captcha-gate odds.
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,*/*")
 	req.Header.Set("Accept-Language", "ru,en;q=0.5")
 
-	// Don't follow redirects — the 302 to passport IS the verdict signal.
 	client := *h.httpClient
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	if client.Timeout == 0 {
@@ -428,7 +418,6 @@ func (h *OAuthHandler) probeYandexSession(ctx context.Context, cookies []yandexc
 		if parseErr == nil && strings.Contains(u.Host, "passport.yandex") {
 			return false, "", nil
 		}
-		// Non-passport redirect → treat as live session (not bounced to login).
 		return true, "", nil
 
 	case resp.StatusCode == http.StatusOK:

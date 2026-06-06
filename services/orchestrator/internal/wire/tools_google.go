@@ -13,7 +13,6 @@ import (
 // stays under SC-01's 500-LOC budget.
 func googleTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
-		// Read-only. Auto.
 		{
 			DisplayName:     "Загрузить отзывы Google",
 			DisplayNameKey:  "tools.google_business.get_reviews.name",
@@ -35,7 +34,6 @@ func googleTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorAuto,
 			EditableFields: nil,
 		},
-		// Mutating public: review reply. text editable; review_name pinned.
 		{
 			DisplayName:     "Ответить на отзыв Google",
 			DisplayNameKey:  "tools.google_business.reply_review.name",

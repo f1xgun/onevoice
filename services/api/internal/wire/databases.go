@@ -77,14 +77,12 @@ func (h *DBHandles) Close() {
 func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Config) (*DBHandles, error) {
 	h := &DBHandles{}
 
-	// pgxpool idiom: ParseConfig → mutate pool sizing → NewWithConfig (preserves DSN-driven TLS, application_name).
 	pgConnStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		cfg.PostgresUser, cfg.PostgresPass, cfg.PostgresHost, cfg.PostgresPort, cfg.PostgresDB)
 	pgPoolCfg, err := pgxpool.ParseConfig(pgConnStr)
 	if err != nil {
 		return nil, fmt.Errorf("wire: parse pg config: %w", err)
 	}
-	// config.Load() bounds PGMaxConns/PGMinConns so int→int32 cannot overflow.
 	pgPoolCfg.MaxConns = int32(cfg.PGMaxConns) //nolint:gosec // bounded above by config.Load()
 	pgPoolCfg.MinConns = int32(cfg.PGMinConns) //nolint:gosec // bounded above by config.Load()
 	pgPoolCfg.MaxConnLifetime = cfg.PGMaxConnLifetime
@@ -98,8 +96,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	h.PG = pgPool
 	log.Info("connected to postgres")
 
-	// Register pgxpool prometheus collector. Idempotent across restarts within
-	// the same process: a re-register is swallowed via AlreadyRegisteredError.
 	if regErr := prometheus.Register(metrics.NewPGXPoolCollector(pgPool)); regErr != nil {
 		var are prometheus.AlreadyRegisteredError
 		if !errors.As(regErr, &are) {
@@ -108,8 +104,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 		}
 	}
 
-	// MongoDB. Pool + command monitors emit mongo_pool_in_use,
-	// mongo_pool_checkout_duration_seconds, and mongo_op_duration_seconds.
 	mongoClient, err := mongo.Connect(options.Client().
 		ApplyURI(cfg.MongoURI).
 		SetPoolMonitor(metrics.NewMongoPoolMonitor()).
@@ -122,7 +116,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	h.Mongo = mongoClient.Database(cfg.MongoDB)
 	log.Info("connected to mongodb")
 
-	// V15 backfill: blocking startup invariant — sidebar/move-chat need these fields.
 	backfillCtx, backfillCancel := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.BackfillConversationsV15(backfillCtx, h.Mongo); err != nil {
 		backfillCancel()
@@ -132,7 +125,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	backfillCancel()
 
-	// V19 backfill: blocking — Pin/Unpin atomic methods require uniform pinned_at schema.
 	backfillCtx2, backfillCancel2 := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.BackfillConversationsV19(backfillCtx2, h.Mongo); err != nil {
 		backfillCancel2()
@@ -142,7 +134,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	backfillCancel2()
 
-	// Pending-tool-calls indexes are non-negotiable: without them the resolve handler scans the whole collection.
 	indexesCtx, indexesCancel := context.WithTimeout(ctx, startupTimeout)
 	if err := hitlstore.EnsurePendingToolCallsIndexes(indexesCtx, h.Mongo); err != nil {
 		indexesCancel()
@@ -161,7 +152,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	indexesCancel2()
 
-	// Searcher.MarkIndexesReady MUST run only after this returns nil (happens-before edge).
 	indexesCtx3, indexesCancel3 := context.WithTimeout(ctx, startupSearchIndexTimeout)
 	if err := repository.EnsureSearchIndexes(indexesCtx3, h.Mongo); err != nil {
 		indexesCancel3()
@@ -192,7 +182,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	h.Enc = enc
 
-	// NATS is optional: nil conn → platform/review syncer fall back to degraded modes.
 	if cfg.NATSUrl != "" {
 		nc, natsErr := natslib.Connect(cfg.NATSUrl)
 		if natsErr != nil {

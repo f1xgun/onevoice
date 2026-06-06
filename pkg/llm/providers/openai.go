@@ -127,7 +127,6 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.Ch
 		Temperature: float32(req.Temperature),
 	}
 
-	// Add tool definitions if present
 	if len(req.Tools) > 0 {
 		tools := make([]openai.Tool, len(req.Tools))
 		for i, t := range req.Tools {
@@ -192,7 +191,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<
 		Stream:      true,
 	}
 
-	// Add tool definitions if present
 	if len(req.Tools) > 0 {
 		tools := make([]openai.Tool, len(req.Tools))
 		for i, t := range req.Tools {

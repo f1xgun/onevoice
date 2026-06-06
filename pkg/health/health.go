@@ -98,7 +98,6 @@ type readyResult struct {
 // unhealthy JSON with a sorted `failed[]` slice on any failure.
 func (c *Checker) ReadyHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Snapshot checks under RLock to avoid holding the lock during I/O.
 		c.mu.RLock()
 		snapshot := make(map[string]CheckFunc, len(c.checks))
 		for k, v := range c.checks {
@@ -133,7 +132,7 @@ func (c *Checker) ReadyHandler() http.HandlerFunc {
 				failed = append(failed, res.name)
 			}
 		}
-		sort.Strings(failed) // stable serialization for test + log scrape
+		sort.Strings(failed)
 
 		w.Header().Set("Content-Type", "application/json")
 

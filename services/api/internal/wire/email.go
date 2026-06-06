@@ -104,7 +104,6 @@ func drainOutboxOnce(ctx context.Context, log *slog.Logger, repo *repository.Ema
 			}
 			continue
 		}
-		// Treat any other error (including ErrTransient) as transient → reschedule.
 		if rErr := repo.Reschedule(ctx, row.ID, row.Attempts, sendErr.Error(), maxAttempts); rErr != nil {
 			log.ErrorContext(ctx, "email_outbox: reschedule failed", "id", row.ID, "error", rErr)
 		}

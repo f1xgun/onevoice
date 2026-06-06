@@ -68,7 +68,6 @@ func ValidateEditArgs(toolName string, editedArgs map[string]interface{}, editab
 		}
 		switch value.(type) {
 		case string, float64, float32, int, int32, int64, bool:
-			// ok — top-level scalar
 		default:
 			return &ErrNonScalarValue{Tool: toolName, Field: field, Value: value}
 		}

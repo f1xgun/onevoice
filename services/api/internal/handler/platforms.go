@@ -72,8 +72,5 @@ func (h *PlatformsHandler) isConfigured(id string) bool {
 	case a2a.AgentGoogleBusiness:
 		return h.availability.GoogleBusiness
 	}
-	// Coming-soon platforms never reach this branch (early-returned by caller).
-	// Unknown ids default to "configured" so a future registry addition does
-	// not silently disappear if someone forgets to extend this switch.
 	return true
 }

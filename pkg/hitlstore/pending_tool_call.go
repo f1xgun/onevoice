@@ -62,8 +62,6 @@ func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) erro
 
 	_, err := coll.Indexes().CreateMany(ctx, models)
 	if err != nil {
-		// CreateMany is idempotent when spec matches; tolerate
-		// duplicate-key for stable specs across reboots.
 		if mongo.IsDuplicateKeyError(err) {
 			return nil
 		}
@@ -79,8 +77,6 @@ func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) erro
 //
 // See docs/pkg/hitlstore.md for write-order rationale and identity guard.
 func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingToolCallBatch) error {
-	// Identity guard: both IDs are load-bearing for downstream auth +
-	// hydration filters; fail loud rather than silently writing empty IDs.
 	if b.ConversationID == "" {
 		return fmt.Errorf("pending_tool_call: conversation_id is required")
 	}
@@ -109,9 +105,6 @@ func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingTool
 		return fmt.Errorf("pending_tool_call: promote to pending: %w", err)
 	}
 	if res.MatchedCount == 0 {
-		// Reconcile sweep flipped this batch to expired between the two
-		// writes. Surface as ErrBatchNotFound so the caller does not emit
-		// a pause event for a batch that no longer exists.
 		return domain.ErrBatchNotFound
 	}
 	b.Status = "pending"
@@ -181,8 +174,6 @@ func (r *pendingToolCallRepo) AtomicTransitionToResolving(ctx context.Context, b
 	err := r.coll.FindOneAndUpdate(ctx, filter, update, opts).Decode(&doc)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			// Two-step disambiguation: 404 (true miss) vs 409
-			// (concurrent resolve / already terminal).
 			var probe domain.PendingToolCallBatch
 			probeErr := r.coll.FindOne(ctx, bson.M{"_id": batchID}).Decode(&probe)
 			if probeErr != nil {

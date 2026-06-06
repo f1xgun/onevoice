@@ -156,9 +156,6 @@ func NewWithHITL(
 func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, error) {
 	ch := make(chan Event, 32)
 
-	// BuildSplit's Block 1 (platform) carries cache_control; Block 2 (business)
-	// does not. SystemBlocks (set in stepRun) is the canonical channel —
-	// Messages no longer carries a leading role:"system" entry.
 	platform, business, history := prompt.BuildSplit(req.BusinessContext, req.ProjectContext, req.Messages)
 
 	state := &RunState{
@@ -248,7 +245,6 @@ func (o *Orchestrator) dispatchToolCalls(
 		return false
 	}
 
-	// Append in original tool_calls order — provider-contract invariant.
 	for _, out := range outcomes {
 		result := out.result
 		if out.execErr != nil {

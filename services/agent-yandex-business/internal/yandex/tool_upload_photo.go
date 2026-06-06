@@ -20,8 +20,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 		return a2a.NewNonRetryableError(fmt.Errorf("photo_url is required"))
 	}
 
-	// Map category to file input selector
-	inputSelector := ".MediaUploadButton-Input" // default: general photo upload button
+	inputSelector := ".MediaUploadButton-Input"
 	switch category {
 	case "logo":
 		inputSelector = ".MediaAttach-Input[name='logo']"
@@ -54,7 +53,6 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 				}
 				humanDelay()
 
-				// Download the image to a temp file using standard HTTP
 				httpResp, err := http.Get(photoURL) //nolint:gosec // URL comes from LLM/user, external fetch is intentional
 				if err != nil {
 					return fmt.Errorf("download photo from %s: %w", photoURL, err)
@@ -74,18 +72,15 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 				}
 				defer func() { _ = os.Remove(tmpFile) }()
 
-				// Set file on the hidden input
 				fileInput := page.Locator(inputSelector).First()
 				if err := fileInput.SetInputFiles(tmpFile); err != nil {
 					debugScreenshot(page, "photo_input_error")
 					return fmt.Errorf("set file input (%s): %w", inputSelector, err)
 				}
 
-				// Wait for upload processing
 				time.Sleep(3 * time.Second)
 				debugScreenshot(page, "photo_after_upload")
 
-				// Handle crop dialog if it appears (logo uploads show a crop modal)
 				cropSaveBtn := page.Locator("button:has-text('Сохранить')").First()
 				if err := cropSaveBtn.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(primaryActionTimeoutMs),

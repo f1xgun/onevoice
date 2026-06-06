@@ -18,8 +18,6 @@ import (
 // see the same identifiers as the request edge.
 func (t *Turn) persistContext(parentCtx context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// correlation_id propagation lives in the logger; locale propagation is
-	// explicit because the i18n key is not auto-attached to log entries.
 	ctx = i18n.WithLocale(ctx, i18n.LocaleFromContext(parentCtx))
 	return ctx, cancel
 }
@@ -80,7 +78,7 @@ func (t *Turn) FireAutoTitleIfPendingResume(parentCtx context.Context, conversat
 
 func (t *Turn) fireAutoTitleIfPending(parentCtx context.Context, conversationID, businessID, userText, assistantText string) {
 	if t.deps.Titler == nil {
-		return // graceful no-op when titling is disabled
+		return
 	}
 
 	gateCtx, cancel := t.persistContext(parentCtx)
@@ -93,7 +91,7 @@ func (t *Turn) fireAutoTitleIfPending(parentCtx context.Context, conversationID,
 		return
 	}
 	if conv.TitleStatus != domain.TitleStatusAutoPending {
-		return // only fires on auto_pending; manual + auto are terminal.
+		return
 	}
 
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)

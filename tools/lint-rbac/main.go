@@ -21,7 +21,6 @@ func main() {
 
 	targets := flag.Args()
 	if len(targets) == 0 {
-		// Default target: the project router.
 		targets = []string{"services/api/internal/router/router.go"}
 	}
 
@@ -30,10 +29,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("lint-rbac: %v", err)
 	}
-	// HI-02: hand the parsed entries to the analyzer so checkBusinessSubroute
-	// can suppress diagnostics for routes the team has explicitly accepted as
-	// migration-in-progress. ParseAllowlist already enforces expiry, so a
-	// stale entry fails the build before this assignment runs.
 	activeAllowlist = allowed
 
 	fset := token.NewFileSet()

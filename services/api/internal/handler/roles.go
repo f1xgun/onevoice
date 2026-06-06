@@ -157,7 +157,6 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist the deduplicated slice — duplicates must not leak into JSONB.
 	dedupedPerms := typedPermsToStrings(proposed)
 
 	businessID := bc.BusinessID
@@ -192,9 +191,6 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
-
-	// No InvalidateRole on Create — no existing memberships reference this
-	// brand-new role, so no cache entry can be stale.
 
 	audit.LogRoleCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, role.ID, role.Name, role.Permissions)
 
@@ -250,8 +246,6 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAuthzInvariantError(r.Context(), w, "update_role.lookup", err)
 		return
 	}
-	// Cross-tenant masquerade as 404 — runs BEFORE CheckSystemRoleImmutable so
-	// roles owned by another business never reveal themselves as "system" 422.
 	if existing.BusinessID != nil && *existing.BusinessID != bc.BusinessID {
 		writeJSONError(w, http.StatusNotFound, "role_not_found")
 		return
@@ -271,7 +265,6 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	existing.Name = name
 	existing.Description = strDeref(req.Description)
-	// Persist deduplicated slice — reads must never observe duplicates.
 	existing.Permissions = typedPermsToStrings(proposed)
 	existing.UpdatedBy = &bc.UserID
 
@@ -297,8 +290,6 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// InvalidateRole AFTER commit only — pre-commit eviction would cache
-	// stale-then-rolled-back permissions for up to the ~30s TTL.
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
 
 	audit.LogRoleUpdated(r.Context(), h.audit, bc.BusinessID, bc.UserID, roleID, existing.Name, existing.Permissions)
@@ -337,7 +328,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if parsed == roleID {
-			// Self-reassign would orphan members on the doomed role.
 			writeJSONError(w, http.StatusBadRequest, "invalid_reassign_to")
 			return
 		}
@@ -350,7 +340,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.BusinessID != nil && *existing.BusinessID != bc.BusinessID {
-		// Cross-tenant rejection masquerades as 404.
 		writeJSONError(w, http.StatusNotFound, "role_not_found")
 		return
 	}
@@ -365,12 +354,10 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if memberCount > 0 && reassignTo == nil {
-		// Role-in-use: refuse before opening the tx (no `?reassign_to=` supplied).
 		writeAuthzInvariantError(r.Context(), w, "delete_role.in_use", domain.ErrRoleInUse)
 		return
 	}
 
-	// Validate target role: exists, in-tenant, AND grantable by the actor.
 	if reassignTo != nil && memberCount > 0 {
 		target, err := h.roleRepo.GetByID(r.Context(), *reassignTo)
 		if err != nil {
@@ -381,7 +368,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			writeAuthzInvariantError(r.Context(), w, "delete_role.target_lookup", err)
 			return
 		}
-		// Target must be system (BusinessID == nil) OR belong to this business.
 		if target.BusinessID != nil && *target.BusinessID != bc.BusinessID {
 			writeJSONError(w, http.StatusBadRequest, "invalid_reassign_to")
 			return
@@ -397,9 +383,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Capture affected user IDs BEFORE the tx — the DELETE deletes the rows,
-	// so reading after commit returns the NEW role_id. Needed for the per-member
-	// membership cache fanout after commit.
 	var affectedUserIDs []uuid.UUID
 	if memberCount > 0 && reassignTo != nil {
 		affectedUserIDs, err = h.membershipRepo.ListUserIDsByRole(r.Context(), bc.BusinessID, roleID)
@@ -439,10 +422,7 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// InvalidateRole AFTER commit only — pre-commit eviction would cache stale state.
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
-	// InvalidateRole evicts only the role-perms cache; the membership cache
-	// still pins the OLD role_id. Fanout so the next Can pulls fresh membership.
 	for _, uid := range affectedUserIDs {
 		h.invalidator.InvalidateMember(bc.BusinessID, uid)
 	}
@@ -473,8 +453,6 @@ func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-	// Defensive copy — bc.Permissions backs the middleware LRU cache; aliasing
-	// it into the JSON encoder would race with cache mutations.
 	perms := make([]string, len(bc.Permissions))
 	for i, p := range bc.Permissions {
 		perms[i] = string(p)

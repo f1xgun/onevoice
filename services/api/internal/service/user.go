@@ -127,17 +127,14 @@ func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSe
 
 // Register creates a new user with encrypted password. See docs/services/user.md.
 func (s *userService) Register(ctx context.Context, email, password string) (*domain.User, error) {
-	// Validate email
 	if err := validateEmail(email); err != nil {
 		return nil, err
 	}
 
-	// Validate password
 	if err := validatePassword(password); err != nil {
 		return nil, err
 	}
 
-	// Hash password
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -151,7 +148,6 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		UpdatedAt:    time.Now(),
 	}
 
-	// atomic path: all writes in one tx.
 	if s.registerPool != nil && s.registerUserRepo != nil && s.registerConsents != nil && s.registerVerify != nil {
 		tx, err := s.registerPool.Begin(ctx)
 		if err != nil {
@@ -168,7 +164,6 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		if err := s.registerConsents.Insert(ctx, tx, user.ID, "service_operation", "pre-v22"); err != nil {
 			return nil, fmt.Errorf("register insert consent: %w", err)
 		}
-		// Verify token + outbox enqueue must commit atomically with the user row.
 		if err := s.registerVerify.IssueAndEnqueueTx(ctx, tx, user.ID, user.Email); err != nil {
 			return nil, fmt.Errorf("register issue verify: %w", err)
 		}
@@ -176,14 +171,12 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 			return nil, fmt.Errorf("register commit: %w", err)
 		}
 
-		// Audit emission is OUTSIDE the tx so an audit failure can't roll back a successful Register.
 		if s.registerAudit != nil {
 			audit.LogConsentRecorded(ctx, s.registerAudit, user.ID, "service_operation", "pre-v22")
 		}
 		return sanitizeUser(user), nil
 	}
 
-	// Legacy non-tx path — no collaborators wired (tests only).
 	err = s.repo.Create(ctx, user)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
@@ -197,11 +190,9 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 
 // RegisterWithContext is the atomic-Register entry point. See docs/services/user.md.
 func (s *userService) RegisterWithContext(ctx context.Context, email, password string, regCtx RegistrationContext) (*domain.User, error) {
-	// Validate email
 	if err := validateEmail(email); err != nil {
 		return nil, err
 	}
-	// Validate password
 	if err := validatePassword(password); err != nil {
 		return nil, err
 	}
@@ -219,7 +210,6 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 		UpdatedAt:    time.Now(),
 	}
 
-	// Atomic path: user + 3× consent UPSERT + verify token + outbox enqueue all in one tx.
 	if s.registerPool != nil && s.registerUserRepo != nil && s.registerVerify != nil && s.registerConsentSvc != nil {
 		tx, err := s.registerPool.Begin(ctx)
 		if err != nil {
@@ -236,7 +226,6 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 		if err := s.registerConsentSvc.RecordRegistrationConsents(ctx, tx, user.ID, regCtx.IP, regCtx.UserAgent, regCtx.Policies); err != nil {
 			return nil, fmt.Errorf("record registration consents: %w", err)
 		}
-		// Verify token + outbox enqueue must commit atomically with the user row.
 		if err := s.registerVerify.IssueAndEnqueueTx(ctx, tx, user.ID, user.Email); err != nil {
 			return nil, fmt.Errorf("register issue verify: %w", err)
 		}
@@ -246,20 +235,16 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 		return sanitizeUser(user), nil
 	}
 
-	// Fallback to legacy single-consent path.
 	return s.Register(ctx, email, password)
 }
 
 // Login authenticates user and issues access and refresh tokens
 func (s *userService) Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error) {
-	// Get user by email
 	user, err = s.repo.GetByEmail(ctx, email)
 	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
 		return nil, "", "", fmt.Errorf("get user: %w", err)
 	}
 
-	// Always perform bcrypt comparison to prevent timing attacks
-	// Use dummy hash if user doesn't exist to keep timing consistent
 	dummyHash := "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 	hashToCompare := dummyHash
 	if user != nil {
@@ -271,20 +256,17 @@ func (s *userService) Login(ctx context.Context, email, password string) (user *
 		return nil, "", "", domain.ErrInvalidCredentials
 	}
 
-	// Generate access token
 	accessToken, err = generateAccessToken(user, s.jwtSecret)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("generate access token: %w", err)
 	}
 
-	// Generate refresh token
 	var tokenID uuid.UUID
 	refreshToken, tokenID, err = generateRefreshToken(user.ID, s.jwtSecret)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("generate refresh token: %w", err)
 	}
 
-	// Store refresh token in Redis
 	key := refreshTokenKeyPrefix + tokenID.String()
 	err = s.redis.Set(ctx, key, user.ID.String(), RefreshTokenExpiry).Err()
 	if err != nil {
@@ -297,7 +279,6 @@ func (s *userService) Login(ctx context.Context, email, password string) (user *
 // RefreshToken validates a refresh token and returns a new token pair with user data.
 // The old refresh token is revoked (rotation) and a new one is issued.
 func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error) {
-	// Parse and validate refresh token
 	token, err := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -314,7 +295,6 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 		return nil, "", "", domain.ErrInvalidToken
 	}
 
-	// Atomically get and delete the refresh token from Redis (prevents TOCTOU race)
 	oldKey := refreshTokenKeyPrefix + claims.TokenID.String()
 	userID, err := s.redis.GetDel(ctx, oldKey).Result()
 	if err != nil {
@@ -324,12 +304,10 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 		return nil, "", "", fmt.Errorf("validate refresh token: %w", err)
 	}
 
-	// Verify user ID matches
 	if userID != claims.UserID.String() {
 		return nil, "", "", domain.ErrInvalidToken
 	}
 
-	// Get user from database
 	user, err = s.repo.GetByID(ctx, claims.UserID)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
@@ -338,20 +316,17 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 		return nil, "", "", fmt.Errorf("get user: %w", err)
 	}
 
-	// Generate new access token
 	accessToken, err = generateAccessToken(user, s.jwtSecret)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("generate access token: %w", err)
 	}
 
-	// Generate new refresh token (rotation)
 	var newTokenID uuid.UUID
 	newRefreshToken, newTokenID, err = generateRefreshToken(user.ID, s.jwtSecret)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("generate refresh token: %w", err)
 	}
 
-	// Store new refresh token in Redis
 	newKey := refreshTokenKeyPrefix + newTokenID.String()
 	err = s.redis.Set(ctx, newKey, user.ID.String(), RefreshTokenExpiry).Err()
 	if err != nil {
@@ -363,7 +338,6 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 
 // Logout invalidates a refresh token
 func (s *userService) Logout(ctx context.Context, refreshToken string) error {
-	// Parse refresh token
 	token, err := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -380,7 +354,6 @@ func (s *userService) Logout(ctx context.Context, refreshToken string) error {
 		return domain.ErrInvalidToken
 	}
 
-	// Delete from Redis
 	key := refreshTokenKeyPrefix + claims.TokenID.String()
 	err = s.redis.Del(ctx, key).Err()
 	if err != nil {
@@ -462,7 +435,6 @@ func validateEmail(email string) error {
 		return fmt.Errorf("invalid email format")
 	}
 
-	// Check that @ is not at the beginning or end
 	parts := strings.Split(email, "@")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return fmt.Errorf("invalid email format")
@@ -477,7 +449,6 @@ func validatePassword(password string) error {
 		return fmt.Errorf("password must be at least %d characters", passwordMinLen)
 	}
 	if len(password) > passwordMaxLen {
-		// bcrypt silently truncates passwords longer than 72 bytes; reject to avoid lost-suffix surprises.
 		return fmt.Errorf("password must be at most %d characters", passwordMaxLen)
 	}
 	return nil

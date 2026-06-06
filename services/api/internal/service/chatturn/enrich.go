@@ -77,15 +77,9 @@ func (t *Turn) enrich(ctx context.Context, req TurnRequest) (*enrichmentResult, 
 
 	project, projectOverrides := t.resolveProject(ctx, business.ID, req.ConversationID)
 
-	// Normalize nil slices so the outbound JSON serializes as `[]` not `null`
-	// (matches the orchestrator's expectation in handler tests).
 	if project.allowedTools == nil {
 		project.allowedTools = []string{}
 	}
-	// HITL policy inputs. The defensive Business.ToolApprovals() accessor
-	// always returns non-nil; projectOverrides may be nil for the no-project
-	// branch — materialize an empty map so the JSON shape stays `{}` not
-	// `null` (also expected by the orchestrator).
 	businessApprovals := business.ToolApprovals()
 	if businessApprovals == nil {
 		businessApprovals = map[string]domain.ToolFloor{}
@@ -114,9 +108,6 @@ func (t *Turn) resolveProject(ctx context.Context, businessID uuid.UUID, convers
 	conv, convErr := t.deps.Conversations.GetByID(ctx, conversationID)
 	switch {
 	case convErr != nil:
-		// Missing/errored conversation: log and fall through. Other handlers
-		// (GetConversation, move) enforce existence; here we must not break
-		// the chat flow.
 		slog.WarnContext(ctx, "chatturn: conversation lookup failed, no project enrichment",
 			"conversation_id", conversationID, "error", convErr)
 	case conv.ProjectID != nil && *conv.ProjectID != "":

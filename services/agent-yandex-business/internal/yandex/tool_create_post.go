@@ -35,7 +35,6 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 				humanDelay()
 				debugScreenshot(page, "post_after_navigate")
 
-				// Find the post textarea
 				textarea := page.Locator(".PostAddForm-Textarea textarea").First()
 				if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(listItemTimeoutMs),
@@ -45,7 +44,6 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 					return fmt.Errorf("post textarea not found")
 				}
 
-				// Click and type the post text
 				if err := textarea.Click(); err != nil {
 					return fmt.Errorf("click textarea: %w", err)
 				}
@@ -55,7 +53,6 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 				debugScreenshot(page, "post_after_type")
 				humanDelay()
 
-				// Click "Создать" (Submit) button
 				submitBtn := page.Locator(".PostAddForm-Submit").First()
 				if err := submitBtn.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(primaryActionTimeoutMs),

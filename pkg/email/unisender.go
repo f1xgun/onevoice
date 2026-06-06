@@ -141,14 +141,11 @@ func (s *UnisenderSender) Send(ctx context.Context, msg Message) (string, error)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		// Network error or ctx cancel = transient.
 		return "", fmt.Errorf("email: unisender HTTP do: %v: %w", err, ErrTransient)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
-	// 5xx and 429 → transient. 4xx (non-429) → permanent (malformed
-	// request, bad API key, recipient rejected).
 	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
 		return "", fmt.Errorf("email: unisender %d: %s: %w", resp.StatusCode, truncate(string(bodyBytes), maxUnisenderBodyLogged), ErrTransient)
 	}
@@ -158,14 +155,9 @@ func (s *UnisenderSender) Send(ctx context.Context, msg Message) (string, error)
 
 	var parsed unisenderResponse
 	if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
-		// 2xx with unparseable body — treat as transient (provider hiccup).
 		return "", fmt.Errorf("email: unisender 200 with malformed JSON: %v: %w", err, ErrTransient)
 	}
 	if parsed.Status != "success" {
-		// Body-level error. Provider sometimes returns 200 + status=error
-		// for temporary issues; map to transient unless the code looks
-		// permanent. For we accept the simpler rule "200 +
-		// status!=success → transient" and rely on the 5-attempt cap.
 		return "", fmt.Errorf("email: unisender body status=%s code=%s msg=%s: %w", parsed.Status, parsed.Code, parsed.Message, ErrTransient)
 	}
 	return parsed.JobID, nil

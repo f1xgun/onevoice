@@ -13,7 +13,6 @@ import (
 // 500-LOC budget.
 func vkTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
-		// Mutating public: publishes wall post. text editable; group_id pinned.
 		{
 			DisplayName:     "Опубликовать пост",
 			DisplayNameKey:  "tools.vk.publish_post.name",
@@ -38,7 +37,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
 		},
-		// Mutating public: photo + caption. caption editable; photo_url + group_id pinned.
 		{
 			DisplayName:     "Опубликовать фото",
 			DisplayNameKey:  "tools.vk.post_photo.name",
@@ -65,9 +63,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"caption"},
 		},
-		// Mutating public w/ scheduled release. text editable;
-		// publish_date NOT editable (changing a scheduled time is a
-		// semantic change — a separate tool call makes intent explicit).
 		{
 			DisplayName:     "Запланировать пост",
 			DisplayNameKey:  "tools.vk.schedule_post.name",
@@ -94,9 +89,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
 		},
-		// Mutating public: group meta update. description editable;
-		// group_id pinned. Contacts/links intentionally omitted from
-		// edit-allowlist until the LLM's JSON schema exposes them.
 		{
 			DisplayName:     "Обновить данные сообщества",
 			DisplayNameKey:  "tools.vk.update_group_info.name",
@@ -121,7 +113,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"description"},
 		},
-		// Read-only. Auto.
 		{
 			DisplayName:     "Загрузить комментарии",
 			DisplayNameKey:  "tools.vk.get_comments.name",
@@ -148,7 +139,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorAuto,
 			EditableFields: nil,
 		},
-		// Mutating public: comment reply. text editable; ids pinned.
 		{
 			DisplayName:     "Ответить на комментарий",
 			DisplayNameKey:  "tools.vk.reply_comment.name",
@@ -177,12 +167,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
 		},
-		// Destructive: hard-deletes a comment. Manual-floor — legitimate
-		// moderation use-case (spam, abuse). Default behavior is
-		// per-call approval; a business owner can bump to auto if
-		// they trust the LLM's filtering. No editable fields:
-		// comment_id is a hard ID that users must not override at
-		// approval time (redirect-delete attack).
 		{
 			DisplayName:     "Удалить комментарий",
 			DisplayNameKey:  "tools.vk.delete_comment.name",
@@ -207,7 +191,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: nil,
 		},
-		// Read-only. Auto.
 		{
 			DisplayName:     "Загрузить данные сообщества",
 			DisplayNameKey:  "tools.vk.get_community_info.name",
@@ -230,7 +213,6 @@ func vkTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorAuto,
 			EditableFields: nil,
 		},
-		// Read-only. Auto.
 		{
 			DisplayName:     "Загрузить посты",
 			DisplayNameKey:  "tools.vk.get_wall_posts.name",

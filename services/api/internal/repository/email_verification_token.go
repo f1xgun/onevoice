@@ -75,7 +75,7 @@ func (r *EmailVerificationTokenRepository) Insert(
 	if _, err := tx.Exec(ctx, sqlStr, args...); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return err // hash collision — caller decides
+			return err
 		}
 		return err
 	}

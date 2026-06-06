@@ -127,7 +127,6 @@ func (s *ReviewSyncer) SyncAll(ctx context.Context) error {
 				"platform", integ.Platform,
 				"error", err,
 			)
-			// Continue with remaining integrations
 		}
 	}
 	return nil
@@ -144,8 +143,6 @@ func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID
 	}
 	platforms := make(map[string]bool, len(integrations))
 	for _, integ := range integrations {
-		// Only active integrations on platforms the syncer knows how to
-		// fetch reviews for. Mirrors ListAllActiveByPlatforms semantics.
 		if integ.Status != domain.IntegrationStatusActive {
 			continue
 		}
@@ -153,11 +150,6 @@ func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID
 			platforms[integ.Platform] = true
 		}
 	}
-	// Detach the per-platform sync from the request context so a client
-	// disconnect (e.g. browser-side fetch timeout while Yandex.Business RPA
-	// is still scraping) does not cancel sibling syncs that have already
-	// started. We still cap each platform with the existing 60s budget
-	// inside syncOne. Total wall time = the slowest platform, not the sum.
 	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 90*time.Second)
 	defer cancel()
 
@@ -170,9 +162,6 @@ func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID
 				slog.Error("review refresh: platform sync failed",
 					"business_id", businessID, "platform", p, "error", err,
 				)
-				// Per-platform failure is non-fatal — partial refresh
-				// is better than dropping the whole request on one
-				// slow/broken platform.
 			}
 		}(platform)
 	}
@@ -218,14 +207,12 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		return fmt.Errorf("agent error: %s", resp.Error)
 	}
 
-	// Different tools return the list under different keys:
-	// telegram/yandex_business use "reviews"; VK's get_comments returns "comments".
 	reviewsRaw, ok := resp.Result["reviews"]
 	if !ok {
 		reviewsRaw, ok = resp.Result["comments"]
 	}
 	if !ok {
-		return nil // no review-like field — nothing to persist
+		return nil
 	}
 	reviewsList, ok := reviewsRaw.([]interface{})
 	if !ok {
@@ -254,14 +241,10 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		}
 	}
 
-	// AI-draft hook: pick up any newly-pending reviews (and previously-failed
-	// ones) and ask the orchestrator to generate replies. Run with a fresh
-	// context so a slow LLM doesn't block on the upsertCtx 10s budget.
 	if s.drafter != nil {
 		draftCtx, draftCancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer draftCancel()
 		if err := s.drafter.GenerateForBusiness(draftCtx, businessID, platform); err != nil {
-			// Non-fatal — sync delivered the data, draft is value-add.
 			slog.Warn("review sync: draft pass failed",
 				"business_id", businessID,
 				"platform", platform,

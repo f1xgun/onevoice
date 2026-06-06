@@ -52,7 +52,7 @@ func NewWithBaseURL(accessToken, baseURL string) *Client {
 	vk.MethodURL = baseURL
 	return &Client{
 		vk:      vk,
-		limiter: rate.NewLimiter(rate.Inf, defaultRateLimitBurst), // no rate limit in tests
+		limiter: rate.NewLimiter(rate.Inf, defaultRateLimitBurst),
 	}
 }
 
@@ -182,23 +182,12 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 		return nil, fmt.Errorf("vk wall.getComments: %w", err)
 	}
 
-	// Owner replies sent via wall.createComment land inside the parent
-	// comment's `thread.items` (since VK switched to threaded comments).
-	// We surface the latest owner reply on the parent so the API-side
-	// review sync can mark the review as `replied`. ownerID is the
-	// integer form of groupID, e.g. "-123456" -> -123456.
 	ownerID, _ := strconv.Atoi(groupID)
 	comments := make([]map[string]interface{}, 0, len(resp.Items))
 	for _, item := range resp.Items {
 		if item.ReplyToComment > 0 {
-			// Defensive: skip flat-mode reply rows (when VK degrades the
-			// threaded layout). They are surfaced via the parent's thread.
 			continue
 		}
-		// Build the rows for the top-level comment plus every non-owner
-		// thread reply. Each user-authored entry becomes its own review
-		// row — when a user replies to the operator's reply, it is a new
-		// touchpoint that needs an answer, not a side note on the parent.
 		buildRow := func(entry rowSource) map[string]interface{} {
 			r := map[string]interface{}{
 				"id":      entry.id,
@@ -207,8 +196,6 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 				"from_id": entry.fromID,
 				"post_id": postID,
 			}
-			// Latest owner reply *after* this entry counts as its reply.
-			// Earlier owner messages are answers to other entries, not this one.
 			var latestReply, latestReplyAt int
 			var latestReplyText string
 			for _, t := range item.Thread.Items {
@@ -234,7 +221,7 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 		}))
 		for _, t := range item.Thread.Items {
 			if t.FromID == ownerID {
-				continue // operator's own messages aren't standalone reviews
+				continue
 			}
 			comments = append(comments, buildRow(rowSource{
 				id: t.ID, text: t.Text, date: t.Date, fromID: t.FromID,
@@ -265,8 +252,6 @@ func (c *Client) ReplyComment(groupID string, postID, commentID int, text string
 	if err := c.wait(); err != nil {
 		return 0, err
 	}
-	// owner_id is "-<groupID>"; from_group needs the same id without the
-	// minus. strings.TrimPrefix is safe even when no minus is present.
 	fromGroup := strings.TrimPrefix(groupID, "-")
 	resp, err := c.vk.WallCreateComment(vkapi.Params{
 		"owner_id":         groupID,

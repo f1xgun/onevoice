@@ -79,15 +79,12 @@ func NewTitler(router chatCaller, repo domain.ConversationRepository, model stri
 func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID, userMsg, assistantMsg string) {
 	metricStart := time.Now()
 
-	// Locale comes from middleware.Locale via ctx; drives system prompt + PII-reject fallback.
 	tag := i18n.LocaleFromContext(ctx)
 
-	// Pre-redact. The cheap LLM never sees raw PII.
 	redactedUser := security.RedactPII(userMsg)
 	redactedAssistant := security.RedactPII(assistantMsg)
 	promptLen := len(redactedUser) + len(redactedAssistant)
 
-	// Malformed business_id → uuid.Nil; router's nil-guard skips billing (fail-closed).
 	bizID := uuid.Nil
 	if businessID != "" {
 		if parsed, perr := uuid.Parse(businessID); perr == nil {
@@ -99,8 +96,8 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 	}
 
 	req := llm.ChatRequest{
-		UserID:     uuid.Nil, // system-level call, no rate-limit attribution
-		BusinessID: bizID,    // billing attribution to business
+		UserID:     uuid.Nil,
+		BusinessID: bizID,
 		Model:      t.model,
 		Messages: []llm.Message{
 			{Role: "system", Content: titleSystemPrompt(tag)},
@@ -109,7 +106,6 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 		MaxTokens:   titleMaxOutputTokens,
 		Temperature: titleTemperature,
 		Tier:        "background",
-		// NO Tools — titler must not be tool-calling.
 	}
 
 	resp, err := t.router.Chat(ctx, req)
@@ -123,7 +119,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"error", err,
 		)
 		recordAttempt("failure", "llm_error")
-		return // title_status stays auto_pending; next complete turn re-fires.
+		return
 	}
 
 	respLen := len(resp.Content)
@@ -141,7 +137,6 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 		return
 	}
 
-	// post-hoc PII gate. Match → terminal fallback.
 	if class, hit := security.ContainsPIIClass(title); hit {
 		terminalTitle := untitledChatLocalized(time.Now(), tag)
 		slog.WarnContext(ctx, "auto-title: pii rejected",
@@ -153,10 +148,8 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"regex_class", class,
 			"duration_ms", time.Since(metricStart).Milliseconds(),
 		)
-		// Same atomic guard as the happy path: a concurrent manual rename still wins.
 		if writeErr := t.repo.UpdateTitleIfPending(ctx, conversationID, terminalTitle); writeErr != nil {
 			if errors.Is(writeErr, domain.ErrConversationNotFound) {
-				// Manual rename is sovereign — INFO not WARN.
 				slog.InfoContext(ctx, "auto-title: terminal write no-op (manual won race)",
 					"conversation_id", conversationID,
 					"business_id", businessID,
@@ -184,7 +177,6 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 
 	if writeErr := t.repo.UpdateTitleIfPending(ctx, conversationID, title); writeErr != nil {
 		if errors.Is(writeErr, domain.ErrConversationNotFound) {
-			// MatchedCount=0 → manual rename or deleted. INFO: manual is sovereign.
 			slog.InfoContext(ctx, "auto-title: no-op (manual rename or deleted)",
 				"conversation_id", conversationID,
 				"business_id", businessID,

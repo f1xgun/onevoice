@@ -186,13 +186,6 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// validate role exists AND belongs to either:
-	// (a) the system role set (BusinessID == nil), OR
-	// (b) this business (BusinessID == bc.BusinessID).
-	// Without this check, an admin of business A who knows a role UUID from
-	// business B could assign that B-scoped role to a member of A — a
-	// cross-tenant privilege escalation. custom roles make this
-	// surface live; pre-emptively closing it here.
 	role, err := h.roleRepo.GetByID(r.Context(), req.RoleId)
 	if err != nil {
 		if errors.Is(err, domain.ErrRoleNotFound) {
@@ -219,13 +212,6 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		}
 	}()
 
-	// EnsureOwnerExistsAfter serializes concurrent demotes via SELECT FOR UPDATE.
-	// OwnerChangeDemote: the target member is being assigned a (possibly non-owner) role.
-	// RoleID is intentionally omitted: EnsureOwnerExistsAfter for OwnerChangeDemote
-	// unconditionally removes the member from the owner count regardless of which
-	// role they are being assigned to. This is safe because the system Owner role
-	// is immutable (custom roles will need to revisit this if a custom
-	// role can carry owner-level permissions).
 	change := authz.OwnerChange{
 		Kind:         authz.OwnerChangeDemote,
 		MemberUserID: &targetUserID,
@@ -235,9 +221,6 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// UpdateRoleInTx writes role_changed_at + role_changed_by inside the same
-	// RepeatableRead transaction as EnsureOwnerExistsAfter's SELECT FOR UPDATE,
-	// so the mutation is serialized by the row-level lock (fix).
 	if err := h.membershipRepo.UpdateRoleInTx(r.Context(), tx, bc.BusinessID, targetUserID, req.RoleId, bc.UserID); err != nil {
 		writeAuthzInvariantError(r.Context(), w, "update_member_role.update", err)
 		return
@@ -249,12 +232,8 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	}
 	committed = true
 
-	// Invalidate AFTER commit, never before.
 	h.invalidator.InvalidateMember(bc.BusinessID, targetUserID)
 
-	// oldRoleID is nil: capturing it would require either a pre-commit SELECT
-	// (race window) or an UpdateRoleInTx returning the previous role_id —
-	// both deferred. Actor + target + new role is the load-bearing forensic data.
 	audit.LogRoleGranted(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, req.RoleId, nil)
 
 	slog.InfoContext(r.Context(), "member role updated",
@@ -264,7 +243,6 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		"new_role_id", req.RoleId,
 	)
 
-	// Hydrate the response with the updated row.
 	m, err := h.membershipRepo.GetByBusinessUser(r.Context(), bc.BusinessID, targetUserID)
 	if err != nil {
 		writeAuthzInvariantError(r.Context(), w, "update_member_role.read_back", err)
@@ -302,8 +280,6 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Self-removal exemption: members can always remove themselves regardless
-	// of PermMembersRemove. bc.UserID is JWT-validated; targetUserID is URL.
 	if targetUserID != bc.UserID {
 		if !authz.Can(r.Context(), authz.PermMembersRemove) {
 			writeJSONError(w, http.StatusForbidden, "forbidden")
@@ -332,8 +308,6 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// DeleteInTx runs inside the same RepeatableRead tx as EnsureOwnerExistsAfter's
-	// SELECT FOR UPDATE — prevents the pool/tx deadlock.
 	if err := h.membershipRepo.DeleteInTx(r.Context(), tx, bc.BusinessID, targetUserID); err != nil {
 		writeAuthzInvariantError(r.Context(), w, "remove_member.delete", err)
 		return
@@ -345,10 +319,8 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// Invalidate AFTER commit, never before.
 	h.invalidator.InvalidateMember(bc.BusinessID, targetUserID)
 
-	// selfRemoval=true distinguishes "left the org" from "kicked".
 	audit.LogMemberRemoved(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, targetUserID == bc.UserID)
 
 	slog.InfoContext(r.Context(), "member removed",
@@ -358,7 +330,6 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		"self_removal", targetUserID == bc.UserID,
 	)
 
-	// MEDIUM #8: EXACTLY 204 No Content — no body, no writeJSON.
 	w.WriteHeader(http.StatusNoContent)
 }
 

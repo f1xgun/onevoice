@@ -146,7 +146,7 @@ func (h *AuthHandler) setRefreshTokenCookie(w http.ResponseWriter, token string)
 		Name:     h.cookieName(),
 		Value:    token,
 		Path:     "/",
-		MaxAge:   int(7 * 24 * time.Hour / time.Second), // 604800
+		MaxAge:   int(7 * 24 * time.Hour / time.Second),
 		HttpOnly: true,
 		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
@@ -166,7 +166,6 @@ func (h *AuthHandler) clearRefreshTokenCookie(w http.ResponseWriter) {
 }
 
 func (h *AuthHandler) readRefreshTokenCookie(r *http.Request) (string, error) {
-	// Try secure name first, then plain (handles upgrade path).
 	for _, name := range []string{"__Host-refresh_token", "refresh_token"} {
 		c, err := r.Cookie(name)
 		if err == nil && c.Value != "" {
@@ -261,7 +260,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), email, req.Password)
 	if err != nil {
 		slog.Error("auto-login after register failed", "error", err)
-		// Distinct from register_internal — the account WAS created; only token issue failed.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeAutoLoginFailed)
 		return
 	}
@@ -280,7 +278,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 // ErrInvalidCredentials increments the lockout counter, success clears it.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req openapi.LoginRequest
-	// Lockout middleware has already restored r.Body via io.NopCloser(bytes.NewReader(...)).
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -299,14 +296,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		clientIPForCaptcha := middleware.LoginClientIP(r.Context())
 		if clientIPForCaptcha == "" {
-			// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF cannot be
-			// spoofed by an attacker whose TCP peer is outside the trusted set.
 			clientIPForCaptcha = middleware.ClientIP(r)
 		}
 		if verr := h.captcha.Verify(r.Context(), token, clientIPForCaptcha); verr != nil {
 			if errors.Is(verr, service.ErrCaptchaTransient) && h.captchaFailOpen {
-				// Fail-open during outage: bot-through is acceptable, locking
-				// every real user out is not.
 				slog.Warn("smartcaptcha: transient error, failing open",
 					slog.String("error", verr.Error()),
 					slog.String("client_ip", clientIPForCaptcha),
@@ -326,10 +319,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 				slog.String("remote_addr", r.RemoteAddr),
 				slog.String("user_agent", r.UserAgent()),
 			)
-			// user_id intentionally nil — attempted email goes only into Details
-			// for brute-force analysis, not into a users-table lookup.
 			audit.LogLoginFailed(r.Context(), h.audit, email, middleware.ClientIP(r), r.UserAgent(), "invalid_credentials")
-			// Best-effort — Redis error must not flip 401 into 500.
 			h.recordLoginFailure(r, email)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
@@ -423,9 +413,6 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Local claims-parse independent of the service so we capture user_id
-	// even when the service later reports an invalid token. Mismatched /
-	// unsigned tokens fall through to uuid.Nil and we skip the audit emission.
 	var auditUserID uuid.UUID
 	if tok, perr := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -569,13 +556,9 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	if h.consents != nil {
 		diff, derr := h.consents.DiffAgainstCurrent(r.Context(), userID)
 		if derr != nil {
-			// Best-effort: /auth/me must not 500 because of a consent-diff failure.
 			slog.Warn("auth/me: diff against current consents failed", "userID", userID, "err", derr)
 		} else if diff != nil {
 			reconsent = diff
-			// Audit row records that ReConsentModal will be shown to this user —
-			// otherwise a user can later claim "I never saw the modal" and
-			// audit_logs will not contradict them. Fire-and-forget.
 			slugs := make([]string, 0, len(diff.Policies))
 			for _, p := range diff.Policies {
 				slugs = append(slugs, p.Slug)
@@ -620,7 +603,6 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// NO old/new password content in details — only IP + UA for forensics.
 	audit.LogPasswordChanged(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -674,7 +656,6 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 		writeValidationError(w, r, err)
 		return
 	}
-	// Service ALWAYS returns nil; we do not branch on its result.
 	_ = h.passwordResetService.RequestReset(r.Context(), string(req.Email), middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -724,7 +705,6 @@ func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 	userID, err := h.emailVerificationService.ConfirmVerify(r.Context(), req.Token)
 	if err != nil {
 		if errors.Is(err, domain.ErrVerifyTokenInvalid) {
-			// UX-only follow-up to differentiate invalid vs expired.
 			code := "verify_token_invalid"
 			if expired, _ := h.emailVerificationService.IsTokenExpired(r.Context(), req.Token); expired {
 				code = "verify_token_expired"
@@ -736,7 +716,6 @@ func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	// EXPLICITLY NO setRefreshTokenCookie — see VerifyConfirm doc.
 	audit.LogEmailVerified(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }

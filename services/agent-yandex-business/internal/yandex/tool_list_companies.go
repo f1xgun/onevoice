@@ -36,31 +36,22 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 				}
 				debugScreenshot(page, "list_companies_after_navigate")
 
-				// Canary against passport redirect; the rest of the URL prefix is
-				// the org-list page itself, so we check the host bucket only.
 				currentURL := page.URL()
 				if strings.Contains(currentURL, "passport.yandex") {
 					return a2a.NewNonRetryableError(fmt.Errorf("%w: redirected to %s", ErrSessionExpired, currentURL))
 				}
 				closePopups(page)
 
-				// Wait for the SPA to mount the company list. Empty state also
-				// uses CompaniesCompanyRow's container so this selector covers
-				// "no orgs yet" — we just return [].
 				if err := page.Locator(".CompaniesCompanyRow").First().WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(tabSwitchTimeoutMs),
 					State:   playwright.WaitForSelectorStateVisible,
 				}); err != nil {
-					// SPA may render a different empty layout — treat as 0 orgs.
 					slog.Info("ListCompanies: no .CompaniesCompanyRow visible; returning empty list",
 						"url", currentURL)
 					result = []map[string]interface{}{}
 					return nil
 				}
 
-				// Read all rows in one in-page evaluator. Each row anchor's href
-				// has the form /sprav/<digits>/p/edit/... — the first capture
-				// group is the canonical Sprav permalink.
 				raw, err := page.Evaluate(`() => {
 				const rows = Array.from(document.querySelectorAll('.CompaniesCompanyRow'));
 				return rows.map(row => {
@@ -76,8 +67,6 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 					return fmt.Errorf("evaluate companies list: %w", err)
 				}
 
-				// Playwright Evaluate returns interface{}; serialize → deserialize
-				// to land on the canonical map shape the agent handler expects.
 				b, _ := json.Marshal(raw)
 				var rows []map[string]interface{}
 				_ = json.Unmarshal(b, &rows)

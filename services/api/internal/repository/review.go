@@ -109,9 +109,6 @@ func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) er
 			"external_id": review.ExternalID,
 		},
 	}
-	// When the syncer detects an existing reply on the platform (e.g. a VK
-	// thread reply from the community), drop any stale AI draft so the UI
-	// stops offering a draft alongside an already-replied review.
 	if review.ReplyStatus == domain.ReviewReplyStatusReplied {
 		update["$unset"] = bson.M{
 			"draft_reply":        "",
@@ -129,10 +126,6 @@ func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) er
 }
 
 func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, replyStatus string) error {
-	// Sending a manual reply implicitly resolves any AI draft tied to this
-	// review. Clearing the four draft_* fields keeps the data model honest
-	// (a row should never carry both a "ready" draft and a "replied" status)
-	// and lets the UI conditional `pending && draftStatus==ready` flip cleanly.
 	update := bson.M{
 		"$set": bson.M{
 			"reply_text":   replyText,
@@ -167,9 +160,6 @@ func (r *reviewRepository) ListPendingWithoutDraft(ctx context.Context, business
 	f := bson.M{
 		"business_id":  businessID,
 		"reply_status": domain.ReviewReplyStatusPending,
-		// Either the field is absent (legacy/never-tried), empty, or "failed".
-		// "generating" is excluded so a concurrent sync pass doesn't double-call.
-		// "ready" is excluded by definition (we already have a draft).
 		"$or": []bson.M{
 			{"draft_status": bson.M{"$exists": false}},
 			{"draft_status": ""},
@@ -239,12 +229,7 @@ func (r *reviewRepository) UpdateDraft(ctx context.Context, id, draft, status, e
 		set["draft_error"] = ""
 	case domain.ReviewDraftStatusFailed:
 		set["draft_error"] = errMsg
-		// Leave draft_reply/draft_generated_at as-is so a previous successful
-		// generation isn't blown away by a transient retry failure. The next
-		// pass will pick this row up because failed is in the unmet-status set.
 	case domain.ReviewDraftStatusGenerating:
-		// Claim the row for this pass — clear any stale error from a prior
-		// failed attempt so the UI doesn't flash old context while we work.
 		set["draft_error"] = ""
 	}
 

@@ -113,8 +113,6 @@ func LLMProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) []
 		}
 	}
 
-	// Wire self-hosted endpoints. Self-hosted models are not in
-	// apiModelPricing (operator-deployed inference); cost stays at zero.
 	for i, ep := range cfg.SelfHostedEndpoints {
 		name := fmt.Sprintf("selfhosted-%d", i)
 		p := providers.NewSelfHosted(name, ep.URL, ep.APIKey)

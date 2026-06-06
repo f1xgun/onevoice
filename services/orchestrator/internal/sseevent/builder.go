@@ -39,16 +39,12 @@ func FromEvent(e orchestrator.Event) sse.Event {
 		out.ToolResult = e.ToolResult
 		out.ToolError = e.ToolError
 	case orchestrator.EventToolRejected:
-		// policy_forbidden / policy_revoked / user_rejected. Carries only
-		// id+name; the chat_proxy / FE renders the rejection from those.
 		out.ToolCallID = e.ToolCallID
 		out.ToolName = e.ToolName
 	case orchestrator.EventToolApprovalRequired:
-		// One pause event per turn carrying all manual-floor calls.
 		out.BatchID = e.BatchID
 		out.Calls = e.Calls
 	case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
-		// No additional fields beyond Type + Content.
 	}
 	return out
 }

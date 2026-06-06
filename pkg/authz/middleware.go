@@ -56,9 +56,7 @@ func RequireBusinessAccess(cache *Cache, extractUserID UserIDExtractor) func(htt
 			member, err := cache.GetMembership(r.Context(), businessID, userID)
 			switch {
 			case err == nil:
-				// ok — proceed
 			case errors.Is(err, domain.ErrMembershipNotFound):
-				// 404, NOT 403 — AUTHZ-05 contract.
 				writeAuthzError(w, http.StatusNotFound, "not_found")
 				return
 			default:
@@ -88,12 +86,6 @@ func RequireBusinessAccess(cache *Cache, extractUserID UserIDExtractor) func(htt
 				return
 			}
 
-			// defensive copy. role.Permissions points at the slice
-			// stored inside the cache entry; if any future code path mutates
-			// bc.Permissions (append, sort, in-place edit) it would corrupt
-			// the shared cache entry — and the bug would only fire on cache
-			// HITS, making it easy to miss in unit tests. One alloc per
-			// request (~100 bytes) is a negligible cost for the safety.
 			perms := make([]Permission, len(role.Permissions))
 			copy(perms, role.Permissions)
 			bc := BusinessContext{

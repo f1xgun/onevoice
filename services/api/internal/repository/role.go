@@ -64,8 +64,6 @@ func (r *roleRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Rol
 // for the given business, ordered is_system DESC then name ASC (system roles
 // appear first). Used by GET /businesses/{id}/roles.
 func (r *roleRepository) ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]domain.Role, error) {
-	// Use squirrel's raw-string Where variant so the IS NULL branch composes
-	// alongside the placeholder for businessID.
 	sql, args, err := r.sb.
 		Select(
 			"id", "business_id", "name", "description", "permissions", "is_system",
@@ -416,13 +414,10 @@ func (r *roleRepository) DeleteWithReassignInTx(
 	if tx == nil {
 		return fmt.Errorf("DeleteWithReassignInTx: tx is required")
 	}
-	// Self-reassign guard is also enforced in the handler. Reaching this is a
-	// server-bug bypass; the 500 surface is the correct triage signal.
 	if oldRoleID == reassignToID {
 		return fmt.Errorf("DeleteWithReassignInTx: reassignTo cannot equal oldRoleID")
 	}
 	now := time.Now().UTC()
-	// 1. Reassign first (FK ON DELETE RESTRICT requires this).
 	reassignSQL, reassignArgs, err := r.sb.
 		Update("business_members").
 		Set("role_id", reassignToID).
@@ -433,13 +428,9 @@ func (r *roleRepository) DeleteWithReassignInTx(
 	if err != nil {
 		return fmt.Errorf("build reassign members: %w", err)
 	}
-	// RowsAffected on the UPDATE is informational only — concurrent reassigns
-	// between the handler's count and this UPDATE leave the final state
-	// consistent. The DELETE below is the authoritative signal.
 	if _, err := tx.Exec(ctx, reassignSQL, reassignArgs...); err != nil {
 		return fmt.Errorf("reassign members: %w", err)
 	}
-	// 2. Now safely delete the role.
 	delSQL, delArgs, err := r.sb.
 		Delete("roles").
 		Where(squirrel.Eq{"id": oldRoleID, "is_system": false}).

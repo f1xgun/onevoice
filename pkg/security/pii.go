@@ -76,7 +76,7 @@ func RedactPII(s string) string {
 	for _, c := range piiClasses {
 		out = c.pattern.ReplaceAllStringFunc(out, func(match string) string {
 			if c.extra != nil && !c.extra(match) {
-				return match // not a real PII match — leave intact
+				return match
 			}
 			return redactionToken
 		})
@@ -127,7 +127,6 @@ func luhnValid(card string) bool {
 	}
 	var sum int
 	for i, d := range digits {
-		// Double every second digit from the right.
 		if (len(digits)-i)%2 == 0 {
 			d *= 2
 			if d > 9 { //nolint:mnd // Luhn check digit overflow boundary

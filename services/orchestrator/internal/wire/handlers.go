@@ -35,13 +35,10 @@ type HandlerSet struct {
 // behavior change.
 func Handlers(orch *orchestrator.Orchestrator, registry *toolregistry.Registry, router *llm.Router, cfg *config.Config) *HandlerSet {
 	return &HandlerSet{
-		Chat:     handler.NewChatHandler(orch, cfg.LLMModel),
-		Resume:   handler.NewResumeHandler(orch),
-		Tools:    handler.NewInternalToolsHandler(registry),
-		ToolsAll: handler.NewInternalToolsAllHandler(registry),
-		// DraftReply routes at cfg.DraftReplyModel (defaults to cfg.LLMModel
-		// when DRAFT_REPLY_MODEL env is unset; see config.Load). Kept as its
-		// own env var so titler and drafter can be tuned independently.
+		Chat:       handler.NewChatHandler(orch, cfg.LLMModel),
+		Resume:     handler.NewResumeHandler(orch),
+		Tools:      handler.NewInternalToolsHandler(registry),
+		ToolsAll:   handler.NewInternalToolsAllHandler(registry),
 		DraftReply: handler.NewDraftReplyHandler(router, cfg.DraftReplyModel),
 	}
 }

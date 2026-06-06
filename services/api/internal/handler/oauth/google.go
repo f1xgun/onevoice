@@ -71,7 +71,6 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange authorization code for tokens
 	form := url.Values{
 		"code":          {code},
 		"client_id":     {h.cfg.GoogleClientID},
@@ -101,14 +100,11 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CRITICAL: refresh_token is only returned on first consent. If missing, the user
-	// did not grant offline access (prompt=consent was missing from auth URL).
 	if tokenResp.RefreshToken == "" {
 		http.Redirect(w, r, "/integrations?error=no_refresh_token", http.StatusFound)
 		return
 	}
 
-	// Discover accounts
 	accounts, err := h.googleDiscoverAccounts(r.Context(), tokenResp.AccessToken)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "Google account discovery failed", "error", err)
@@ -121,7 +117,6 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Discover locations for the first account
 	var allLocations []googleLocationRef
 	for _, acct := range accounts {
 		locations, locErr := h.googleDiscoverLocations(r.Context(), tokenResp.AccessToken, acct.Name)
@@ -143,7 +138,6 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Single location: auto-connect
 	if len(allLocations) == 1 {
 		loc := allLocations[0]
 		expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
@@ -170,7 +164,6 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Multiple locations: store temp data in Redis for selection step
 	tempData := googleTempData{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
@@ -323,7 +316,6 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Find the matching location to get its title
 	var locationTitle string
 	found := false
 	for _, loc := range tempData.Locations {
@@ -359,7 +351,6 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Clean up temp data
 	_ = h.redis.Del(r.Context(), redisKey).Err()
 
 	writeJSON(w, http.StatusCreated, integration)

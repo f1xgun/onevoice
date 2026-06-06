@@ -155,13 +155,6 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 		var batch []tgbotapi.Update
 		err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
 			var e error
-			// Channel posts ("channel_post"/"edited_channel_post") are
-			// admin-authored content, not customer feedback — including
-			// them surfaced the operator's own announcements as pending
-			// reviews. Customer comments on a channel post arrive as
-			// regular "message" updates in the linked discussion group,
-			// which we still pick up below (filtering out the auto-
-			// forwarded copy of the original post).
 			batch, e = b.api.GetUpdates(tgbotapi.UpdateConfig{
 				Offset:         offset,
 				Limit:          batchSize,
@@ -199,18 +192,9 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 			continue
 		}
 
-		// Skip the auto-forwarded copy of the channel post that Telegram
-		// drops into the linked discussion group. It carries the original
-		// post's text but isn't customer feedback — the actual replies
-		// to that post come as separate messages with reply_to_message.
 		if msg.IsAutomaticForward {
 			continue
 		}
-		// Skip messages where the sender IS a chat (admin posting as the
-		// channel/group itself, not as an individual). Customer comments
-		// always come from a real user — `From` is the user, `SenderChat`
-		// is nil. When SenderChat matches the chat the message was sent
-		// in, that's an admin acting as the channel — skip it.
 		if msg.SenderChat != nil && msg.Chat != nil && msg.SenderChat.ID == msg.Chat.ID {
 			continue
 		}
@@ -254,12 +238,6 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 			"created_at": time.Unix(int64(msg.Date), 0).UTC().Format(time.RFC3339),
 		}
 
-		// Attribute channel-post comments. When Telegram auto-forwards a
-		// channel post into the linked discussion group, replies to that
-		// forwarded message are comments on the original post. Tagging the
-		// review with the channel's ID and the original post's message ID
-		// lets downstream UI link "comment on post X" instead of treating
-		// it as a standalone message in the discussion group.
 		if r := msg.ReplyToMessage; r != nil && r.IsAutomaticForward {
 			if r.SenderChat != nil {
 				review["channel_id"] = r.SenderChat.ID

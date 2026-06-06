@@ -25,7 +25,6 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 				}
 				debugScreenshot(page, "updateinfo_after_navigate")
 
-				// Field mapping: key -> CSS selector for input within the section
 				fieldMap := map[string]string{
 					"phone":       ".InfoPhones input.ya-business-input__control",
 					"description": ".ya-business-input__label:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input",
@@ -46,14 +45,12 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 						return fmt.Errorf("field %q input not found", key)
 					}
 
-					// Triple-click to select all, then type new value
 					if err := input.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
 						return fmt.Errorf("click %q input: %w", key, err)
 					}
 					if err := page.Keyboard().Type(value, playwright.KeyboardTypeOptions{Delay: playwright.Float(keyboardDelayDefaultMs)}); err != nil {
 						return fmt.Errorf("type %q: %w", key, err)
 					}
-					// Blur to trigger validation
 					_ = page.Locator("h1, .InfoBlockCarcass, body").First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(clickAwayTimeoutMs)})
 					time.Sleep(1 * time.Second)
 					humanDelay()
@@ -61,7 +58,6 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 
 				debugScreenshot(page, "updateinfo_after_fill")
 
-				// Click Save
 				if err := clickSave(page); err != nil {
 					return err
 				}

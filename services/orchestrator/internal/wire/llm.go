@@ -97,9 +97,6 @@ func BuildRateLimiter(cfg *config.Config, log *slog.Logger, rdb *redis.Client, s
 		free.DailySpendUSD = cfg.FreeTierDailySpendUSD
 		limits["free"] = free
 	case cfg.FreeTierDailySpendUSD < 0:
-		// Negative is the "unlimited" sentinel: drop the cap to 0 which
-		// disables the gate (the limiter skips DailySpender lookup when
-		// the limit is non-positive).
 		free := limits["free"]
 		free.DailySpendUSD = 0
 		limits["free"] = free
@@ -212,11 +209,6 @@ func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) 
 		}
 	}
 
-	// Wire self-hosted endpoints. Self-hosted models are not in modelPricing
-	// (they're operator-deployed inference servers with no public list
-	// price), so cost stays at zero — operator can edit modelPricing to add
-	// a synthetic rate if they want self-hosted billing rows to surface a
-	// non-zero number for capacity-planning purposes.
 	for i, ep := range cfg.SelfHostedEndpoints {
 		name := fmt.Sprintf("selfhosted-%d", i)
 		p := providers.NewSelfHosted(name, ep.URL, ep.APIKey)

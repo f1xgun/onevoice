@@ -85,8 +85,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	// ConversationID comes from the URL path so the persisted
-	// PendingToolCallBatch is reachable from the GET /messages hydration filter.
 	conversationID := chi.URLParam(r, "conversationID")
 	if req.Message == "" {
 		http.Error(w, `{"error":"message is required"}`, http.StatusBadRequest)
@@ -99,7 +97,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	// X-Accel-Buffering: no tells nginx not to coalesce SSE chunks.
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher, ok := w.(http.Flusher)
@@ -108,9 +105,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// a2a.WithBusinessID is required by downstream NATS executors; without
-	// it every tool call reaches platform agents with business_id="" and
-	// fails token resolution.
 	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
 	if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
 		ctx = logger.WithCorrelationID(ctx, corrID)
@@ -132,8 +126,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Locale:             locale,
 	}
 
-	// Coerce invalid whitelist modes back to inherit instead of crashing on
-	// bad proxy input. Empty == inherit (v1.3 = all).
 	mode := domain.WhitelistMode(req.ProjectWhitelistMode)
 	if mode != "" && !domain.ValidWhitelistMode(mode) {
 		slog.WarnContext(ctx, "invalid whitelist mode from proxy, falling back to inherit",
@@ -142,7 +134,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		mode = ""
 	}
 
-	// Empty project_id means "Без проекта" — skip the project prompt layer.
 	var projCtx *prompt.ProjectContext
 	if req.ProjectID != "" {
 		projCtx = &prompt.ProjectContext{
@@ -181,8 +172,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		if u, err := uuid.Parse(req.UserID); err == nil {
 			runReq.UserID = u
 		} else {
-			// Parse failure leaves UserID zero — the downstream code path
-			// tolerates uuid.Nil; bad input must not block the chat.
 			slog.WarnContext(ctx, "invalid user_id from proxy, leaving UserID zero",
 				"user_id", req.UserID, "error", err)
 		}
@@ -263,7 +252,6 @@ func writeSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, 
 		)
 		return
 	}
-	// SSE requires per-event flush — buffered chunks would stall the stream client-side.
 	flusher.Flush()
 }
 
@@ -272,9 +260,6 @@ func writeSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, 
 // See docs/orchestrator/chat-handler.md.
 func resolveChatLocale(ctx context.Context, bodyLocale string) language.Tag {
 	if bodyLocale != "" {
-		// MatchAcceptLanguage handles single ("en") and multi-tag preference
-		// lists ("en-US,en;q=0.9") uniformly and falls back to DefaultTag on
-		// parse failure — never propagate a zero Tag downstream.
 		return i18n.MatchAcceptLanguage(bodyLocale)
 	}
 	return i18n.LocaleFromContext(ctx)

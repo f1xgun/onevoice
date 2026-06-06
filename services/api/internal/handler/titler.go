@@ -101,7 +101,6 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Graceful disable: titling not configured (Pitfall 1).
 	if h.titler == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error":   "titler_disabled",
@@ -110,10 +109,6 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// manual is sovereign — RU copy locked in CONTEXT.md, surfaced via
-	// pkg/i18n key "api.title.conflict.manual_rename" (catalog keeps the
-	// verbatim byte sequence). Tests assert the byte-exact RU string when
-	// no Accept-Language is supplied (default tag = ru).
 	if conv.TitleStatus == domain.TitleStatusManual {
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":   "title_is_manual",
@@ -121,14 +116,6 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
-	// in-flight job already running — verbatim Russian copy locked in CONTEXT.md.
-	//
-	// Stuck-pending recovery: a chat may sit in auto_pending forever if the
-	// titler goroutine never ran (e.g., titler was disabled at the time the
-	// chat was created, or the goroutine errored without flipping status).
-	// The cheap LLM call is bounded by a 30s timeout downstream — anything
-	// older than that is provably NOT in flight, so allow regenerate to
-	// re-trigger the goroutine instead of trapping the user in 409 forever.
 	const stuckPendingThreshold = 30 * time.Second
 	if conv.TitleStatus == domain.TitleStatusAutoPending &&
 		time.Since(conv.UpdatedAt) < stuckPendingThreshold {
@@ -139,10 +126,6 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Atomic transition status:auto → auto_pending. The repo's filter excludes
-	// "manual" so a manual rename arriving between the read above and this
-	// update is rejected; surface as a generic 409 so the frontend re-fetches
-	// the conversation and discovers the new state (race-loss is recoverable).
 	if err := h.conversationRepo.TransitionToAutoPending(r.Context(), conversationID); err != nil {
 		if errors.Is(err, domain.ErrConversationNotFound) {
 			writeJSON(w, http.StatusConflict, map[string]string{
@@ -156,9 +139,6 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Fetch latest user + assistant text for the titler prompt. List
-	// failure is non-fatal — the titler will simply fall through to the
-	// empty-response branch and log the outcome.
 	msgs, err := h.messageRepo.ListByConversationID(r.Context(), conversationID, 100, 0)
 	if err != nil {
 		slog.WarnContext(r.Context(), "regenerate-title: list messages failed",
@@ -175,21 +155,13 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Fresh detached ctx with 30s timeout — r.Context() is canceled at HTTP
-	// response close and the cheap-LLM call takes 3-8s. The goroutine owns the
-	// cancel so the timer releases when it exits. Locale copied off the request
-	// ctx (set by middleware.Locale) so the cheap-LLM prompt matches the user's
-	// chosen language.
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(r.Context()))
-	// The acceptance grep requires the literal `go h.titler.GenerateAndSave(spawnCtx`
-	// — wrap the call so the closure forwards every arg verbatim AND cancels the
-	// timeout when the spawned work completes (vet would flag a discarded cancel).
 	go h.titler.GenerateAndSave(spawnCtx, conv.BusinessID, conversationID, userText, assistantText)
 	go func() {
 		<-spawnCtx.Done()
 		spawnCancel()
 	}()
 
-	w.WriteHeader(http.StatusOK) // 200, no body — fire-and-forget
+	w.WriteHeader(http.StatusOK)
 }

@@ -178,21 +178,14 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		return false, fmt.Errorf("unknown tier: %s", tier)
 	}
 
-	// Enterprise tier is unlimited
 	if limits.IsUnlimited() {
 		return true, nil
 	}
 
-	// Daily-spend gate. Runs first so a budget-blown business never bumps
-	// per-minute counters — the side-effect would skew per-minute throttling
-	// for the SAME user once the cap is raised.
 	if rl.dailySpender != nil && limits.DailySpendUSD > 0 && businessID != uuid.Nil {
 		today := time.Now().UTC()
 		spend, err := rl.dailySpender.GetDailySpend(ctx, businessID, today)
 		if err != nil {
-			// Daily-spend lookup failed. Same shape as Redis-down: the
-			// limiter cannot make a safe decision. Surface as "infra
-			// unavailable" so observability stays unambiguous.
 			metrics.LLMRedisDownFallback.WithLabelValues("misconfigured").Inc()
 			return false, ErrRateLimitUnavailable
 		}
@@ -204,7 +197,6 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 
 	now := time.Now()
 
-	// Check request rate (requests per minute)
 	if limits.RequestsPerMin > 0 {
 		reqKey := fmt.Sprintf("ratelimit:%s:requests:min", userID.String())
 		count, err := rl.redis.Incr(ctx, reqKey).Result()
@@ -212,7 +204,6 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 			return rl.handleRedisError(err)
 		}
 
-		// Set TTL on first request
 		if count == 1 {
 			rl.redis.Expire(ctx, reqKey, time.Minute)
 		}
@@ -222,7 +213,6 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		}
 	}
 
-	// Check token rate (tokens per minute)
 	if limits.TokensPerMin > 0 {
 		tokKey := fmt.Sprintf("ratelimit:%s:tokens:min", userID.String())
 		count, err := rl.redis.IncrBy(ctx, tokKey, int64(tokens)).Result()
@@ -239,7 +229,6 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		}
 	}
 
-	// Check monthly token limit
 	if limits.TokensPerMonth > 0 {
 		monthKey := fmt.Sprintf("ratelimit:%s:tokens:month:%s", userID.String(), now.Format("2006-01"))
 		count, err := rl.redis.IncrBy(ctx, monthKey, int64(tokens)).Result()
@@ -247,7 +236,6 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 			return rl.handleRedisError(err)
 		}
 
-		// Set expiry to end of month
 		if count == int64(tokens) {
 			endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 			ttl := endOfMonth.Sub(now)
@@ -268,7 +256,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 func (rl *RateLimiter) handleRedisError(err error) (bool, error) {
 	now := time.Now()
 	rl.redisDownSince.Store(&now)
-	_ = err // err is kept for future logging — not surfaced today.
+	_ = err
 
 	switch rl.redisDownPolicy {
 	case RedisDownPolicyBlock:

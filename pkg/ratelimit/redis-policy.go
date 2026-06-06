@@ -108,8 +108,6 @@ func (p Policy) HandleRedisError(err error) (bool, error) {
 		return false, ErrUnavailable
 	case PolicyLocalFallback:
 		if p.Bucket == nil {
-			// Defensive: PolicyFromEnv guarantees this never happens, but
-			// a hand-rolled Policy could miss the bucket.
 			metrics.RedisDownFallback.WithLabelValues("block").Inc()
 			return false, ErrUnavailable
 		}

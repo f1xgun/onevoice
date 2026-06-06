@@ -48,14 +48,6 @@ func main() {
 func run(log *slog.Logger, cfg *config.Config) error {
 	log.Info("starting onevoice api server")
 
-	// M-04 (enforcement): refuse to start when LEGAL_*
-	// env vars are still placeholder AND the operator explicitly opted into
-	// strict mode via LEGAL_ENFORCE=strict (production deploys per
-	// docs/runbook-launch-readiness.md §6). Non-strict (dev/local) just
-	// warns once — the API still boots so contributors can run it without
-	// real ИНН + entity. Without this gate, the runbook's «HARD block» on
-	// placeholder values is documentation-only and the API happily renders
-	// «[Юридическое лицо — будет обновлено]» to real users.
 	entity := legalconfig.Load()
 	if entity.IsPlaceholder() {
 		if os.Getenv("LEGAL_ENFORCE") == "strict" {
@@ -86,34 +78,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	defer svcs.Close()
 
-	// startup sweep — non-blocking goroutine. Compares every
-	// tool-approval entry stored in Postgres against the live orchestrator
-	// registry (via svcs.OrchClient) and logs tool_approval_whitelist_unknown
-	// for stale entries. Best-effort: one retry after 5s, skipped silently
-	// on sustained failure. Moved after BuildServices so the
-	// shared *orchestratorclient.Client is reused.
 	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
-	// audit-log retention sweep. Application-level
-	// replacement for pg_cron (NOT available in postgres:16-alpine —
-	// REVISED). Ticks every 24h, acquires
-	// pg_try_advisory_lock(hashtext('audit_logs_retention')::bigint) to
-	// serialize across replicas, then DELETEs audit_logs rows older than
-	// 365d. Non-blocking: spawns its own goroutine and returns. Lifecycle
-	// is bound to ctx (SIGTERM cancels the sweep).
 	wire.StartRetentionSweep(ctx, handles.PG, repos.AuditLog)
 
-	// email_outbox drain worker. Lifecycle bound to ctx.
-	// Mirrors StartRetentionSweep. Logs to slog under "email_outbox worker".
-	// Sender is NoopSender in dev (empty UNISENDER_API_KEY) and
-	// UnisenderSender in production — see wire/email.go.
 	emailSender := wire.BuildEmailSender(log, cfg)
 	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
 
-	// hourly hard-delete sweeper +
-	// 6h T-7 warning sweeper. Lifecycle bound to ctx so SIGTERM
-	// cleanly cancels both goroutines. Skipped when AccountDeletion
-	// service is nil (legacy/test deploys).
 	if svcs.AccountDeletion != nil {
 		go runHardDeleteSweeper(ctx, log, svcs.AccountDeletion)
 		go runDeletionWarningSweeper(ctx, log, svcs.AccountDeletion)
@@ -124,10 +95,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return err
 	}
 
-	// Single source of truth for dep checks lives in
-	// pkg/health/wiring.go::RegisterDefaultChecks. Pass every dep handle
-	// the API service owns; the helper skips nil args silently so
-	// orchestrator (which has no PG/Redis) can call the same helper.
 	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
 	var mongoClient *mongo.Client
 	if handles.Mongo != nil {
@@ -149,25 +116,13 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		HITL:     cfg.RateLimitHITL,
 		Consents: cfg.RateLimitConsents,
 	}
-	// v2.0 RBAC: authzCache is owned by wire.Services and gates the
-	// /businesses/{id}/... subtree via authz.RequireBusinessAccess inside
-	// router.Setup.
-	// repos.User is the UserLookup for the
-	// RequireVerifiedEmailDay0/Day7 soft-restrict middleware.
-	// handles.PG is the pool the
-	// BlockWritesDuringGrace middleware reads users.deletion_requested_at
-	// from on every write request.
-	// svcs.Lockout enables LockoutMiddleware on /auth/login. Nil-safe —
-	// when Redis was unavailable at boot the middleware is skipped and
-	// Login degrades to legacy behavior.
 	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG, svcs.Lockout)
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{
-		Addr:        addr,
-		Handler:     r,
-		ReadTimeout: cfg.HTTPReadTimeout,
-		// WriteTimeout=0: SSE requires long-lived connections.
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  cfg.HTTPReadTimeout,
 		WriteTimeout: 0,
 		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
@@ -187,11 +142,6 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		Handler:           internalRouter,
 		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 	}
-	// mTLS: when ONEVOICE_MTLS_ENABLED=true (production / docker-compose),
-	// terminate TLS on :8443 with RequireAndVerifyClientCert. Plain HTTP
-	// connection attempts get a TLS handshake error — no useful response.
-	// Falls back to ListenAndServe (plain HTTP) when disabled so unit tests
-	// and dev runs without certs still work. See pkg/mtls/config.go.
 	internalTLS, mtlsErr := wire.MaybeServerTLSConfig()
 	if mtlsErr != nil {
 		return fmt.Errorf("internal server tls: %w", mtlsErr)
@@ -203,8 +153,6 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		log.Info("internal server listening", "addr", internalAddr, "tls", internalTLS != nil)
 		var serveErr error
 		if internalTLS != nil {
-			// Cert + key are already loaded into TLSConfig.Certificates;
-			// empty string args tell ListenAndServeTLS to use them.
 			serveErr = internalSrv.ListenAndServeTLS("", "")
 		} else {
 			serveErr = internalSrv.ListenAndServe()
@@ -214,9 +162,6 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		}
 	}()
 
-	// Review syncer ticker — start the background pull loop using the
-	// reviewSyncer instance built earlier (so reviewService can share it
-	// for the manual-refresh endpoint). No-op when nil.
 	svcs.StartReviewSyncer(ctx, log, cfg.ReviewSyncInterval)
 
 	select {

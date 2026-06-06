@@ -23,7 +23,7 @@ var cursorEncoding = base64.URLEncoding.WithPadding(base64.NoPadding)
 // (created_at, id). Returned token is URL-safe with no padding.
 func EncodeCursor(t time.Time, id uuid.UUID) string {
 	p := cursorPayload{T: t.UTC().Format(time.RFC3339Nano), ID: id.String()}
-	b, _ := json.Marshal(p) // marshaling a struct of two strings cannot fail
+	b, _ := json.Marshal(p)
 	return cursorEncoding.EncodeToString(b)
 }
 

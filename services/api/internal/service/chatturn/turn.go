@@ -75,8 +75,6 @@ func New(deps Deps) *Turn {
 	if deps.Orch == nil {
 		panic("chatturn.New: Orch cannot be nil")
 	}
-	// Posts, Reviews, AgentTasks, TaskHub, Titler can all be nil — they
-	// gate optional behaviors (postal fanout / auto-title) downstream.
 	return &Turn{deps: deps}
 }
 
@@ -104,8 +102,6 @@ func (t *Turn) Run(
 	req TurnRequest,
 	emit func(sse.Event),
 ) (TurnOutcome, error) {
-	// Step 1 — gate. Soft-errors are logged inside gateOnRequest; no terminal
-	// failure is ever returned (legacy behavior — DB blips must not brick chat).
 	action, activeMsg, batch, batchID := t.gateOnRequest(ctx, req.ConversationID, req.ResumeBatchID)
 	switch action {
 	case gateRejoinResume:
@@ -117,18 +113,12 @@ func (t *Turn) Run(
 		t.sseInlineError(w, "turn_already_in_progress")
 		return OutcomeInlineError, nil
 	case gateFresh:
-		// fall through to fresh-turn path
 	}
 
-	// Fresh-path body validation. The handler decodes the request body into
-	// TurnRequest unconditionally; we only enforce the "message required"
-	// invariant here so resume / re-emit / inline-error branches above can
-	// run on a request with an empty body (legacy behavior preserved).
 	if req.Message == "" {
 		return OutcomeMissingMessage, nil
 	}
 
-	// Step 2 — enrich + persist user message.
 	enriched, err := t.enrich(ctx, req)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
@@ -141,7 +131,6 @@ func (t *Turn) Run(
 		slog.ErrorContext(ctx, "chatturn: failed to persist user message", "error", perr)
 	}
 
-	// Step 3 — open orchestrator stream.
 	streamStartID := streamStartMessageID()
 	state := newStreamState()
 	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), streamBudget)
@@ -154,13 +143,9 @@ func (t *Turn) Run(
 	streamErr := t.streamOrchestrator(ctx, taskOpsCtx, w, req.ConversationID, body, nil, enriched.business.ID.String(), state, emit)
 	if streamErr != nil && state.pauseEvent == nil && state.streamErrContent == "" &&
 		!errors.Is(streamErr, context.Canceled) && strings.Contains(streamErr.Error(), "stream chat") {
-		// Surface as OrchestratorUnavailable so the handler can map to 502.
-		// This replaces the legacy strings.Contains check on the raw error
-		// string with an explicit Turn-level signal.
 		return OutcomeOrchestratorUnavailable, streamErr
 	}
 
-	// Step 4 — post-stream persistence + fanout.
 	t.persistAfterStream(ctx, req, enriched, streamStartID, state)
 	if t.deps.Posts != nil || t.deps.Reviews != nil {
 		sideCtx, cancel := t.persistContext(ctx)
@@ -223,7 +208,6 @@ func (t *Turn) persistAfterStream(
 		return
 	}
 
-	// Done / error persistence.
 	if state.assistantText.Len() == 0 && len(state.toolCalls) == 0 && state.streamErrContent == "" {
 		return
 	}
@@ -231,10 +215,6 @@ func (t *Turn) persistAfterStream(
 	defer cancel()
 	content := state.assistantText.String()
 	if content == "" && state.streamErrContent != "" {
-		// Localize at write-time using the locale on saveCtx (propagated by
-		// persistContext from the request edge). Stored in MongoDB so chat
-		// history renders in the writer's language forever — we don't
-		// retroactively re-translate.
 		content = i18n.Tr(saveCtx, "api.chat.stream_error_wrapper", state.streamErrContent)
 	}
 	assistantMsg := &domain.Message{
@@ -249,7 +229,6 @@ func (t *Turn) persistAfterStream(
 	if err := t.persistAssistantComplete(saveCtx, assistantMsg); err != nil {
 		slog.ErrorContext(saveCtx, "chatturn: failed to save assistant message", "error", err)
 	}
-	// Skip auto-title on errors.
 	if state.streamErrContent == "" {
 		t.fireAutoTitleIfPending(parentCtx, req.ConversationID, enriched.business.ID.String(), req.Message, state.assistantText.String())
 	}

@@ -28,7 +28,7 @@ func NewSelfHosted(name, baseURL, apiKey string) *SelfHostedProvider {
 	}
 	key := apiKey
 	if key == "" {
-		key = "none" // go-openai requires a non-empty string; most servers ignore it
+		key = "none"
 	}
 	cfg := openai.DefaultConfig(key)
 	cfg.BaseURL = baseURL

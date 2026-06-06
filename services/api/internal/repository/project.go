@@ -268,7 +268,6 @@ func (r *projectRepository) CountConversationsByID(ctx context.Context, id uuid.
 func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	projectIDStr := id.String()
 
-	// 1. Find conversation IDs so we can scope the messages delete.
 	var convIDs []string
 	cursor, findErr := r.convColl.Find(ctx, bson.M{"project_id": projectIDStr})
 	if findErr != nil {
@@ -284,7 +283,6 @@ func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID)
 	}
 	_ = cursor.Close(ctx)
 
-	// 2. Delete messages whose conversation_id is in the cascade set.
 	var msgCount int64
 	if len(convIDs) > 0 {
 		msgRes, msgErr := r.msgColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}})
@@ -294,13 +292,11 @@ func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID)
 		msgCount = msgRes.DeletedCount
 	}
 
-	// 3. Delete conversations.
 	convRes, convErr := r.convColl.DeleteMany(ctx, bson.M{"project_id": projectIDStr})
 	if convErr != nil {
 		return 0, int(msgCount), fmt.Errorf("delete cascade conversations: %w", convErr)
 	}
 
-	// 4. Finally, the Postgres project row.
 	if delErr := r.Delete(ctx, id); delErr != nil {
 		return int(convRes.DeletedCount), int(msgCount), fmt.Errorf("delete project row: %w", delErr)
 	}

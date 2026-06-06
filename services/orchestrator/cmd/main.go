@@ -76,24 +76,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Surface the mTLS posture at startup so a misconfigured deploy is
-	// visible in the first log line rather than during the first internal
-	// HTTP call. tokenclient + billingclient pick up the same env.
 	log.Info("mtls", "enabled", mtls.IsEnabled())
 
-	// Wire pkg/billingclient against the api service's mTLS internal :8443
-	// listener. Passing nil http.Client makes billingclient's default
-	// transport honor ONEVOICE_MTLS_* env (same shape as tokenclient) so
-	// there is no per-service drift. WithBilling threads it through to
-	// llm.Router.logBilling — every successful Chat() call with a non-Nil
-	// BusinessID persists a usage_logs row.
 	billingHTTP := billingclient.New(cfg.APIInternalURL, nil)
 	log.Info("billing client wired", "url", cfg.APIInternalURL)
 
-	// Rate limiter wiring. When REDIS_URL is unset (typical dev runs without
-	// a Redis sidecar) the rate limiter is skipped and the router degrades to
-	// the legacy "no rate limit, no daily-spend gate" path. Production sets
-	// REDIS_URL so all guards are active.
 	routerOpts := []llm.RouterOption{llm.WithBilling(billingHTTP)}
 	if cfg.RedisURL != "" {
 		rdb, redisErr := newRedisClient(ctx, cfg.RedisURL)
@@ -138,15 +125,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		}
 	}()
 
-	// Same source-of-truth helper as services/api. Orchestrator owns
-	// Mongo + (optional) NATS only — pass nil for PG and Redis so the
-	// helper silently skips them. WithCheckTimeout wires the env-driven knob.
 	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
 	health.RegisterDefaultChecks(hc, nil, mongoDB.Client(), nil, nc)
 
-	// pendingRepo wires HITL pause-time persistence so manual-floor
-	// tool calls can be saved as PendingToolCallBatch documents. Without it,
-	// stepRun emits EventError "HITL not configured".
 	orch := orchestrator.NewWithHITL(router, registry, pendingRepo, orchestrator.Options{
 		MaxIterations:         cfg.MaxIterations,
 		ConversationInputCap:  cfg.ConversationInputCap,
@@ -175,10 +156,6 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 			next.ServeHTTP(w, req.WithContext(rctx))
 		})
 	})
-	// LocaleResolver runs after correlation but before logger/recoverer so
-	// the resolved language.Tag is available to every downstream handler
-	// (chat / draft-reply / tool list) for prompt-builder localization.
-	// See pkg/i18n.
 	r.Use(i18n.LocaleMiddleware)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -192,14 +169,14 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())
-	r.Get("/health", hc.LiveHandler()) // backward compat
+	r.Get("/health", hc.LiveHandler())
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      r,
 		ReadTimeout:  httpReadTimeout,
-		WriteTimeout: 0, // SSE requires long-lived connections
+		WriteTimeout: 0,
 	}
 
 	errCh := make(chan error, 1)
