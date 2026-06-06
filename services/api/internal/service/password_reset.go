@@ -4,9 +4,7 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -122,8 +120,8 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		return nil
 	}
 
-	rawToken := make([]byte, resetTokenEntropyBytes)
-	if _, err := rand.Read(rawToken); err != nil {
+	plaintext, hash, err := generateOpaqueToken()
+	if err != nil {
 		slog.ErrorContext(ctx, "password reset: rand.Read failed", "error", err)
 		s.audit(ctx, audit.ActionPasswordResetRequested, &user.ID, map[string]any{
 			"ip":         clientIP,
@@ -132,8 +130,6 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		})
 		return nil
 	}
-	plaintext := base64.RawURLEncoding.EncodeToString(rawToken)
-	hash := sha256.Sum256([]byte(plaintext))
 	expiresAt := time.Now().Add(resetTokenTTL)
 
 	tx, err := s.pool.Begin(ctx)
@@ -147,7 +143,7 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		slog.ErrorContext(ctx, "password reset: invalidate prior tokens", "error", err)
 		return nil
 	}
-	if err := s.tokenRepo.Insert(ctx, tx, user.ID, hash[:], expiresAt); err != nil {
+	if err := s.tokenRepo.Insert(ctx, tx, user.ID, hash, expiresAt); err != nil {
 		slog.ErrorContext(ctx, "password reset: insert token", "error", err)
 		return nil
 	}
