@@ -39,6 +39,8 @@ func TestActionConstants(t *testing.T) {
 		"integration.connected":                     ActionIntegrationConnected,
 		"integration.disconnected":                  ActionIntegrationDisconnected,
 		"integration.token_rotated":                 ActionIntegrationTokenRotated,
+		"integration.token_decrypted":               ActionIntegrationTokenDecrypted,
+		"integration.deleted":                       ActionIntegrationDeleted,
 		"business.created":                          ActionBusinessCreated,
 		"business.updated":                          ActionBusinessUpdated,
 		"project.created":                           ActionProjectCreated,
@@ -48,7 +50,7 @@ func TestActionConstants(t *testing.T) {
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 36, "expected 36 audit actions (base + password reset + email verify + account deletion + consent)")
+	require.Len(t, tests, 38, "expected 38 audit actions (base + password reset + email verify + account deletion + consent + integration sec hardening)")
 }
 
 func TestActionCategory(t *testing.T) {

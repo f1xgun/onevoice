@@ -61,6 +61,9 @@ const (
 	ActionIntegrationConnected    = "integration.connected"
 	ActionIntegrationDisconnected = "integration.disconnected"
 	ActionIntegrationTokenRotated = "integration.token_rotated"
+
+	ActionIntegrationTokenDecrypted = "integration.token_decrypted"
+	ActionIntegrationDeleted        = "integration.deleted"
 )
 
 // business.* — business lifecycle.

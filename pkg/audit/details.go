@@ -215,10 +215,16 @@ type SoleOwnerBlockedDetails struct {
 
 // IntegrationConnectedDetails — NEVER store the access/refresh token or any
 // session cookie. Only the platform name + the external (provider) id.
+// ActorIP, UserAgent and ParsedFormat extend the original triple for forensic
+// provenance. ParsedFormat is a closed set: "json" | "cookie_header" |
+// "session_id_value" | "bot_token" | "access_token" | "oauth_code".
 type IntegrationConnectedDetails struct {
 	IntegrationID uuid.UUID `json:"integration_id"`
 	Platform      string    `json:"platform"`
 	ExternalID    string    `json:"external_id"`
+	ActorIP       string    `json:"actor_ip,omitempty"`
+	UserAgent     string    `json:"user_agent,omitempty"`
+	ParsedFormat  string    `json:"parsed_format,omitempty"`
 }
 
 // IntegrationDisconnectedDetails records what was removed; platform is
@@ -233,6 +239,25 @@ type IntegrationDisconnectedDetails struct {
 type IntegrationTokenRotatedDetails struct {
 	IntegrationID uuid.UUID `json:"integration_id"`
 	Platform      string    `json:"platform"`
+}
+
+// TokenDecryptedDetails records a single GetDecryptedToken invocation. NEVER
+// contains token material — only operational metadata for forensic correlation.
+type TokenDecryptedDetails struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	Platform      string    `json:"platform"`
+	CallerService string    `json:"caller_service"`
+	CorrelationID string    `json:"correlation_id,omitempty"`
+	Reason        string    `json:"reason"`
+}
+
+// IntegrationDeletedDetails captures the snapshot of an integration at
+// soft-delete time. The integration row may be hard-purged after 90 days;
+// this snapshot survives in the audit_log row's details JSONB.
+type IntegrationDeletedDetails struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	Platform      string    `json:"platform"`
+	ExternalID    string    `json:"external_id"`
 }
 
 // ---- business -----------------------------------------------------------
