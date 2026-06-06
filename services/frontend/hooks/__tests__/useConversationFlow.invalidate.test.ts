@@ -43,7 +43,6 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
   it("invalidates ['conversations'] exactly once when chat SSE emits 'done'", async () => {
     const fetchMock = vi.fn();
 
-    // 1) GET /messages — empty hydration.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(
         /\/api\/v1\/businesses\/biz-test\/conversations\/.+\/messages$/
@@ -54,7 +53,6 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
       });
     });
 
-    // 2) POST /chat/{id} — SSE stream emits a partial text and then `done`.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(/\/api\/v1\/businesses\/biz-test\/chat\/cid-d10$/);
       return mockSSEResponse([
@@ -65,7 +63,6 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
 
     vi.stubGlobal('fetch', fetchMock);
 
-    // Spy on `invalidateQueries` of the QueryClient that the hook uses.
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -78,15 +75,12 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
       wrapper,
     });
 
-    // Wait for the hydration fetch to finish.
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    // Drive a `sendMessage` so the SSE consumer runs and emits `done`.
     await act(async () => {
       await result.current.sendMessage('hello');
     });
 
-    // Exactly one invalidation against the business-scoped conversations key.
     const conversationsCalls = invalidateSpy.mock.calls.filter((c) => {
       const arg = c[0] as { queryKey?: unknown[] } | undefined;
       return (
@@ -110,7 +104,6 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
       });
     });
     fetchMock.mockImplementationOnce(async () => {
-      // Stream ends without a 'done' event (e.g., agent paused on tool_approval_required).
       return mockSSEResponse([sseLine({ type: 'text', content: 'partial...' })]);
     });
 

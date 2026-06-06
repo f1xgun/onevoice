@@ -83,7 +83,6 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
     );
     const region = await screen.findByRole('region', { name: /Ожидает подтверждения/ });
     expect(region).toBeInTheDocument();
-    // Subtitle matches UI-SPEC exactly.
     expect(screen.getByText('Проверьте аргументы перед выполнением')).toBeInTheDocument();
   });
 
@@ -94,23 +93,11 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
         <ChatWindow conversationId="conv-1" />
       </Wrapper>
     );
-    // Wait for card to render (proves hydration completed).
     await screen.findByRole('region', { name: /Ожидает подтверждения/ });
 
-    // Composer input carries `disabled` attribute (HTML-level).
     const input = screen.getByPlaceholderText('Напишите сообщение…');
     expect(input).toBeDisabled();
 
-    // Send button: the only button outside the approval card with an SVG
-    // icon child (Send lucide icon). We find it by locating the composer
-    // region and grabbing its button descendant. Simpler: find all buttons
-    // and filter to the one that is the composer's Send button.
-    //
-    // Strategy: the Send button sits next to the input (same flex row) and
-    // is either disabled + has svg-only content. We can query by its
-    // disabled state: all other buttons on the page (toggle group, Submit)
-    // are inside the card region; the composer Send lives outside.
-    // @testing-library idiom: pick it via the shared parent <div>.
     const composerDiv = input.closest('div');
     expect(composerDiv).not.toBeNull();
     const sendBtn = composerDiv!.querySelector('button');
@@ -125,15 +112,11 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
         <ChatWindow conversationId="conv-1" />
       </Wrapper>
     );
-    // Wait for isLoading -> false (the empty-state text appears).
     await screen.findByText('Чем могу помочь?');
-    // No approval card region.
     expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
-    // No expired banner.
     expect(
       screen.queryByText('Эта операция истекла — отправьте новое сообщение, чтобы продолжить.')
     ).not.toBeInTheDocument();
-    // Composer input is enabled.
     const input = screen.getByPlaceholderText('Напишите сообщение…');
     expect(input).not.toBeDisabled();
   });
@@ -150,7 +133,6 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
         screen.getByText('Эта операция истекла — отправьте новое сообщение, чтобы продолжить.')
       ).toBeInTheDocument();
     });
-    // Card (pending path) is NOT rendered.
     expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
   });
 });

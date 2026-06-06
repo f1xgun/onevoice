@@ -53,8 +53,6 @@ beforeEach(() => {
   mockedListRoles.mockReset();
   mockedGetMyPerms.mockReset();
   pushMock.mockReset();
-  // Generous actor — full admin perms; lets the «Новая роль» CTA + the
-  // row action menus render so the assertions can find them.
   mockedGetMyPerms.mockResolvedValue([
     'business.read',
     'business.update',
@@ -87,15 +85,11 @@ describe('RolesPage', () => {
   });
 
   it('renders skeletons + page title while loading', async () => {
-    // Pending forever — keeps isLoading=true.
     mockedListRoles.mockImplementation(() => new Promise(() => {}));
     renderPage();
-    // The page title appears once the RequirePermission gate resolves
-    // (permissions resolve in the next microtask via getMyPermissions mock).
     await waitFor(() => {
       expect(screen.getByText('Роли')).toBeInTheDocument();
     });
-    // While roles are still loading, the section containers carry aria-busy.
     const busy = document.querySelectorAll('[aria-busy="true"]');
     expect(busy.length).toBeGreaterThan(0);
   });

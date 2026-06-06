@@ -51,8 +51,6 @@ describe('usePermissionsCatalog', () => {
     await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
     expect(mocked).toHaveBeenCalledTimes(1);
 
-    // Mount the hook a second time — staleTime: Infinity must keep the
-    // cached entry so no second network call fires.
     const second = renderHook(() => usePermissionsCatalog(), { wrapper });
     await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
     expect(mocked).toHaveBeenCalledTimes(1);

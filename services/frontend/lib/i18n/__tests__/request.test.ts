@@ -24,8 +24,6 @@ describe('parseAcceptLanguage', () => {
   });
 
   it('picks the higher-q tag even when the lower-q tag is listed first (ru;q=0.1, en;q=0.9)', () => {
-    // The previously-broken case: an in-order parser would have returned
-    // 'ru'. The RFC-compliant parser must return 'en'.
     expect(parseAcceptLanguage('ru;q=0.1, en;q=0.9')).toBe('en');
   });
 

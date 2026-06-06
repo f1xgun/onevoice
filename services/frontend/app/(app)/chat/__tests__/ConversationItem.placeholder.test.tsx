@@ -77,7 +77,6 @@ describe('ConversationItem placeholder', () => {
   });
 
   it("renders 'Новый чат' when titleStatus is 'auto_pending' EVEN WITH a non-empty title", () => {
-    // status='auto_pending' wins over a stale stored title.
     renderItem({
       ...baseConv,
       title: 'Stale title leaking from a previous render',

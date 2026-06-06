@@ -49,7 +49,6 @@ describe('businessApprovals — bizApi migration', () => {
   it('fetchBusinessToolApprovals does NOT use /business/{id}/tool-approvals path', async () => {
     mockGet.mockResolvedValue({ data: { toolApprovals: {} } });
     await fetchBusinessToolApprovals(BIZ_ID);
-    // The path passed to get should NOT contain '/business/'
     const [[, path]] = mockGet.mock.calls;
     expect(path).not.toContain('/business/');
     expect(path).toBe('/tool-approvals');

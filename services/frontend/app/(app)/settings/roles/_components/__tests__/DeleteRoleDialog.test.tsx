@@ -69,7 +69,6 @@ beforeEach(() => {
   mockedGetMyPerms.mockReset();
   vi.mocked(toast.success).mockReset();
   vi.mocked(toast.error).mockReset();
-  // Default actor: full admin perms (can grant every system role's perm set).
   mockedGetMyPerms.mockResolvedValue([...ACTOR_ADMIN_PERMS]);
 });
 
@@ -81,11 +80,8 @@ describe('DeleteRoleDialog smart variant branching', () => {
   it('simple variant when member_count=0 → DELETE without reassign_to', async () => {
     mockedDeleteRole.mockResolvedValue(undefined);
     renderDialog({ role: EMPTY_CUSTOM_ROLE });
-    // Simple body copy.
     expect(screen.getByText('Действие нельзя отменить.')).toBeInTheDocument();
-    // No Select rendered in simple variant.
     expect(screen.queryByText('Перенести участников на:')).not.toBeInTheDocument();
-    // Click confirm.
     const confirm = screen.getByRole('button', { name: 'Удалить' });
     await userEvent.setup().click(confirm);
     await waitFor(() => {
@@ -102,7 +98,6 @@ describe('DeleteRoleDialog smart variant branching', () => {
   it('picker variant disables confirm until a reassign target is auto-selected', async () => {
     mockedDeleteRole.mockResolvedValue(undefined);
     renderDialog({ role: MARKETING_ROLE });
-    // useEffect auto-selects the first eligible option once actor perms load.
     await waitFor(() => {
       const confirm = screen.getByRole('button', { name: 'Удалить' });
       expect(confirm).not.toBeDisabled();
@@ -119,15 +114,11 @@ describe('DeleteRoleDialog — race recovery', () => {
     mockedDeleteRole.mockRejectedValueOnce(err);
     const { onOpenChange } = renderDialog({ role: EMPTY_CUSTOM_ROLE });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Удалить' }));
-    // After the race-recovery branch fires, the dialog body switches from
-    // simpleBody → pickerBody WITHOUT closing.
     await waitFor(() => {
       expect(screen.queryByText('Действие нельзя отменить.')).not.toBeInTheDocument();
       expect(screen.getByText('Перенести участников на:')).toBeInTheDocument();
     });
-    // Dialog MUST NOT have been closed by the failed simple attempt.
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
-    // No error toast — race recovery is silent.
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -180,7 +171,6 @@ describe('buildReassignOptions ordering', () => {
     expect(labels[1]).toBe('Администратор');
     expect(labels[2]).toBe('Редактор');
     expect(labels[3]).toBe('Наблюдатель');
-    // Custom comes after — alphabetical (Empty Role < Marketing in 'ru').
     expect(labels[4]).toBe('Empty Role');
     expect(labels[5]).toBe('Marketing');
   });
@@ -191,7 +181,6 @@ describe('buildReassignOptions ordering', () => {
       excludeRoleId: 'no-match',
       actorPerms: new Set(['business.read']), // weak actor
     });
-    // Owner enumerates every permission — actor with one perm cannot grant.
     expect(opts.find((o) => o.label === 'Владелец')?.disabled).toBe(true);
   });
 

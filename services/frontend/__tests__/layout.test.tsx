@@ -117,8 +117,6 @@ function Wrapper({ children }: { children: ReactNode }) {
 describe('AppLayout route-conditional ProjectPane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // AppLayout's nav-rail + project-pane only render under `isDesktop`.
-    // Global matchMedia stub defaults to mobile, so flip per-test.
     setDesktopViewport();
   });
 

@@ -41,7 +41,6 @@ describe('tools — bizApi migration', () => {
   it('fetchTools does NOT call bare /tools (auth-only path gone)', async () => {
     mockGet.mockResolvedValue({ data: [] });
     await fetchTools(BIZ_ID);
-    // The path passed to get must be '/tools', not '/api/v1/tools'
     const [[, path]] = mockGet.mock.calls;
     expect(path).toBe('/tools');
   });

@@ -45,9 +45,6 @@ describe('computeGroupState (invariant)', () => {
   });
 
   it('partial actor: "checked" requires only enabled leaves selected', () => {
-    // Actor can only grant read+update. When both are selected the group is
-    // "checked" even though create+delete are disabled and unselected —
-    // because the disabled leaves never count toward the tri-state.
     expect(computeGroupState(GROUP, new Set(['roles.read', 'roles.update']), ACTOR_PARTIAL)).toBe(
       'checked'
     );
@@ -58,15 +55,11 @@ describe('computeGroupState (invariant)', () => {
   });
 
   it('partial actor ignores disabled leaves already in value when deriving state', () => {
-    // roles.delete is in value but actor can't toggle it — should not push
-    // the tri-state to "indeterminate" because the enabled set is empty.
     expect(computeGroupState(GROUP, new Set(['roles.delete']), ACTOR_PARTIAL)).toBe('unchecked');
   });
 
   it('actor with zero enabled leaves in group → "unchecked"', () => {
     expect(computeGroupState(GROUP, new Set(), ACTOR_EMPTY)).toBe('unchecked');
-    // Even if value contains every leaf, with zero enabled the group is
-    // "unchecked" (the user can't manipulate anything anyway).
     expect(
       computeGroupState(
         GROUP,
@@ -83,8 +76,6 @@ describe('handleGroupToggle (skips disabled leaves)', () => {
     handleGroupToggle(GROUP, 'unchecked', ['roles.delete'], ACTOR_PARTIAL, (n) => {
       result = n;
     });
-    // Actor toggles read + update on; delete (disabled) was already in value
-    // → stays in value.
     expect([...result].sort()).toEqual(['roles.delete', 'roles.read', 'roles.update'].sort());
   });
 
@@ -99,7 +90,6 @@ describe('handleGroupToggle (skips disabled leaves)', () => {
         result = n;
       }
     );
-    // Toggle off read + update; delete (disabled) preserved.
     expect([...result].sort()).toEqual(['roles.delete']);
   });
 
@@ -144,7 +134,6 @@ describe('handleGroupToggle (skips disabled leaves)', () => {
   });
 
   it('preserves unrelated permissions in the value array', () => {
-    // Permissions from other groups must not be touched by the toggle.
     let result: string[] = [];
     handleGroupToggle(GROUP, 'unchecked', ['business.read'], ACTOR_PARTIAL, (n) => {
       result = n;

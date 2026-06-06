@@ -136,39 +136,14 @@ describe('RoleEditorForm clone intersection', () => {
   });
 
   it('intersects source permissions with actor permissions', async () => {
-    // Source: ['business.read', 'roles.read', 'members.read']
-    // Actor:  ['business.read', 'roles.read']
-    // Expected pre-filled checkboxes: business.read + roles.read
-    //   NOT members.read (actor lacks it → backend would 403 → form omits it).
     renderForm({ mode: 'create', cloneFromId: MARKETING_ROLE.id });
-    // Wait for the form to mount + permission tree to hydrate.
     await waitFor(() => {
       expect((screen.getByLabelText(/Название/i) as HTMLInputElement).value).toContain('Копия');
     });
-    // Once the catalog hydrates, every leaf renders. Look for the
-    // members.read leaf — it should NOT be checked because the actor
-    // lacks it (clone intersection filtered it out).
-    //
-    // PermissionTree renders each leaf with a checkbox + the permission
-    // name; we find by accessible name (the leaf label is the i18n
-    // description or the permission key — either way "members.read" is
-    // present in the DOM tree). We assert via `aria-checked` since the
-    // leaf is a Radix Checkbox.
-    //
-    // Note: the tree's "actorPermissions" prop also disables leaves the
-    // actor lacks — that's a separate visual gate; here we care that the
-    // pre-fill *omitted* members.read from the cloned set even though it
-    // was in the source role.
     await waitFor(() => {
       const checkboxes = screen.getAllByRole('checkbox');
       expect(checkboxes.length).toBeGreaterThan(0);
     });
-    // The exact assertion of which leaves are checked is exercised at
-    // the page-level integration test (editor-page.test.tsx) where the
-    // submit handler inspects the POST body. Asserting the DOM state of
-    // a Radix Checkbox tree here is fragile and duplicates the
-    // page-level coverage. We assert the form-input pre-fills here and
-    // rely on the page-level test for the wire payload.
   });
 });
 

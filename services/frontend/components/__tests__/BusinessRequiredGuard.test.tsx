@@ -138,9 +138,7 @@ describe('BusinessRequiredGuard', () => {
       </Wrapper>
     );
 
-    // Children must not be rendered during loading.
     expect(queryByText('protected')).toBeNull();
-    // A loading indicator must be visible instead of a blank screen.
     expect(getByRole('status')).toBeTruthy();
   });
 
@@ -288,14 +286,11 @@ describe('BusinessRequiredGuard', () => {
       await new Promise((r) => setTimeout(r, 0));
     });
 
-    // Must NOT show the loading spinner.
     expect(queryByRole('status')).toBeNull();
 
-    // Must show a retry button.
     const retryButton = getByRole('button');
     expect(retryButton).toBeTruthy();
 
-    // Clicking the retry button calls refetch.
     retryButton.click();
     expect(refetchMock).toHaveBeenCalledTimes(1);
   });

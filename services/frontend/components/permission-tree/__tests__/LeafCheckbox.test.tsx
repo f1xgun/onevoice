@@ -44,7 +44,6 @@ describe('LeafCheckbox', () => {
   it('disabled leaf: onToggle is NOT called on click', async () => {
     const onToggle = vi.fn();
     renderLeaf({ disabled: true, actorHas: false, onToggle });
-    // Radix Checkbox in disabled state ignores clicks.
     await userEvent.setup().click(screen.getByRole('checkbox'));
     expect(onToggle).not.toHaveBeenCalled();
   });
@@ -63,9 +62,6 @@ describe('LeafCheckbox', () => {
 
   it('enabled leaf — tooltip trigger aria-label exposes the description', () => {
     renderLeaf({ description: 'Редактировать название' });
-    // The aria-label on the tooltip trigger is the description text. Tested
-    // via the accessibility tree rather than mounting the portal'd tooltip
-    // content — jsdom + Radix portals are flaky.
     expect(screen.getByLabelText('Редактировать название')).toBeInTheDocument();
   });
 

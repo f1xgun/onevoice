@@ -43,7 +43,6 @@ describe('LanguageSwitcher', () => {
     render(<LanguageSwitcher />);
     const trigger = screen.getByLabelText('Language');
     expect(trigger).toBeInTheDocument();
-    // Radix Select renders the selected value inside the trigger.
     expect(trigger.textContent?.toLowerCase()).toContain('ru');
   });
 
@@ -51,15 +50,11 @@ describe('LanguageSwitcher', () => {
     const user = userEvent.setup();
     render(<LanguageSwitcher />);
 
-    // Open the Radix Select and pick EN.
     const trigger = screen.getByLabelText('Language');
     await user.click(trigger);
-    // Items render in a Portal but Testing Library finds them via role.
     const enOption = await screen.findByRole('option', { name: /en/i });
     await user.click(enOption);
 
-    // The POST is dispatched inside startTransition; awaiting microtasks
-    // flushes the inner async fn before we assert.
     await vi.waitFor(() => {
       expect(fetchSpy).toHaveBeenCalled();
     });
@@ -84,8 +79,6 @@ describe('LanguageSwitcher', () => {
     const ruOption = await screen.findByRole('option', { name: /ru/i });
     await user.click(ruOption);
 
-    // Radix may still fire onValueChange for the same value; the component
-    // short-circuits when next === locale to avoid pointless round-trips.
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
   });

@@ -73,8 +73,6 @@ describe('NavRail', () => {
         <NavRail />
       </Wrapper>
     );
-    // Each nav item exposes an aria-label so we can find it via role + name
-    // even though the visible text is replaced by an icon-only column.
     const labels = [
       'Чат',
       'Интеграции',
@@ -119,10 +117,6 @@ describe('NavRail', () => {
       </Wrapper>
     );
     const active = screen.getByRole('link', { name: 'Интеграции' });
-    // Active state under the Linen design (mock-shell.jsx): no bg change,
-    // just `text-ink` on the icon + `aria-current="page"` + a 2 px ochre
-    // bar rendered as an absolutely-positioned span (`bg-ochre`) inside
-    // the link. Asserting all three keeps the contract honest.
     expect(active).toHaveAttribute('aria-current', 'page');
     expect(active.className).toMatch(/\btext-ink\b/);
     expect(active.querySelector('span.bg-ochre')).not.toBeNull();

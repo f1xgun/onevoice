@@ -35,9 +35,6 @@ function HeroProbe() {
 
 describe('i18n locale switch (smoke)', () => {
   afterEach(() => {
-    // Belt-and-braces — the global afterEach in vitest.setup.ts also
-    // resets locale to 'ru', but explicit local cleanup makes the
-    // ordering obvious to future readers.
     globalThis.__setTestLocale('ru');
   });
 

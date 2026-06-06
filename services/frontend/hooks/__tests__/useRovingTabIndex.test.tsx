@@ -46,7 +46,6 @@ describe('useRovingTabIndex', () => {
 
   it('ArrowDown wraps from last item back to first', () => {
     const { getByTestId, container } = render(<Fixture count={3} />);
-    // Move to last (index 2) via End so wrap-around is observable.
     fireEvent.keyDown(getByTestId('container'), { key: 'End' });
     fireEvent.keyDown(getByTestId('container'), { key: 'ArrowDown' });
     const items = container.querySelectorAll('[data-roving-item]');

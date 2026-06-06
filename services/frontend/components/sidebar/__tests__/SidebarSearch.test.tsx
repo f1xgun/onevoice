@@ -108,7 +108,6 @@ describe('SidebarSearch', () => {
     const input = screen.getByRole('combobox');
     await user.type(input, 'a');
 
-    // Wait long enough that any debounce would have fired.
     await new Promise((r) => setTimeout(r, 500));
 
     const searchCalls = bizApiGet.mock.calls.filter((c) => c[0] === '/search');
@@ -125,7 +124,6 @@ describe('SidebarSearch', () => {
     const input = screen.getByRole('combobox');
     await user.type(input, 'тест');
 
-    // Allow debounce + tanstack-query fetch to land.
     await waitFor(
       () => {
         const calls = bizApiGet.mock.calls.filter((c) => c[0] === '/search');
@@ -134,7 +132,6 @@ describe('SidebarSearch', () => {
       { timeout: 2000 }
     );
 
-    // Last call should carry q='тест' and limit=20 (no project_id at /chat root).
     const last = bizApiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
     const params = last?.[1]?.params as Record<string, unknown> | undefined;
     expect(params?.q).toBe('тест');
@@ -191,7 +188,6 @@ describe('SidebarSearch', () => {
       expect(screen.getByText('По всей организации')).toBeInTheDocument();
     });
 
-    // Default scope sends project_id=p-42.
     await waitFor(() => {
       const last = bizApiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
       expect(last?.[1]?.params?.project_id).toBe('p-42');
@@ -232,7 +228,6 @@ describe('SidebarSearch', () => {
     const input = screen.getByRole('combobox');
     await user.type(input, 'абв');
 
-    // Wait for popover to open.
     await waitFor(() => {
       expect(screen.queryByText(/Ничего не найдено по/)).toBeInTheDocument();
     });

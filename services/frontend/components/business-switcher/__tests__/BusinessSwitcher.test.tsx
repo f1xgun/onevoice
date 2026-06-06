@@ -39,9 +39,6 @@ function arrange(opts: {
   setActive?: (id: string | null) => void;
 }) {
   const setActive = opts.setActive ?? vi.fn();
-  // The component reads the store via two selectors; mockImplementation
-  // dispatches each call through the same StoreShape so both reads return
-  // the matching slice.
   mockedStore.mockImplementation((selector: unknown) =>
     (selector as (s: StoreShape) => unknown)({
       activeBusinessId: opts.active,
@@ -127,7 +124,6 @@ describe('BusinessSwitcher', () => {
   it('renders a Plus trigger (empty aria-label) when there are 0 businesses', () => {
     arrange({ active: null, businesses: [] });
     render(wrap(<BusinessSwitcher />));
-    // The trigger uses team.switcher.empty («нет организаций») as aria-label.
     const trigger = screen.getByRole('button', { name: /нет организаций/i });
     expect(trigger).toBeInTheDocument();
   });
@@ -154,7 +150,6 @@ describe('BusinessSwitcher', () => {
   it('trigger aria-label uses the team.switcher.triggerAria template', () => {
     arrange({ active: 'b1', businesses: [{ id: 'b1', name: 'Acme', role: 'owner' }] });
     render(wrap(<BusinessSwitcher />));
-    // team.switcher.triggerAria = '{name}, переключить организацию'
     expect(
       screen.getByRole('button', { name: 'Acme, переключить организацию' })
     ).toBeInTheDocument();

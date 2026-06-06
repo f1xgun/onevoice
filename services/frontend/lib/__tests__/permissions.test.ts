@@ -47,9 +47,6 @@ describe('permissions registry snapshot (frontend ↔ backend drift surface)', (
 
   it('every permission name follows the resource.action convention', () => {
     for (const name of EXPECTED_PERMISSION_NAMES) {
-      // The registry contract: lowercase resource + dot + lowercase action.
-      // If a backend PR ships a name like `Roles.Read` or `roles:read`, this
-      // assertion fails and forces a frontend-side review.
       expect(name).toMatch(/^[a-z]+\.[a-z_]+$/);
     }
   });

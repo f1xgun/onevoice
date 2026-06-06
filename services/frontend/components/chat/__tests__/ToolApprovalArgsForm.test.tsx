@@ -22,7 +22,6 @@ describe('ToolApprovalArgsForm — boolean editable field', () => {
         onEdit={onEdit}
       />
     );
-    // Unknown key → fallback label "Параметр «silent»".
     const sw = screen.getByRole('switch', { name: /silent/i });
     expect(sw).toBeInTheDocument();
     expect(sw).toBeChecked();
@@ -112,12 +111,9 @@ describe('ToolApprovalArgsForm — numeric editable field', () => {
     const input = screen.getByRole('spinbutton', { name: /Количество/ }) as HTMLInputElement;
     await user.clear(input);
     await user.type(input, '42');
-    // Last call carries the fully typed value.
     const lastCall = onEdit.mock.calls.at(-1);
     expect(lastCall?.[0]).toBe('count');
     expect(lastCall?.[1]).toBe(42);
-    // Every committed value is an integer (no fractional intermediate that
-    // shouldn't exist for an integer-typed field).
     for (const [, v] of onEdit.mock.calls) {
       expect(Number.isInteger(v)).toBe(true);
     }
@@ -138,18 +134,11 @@ describe('ToolApprovalArgsForm — numeric editable field', () => {
     );
     const input = screen.getByRole('spinbutton', { name: /Количество/ }) as HTMLInputElement;
     await user.clear(input);
-    // userEvent escapes the dot — type the raw value via fireEvent-style
-    // keystroke sequence: '3' '.' '5'. Each onChange only fires once parsing
-    // succeeds and the integer-only gate accepts. '3' commits 3; '3.' is not
-    // a valid finite, no commit; '3.5' parses but fails integer gate.
     await user.type(input, '3.5');
-    // Only the '3' commit should have landed — decimal commits are rejected.
     const numericCalls = onEdit.mock.calls.filter(([, v]) => typeof v === 'number');
     for (const [, v] of numericCalls) {
       expect(Number.isInteger(v)).toBe(true);
     }
-    // The input itself still mirrors the user's typed string so they can
-    // see what they typed and correct it.
     expect(input.value).toBe('3.5');
   });
 
@@ -190,8 +179,6 @@ describe('ToolApprovalArgsForm — label resolution', () => {
   });
 
   it('falls back to the "Параметр «key»" template for unknown keys', () => {
-    // The mock translator returns true for has() unconditionally, so to
-    // exercise the fallback path we override the mock for this one render.
     render(
       <ToolApprovalArgsForm
         args={{ definitely_unknown_key: 'value' }}
@@ -202,9 +189,6 @@ describe('ToolApprovalArgsForm — label resolution', () => {
         onEdit={vi.fn()}
       />
     );
-    // Either the localized label (if catalog ever picks it up) OR the
-    // fallback — both keep the operator unblocked. The fallback path is
-    // explicitly probed in the unit test below.
     expect(screen.queryByText('definitely_unknown_key')).not.toBeInTheDocument();
   });
 });
@@ -224,15 +208,11 @@ describe('ToolApprovalArgsForm — locked nested values', () => {
         onEdit={vi.fn()}
       />
     );
-    // Locked section is visible.
     expect(screen.getByText(LOCKED_HEADING)).toBeInTheDocument();
-    // Inner keys are individually labelled and their values are plain text —
-    // no raw JSON brackets visible.
     expect(screen.getByText('Текст')).toBeInTheDocument();
     expect(screen.getByText('inner')).toBeInTheDocument();
     expect(screen.getByText('Количество')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
-    // The compact JSON form must NOT appear anywhere in the rendered output.
     expect(screen.queryByText(/^\{.+\}$/)).not.toBeInTheDocument();
   });
 

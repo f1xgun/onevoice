@@ -33,7 +33,6 @@ function applyEdit(
 
 describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar changes are submitted', () => {
   it('AA) scalar edit to a whitelisted top-level key lands in edited_args; nested meta.text is rejected by the gate and never reaches the payload', async () => {
-    // Build the initial drafts the same way ToolApprovalCard does.
     const batch = nestedArgsBatch;
     let drafts: CallDraft[] = batch.calls.map((c) => ({
       callId: c.callId,
@@ -44,23 +43,16 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
     }));
     const call = batch.calls[0]!; // tool_with_nested_args, editableFields: ['text']
 
-    // (1) User edits top-level `text` — whitelisted, scalar, root parent.
     drafts = applyEdit(drafts, call.callId, 'text', 'new-top', call.editableFields);
     expect(drafts[0]!.editedArgs).toEqual({ text: 'new-top' });
 
-    // (2) User tries to edit nested `meta.text` (parentName = 'meta') —
-    // even though the key matches an editable field name, the gate rejects
-    // it because the parent is not root. The reducer is NOT called.
     drafts = applyEdit(drafts, call.callId, 'text', 'nested-new', call.editableFields, 'meta');
     expect(drafts[0]!.editedArgs).toEqual({ text: 'new-top' }); // unchanged
     expect('meta' in drafts[0]!.editedArgs).toBe(false);
 
-    // (3) User tries to edit a non-whitelisted top-level key (`author`) —
-    // rejected because the key is not in editableFields.
     drafts = applyEdit(drafts, call.callId, 'author', 'bob', call.editableFields);
     expect('author' in drafts[0]!.editedArgs).toBe(false);
 
-    // Build the final ApprovalDecision the way the component does.
     const entry = drafts[0]!;
     const edited_args: Record<string, string | number | boolean> = {};
     for (const [k, v] of Object.entries(entry.editedArgs)) {
@@ -68,8 +60,6 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
       edited_args[k] = v;
     }
     expect(edited_args).toEqual({ text: 'new-top' });
-    // Critical: no `meta` key, no nested object. Only the scalar top-level
-    // change the user actually made is present.
     expect(JSON.stringify(edited_args)).not.toContain('meta');
     expect(JSON.stringify(edited_args)).not.toContain('author');
   });
@@ -77,16 +67,9 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
   it('mounting ToolApprovalCard with a nested-args batch and picking Edit does not mount any nested-editable controls beyond what the whitelist allows', async () => {
     const user = userEvent.setup();
     render(<ToolApprovalCard batch={nestedArgsBatch} onSubmit={vi.fn()} />);
-    // Pick Edit — this expands the accordion and mounts the form.
     await user.click(screen.getByRole('button', { name: /Изменить tool_with_nested_args/ }));
-    // Exactly one editable control exists: the top-level "Текст". The nested
-    // `meta.text` and `meta.author` must NOT mount any input — confirmed by
-    // looking up controls by their (would-be) labels and finding none.
     expect(screen.getByLabelText('Текст')).toBeInTheDocument();
-    // `meta` is a structured value — it lives in the locked section as a
-    // labelled <dd>, never as an editable input.
     expect(screen.queryByLabelText(/meta/i)).not.toBeInTheDocument();
-    // `author` is a nested field; there is no label for it, editable or not.
     expect(screen.queryByLabelText(/author/i)).not.toBeInTheDocument();
   });
 
@@ -95,7 +78,6 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ToolApprovalCard batch={singleCallBatch} onSubmit={onSubmit} />);
 
-    // Pick Edit but don't actually change anything.
     await user.click(screen.getByRole('button', { name: /Изменить telegram__send_channel_post/ }));
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
 
@@ -103,7 +85,6 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
     const decisions = onSubmit.mock.calls[0]![0];
     expect(decisions[0].action).toBe('edit');
     expect('edited_args' in decisions[0]).toBe(false);
-    // Silence the unused-import warning for `act`.
     void act;
   });
 });

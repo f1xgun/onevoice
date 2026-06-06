@@ -31,7 +31,6 @@ describe('BusinessRow', () => {
     const { container } = render(
       <BusinessRow business={makeBusiness()} isActive={true} onSelect={vi.fn()} />
     );
-    // Mirrors NavRail's absolute -left-N bottom-2 top-2 w-0.5 bg-ochre span.
     const bar = container.querySelector('span.bg-ochre');
     expect(bar).not.toBeNull();
     expect(bar?.getAttribute('aria-hidden')).not.toBeNull();

@@ -30,9 +30,6 @@ describe('ToolApprovalCard — card structure and gates', () => {
   it('W) Submit button is aria-disabled initially when any call is undecided', () => {
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
     const submit = screen.getByRole('button', { name: /^Подтвердить$/ });
-    // aria-disabled is the semantic disabled flag (visible to SR + @testing-library).
-    // The button stays clickable so Invariant 7 (amber highlight on premature
-    // Submit) can fire — that behavior is tested in ToolApprovalCard.submit.test.tsx.
     expect(submit).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -51,20 +48,16 @@ describe('ToolApprovalCard — card structure and gates', () => {
   it('EE) a different batchId resets every draft back to undecided', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<ToolApprovalCard batch={singleCallBatch} onSubmit={vi.fn()} />);
-    // Approve the single call — Submit becomes aria-disabled="false".
     await user.click(screen.getByRole('button', { name: /^Одобрить / }));
     expect(screen.getByRole('button', { name: /^Подтвердить$/ })).toHaveAttribute(
       'aria-disabled',
       'false'
     );
-    // Swap in a completely different batch (different batchId).
     rerender(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
-    // All three calls should be back to undecided → Submit aria-disabled again.
     expect(screen.getByRole('button', { name: /^Подтвердить$/ })).toHaveAttribute(
       'aria-disabled',
       'true'
     );
-    // And no aria-pressed="true" should remain across the approve buttons.
     const approveButtons = screen.getAllByRole('button', { name: /^Одобрить /u });
     for (const btn of approveButtons) {
       expect(btn).toHaveAttribute('aria-pressed', 'false');
@@ -73,7 +66,6 @@ describe('ToolApprovalCard — card structure and gates', () => {
 
   it('FF) during submit, toggle groups receive disabled and the button label flips to "Отправляем…"', async () => {
     const user = userEvent.setup();
-    // onSubmit returns a promise that never resolves in the window of the assertion.
     let resolvePending: () => void = () => {};
     const pendingPromise = new Promise<void>((resolve) => {
       resolvePending = resolve;
@@ -87,14 +79,11 @@ describe('ToolApprovalCard — card structure and gates', () => {
     }
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
 
-    // Submit button now shows the loading label.
     expect(screen.getByRole('button', { name: /^Отправляем…$/ })).toBeInTheDocument();
-    // All three "Одобрить" rows are disabled while submitting.
     for (const btn of screen.getAllByRole('button', { name: /^Одобрить /u })) {
       expect(btn).toBeDisabled();
     }
 
-    // Clean up the pending submit so React doesn't leak warnings.
     resolvePending();
     await pendingPromise;
   });
@@ -104,17 +93,8 @@ describe('ToolApprovalCard — card structure and gates', () => {
     expect(screen.getByText('Выберите действие для каждой задачи')).toBeInTheDocument();
   });
 
-  // ---------- Submit hint persistence ----------
-  // Regression: the visually-hidden helper span at the bottom of the footer
-  // was rendered unconditionally (only the TooltipContent was gated on
-  // `!allDecided`). Once a decision was picked and Submit became enabled,
-  // `screen.getByText('Выберите действие для каждой задачи')` still found the
-  // sr-only copy → operators saw a stale hint contradicting the enabled
-  // button. Fix: gate the sr-only span on the same `!allDecided` predicate.
-
   it('GG) keeps the Submit helper hint in the DOM while any call is undecided', () => {
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
-    // No decisions yet → hint MUST still be visible to AT users.
     expect(screen.getByText('Выберите действие для каждой задачи')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Подтвердить$/ })).toHaveAttribute(
       'aria-disabled',
@@ -126,7 +106,6 @@ describe('ToolApprovalCard — card structure and gates', () => {
     const user = userEvent.setup();
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
 
-    // Decide every call → allDecided flips to true.
     const approveButtons = screen.getAllByRole('button', { name: /^Одобрить /u });
     for (const btn of approveButtons) {
       await user.click(btn);
@@ -134,17 +113,10 @@ describe('ToolApprovalCard — card structure and gates', () => {
 
     const submit = screen.getByRole('button', { name: /^Подтвердить$/ });
 
-    // 1. Confirm allDecided flipped (Submit is no longer aria-disabled).
     expect(submit).not.toHaveAttribute('aria-disabled', 'true');
 
-    // 2. The helper copy must be ABSENT from the DOM — neither the tooltip
-    //    nor the sr-only span renders. Fix: gate the sr-only span on
-    //    `!allDecided`.
     expect(screen.queryByText('Выберите действие для каждой задачи')).toBeNull();
 
-    // 3. With the helper span gone, the Button's aria-describedby points
-    //    nowhere. The attribute is also dropped when allDecided so SR
-    //    output stays clean.
     expect(submit).not.toHaveAttribute('aria-describedby');
   });
 
@@ -163,8 +135,6 @@ describe('ToolApprovalCard — card structure and gates', () => {
     }
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
 
-    // While submitting, allDecided is true so the gated helper still does
-    // NOT appear — the only visible feedback is the spinner + "Отправляем…".
     expect(screen.queryByText('Выберите действие для каждой задачи')).toBeNull();
 
     resolvePending();
@@ -252,7 +222,6 @@ describe('draftReducer', () => {
       reason: input,
     });
     expect(next[0]!.rejectReason.length).toBe(500);
-    // Sanity check — every character is the same 'x' we put in.
     expect(/^x+$/.test(next[0]!.rejectReason)).toBe(true);
   });
 

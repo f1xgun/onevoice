@@ -41,7 +41,6 @@ describe('AuditFilters', () => {
     render(<AuditFilters value={{ category: 'auth' }} onChange={() => {}} businessID="b" />);
     const select = screen.getByTestId('action-select') as HTMLSelectElement;
     const opts = Array.from(select.options).map((o) => o.value);
-    // 'Любое' (empty) + 5 auth.* entries
     expect(opts).toContain('');
     expect(opts).toContain('auth.login_success');
     expect(opts).toContain('auth.login_failed');

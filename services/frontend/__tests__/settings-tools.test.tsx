@@ -99,13 +99,11 @@ const GOOGLE_REPLY: Tool = {
 const ALL_TOOLS: Tool[] = [TELEGRAM_POST, TELEGRAM_PHOTO, VK_PUBLISH, YANDEX_REPLY, GOOGLE_REPLY];
 
 function setupDefaultMocks() {
-  // ToolsPageClient fetches /business via the bare api client (pre-Task-4).
   apiGet.mockImplementation((url: string) => {
     if (url === '/business') return Promise.resolve({ data: { id: BUSINESS_ID, name: 'Test' } });
     return Promise.resolve({ data: null });
   });
 
-  // tools and tool-approvals come through bizApi now.
   bizApiGet.mockImplementation((bizId: string, path: string) => {
     if (path === '/tools') return Promise.resolve({ data: ALL_TOOLS });
     if (path === '/tool-approvals') {
@@ -148,7 +146,6 @@ describe('ToolsPageClient — /settings/tools', () => {
     expect(screen.getByText(TELEGRAM_PHOTO.name)).toBeInTheDocument();
     expect(screen.getByText(YANDEX_REPLY.name)).toBeInTheDocument();
 
-    // Auto-floor tool must NOT appear — nothing to configure for it.
     expect(screen.queryByText(VK_PUBLISH.name)).not.toBeInTheDocument();
   });
 
@@ -162,9 +159,7 @@ describe('ToolsPageClient — /settings/tools', () => {
 
     const forbiddenRow = screen.getByText(GOOGLE_REPLY.name).closest('div');
     expect(forbiddenRow).not.toBeNull();
-    // The forbidden badge is present in the document.
     expect(screen.getByText('Запрещено')).toBeInTheDocument();
-    // No switch rendered for the forbidden tool (query by its a11y label).
     expect(
       screen.queryByLabelText(`Режим одобрения для ${GOOGLE_REPLY.name}`)
     ).not.toBeInTheDocument();
@@ -177,10 +172,6 @@ describe('ToolsPageClient — /settings/tools', () => {
     const saveBtn = await screen.findByRole('button', { name: /Сохранить/ });
     expect(saveBtn).toBeDisabled();
 
-    // The 2-mode segmented control replaces the legacy Switch. Clicking the
-    // «Автоматически» segment of the TELEGRAM_POST row flips it from manual → auto.
-    // Tools / approvals load async after PageHeader, so the radiogroup
-    // doesn't exist on first render — `findByRole` waits for it.
     const radiogroup = await screen.findByRole('radiogroup', {
       name: `Режим одобрения для ${TELEGRAM_POST.name}`,
     });
@@ -200,8 +191,6 @@ describe('ToolsPageClient — /settings/tools', () => {
       expect(screen.getByText(TELEGRAM_POST.name)).toBeInTheDocument();
     });
 
-    // Flip telegram post auto; leave telegram photo untouched (manual by
-    // default); yandex reply starts at auto from server.
     const radiogroup = screen.getByRole('radiogroup', {
       name: `Режим одобрения для ${TELEGRAM_POST.name}`,
     });
@@ -216,8 +205,6 @@ describe('ToolsPageClient — /settings/tools', () => {
     const [bizId, path, body] = bizApiPut.mock.calls[0]!;
     expect(bizId).toBe(BUSINESS_ID);
     expect(path).toBe('/tool-approvals');
-    // The body must include EVERY manual-floor tool's current value — the
-    // backend replaces the entire map on PUT.
     expect(body).toEqual({
       toolApprovals: {
         [TELEGRAM_POST.name]: 'auto',
@@ -225,7 +212,6 @@ describe('ToolsPageClient — /settings/tools', () => {
         [YANDEX_REPLY.name]: 'auto',
       },
     });
-    // Forbidden tool must not leak into the payload.
     expect((body as { toolApprovals: Record<string, string> }).toolApprovals).not.toHaveProperty(
       GOOGLE_REPLY.name
     );

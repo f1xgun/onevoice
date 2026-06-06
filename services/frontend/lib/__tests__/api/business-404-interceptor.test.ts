@@ -55,29 +55,23 @@ describe('404 interceptor', () => {
     (queryClient.invalidateQueries as ReturnType<typeof vi.fn>).mockImplementation(invalidateFn);
   });
 
-  // Helper: trigger the axios response error interceptors by making a mock failing request
   async function triggerInterceptors(
     url: string,
     status: number,
     metadata?: { skipBusinessNotFound?: boolean }
   ) {
-    // We directly invoke the interceptors registered on the api instance
-    // by using the axios adapter mock approach
     const error = {
       config: { url, ...(metadata ? { metadata } : {}) },
       response: { status, data: {} },
       message: `Request failed with status code ${status}`,
     };
 
-    // Axios stores registered interceptors — we can invoke them via
-    // the api.interceptors.response.handlers array (internal structure)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handlers = (api.interceptors.response as any).handlers as Array<{
       fulfilled: ((v: unknown) => unknown) | null;
       rejected: ((e: unknown) => unknown) | null;
     }>;
 
-    // Run all registered error handlers in sequence (same as axios does internally)
     let result: unknown = error;
     for (const handler of handlers) {
       if (handler?.rejected) {
@@ -89,7 +83,6 @@ describe('404 interceptor', () => {
       }
     }
 
-    // The final result should be a rejected promise
     return Promise.reject(result);
   }
 
@@ -131,7 +124,6 @@ describe('404 interceptor', () => {
   });
 
   it('Test 6: interceptors.response.use was called exactly twice in api.ts', () => {
-    // Verify by checking axios interceptors count directly
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handlers = (api.interceptors.response as any).handlers as Array<unknown>;
     expect(handlers.filter(Boolean).length).toBeGreaterThanOrEqual(2);
@@ -187,9 +179,6 @@ describe('404 interceptor — warning toast', () => {
     await expect(invokeInterceptor('/businesses/biz-1/members', 404)).rejects.toBeDefined();
     expect(clearFn).toHaveBeenCalled();
     expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'] });
-    // Toast fires via a fire-and-forget async helper that dynamically
-    // imports the messages bundle, so drain microtask + macrotask queues
-    // before asserting (bundle import → createTranslator → toast).
     await vi.waitFor(() => expect(toast.warning).toHaveBeenCalled());
     expect(toast.warning).toHaveBeenCalledWith('Эта организация больше недоступна');
   });

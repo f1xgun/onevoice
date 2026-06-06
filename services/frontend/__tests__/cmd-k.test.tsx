@@ -81,7 +81,6 @@ describe('Cmd/Ctrl-K global focus listener', () => {
       </Wrapper>
     );
 
-    // Layout's auth-bootstrap is mount-only; flush microtasks until ready.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });

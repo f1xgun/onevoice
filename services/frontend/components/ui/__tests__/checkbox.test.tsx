@@ -22,8 +22,6 @@ describe('Checkbox (indeterminate glyph)', () => {
   it('exposes data-state="indeterminate" + aria-checked="mixed" when checked="indeterminate"', () => {
     const { container } = render(<Checkbox checked="indeterminate" />);
     expect(container.querySelector('[data-state="indeterminate"]')).not.toBeNull();
-    // Radix automatically maps the tri-state to ARIA — this is the a11y
-    // contract the role editor relies on for screen-reader users.
     expect(container.querySelector('[aria-checked="mixed"]')).not.toBeNull();
   });
 
@@ -33,10 +31,6 @@ describe('Checkbox (indeterminate glyph)', () => {
   });
 
   it('renders BOTH glyph svgs inside the indicator so Tailwind toggles visibility', () => {
-    // When checked="indeterminate" Radix mounts the Indicator. Both SVGs
-    // must be present (Tailwind classes hide/show via group-data-[state=*]).
-    // This guards against a regression where someone replaces the dual-glyph
-    // pattern with a single conditional render.
     const { container } = render(<Checkbox checked="indeterminate" />);
     const svgs = container.querySelectorAll('svg');
     expect(svgs.length).toBeGreaterThanOrEqual(2);

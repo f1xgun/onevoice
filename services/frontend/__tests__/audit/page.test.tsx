@@ -92,7 +92,6 @@ describe('AuditPage', () => {
     const row = await screen.findByTestId('audit-row-a-1');
     expect(row).toBeInTheDocument();
     expect(row).toHaveTextContent('alice@example.com');
-    // Click opens the side panel
     await userEvent.setup().click(row);
     await waitFor(() => {
       expect(screen.getByTestId('panel-actor')).toBeInTheDocument();
