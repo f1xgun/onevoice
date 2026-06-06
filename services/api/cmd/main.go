@@ -136,7 +136,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		}
 	}()
 
-	internalRouter := router.SetupInternal(handlers, hc)
+	internalRouter := router.SetupInternal(handlers, hc, cfg)
 	internalAddr := ":" + cfg.InternalPort
 	internalSrv := &http.Server{
 		Addr:              internalAddr,
