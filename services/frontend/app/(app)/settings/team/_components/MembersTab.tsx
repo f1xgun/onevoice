@@ -32,7 +32,7 @@ import type { Member, Role } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { useAuthStore } from '@/lib/auth';
 
-import { ConfirmDestructive } from './ConfirmDestructive';
+import { ConfirmDestructive } from '@/components/ui/confirm-destructive';
 import { RoleChangeDialog } from './RoleChangeDialog';
 
 const SKELETON_ROW_COUNT = 4;
