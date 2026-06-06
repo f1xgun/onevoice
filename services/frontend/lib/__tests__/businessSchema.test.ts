@@ -46,4 +46,9 @@ describe('businessSchema', () => {
     const result = businessSchema.safeParse({ name: 'Test', category: 'cafe', phone: '' });
     expect(result.success).toBe(true);
   });
+
+  it('accepts null website (API returns null for an unset website)', () => {
+    const result = businessSchema.safeParse({ name: 'Test', category: 'cafe', website: null });
+    expect(result.success).toBe(true);
+  });
 });

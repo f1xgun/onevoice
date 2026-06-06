@@ -17,7 +17,9 @@ export interface Business {
   name: string;
   category: string;
   phone?: string;
-  website?: string;
+  // The API serialises `website` as `null` when unset (domain.Business.Website
+  // is a *string), unlike the other optional string fields which come back "".
+  website?: string | null;
   description?: string;
   logoUrl?: string;
   address?: string;
