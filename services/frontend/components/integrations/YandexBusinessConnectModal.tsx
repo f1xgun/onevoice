@@ -12,7 +12,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { extractApiErrorCode } from '@/lib/resolveErrorMap';
+import { extractApiErrorCode, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
 
 interface Props {
   open: boolean;
@@ -50,6 +50,7 @@ type Step = 'paste' | 'searching' | 'pick' | 'connecting';
 export function YandexBusinessConnectModal({ open, onClose }: Props) {
   const tYa = useTranslations('integrations.yandexBusiness');
   const qc = useQueryClient();
+  const mapVerifyError = useMapEmailVerificationError();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const [step, setStep] = useState<Step>('paste');
   const [value, setValue] = useState('');
@@ -136,7 +137,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       }
       setStep('pick');
     } catch (err: unknown) {
-      const msg = extractApiErrorCode(err) || tYa('fetchOrgsFailed');
+      const msg = mapVerifyError(err) ?? extractApiErrorCode(err) ?? tYa('fetchOrgsFailed');
       toast.error(msg);
       setStep('paste');
     }
@@ -157,7 +158,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       handleClose();
     } catch (err: unknown) {
-      const msg = extractApiErrorCode(err) || tYa('connectFailed');
+      const msg = mapVerifyError(err) ?? extractApiErrorCode(err) ?? tYa('connectFailed');
       toast.error(msg);
       setStep('pick');
     }
