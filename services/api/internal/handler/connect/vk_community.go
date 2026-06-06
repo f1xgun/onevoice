@@ -105,7 +105,7 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		},
 		ActorIP:      middleware.ClientIP(r),
 		UserAgent:    r.Header.Get("User-Agent"),
-		ParsedFormat: "access_token",
+		ParsedFormat: service.ParsedFormatAccessToken,
 	})
 	if err != nil {
 		slog.Error("failed to connect VK integration", "error", err)
@@ -161,8 +161,9 @@ func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	const reasonVKCommunityProbe = "vk_community_probe"
 	accessToken := ""
-	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID, "vk_community_probe"); tokErr == nil && tok != nil {
+	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID, reasonVKCommunityProbe); tokErr == nil && tok != nil {
 		accessToken = tok.AccessToken
 	}
 

@@ -211,8 +211,9 @@ type SoleOwnerBlockedDetails struct {
 // IntegrationConnectedDetails — NEVER store the access/refresh token or any
 // session cookie. Only the platform name + the external (provider) id.
 // ActorIP, UserAgent and ParsedFormat extend the original triple for forensic
-// provenance. ParsedFormat is a closed set: "json" | "cookie_header" |
-// "session_id_value" | "bot_token" | "access_token" | "oauth_code".
+// provenance. ParsedFormat is a closed set produced by the connect/oauth
+// handlers and the Yandex cookie parser (see their ParsedFormat*/Format*
+// constants).
 type IntegrationConnectedDetails struct {
 	IntegrationID uuid.UUID `json:"integration_id"`
 	Platform      string    `json:"platform"`

@@ -48,9 +48,10 @@ func (h *InternalTokenHandler) GetToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	const reasonUnknown = "unknown"
 	reason := r.URL.Query().Get("reason")
 	if reason == "" {
-		reason = "unknown"
+		reason = reasonUnknown
 	}
 
 	token, err := h.tokenService.GetDecryptedToken(r.Context(), businessID, platform, externalID, reason)

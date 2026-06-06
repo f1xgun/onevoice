@@ -16,6 +16,15 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
+// Reason values passed to GetDecryptedToken from the platform syncers, recorded
+// on the token-decrypt audit row for forensic correlation.
+const (
+	reasonTelegramSyncChats       = "telegram_sync_chats"
+	reasonTelegramSyncChannelMeta = "telegram_sync_channel_meta"
+	reasonTelegramSyncUsers       = "telegram_sync_users"
+	reasonVKSyncGroups            = "vk_sync_groups"
+)
+
 // Capability-segregated platform sync interfaces. Each platform implements
 // only the capabilities it supports; SyncBusiness performs a type-assertion
 // dispatch per capability so absence of an interface means "platform doesn't

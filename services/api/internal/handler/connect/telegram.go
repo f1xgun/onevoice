@@ -200,7 +200,7 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 		Metadata:     metadata,
 		ActorIP:      middleware.ClientIP(r),
 		UserAgent:    r.Header.Get("User-Agent"),
-		ParsedFormat: "bot_token",
+		ParsedFormat: service.ParsedFormatBotToken,
 	})
 	if err != nil {
 		slog.Error("failed to connect Telegram integration", "error", err)

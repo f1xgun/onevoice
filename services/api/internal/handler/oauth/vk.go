@@ -319,7 +319,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		Metadata:     metadata,
 		ActorIP:      middleware.ClientIP(r),
 		UserAgent:    r.Header.Get("User-Agent"),
-		ParsedFormat: "oauth_code",
+		ParsedFormat: service.ParsedFormatOAuthCode,
 	})
 	if err != nil {
 		slog.Error("failed to connect VK community integration", "error", err)

@@ -105,7 +105,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt:    &expiresAt,
 		ActorIP:      middleware.ClientIP(r),
 		UserAgent:    r.Header.Get("User-Agent"),
-		ParsedFormat: "oauth_code",
+		ParsedFormat: service.ParsedFormatOAuthCode,
 	})
 	if err != nil {
 		slog.Error("failed to connect Yandex.Business integration", "error", err)

@@ -43,6 +43,18 @@ type ConnectParams struct {
 	ParsedFormat     string
 }
 
+// ParsedFormat values for ConnectParams.ParsedFormat record how a credential
+// was supplied, for forensic provenance on the integration.connected audit row.
+const (
+	ParsedFormatBotToken    = "bot_token"
+	ParsedFormatAccessToken = "access_token"
+	ParsedFormatOAuthCode   = "oauth_code"
+)
+
+// callerServiceInternal is the caller_service recorded on the token-decrypt
+// audit row when the request carries no mTLS service identity (in-process call).
+const callerServiceInternal = "api.internal"
+
 // TokenResponse holds decrypted token data for a platform integration.
 type TokenResponse struct {
 	IntegrationID    uuid.UUID              `json:"integration_id"`
@@ -434,7 +446,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 
 	caller := middleware.ServiceIdentityFromContext(ctx)
 	if caller == "" {
-		caller = "api.internal"
+		caller = callerServiceInternal
 	}
 	correlationID := logger.CorrelationIDFromContext(ctx)
 	if err := audit.LogTokenDecryptedSync(ctx, s.audit, businessID, integration.ID, platform, caller, correlationID, reason); err != nil {

@@ -55,7 +55,7 @@ func NewVKSyncer(integrations integrationProvider, httpClient *http.Client, vkBa
 func (v *VKSyncer) SyncInfo(ctx context.Context, b *domain.Business, integ domain.Integration) error {
 	groupID := integ.ExternalID
 
-	token, err := v.integrations.GetDecryptedToken(ctx, b.ID, a2a.AgentVK, groupID, "vk_sync_groups")
+	token, err := v.integrations.GetDecryptedToken(ctx, b.ID, a2a.AgentVK, groupID, reasonVKSyncGroups)
 	if err != nil {
 		slog.Error("platform sync: vk: get token failed", "group_id", groupID, "error", err)
 		return errTokenFetchFailed{cause: err}

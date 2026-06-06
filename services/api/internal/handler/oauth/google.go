@@ -157,7 +157,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 			},
 			ActorIP:      middleware.ClientIP(r),
 			UserAgent:    r.Header.Get("User-Agent"),
-			ParsedFormat: "oauth_code",
+			ParsedFormat: service.ParsedFormatOAuthCode,
 		})
 		if err != nil {
 			slog.ErrorContext(r.Context(), "failed to connect Google Business integration", "error", err)
