@@ -12,6 +12,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 
 interface Props {
   open: boolean;
@@ -135,9 +136,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       }
       setStep('pick');
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        tYa('fetchOrgsFailed');
+      const msg = extractApiErrorCode(err) || tYa('fetchOrgsFailed');
       toast.error(msg);
       setStep('paste');
     }
@@ -158,9 +157,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       handleClose();
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        tYa('connectFailed');
+      const msg = extractApiErrorCode(err) || tYa('connectFailed');
       toast.error(msg);
       setStep('pick');
     }

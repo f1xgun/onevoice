@@ -14,6 +14,7 @@ import {
   useBusinessToolApprovals,
   useUpdateBusinessToolApprovals,
 } from '@/lib/hooks/useBusinessToolApprovals';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 import type { Tool, ToolApprovalValue, ToolApprovals } from '@/lib/schemas';
 import { ToolApprovalToggle } from './ToolApprovalToggle';
 
@@ -94,9 +95,7 @@ export function ToolsPageClient() {
       },
       onError: (err) => {
         const msg =
-          err instanceof Error && 'response' in err
-            ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? '')
-            : '';
+          err instanceof Error && 'response' in err ? (extractApiErrorCode(err) ?? '') : '';
         toast.error(tTools('saveError'), {
           description: msg || tTools('saveRetry'),
         });

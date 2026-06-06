@@ -81,6 +81,14 @@ function extractStatusAndCode(err: unknown): {
   return { status, code, reason };
 }
 
+// Pulls the backend error code from an axios-shaped error
+// (`response.data.error`). Returns `undefined` when the error has no such
+// field (network failure, non-axios throw). Callers typically `?? ''` or
+// `|| fallback` the result for their toast copy.
+export function extractApiErrorCode(err: unknown): string | undefined {
+  return extractStatusAndCode(err).code;
+}
+
 // ----- central error-code registry -----------------------------------------
 
 // A registry entry pairs an HTTP status + optional error code with the

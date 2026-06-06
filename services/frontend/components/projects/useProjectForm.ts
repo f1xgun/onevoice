@@ -21,6 +21,7 @@ import {
 } from '@/hooks/useProjects';
 import { useTools } from '@/lib/hooks/useTools';
 import { useBusinessToolApprovals } from '@/lib/hooks/useBusinessToolApprovals';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 import type { Tool } from '@/lib/schemas';
 import type {
   Project,
@@ -141,10 +142,7 @@ export function useProjectForm(
         onSaved(saved);
       }
     } catch (err) {
-      const msg =
-        err instanceof Error && 'response' in err
-          ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? '')
-          : '';
+      const msg = err instanceof Error && 'response' in err ? (extractApiErrorCode(err) ?? '') : '';
       toast.error(tForm('saveError'), {
         description: tForm('saveErrorRetry', { detail: msg }).trim(),
       });
