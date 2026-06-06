@@ -114,11 +114,13 @@ func debugScreenshot(page playwright.Page, label string) {
 // StartScreenshotSweeper spawns a goroutine that removes screenshots older
 // than screenshotTTL from the tmpfs directory every screenshotSweepInterval.
 // The goroutine exits when ctx is canceled (bind via signal.NotifyContext for
-// graceful SIGTERM shutdown). It is a no-op when SCREENSHOT_MODE is not tmpfs.
+// graceful SIGTERM shutdown). The sweeper is unconditional — captureScreenshot
+// re-reads SCREENSHOT_MODE on every call so the env contract advertises
+// "operator can flip off→tmpfs mid-incident without restarting". A boot-time
+// gate here would silently break that contract on the off→tmpfs path. The
+// loop is cheap (5 min cadence) and sweepScreenshotsIn returns silently when
+// the tmpfs directory is absent (the off / full mode steady state).
 func StartScreenshotSweeper(ctx context.Context, logger *slog.Logger) {
-	if screenshotMode() != ScreenshotTmpfs {
-		return
-	}
 	if logger == nil {
 		logger = slog.Default()
 	}

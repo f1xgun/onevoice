@@ -139,16 +139,61 @@ func TestSweepScreenshotsIn_MissingDirIsNoop(t *testing.T) {
 	sweepScreenshotsIn(filepath.Join(t.TempDir(), "missing"), time.Now(), slog.Default())
 }
 
-func TestStartScreenshotSweeper_NoopWhenOff(t *testing.T) {
+func TestStartScreenshotSweeper_ExitsCleanlyWhenOff(t *testing.T) {
+	// Sweeper is now unconditional so an operator can flip off→tmpfs at
+	// runtime and have the sweeper already in place. In off mode the
+	// tmpfs directory typically does not exist; sweepScreenshotsIn must
+	// return silently and the loop must exit on ctx cancel without
+	// leaking the goroutine.
 	t.Setenv("SCREENSHOT_MODE", "off")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	done := make(chan struct{})
+	startSweeperForTest(ctx, slog.Default(), 10*time.Millisecond, done)
 
-	// Returns immediately without spawning a goroutine; nothing to assert
-	// beyond "does not block and does not panic". Race detector + the
-	// surrounding cancel guarantee the call is well-behaved.
-	StartScreenshotSweeper(ctx, slog.Default())
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("sweeper goroutine did not exit within 500ms of ctx cancel in off mode")
+	}
+}
+
+func TestStartScreenshotSweeper_RuntimeFlipOffToTmpfs(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("runtime-flip test requires /dev/shm, skipping on %s", runtime.GOOS)
+	}
+	if err := os.MkdirAll(screenshotTmpfsDir, screenshotDirPerm); err != nil {
+		t.Skipf("/dev/shm not writable in this environment: %v", err)
+	}
+	// Boot in off mode; the sweeper must still spawn (unconditional) so
+	// that when the operator flips to tmpfs mid-incident, files written
+	// by captureScreenshot get reaped without an agent restart.
+	t.Setenv("SCREENSHOT_MODE", "off")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	startSweeperForTest(ctx, slog.Default(), 10*time.Millisecond, done)
+
+	// Drop a backdated file into the tmpfs dir; sweeper must reap it on
+	// the next tick regardless of SCREENSHOT_MODE.
+	old := filepath.Join(screenshotTmpfsDir, "yandex_runtime_flip.png")
+	if err := os.WriteFile(old, []byte("o"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	twoHoursAgo := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(old, twoHoursAgo, twoHoursAgo); err != nil {
+		t.Fatal(err)
+	}
+
+	// Allow several ticks to ensure the file is reaped.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	<-done
+
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("expected backdated file to be swept even in off mode, stat err = %v", err)
+	}
 }
 
 func TestStartScreenshotSweeper_ExitsOnContextCancel(t *testing.T) {
