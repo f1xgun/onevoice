@@ -134,6 +134,10 @@ type mockPage struct {
 	locators        map[string]*mockLocator
 	closeCalled     bool
 	screenshotData  []byte
+	// screenshotPaths records every Path option observed by Screenshot so
+	// tests can assert which file(s) the production code asked Playwright
+	// to write.
+	screenshotPaths []string
 
 	// evaluateResult is returned by Evaluate (and unmarshalable to anything
 	// the production code marshals via json). Tests set this to control what
@@ -183,7 +187,12 @@ func (m *mockPage) Close(_ ...playwright.PageCloseOptions) error {
 	return nil
 }
 
-func (m *mockPage) Screenshot(_ ...playwright.PageScreenshotOptions) ([]byte, error) {
+func (m *mockPage) Screenshot(opts ...playwright.PageScreenshotOptions) ([]byte, error) {
+	for _, o := range opts {
+		if o.Path != nil {
+			m.screenshotPaths = append(m.screenshotPaths, *o.Path)
+		}
+	}
 	return m.screenshotData, nil
 }
 
