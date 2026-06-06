@@ -3,9 +3,7 @@ import { useBusinessStore } from '../../stores/business';
 
 describe('useBusinessStore', () => {
   beforeEach(() => {
-    // Reset the store state between tests
     useBusinessStore.setState({ activeBusinessId: null });
-    // Clear localStorage
     localStorage.clear();
   });
 
@@ -29,7 +27,6 @@ describe('useBusinessStore', () => {
     const raw = localStorage.getItem('onevoice.business');
     expect(raw).not.toBeNull();
     const parsed = JSON.parse(raw!);
-    // Zustand persist wraps state in { state: {...}, version: 0 }
     expect(parsed.state.activeBusinessId).toBe('uuid-to-persist');
   });
 

@@ -38,7 +38,6 @@ func TestRateLimit_WithinLimit(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// Make 5 requests (within limit)
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
@@ -49,7 +48,6 @@ func TestRateLimit_WithinLimit(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, "success", rr.Body.String())
 
-		// Check rate limit headers
 		assert.Equal(t, strconv.Itoa(limit), rr.Header().Get("X-RateLimit-Limit"))
 
 		remaining, err := strconv.Atoi(rr.Header().Get("X-RateLimit-Remaining"))
@@ -72,7 +70,6 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// Make 3 requests (at limit)
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
@@ -83,7 +80,6 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 	}
 
-	// 4th request should be rate limited
 	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 
@@ -97,7 +93,6 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rate limit exceeded", errResp.Error)
 
-	// Check headers
 	assert.Equal(t, "0", rr.Header().Get("X-RateLimit-Remaining"))
 }
 
@@ -113,7 +108,6 @@ func TestRateLimit_DifferentIPs(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// IP 1: Make 2 requests (at limit)
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
@@ -124,7 +118,6 @@ func TestRateLimit_DifferentIPs(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 	}
 
-	// IP 2: Should still be able to make requests
 	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.2:12345"
 
@@ -147,7 +140,6 @@ func TestRateLimit_DifferentPaths(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// Path 1: Make 2 requests (at limit)
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("GET", "/api/v1/path1", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
@@ -158,7 +150,6 @@ func TestRateLimit_DifferentPaths(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 	}
 
-	// Path 2: Should have separate limit
 	req := httptest.NewRequest("GET", "/api/v1/path2", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 
@@ -181,7 +172,6 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// Request 1: Use X-Forwarded-For header
 	req1 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req1.RemoteAddr = "192.168.1.100:12345"
 	req1.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.1")
@@ -192,7 +182,6 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr1.Code)
 	assert.Equal(t, "1", rr1.Header().Get("X-RateLimit-Remaining"))
 
-	// Request 2: Same X-Forwarded-For IP (should count against same limit)
 	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req2.RemoteAddr = "192.168.1.200:12345"
 	req2.Header.Set("X-Forwarded-For", "203.0.113.1")
@@ -226,7 +215,6 @@ func TestRateLimit_XRealIP(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "0", rr.Header().Get("X-RateLimit-Remaining"))
 
-	// Second request with same X-Real-IP should be rate limited
 	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req2.RemoteAddr = "192.168.1.200:12345"
 	req2.Header.Set("X-Real-IP", "203.0.113.1")
@@ -269,7 +257,6 @@ func TestGetClientIP_Priority(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "203.0.113.1")
 	req.Header.Set("X-Real-IP", "198.51.100.1")
 
-	// X-Forwarded-For should take priority
 	ip := getClientIP(req)
 	assert.Equal(t, "203.0.113.1", ip)
 }
@@ -318,7 +305,6 @@ func TestRateLimitByUser_ExceedsLimit(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// Exhaust the limit
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
@@ -330,7 +316,6 @@ func TestRateLimitByUser_ExceedsLimit(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 	}
 
-	// 4th request should be rate limited
 	req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 	ctx := context.WithValue(req.Context(), UserIDKey, userID)
@@ -360,7 +345,6 @@ func TestRateLimitByUser_FallbackToIP(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// No UserIDKey in context — should fallback to IP-based limiting
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
@@ -370,7 +354,6 @@ func TestRateLimitByUser_FallbackToIP(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 	}
 
-	// 3rd request should be rate limited
 	req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 
@@ -393,7 +376,6 @@ func TestRateLimitByUser_DifferentUsers(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// User 1: exhaust limit
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
@@ -405,7 +387,6 @@ func TestRateLimitByUser_DifferentUsers(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 	}
 
-	// User 2: should have independent counter
 	req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 	ctx := context.WithValue(req.Context(), UserIDKey, user2)
@@ -430,7 +411,6 @@ func TestRateLimit_RedisDown(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// Close Redis before making request — should fail open
 	mr.Close()
 
 	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
@@ -455,14 +435,12 @@ func TestRateLimit_RetryAfterHeader(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// First request — within limit
 	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	// Second request — exceeds limit
 	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req2.RemoteAddr = "192.168.1.1:12345"
 	rr2 := httptest.NewRecorder()

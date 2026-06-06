@@ -65,7 +65,6 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange code for token
 	form := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},

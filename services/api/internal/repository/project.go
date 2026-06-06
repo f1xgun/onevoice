@@ -122,22 +122,32 @@ func (r *projectRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
-	var p domain.Project
-	var mode string
-	var overridesText string
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&p.ID, &p.BusinessID, &p.Name, &p.Description, &p.SystemPrompt,
-		&mode, &p.AllowedTools, &overridesText, &p.QuickActions, &p.CreatedAt, &p.UpdatedAt,
-	)
+	p, err := scanProject(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrProjectNotFound
 		}
 		return nil, fmt.Errorf("query project: %w", err)
 	}
+	return &p, nil
+}
+
+// scanProject maps one projects row into a domain.Project, decoding
+// whitelist_mode and the COALESCE'd approval_overrides JSONB text. Shared by
+// the QueryRow GetByID path and the CollectRows ListByBusinessID path.
+func scanProject(row scanner) (domain.Project, error) {
+	var p domain.Project
+	var mode string
+	var overridesText string
+	if err := row.Scan(
+		&p.ID, &p.BusinessID, &p.Name, &p.Description, &p.SystemPrompt,
+		&mode, &p.AllowedTools, &overridesText, &p.QuickActions, &p.CreatedAt, &p.UpdatedAt,
+	); err != nil {
+		return domain.Project{}, err
+	}
 	p.WhitelistMode = domain.WhitelistMode(mode)
 	p.ApprovalOverrides = unmarshalApprovalOverrides([]byte(overridesText))
-	return &p, nil
+	return p, nil
 }
 
 // ListByBusinessID returns all projects for a business, sorted newest-first.
@@ -159,25 +169,10 @@ func (r *projectRepository) ListByBusinessID(ctx context.Context, businessID uui
 	if err != nil {
 		return nil, fmt.Errorf("query projects: %w", err)
 	}
-	defer rows.Close()
 
-	projects := make([]domain.Project, 0)
-	for rows.Next() {
-		var p domain.Project
-		var mode string
-		var overridesText string
-		if err := rows.Scan(&p.ID, &p.BusinessID, &p.Name, &p.Description, &p.SystemPrompt,
-			&mode, &p.AllowedTools, &overridesText, &p.QuickActions, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan project: %w", err)
-		}
-		p.WhitelistMode = domain.WhitelistMode(mode)
-		p.ApprovalOverrides = unmarshalApprovalOverrides([]byte(overridesText))
-		projects = append(projects, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows: %w", err)
-	}
-	return projects, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Project, error) {
+		return scanProject(row)
+	})
 }
 
 // Update modifies mutable fields (name, description, system_prompt,
@@ -268,7 +263,6 @@ func (r *projectRepository) CountConversationsByID(ctx context.Context, id uuid.
 func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	projectIDStr := id.String()
 
-	// 1. Find conversation IDs so we can scope the messages delete.
 	var convIDs []string
 	cursor, findErr := r.convColl.Find(ctx, bson.M{"project_id": projectIDStr})
 	if findErr != nil {
@@ -284,7 +278,6 @@ func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID)
 	}
 	_ = cursor.Close(ctx)
 
-	// 2. Delete messages whose conversation_id is in the cascade set.
 	var msgCount int64
 	if len(convIDs) > 0 {
 		msgRes, msgErr := r.msgColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}})
@@ -294,13 +287,11 @@ func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID)
 		msgCount = msgRes.DeletedCount
 	}
 
-	// 3. Delete conversations.
 	convRes, convErr := r.convColl.DeleteMany(ctx, bson.M{"project_id": projectIDStr})
 	if convErr != nil {
 		return 0, int(msgCount), fmt.Errorf("delete cascade conversations: %w", convErr)
 	}
 
-	// 4. Finally, the Postgres project row.
 	if delErr := r.Delete(ctx, id); delErr != nil {
 		return int(convRes.DeletedCount), int(msgCount), fmt.Errorf("delete project row: %w", delErr)
 	}

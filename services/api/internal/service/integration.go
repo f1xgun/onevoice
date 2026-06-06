@@ -96,12 +96,10 @@ func (s *integrationService) getRefreshMutex(id uuid.UUID) *sync.Mutex {
 
 // ListByBusinessID retrieves all integrations for a business
 func (s *integrationService) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
-	// Check context
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Validate business ID
 	if businessID == uuid.Nil {
 		return nil, fmt.Errorf("business id is required")
 	}
@@ -116,17 +114,14 @@ func (s *integrationService) ListByBusinessID(ctx context.Context, businessID uu
 
 // GetByBusinessAndPlatform retrieves a specific integration by business and platform
 func (s *integrationService) GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error) {
-	// Check context
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Validate business ID
 	if businessID == uuid.Nil {
 		return nil, fmt.Errorf("business id is required")
 	}
 
-	// Validate platform
 	if platform == "" {
 		return nil, fmt.Errorf("platform is required")
 	}
@@ -201,12 +196,10 @@ func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID
 
 // Delete removes an integration
 func (s *integrationService) Delete(ctx context.Context, integrationID uuid.UUID) error {
-	// Check context
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	// Validate integration ID
 	if integrationID == uuid.Nil {
 		return fmt.Errorf("integration id is required")
 	}
@@ -274,7 +267,6 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
-	// Emit integration.connected only after the repo write succeeds; payload carries no token material.
 	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID)
 
 	return integration, nil
@@ -293,7 +285,6 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		}
 	}
 
-	// Fall back to the first active integration if not found by externalID
 	if integration == nil {
 		integrations, listErr := s.repo.ListByBusinessAndPlatform(ctx, businessID, platform)
 		if listErr != nil {
@@ -310,7 +301,6 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		}
 	}
 
-	// Check expiration — attempt refresh if possible
 	if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
 		if len(integration.EncryptedRefreshToken) == 0 || s.refresher == nil {
 			return nil, domain.ErrTokenExpired
@@ -320,13 +310,11 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		mu.Lock()
 		defer mu.Unlock()
 
-		// Re-read from DB — another goroutine may have refreshed while we waited
 		integration, err = s.repo.GetByID(ctx, integration.ID)
 		if err != nil {
 			return nil, fmt.Errorf("re-read integration after lock: %w", err)
 		}
 
-		// Check if still expired after re-read
 		if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
 			refreshToken, err := s.enc.Decrypt(integration.EncryptedRefreshToken)
 			if err != nil {
@@ -343,7 +331,6 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 				return nil, domain.ErrTokenExpired
 			}
 
-			// Encrypt and persist new tokens
 			encAccess, err := s.enc.Encrypt([]byte(newAccess))
 			if err != nil {
 				return nil, fmt.Errorf("encrypt refreshed access token: %w", err)
@@ -365,7 +352,6 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 				return nil, fmt.Errorf("persist refreshed tokens: %w", err)
 			}
 
-			// Emit integration.token_rotated only after repo.Update succeeds (user_id=NULL — system event).
 			audit.LogIntegrationTokenRotated(ctx, s.audit, integration.BusinessID, integration.ID, integration.Platform)
 
 			slog.InfoContext(ctx, "token refreshed successfully",
@@ -391,7 +377,6 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		if err != nil {
 			return nil, fmt.Errorf("decrypt user token: %w", err)
 		}
-		// Check user token expiration
 		if integration.UserTokenExpiresAt == nil || integration.UserTokenExpiresAt.After(time.Now()) {
 			userToken = string(decrypted)
 		}

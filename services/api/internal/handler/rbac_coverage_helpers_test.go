@@ -91,29 +91,21 @@ func setupTestEnv(t *testing.T) *testEnv {
 		mongoDBName = "onevoice_test"
 	}
 
-	// PostgreSQL pool.
-	// pgxpool uses default max-conns (max(4, runtime.NumCPU*4)).
-	// TODO(02.4-if-needed): if test instability returns after G-07 fix,
-	// set MaxConns=10 explicitly via pgxpool.ParseConfig + pool.Config.MaxConns.
 	pool, err := pgxpool.New(context.Background(), connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
-	// MongoDB.
 	mongoClient, err := mongo.Connect(options.Client().ApplyURI(mongoURL))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = mongoClient.Disconnect(context.Background()) })
 	mongodb := mongoClient.Database(mongoDBName)
 
-	// Miniredis for rate-limit middleware (no external Redis needed).
 	mr := miniredis.RunT(t)
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = redisClient.Close() })
 
-	// Minimal test config: JWT secret (>=32 bytes) + encryption key (==32 bytes).
-	// S3Endpoint is intentionally empty so MinIO construction is skipped.
 	const jwtSecret = "test-secret-do-not-use-in-production-at-all"
-	const encKey = "12345678901234567890123456789012" // exactly 32 bytes
+	const encKey = "12345678901234567890123456789012"
 	cfg := &config.Config{
 		JWTSecret:          jwtSecret,
 		EncryptionKey:      encKey,
@@ -126,8 +118,6 @@ func setupTestEnv(t *testing.T) *testEnv {
 
 	pendingRepo := repository.NewPendingToolCallRepository(mongodb)
 
-	// Build wire/ primitives directly — BootstrapDatabases is not used because
-	// integration tests own pool/mongo/redis lifecycle via t.Cleanup above.
 	enc, err := buildTestEncryptor(t, encKey)
 	require.NoError(t, err)
 
@@ -156,8 +146,8 @@ func setupTestEnv(t *testing.T) *testEnv {
 			HITL:     cfg.RateLimitHITL,
 		},
 		svcs.AuthzCache,
-		nil, // soft-restrict UserLookup — tests pass nil for pass-through.
-		nil, // deletion grace pool — tests pass nil for pass-through.
+		nil,
+		nil,
 	)
 
 	return &testEnv{
@@ -184,13 +174,9 @@ func setupTestEnvWithTTL(t *testing.T, ttl time.Duration) *testEnv {
 	t.Helper()
 	env := setupTestEnv(t)
 
-	// Rebuild the authz cache with the injected TTL (HIGH #1).
 	membershipLoader := repository.NewMembershipLoader(env.pool)
 	testCache := authz.NewCacheForTest(membershipLoader, ttl, ttl)
 
-	// We rebuild only the bits we need — same pool/mongo/redis, fresh wire
-	// services that share the original DBHandles, and a router whose
-	// RequireBusinessAccess middleware is wired against the short-TTL cache.
 	mongoURL := os.Getenv("TEST_MONGO_URL")
 	mongoDBName := os.Getenv("TEST_MONGO_DB")
 	if mongoDBName == "" {
@@ -235,7 +221,6 @@ func setupTestEnvWithTTL(t *testing.T, ttl time.Duration) *testEnv {
 	handlers2, err := wire.Handlers(cfg, svcs2, repos2, handles2)
 	require.NoError(t, err)
 
-	// Rebuild the mux with the short-TTL test cache.
 	testMux := router.Setup(handlers2, []byte(jwtSecret), redisClient2, health.New(),
 		cfg.CORSAllowedOrigins,
 		router.RateLimits{
@@ -290,7 +275,7 @@ func setupTestEnvWithLoginRateLimit(t *testing.T, limit int) *testEnv {
 		EncryptionKey:      encKey,
 		CORSAllowedOrigins: []string{"http://localhost:3000"},
 		RateLimitRegister:  100,
-		RateLimitLogin:     limit, // <-- the override that makes this helper distinct
+		RateLimitLogin:     limit,
 		RateLimitChat:      100,
 		RateLimitHITL:      100,
 	}
@@ -437,7 +422,7 @@ func seedCustomRole(t *testing.T, pool *pgxpool.Pool, businessID uuid.UUID) uuid
 func seedInvitation(t *testing.T, pool *pgxpool.Pool, businessID, roleID, createdByUserID uuid.UUID) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
-	hash := fmt.Sprintf("seed-hash-%s", id.String()) // unique per row
+	hash := fmt.Sprintf("seed-hash-%s", id.String())
 	_, err := pool.Exec(context.Background(),
 		`INSERT INTO invitations (id, business_id, role_id, token_hash, expires_at, created_by, created_at)
 		 VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 hour', $5, NOW())`,
@@ -458,12 +443,6 @@ func seedInvitation(t *testing.T, pool *pgxpool.Pool, businessID, roleID, create
 // called by DELETE /members/{userId}).
 func doAuthedRequest(t *testing.T, env *testEnv, method, url, jwtToken string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
-	// Route-aware context deadline (G-06 fix):
-	// - SSE/streaming routes (path contains "/stream") block ServeHTTP on their
-	// heartbeat ticker; use a short 10s bound so the walker can advance.
-	// - All other routes get 60s — generous enough for slow DB operations under
-	// test contention (e.g. RepeatableRead + SELECT FOR UPDATE in
-	// EnsureOwnerExistsAfter called by DELETE /members/{userId}).
 	timeout := 60 * time.Second
 	if strings.Contains(url, "/stream") {
 		timeout = 10 * time.Second

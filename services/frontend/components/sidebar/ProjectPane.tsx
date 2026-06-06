@@ -48,9 +48,6 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
     return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [projects]);
 
-  // Pinned chats sort by pinnedAt desc (most-recently-pinned first).
-  // Re-pinning at the API stamps a fresh now-UTC timestamp, so the sort
-  // is server-stable.
   const pinned = useMemo(() => {
     const convs: Conversation[] = conversations ?? [];
     return convs
@@ -58,7 +55,6 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       .sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? ''));
   }, [conversations]);
 
-  // Lookup table for the mini ProjectChip on each pinned row.
   const projectsById = useMemo(() => {
     const out: Record<string, { id: string; name: string }> = {};
     for (const p of projects ?? []) {

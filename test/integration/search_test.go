@@ -114,7 +114,6 @@ func ensureSearchIndexes(t *testing.T) {
 			SetWeights(bson.M{"title": 20}),
 	}
 	if _, err := mongoDB.Collection("conversations").Indexes().CreateOne(ctx, titleIdx); err != nil {
-		// Idempotent — duplicate-key / "already exists" is fine
 		t.Logf("title index already present or non-fatal: %v", err)
 	}
 
@@ -240,7 +239,7 @@ func TestSearchMissingBearerReturns401(t *testing.T) {
 	}
 	cleanupDatabase(t)
 
-	status, _, _ := doSearch(t, "" /* no token */, "инвойс", "")
+	status, _, _ := doSearch(t, "", "инвойс", "")
 	assert.Equal(t, http.StatusUnauthorized, status)
 }
 
@@ -268,7 +267,6 @@ func TestSearchAggregatedShape(t *testing.T) {
 	userID, bizID := resolveBusinessID(t, accessToken)
 
 	convID := seedConvWithMessage(t, userID, bizID, "", "Документы", "первое упоминание договор")
-	// Add two more matching messages in the same conversation.
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
 		_, err := mongoDB.Collection("messages").InsertOne(ctx, bson.M{

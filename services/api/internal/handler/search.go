@@ -62,14 +62,8 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Search", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Search: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -87,19 +81,11 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	results, err := h.searcher.Search(r.Context(), bc.BusinessID.String(), bc.UserID.String(), q, projectID, limit)
 	if errors.Is(err, domain.ErrSearchIndexNotReady) {
-		// The atomic.Bool flag
-		// in service.Searcher flips to true after EnsureSearchIndexes
-		// returns nil at startup; until then we surface a retryable
-		// 503 with Retry-After: 5.
 		w.Header().Set("Retry-After", "5")
 		writeJSONError(w, http.StatusServiceUnavailable, "search index initializing")
 		return
 	}
 	if errors.Is(err, domain.ErrInvalidScope) {
-		// Should not be reachable: handler resolves businessID/userID
-		// server-side. If we surface ErrInvalidScope, a future caller
-		// must have introduced an empty-scope path — log loudly with
-		// metadata-only fields.
 		slog.ErrorContext(r.Context(), "search: invalid scope reached handler",
 			"user_id", bc.UserID.String(),
 			"business_id", bc.BusinessID.String(),
@@ -108,7 +94,6 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		// Metadata-only log — NEVER the query text.
 		slog.ErrorContext(r.Context(), "search failed",
 			"user_id", bc.UserID.String(),
 			"business_id", bc.BusinessID.String(),

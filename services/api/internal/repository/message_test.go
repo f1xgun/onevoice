@@ -125,7 +125,6 @@ func TestMessageRepository_ListByConversationID(t *testing.T) {
 	t.Run("returns all messages for conversation", func(t *testing.T) {
 		convID := "conv-list-test"
 
-		// Create 3 messages for the conversation
 		for i := 0; i < 3; i++ {
 			msg := &domain.Message{
 				ConversationID: convID,
@@ -136,7 +135,6 @@ func TestMessageRepository_ListByConversationID(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// Create message for different conversation
 		otherMsg := &domain.Message{
 			ConversationID: "other-conv",
 			Role:           "user",
@@ -163,7 +161,6 @@ func TestMessageRepository_ListByConversationID(t *testing.T) {
 	t.Run("respects limit parameter", func(t *testing.T) {
 		convID := "conv-limit-test"
 
-		// Create 5 messages
 		for i := 0; i < 5; i++ {
 			msg := &domain.Message{
 				ConversationID: convID,
@@ -182,7 +179,6 @@ func TestMessageRepository_ListByConversationID(t *testing.T) {
 	t.Run("respects offset parameter", func(t *testing.T) {
 		convID := "conv-offset-test"
 
-		// Create 5 messages
 		for i := 0; i < 5; i++ {
 			msg := &domain.Message{
 				ConversationID: convID,
@@ -201,7 +197,6 @@ func TestMessageRepository_ListByConversationID(t *testing.T) {
 	t.Run("returns messages in chronological order", func(t *testing.T) {
 		convID := "conv-order-test"
 
-		// Create messages with slight delays
 		for i := 0; i < 3; i++ {
 			msg := &domain.Message{
 				ConversationID: convID,
@@ -217,7 +212,6 @@ func TestMessageRepository_ListByConversationID(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, messages, 3)
 
-		// Verify chronological order (oldest first)
 		for i := 0; i < len(messages)-1; i++ {
 			assert.True(t, messages[i].CreatedAt.Before(messages[i+1].CreatedAt) ||
 				messages[i].CreatedAt.Equal(messages[i+1].CreatedAt))
@@ -233,7 +227,6 @@ func TestMessageRepository_CountByConversationID(t *testing.T) {
 	t.Run("returns correct count", func(t *testing.T) {
 		convID := "conv-count-test"
 
-		// Create 7 messages
 		for i := 0; i < 7; i++ {
 			msg := &domain.Message{
 				ConversationID: convID,
@@ -276,7 +269,6 @@ func TestFindByConversationActive_ReturnsLatestMatching(t *testing.T) {
 	}
 	require.NoError(t, repo.Create(ctx, older))
 
-	// Create a complete message (should be ignored).
 	complete := &domain.Message{
 		ID:             "msg-complete",
 		ConversationID: convID,
@@ -315,13 +307,11 @@ func TestFindByConversationActive_NoMatch_ReturnsErrNotFound(t *testing.T) {
 
 	convID := "conv-active-empty"
 
-	// No messages at all.
 	got, err := repo.FindByConversationActive(ctx, convID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrMessageNotFound)
 	assert.Nil(t, got)
 
-	// Insert only complete / user messages — neither should match.
 	require.NoError(t, repo.Create(ctx, &domain.Message{
 		ID:             "msg-user",
 		ConversationID: convID,
@@ -362,7 +352,6 @@ func TestMessageRepository_Update(t *testing.T) {
 		}
 		require.NoError(t, repo.Create(ctx, msg))
 
-		// Mutate and Update.
 		msg.Status = domain.MessageStatusComplete
 		msg.Content = "done"
 		msg.ToolCalls[0].Status = domain.ToolCallStatusApproved
@@ -372,7 +361,6 @@ func TestMessageRepository_Update(t *testing.T) {
 		})
 		require.NoError(t, repo.Update(ctx, msg))
 
-		// Re-fetch via ListByConversationID (since we don't have a FindByID yet).
 		msgs, err := repo.ListByConversationID(ctx, "conv-update", 10, 0)
 		require.NoError(t, err)
 		require.Len(t, msgs, 1)

@@ -80,9 +80,6 @@ export function StickyAlert({
       role="status"
       aria-live="polite"
       className={cn(
-        // Sticky inside the route content so the NavRail keeps its own
-        // corner. z-10 keeps the banner above plain page content but
-        // below sheets/modals (z-50 in shadcn primitives).
         'sticky top-0 z-10',
         'flex items-center gap-4 border-b px-6 py-3',
         t.bg,

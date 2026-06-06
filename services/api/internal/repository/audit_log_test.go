@@ -31,10 +31,6 @@ func TestAuditLogRepository_Insert_HappyPath(t *testing.T) {
 	mock, repo := newAuditLogRepoMock(t)
 	biz, actor := uuid.New(), uuid.New()
 
-	// AnyArg for pointer-to-uuid values because pgx encodes (*uuid.UUID) via
-	// the driver.Valuer interface and the in-test equality check is
-	// brittle across pgx versions. The shape check below
-	// (regex on INSERT INTO audit_logs) is the load-bearing assertion.
 	mock.ExpectExec(`INSERT INTO audit_logs`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "business.created", "business", pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -61,7 +57,6 @@ func TestAuditLogRepository_Insert_LoginFailed_NilBusinessAndUser(t *testing.T) 
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	err := repo.Insert(context.Background(), &domain.AuditLog{
-		// BusinessID + UserID intentionally nil
 		Action:   "auth.login_failed",
 		Resource: "user",
 		Details:  json.RawMessage(`{"attempted_email":"a@b.c","ip":"1.2.3.4"}`),
@@ -77,11 +72,6 @@ func TestAuditLogRepository_Insert_EmptyDetails_DefaultsToEmptyObject(t *testing
 	mock, repo := newAuditLogRepoMock(t)
 	biz, actor := uuid.New(), uuid.New()
 
-	// The squirrel binder pulls Values args literally; we cannot easily
-	// assert the substituted "{}" payload via regex on the SQL because the
-	// JSON content is a positional bind variable. Match the arg directly:
-	// the 5th positional arg must be json.RawMessage(`{}`) and the 6th is
-	// the user_email_at_event placeholder (nil when caller didn't set it).
 	mock.ExpectExec(`INSERT INTO audit_logs`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "business.updated", "business", json.RawMessage(`{}`), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -91,7 +81,6 @@ func TestAuditLogRepository_Insert_EmptyDetails_DefaultsToEmptyObject(t *testing
 		UserID:     &actor,
 		Action:     "business.updated",
 		Resource:   "business",
-		// Details left empty: should be substituted to "{}" by Insert.
 	})
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -131,13 +120,10 @@ func TestAuditLogRepository_ListByBusiness_AllFiltersAndCursor(t *testing.T) {
 	cursorT := time.Now().Add(-1 * time.Hour).UTC()
 	cursorID := uuid.New()
 
-	// Order of squirrel args, mirroring the WHERE clause build order in
-	// ListByBusiness:
-	// business_id, action(LIKE), action(=), user_id, created_at>=, created_at<, cursorTime, cursorID
 	mock.ExpectQuery(`SELECT .+ FROM audit_logs WHERE`).
 		WithArgs(
-			pgxmock.AnyArg(), // business_id
-			"rbac.%",         // category LIKE
+			pgxmock.AnyArg(),
+			"rbac.%",
 			"rbac.role_granted",
 			pgxmock.AnyArg(),
 			from,
@@ -225,7 +211,6 @@ func TestAuditLogRepository_ListByBusiness_HalfCursor_Ignored(t *testing.T) {
 	mock, repo := newAuditLogRepoMock(t)
 	biz := uuid.New()
 	cursorT := time.Now().UTC()
-	// CursorID intentionally nil
 
 	mock.ExpectQuery(`FROM audit_logs WHERE business_id = \$1 ORDER BY .+ LIMIT 50`).
 		WithArgs(pgxmock.AnyArg()).
@@ -235,7 +220,6 @@ func TestAuditLogRepository_ListByBusiness_HalfCursor_Ignored(t *testing.T) {
 
 	_, err := repo.ListByBusiness(context.Background(), biz, domain.AuditLogFilter{
 		CursorTime: &cursorT,
-		// CursorID: nil → must not add the tuple predicate
 	})
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -319,8 +303,8 @@ func TestAuditLogRepository_ListByBusinessWithActors_NullUserBecomesEmptyEmail(t
 	rows, err := repo.ListByBusinessWithActors(context.Background(), biz, domain.AuditLogFilter{})
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	require.Equal(t, "", rows[0].ActorEmail) // COALESCE → '' for unmatched JOIN
-	require.Nil(t, rows[0].UserID)           // domain row keeps the NULL user_id
+	require.Equal(t, "", rows[0].ActorEmail)
+	require.Nil(t, rows[0].UserID)
 	require.Equal(t, "auth.login_failed", rows[0].Action)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -337,9 +321,6 @@ func TestAuditLogRepository_ListByBusinessWithActors_AppliesAllFilters(t *testin
 	cursorT := time.Now().Add(-1 * time.Hour).UTC()
 	cursorID := uuid.New()
 
-	// Arg order mirrors WHERE-clause build order in ListByBusinessWithActors:
-	// al.business_id, al.action LIKE, al.action =, al.user_id =,
-	// al.created_at >=, al.created_at <, cursorTime, cursorID
 	mock.ExpectQuery(`FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id WHERE`).
 		WithArgs(
 			pgxmock.AnyArg(),

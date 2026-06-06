@@ -49,14 +49,11 @@ func main() {
 
 func run(pass *analysis.Pass) (interface{}, error) {
 	for _, file := range pass.Files {
-		// Skip test files entirely — fixtures may legitimately inline URLs.
 		filename := pass.Fset.File(file.Pos()).Name()
 		if strings.HasSuffix(filename, "_test.go") {
 			continue
 		}
 
-		// Pre-compute every position that's inside a const declaration so
-		// the visitor below can skip them in O(1).
 		constSpans := collectConstSpans(file)
 
 		ast.Inspect(file, func(n ast.Node) bool {

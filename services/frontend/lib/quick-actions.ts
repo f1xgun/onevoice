@@ -17,10 +17,6 @@ export function createDefaultQuickActions(t: RawTranslator): readonly string[] {
 }
 
 export function useDefaultQuickActions(): readonly string[] {
-  // next-intl's `Translator` already exposes a `.raw()` method (returns
-  // `any`), so a plain narrowing cast to `RawTranslator` is sufficient —
-  // we no longer route through `unknown`, which would erase the nominal
-  // brand on the original translator.
   const t = useTranslations('quickActions') as RawTranslator;
   return useMemo(() => createDefaultQuickActions(t), [t]);
 }

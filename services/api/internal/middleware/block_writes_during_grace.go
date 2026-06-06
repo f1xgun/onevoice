@@ -44,9 +44,6 @@ type graceQueryRunner interface {
 func BlockWritesDuringGrace(pool graceQueryRunner, graceDays int) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Read-method bypass (plan Task 8 / Option A). GETs are
-			// the entire point of soft-restrict — user must still see
-			// their /auth/me + history.
 			switch r.Method {
 			case http.MethodGet, http.MethodHead, http.MethodOptions:
 				next.ServeHTTP(w, r)
@@ -55,17 +52,12 @@ func BlockWritesDuringGrace(pool graceQueryRunner, graceDays int) func(http.Hand
 
 			userID, err := GetUserID(r.Context())
 			if err != nil {
-				// Auth middleware should have caught; defensive pass-
-				// through so the next layer can write its own 401.
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			info, err := lookupPendingDeletion(r.Context(), pool, userID)
 			if err != nil {
-				// Fail-open on DB hiccup (T-DEL-11 disposition). We'd
-				// rather accept a write than 423 every authenticated
-				// request on a DB blip.
 				slog.WarnContext(r.Context(), "block writes during grace: lookup failed; fail-open",
 					"userID", userID, "err", err)
 				next.ServeHTTP(w, r)
@@ -101,8 +93,6 @@ func lookupPendingDeletion(ctx context.Context, pool graceQueryRunner, userID uu
 	var canceledAt *time.Time
 	if err := pool.QueryRow(ctx, q, userID).Scan(&requestedAt, &canceledAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// User got hard-deleted; treat as no-pending so the next
-			// layer can write its own 401/404. Definitely not a 423.
 			return nil, nil
 		}
 		return nil, err

@@ -144,10 +144,6 @@ describe('ToolApprovalAccordionEntry — reject textarea + counter', () => {
 });
 
 describe('ToolApprovalAccordionEntry — args form (read-only modes)', () => {
-  // In undecided/approve modes the args form is a labelled context list. The
-  // value should be rendered as plain text (not a JSON tree) so non-technical
-  // operators can read it without parsing JSON.
-
   it('reveals the Аргументы heading and a labelled row for each arg when expanded (undecided)', async () => {
     const user = userEvent.setup();
     renderEntry({
@@ -156,10 +152,8 @@ describe('ToolApprovalAccordionEntry — args form (read-only modes)', () => {
     });
     await user.click(screen.getByLabelText(/telegram__send_channel_post — развернуть/));
     expect(screen.getByText('Аргументы')).toBeInTheDocument();
-    // Localized labels for both args.
     expect(screen.getByText('Текст')).toBeInTheDocument();
     expect(screen.getByText('ID чата')).toBeInTheDocument();
-    // Values rendered inline as text (NOT inside <input>s).
     expect(screen.getByText('hello')).toBeInTheDocument();
     expect(screen.getByText('123')).toBeInTheDocument();
   });
@@ -173,7 +167,6 @@ describe('ToolApprovalAccordionEntry — args form (read-only modes)', () => {
     await user.click(screen.getByLabelText(/telegram__send_channel_post — развернуть/));
     expect(screen.getByText('Текст')).toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
-    // In approve mode there are no editable form controls.
     expect(screen.queryByRole('textbox', { name: 'Текст' })).not.toBeInTheDocument();
   });
 });
@@ -185,7 +178,6 @@ describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
       draft: makeDraft({ decision: 'edit' }),
     });
     expect(screen.getByText('Аргументы')).toBeInTheDocument();
-    // The editable "Текст" field is reachable by its associated <label>.
     const textarea = screen.getByLabelText('Текст') as HTMLTextAreaElement;
     expect(textarea).toBeInTheDocument();
     expect(textarea.value).toBe('hello');
@@ -196,13 +188,9 @@ describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
       call: singleCallBatch.calls[0]!,
       draft: makeDraft({ decision: 'edit' }),
     });
-    // The editable section is "Можно изменить"; the locked section is
-    // "Зафиксировано" and carries the lockedHint copy.
     expect(screen.getByText('Можно изменить')).toBeInTheDocument();
     expect(screen.getByText('Зафиксировано')).toBeInTheDocument();
     expect(screen.getByText(/Эти значения нельзя редактировать/)).toBeInTheDocument();
-    // chat_id should appear in the locked area as a labelled <dd>, never as
-    // an editable control.
     expect(screen.getByText('ID чата')).toBeInTheDocument();
     expect(screen.queryByLabelText('ID чата')).not.toBeInTheDocument();
   });
@@ -216,8 +204,6 @@ describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
       onEditArg,
     });
     const textarea = screen.getByLabelText('Текст') as HTMLTextAreaElement;
-    // Append a single character — userEvent fires one onChange per keystroke,
-    // so the last call carries the full new value.
     await user.type(textarea, '!');
     expect(onEditArg).toHaveBeenCalled();
     const lastCall = onEditArg.mock.calls.at(-1);
@@ -231,8 +217,6 @@ describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
       draft: makeDraft({ decision: 'edit' }),
     });
     expect(screen.getByText('У этого действия нет редактируемых параметров.')).toBeInTheDocument();
-    // The locked section must still be visible so the operator can see the
-    // pinned ids before approving / rejecting.
     expect(screen.getByText('Зафиксировано')).toBeInTheDocument();
     expect(screen.getByText('ID чата')).toBeInTheDocument();
     expect(screen.getByText('ID сообщения')).toBeInTheDocument();

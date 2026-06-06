@@ -92,9 +92,6 @@ export function buildReassignOptions({
     .filter((r) => !r.is_system)
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
-  // Localized labels for system roles. Keys are stable Go-side names
-  // (catalog), so a static map is the right call here — adding
-  // a new system role is a backend release event, not user input.
   const SYSTEM_LABEL_RU: Record<string, string> = {
     owner: 'Владелец',
     admin: 'Администратор',
@@ -102,10 +99,6 @@ export function buildReassignOptions({
     viewer: 'Наблюдатель',
   };
 
-  // Escalation guard: the actor cannot grant a permission they
-  // don't themselves hold. Backend re-checks this on the DELETE call
-  // (cannot_grant_unowned_permissions), but the UI disables the option
-  // up-front so the user never picks a doomed target.
   const canGrant = (role: Role) => role.permissions.every((p) => actorPerms.has(p));
 
   return [
@@ -147,15 +140,10 @@ export function DeleteRoleDialog({
   const qc = useQueryClient();
   const deleteMut = useDeleteRole(businessId);
 
-  // Initial variant — recomputed when the dialog re-opens for a
-  // different role (the role prop is stable per-mount because the parent
-  // owns dialog state per-role, but `open` toggles).
   const initialVariant: 'simple' | 'picker' = (role.member_count ?? 0) > 0 ? 'picker' : 'simple';
   const [variant, setVariant] = useState<'simple' | 'picker'>(initialVariant);
   const [reassignToId, setReassignToId] = useState<string | null>(null);
 
-  // Reset state when the dialog opens — same component instance is reused
-  // for sequential deletions in some flows.
   useEffect(() => {
     if (open) {
       setVariant((role.member_count ?? 0) > 0 ? 'picker' : 'simple');
@@ -163,9 +151,6 @@ export function DeleteRoleDialog({
     }
   }, [open, role.member_count]);
 
-  // Fetch actor's effective permissions so buildReassignOptions can apply
-  // the escalation guard. The hook already pre-warms this cache (via
-  // usePermission throughout the app), so this is usually a hot read.
   const { data: actorPermsArray } = useQuery({
     queryKey: QUERY_KEYS.PERMISSIONS(businessId),
     queryFn: () => getMyPermissions(businessId as string),
@@ -181,8 +166,6 @@ export function DeleteRoleDialog({
   const customOptions = options.filter((o) => !o.isSystem);
   const firstEligible = options.find((o) => !o.disabled);
 
-  // Pre-select first eligible target whenever we enter the picker variant
-  // (initial open with member_count>0 OR after race-recovery flip).
   useEffect(() => {
     if (variant === 'picker' && !reassignToId && firstEligible) {
       setReassignToId(firstEligible.value);
@@ -190,49 +173,31 @@ export function DeleteRoleDialog({
   }, [variant, reassignToId, firstEligible]);
 
   async function handleConfirm() {
-    // Cache invalidation is owned by useDeleteRole.onSuccess
-    // (ROLES + PERMISSIONS + MEMBERS for the active business). This handler
-    // only owns UX side effects (toast, close).
     try {
       if (variant === 'simple') {
         await deleteMut.mutateAsync({ roleId: role.id, reassignTo: null });
       } else {
-        // Defensive: button is disabled until reassignToId is set, but a
-        // stale click during async state transitions could land here.
         if (!reassignToId) return;
         await deleteMut.mutateAsync({ roleId: role.id, reassignTo: reassignToId });
       }
       toast.success(t('toastSuccess'));
       onOpenChange(false);
     } catch (err) {
-      // race recovery: the optimistic "member_count=0 → simple variant"
-      // assumption raced with a concurrent assign. The backend returns
-      // 422 role_in_use. Swap to picker in-place — DO NOT close + reopen
-      // (Radix focus would jump, UX would feel buggy).
       const axiosErr = err as AxiosError<{ error?: string }> | undefined;
       const isRoleInUse =
         axiosErr?.response?.status === HTTP_STATUS.UNPROCESSABLE_ENTITY &&
         axiosErr?.response?.data?.error === 'role_in_use';
 
       if (isRoleInUse && variant === 'simple') {
-        // Refresh the cache so the count reflects reality, then flip the
-        // variant. The first-eligible useEffect picks a default target.
         await qc.invalidateQueries({ queryKey: QUERY_KEYS.ROLES(businessId) });
         await qc.refetchQueries({ queryKey: QUERY_KEYS.ROLES(businessId) });
         setVariant('picker');
-        // No toast — the body swap IS the message.
         return;
       }
-      // Anything else (cannot_grant_unowned_permissions, last_owner, 5xx,
-      // network): surface via mapRoleError + leave the dialog open so the
-      // user can retry or cancel.
       toast.error(mapRoleError(err));
     }
   }
 
-  // Allow the user to dismiss the dialog ONLY when the mutation isn't in
-  // flight — pressing Esc mid-delete would be confusing and the mutation
-  // would still complete in the background.
   const handleOpenChange = (next: boolean) => {
     if (deleteMut.isPending && !next) return;
     onOpenChange(next);

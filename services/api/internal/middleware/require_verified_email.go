@@ -78,18 +78,12 @@ func requireVerifiedEmail(users UserLookup, respectGrace bool) func(http.Handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID, err := GetUserID(r.Context())
 			if err != nil || userID == uuid.Nil {
-				// No auth context — the upstream Auth middleware already
-				// rejected; this middleware sits BEHIND it. Defense-in-depth:
-				// pass-through and let any later handler 401 as needed.
 				next.ServeHTTP(w, r)
 				return
 			}
 			u, err := users.GetByID(r.Context(), userID)
 			if err != nil {
 				if errors.Is(err, domain.ErrUserNotFound) {
-					// User existed at JWT-issue time but was deleted since
-					// The 401 is more correct than 500 — the
-					// caller's JWT no longer maps to a real account.
 					writeAuthError(w, "user_not_found", http.StatusUnauthorized)
 					return
 				}
@@ -103,12 +97,9 @@ func requireVerifiedEmail(users UserLookup, respectGrace bool) func(http.Handler
 				return
 			}
 			if respectGrace && time.Since(u.CreatedAt) < emailVerifyGraceDuration {
-				// Day-0..Day-7 unverified user — banner shown but writes allowed.
 				next.ServeHTTP(w, r)
 				return
 			}
-			// Block. UTC stamp on the deadline so clients in different
-			// timezones still compute the same countdown.
 			deadline := u.CreatedAt.Add(emailVerifyGraceDuration).UTC()
 			writeVerificationRequired(w, deadline)
 		})

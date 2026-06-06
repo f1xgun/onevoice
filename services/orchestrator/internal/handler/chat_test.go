@@ -62,7 +62,6 @@ func TestChatHandler_SSEResponse(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
 
-	// Read SSE events
 	scanner := bufio.NewScanner(resp.Body)
 	var events []map[string]interface{}
 	for scanner.Scan() {
@@ -77,7 +76,6 @@ func TestChatHandler_SSEResponse(t *testing.T) {
 	}
 
 	require.NotEmpty(t, events)
-	// Check at least one text event with the expected content
 	found := false
 	for _, e := range events {
 		if e["type"] == "text" && strings.Contains(e["content"].(string), "Привет из оркестратора!") {
@@ -92,7 +90,7 @@ func TestChatHandler_MissingMessage_Returns400(t *testing.T) {
 	orch := orchestrator.New(&stubLLM{}, reg)
 	h := handler.NewChatHandler(orch, "openai/gpt-4o-mini")
 
-	body := `{"model":"gpt-4o-mini","business_name":"Test"}` // missing "message"
+	body := `{"model":"gpt-4o-mini","business_name":"Test"}`
 	req := httptest.NewRequest(http.MethodPost, "/chat/conv123", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -183,9 +181,6 @@ func TestChatHandler_ThreadsHITLFields(t *testing.T) {
 			"project_approval_overrides": {"vk__publish_post":"auto"}
 		}`
 
-		// Use the chi router so chi.URLParam(r, "conversationID") resolves the
-		// "conv-abc-123" path segment — exactly the wiring used in
-		// services/orchestrator/cmd/main.go.
 		r := chi.NewRouter()
 		r.Post("/chat/{conversationID}", h.Chat)
 		req := httptest.NewRequest(http.MethodPost, "/chat/conv-abc-123", bytes.NewBufferString(body))

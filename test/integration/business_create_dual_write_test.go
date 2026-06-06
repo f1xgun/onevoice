@@ -32,8 +32,6 @@ func TestBusinessCreate_DualWriteAtomic(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// 1. Register a brand-new user. Auto-login returns the access token in
-	//    the {user, accessToken} response shape (LoginResponse).
 	email := "biz-dualwrite-" + uuid.NewString() + "@test.local"
 	regBody, _ := json.Marshal(map[string]string{"email": email, "password": "SecretPass123"})
 	regResp, err := httpClient.Post(baseURL+"/api/v1/auth/register", "application/json", bytes.NewReader(regBody))
@@ -52,10 +50,6 @@ func TestBusinessCreate_DualWriteAtomic(t *testing.T) {
 	require.NotEmpty(t, regOut.AccessToken)
 
 	t.Cleanup(func() {
-		// The BEFORE DELETE trigger on users refuses if user is sole owner of
-		// any business, so cleanup deletes business_members + businesses
-		// first. Use a bounded context so cleanup never hangs even if the
-		// test's own ctx was cancelled.
 		cleanCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_, _ = pgPool.Exec(cleanCtx, `DELETE FROM business_members WHERE user_id = $1`, userID)
@@ -63,10 +57,6 @@ func TestBusinessCreate_DualWriteAtomic(t *testing.T) {
 		_, _ = pgPool.Exec(cleanCtx, `DELETE FROM users WHERE id = $1`, userID)
 	})
 
-	// 2. Create the business via PUT /api/v1/business. With no existing
-	//    business for the user, the handler invokes service.business.Create
-	//    which dual-writes businesses + business_members in one tx and
-	//    returns 201 (UpdateBusiness handler at services/api/internal/handler/business.go).
 	bizBody, _ := json.Marshal(map[string]interface{}{
 		"name":        "DualWriteCo",
 		"category":    "test",
@@ -91,7 +81,6 @@ func TestBusinessCreate_DualWriteAtomic(t *testing.T) {
 	bizID, err := uuid.Parse(biz.ID)
 	require.NoError(t, err)
 
-	// 3. Assert both rows exist atomically.
 	var bizCount int
 	require.NoError(t, pgPool.QueryRow(ctx, `SELECT COUNT(*) FROM businesses WHERE id = $1 AND user_id = $2`, bizID, userID).Scan(&bizCount))
 	assert.Equal(t, 1, bizCount, "businesses row should exist after Create")

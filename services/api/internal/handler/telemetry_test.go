@@ -16,7 +16,6 @@ import (
 )
 
 func TestTelemetryHandler_Ingest_ValidBatch(t *testing.T) {
-	// Capture log output to verify structured logging
 	var logBuf bytes.Buffer
 	logHandler := slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo})
 	origLogger := slog.Default()
@@ -41,7 +40,6 @@ func TestTelemetryHandler_Ingest_ValidBatch(t *testing.T) {
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
 
-	// Verify both events were logged
 	logOutput := logBuf.String()
 	assert.Contains(t, logOutput, "frontend_event")
 	assert.Contains(t, logOutput, "page_view")

@@ -93,7 +93,7 @@ func TestGetYandexAuthURL_Forbidden(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
-	req = req.WithContext(oauthBizCtx(businessID, userID /* no perms */))
+	req = req.WithContext(oauthBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.GetYandexAuthURL(rr, req)
 
@@ -108,7 +108,6 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 	businessID := uuid.New()
 	_ = uuid.New()
 
-	// Mock Yandex token server
 	yandexServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{

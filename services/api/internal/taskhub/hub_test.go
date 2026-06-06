@@ -101,7 +101,6 @@ func TestHub_PublishDoesNotBlockOnFullBuffer(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		// Publish well past buffer capacity; should not block.
 		for i := 0; i < 10_000; i++ {
 			h.Publish("biz-1", taskhub.Event{Kind: taskhub.KindCreated, Task: domain.AgentTask{ID: "t"}})
 		}
@@ -117,6 +116,5 @@ func TestHub_PublishDoesNotBlockOnFullBuffer(t *testing.T) {
 
 func TestHub_PublishNoSubscribersIsNoop(t *testing.T) {
 	h := taskhub.New()
-	// Should not panic / block.
 	h.Publish("never-subscribed", taskhub.Event{Kind: taskhub.KindCreated})
 }

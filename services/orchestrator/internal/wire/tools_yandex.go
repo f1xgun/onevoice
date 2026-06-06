@@ -13,13 +13,11 @@ import (
 // stays under SC-01's 500-LOC budget.
 func yandexTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
-		// Read-only. Auto.
 		{
 			DisplayName:     "Загрузить карточку организации",
 			DisplayNameKey:  "tools.yandex_business.get_info.name",
 			UserDescription: "Загружает карточку организации из Яндекс.Бизнеса.",
 			DescriptionEn:   "Fetches the current organization info from Yandex Business: name, phone, email, business hours, address, status.",
-			// No parameters — no parameterDescriptionsEn map needed.
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessGetInfo,
 				Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
@@ -31,7 +29,6 @@ func yandexTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorAuto,
 			EditableFields: nil,
 		},
-		// Mutating public: hours. hours editable (text payload).
 		{
 			DisplayName:     "Обновить часы работы",
 			DisplayNameKey:  "tools.yandex_business.update_hours.name",
@@ -54,10 +51,6 @@ func yandexTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"hours"},
 		},
-		// Mutating public: business-profile text fields. description
-		// editable. phone + website pinned (dialing/URL redirection is
-		// a high-impact mutation; operator confirms via UI toggle before
-		// any tool call rather than post-hoc edit).
 		{
 			DisplayName:     "Обновить данные организации",
 			DisplayNameKey:  "tools.yandex_business.update_info.name",
@@ -83,7 +76,6 @@ func yandexTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"description"},
 		},
-		// Read-only. Auto.
 		{
 			DisplayName:     "Загрузить отзывы Яндекса",
 			DisplayNameKey:  "tools.yandex_business.get_reviews.name",
@@ -105,7 +97,6 @@ func yandexTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorAuto,
 			EditableFields: nil,
 		},
-		// Mutating public: review reply. text editable; review_id pinned.
 		{
 			DisplayName:     "Ответить на отзыв Яндекса",
 			DisplayNameKey:  "tools.yandex_business.reply_review.name",
@@ -130,9 +121,6 @@ func yandexTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
 		},
-		// Mutating public: upload photo. Nothing editable (category
-		// and photo_url are both semantic — editing either changes
-		// what the operator sees in the card vs what actually uploads).
 		{
 			DisplayName:     "Загрузить фото",
 			DisplayNameKey:  "tools.yandex_business.upload_photo.name",
@@ -157,7 +145,6 @@ func yandexTools() []toolregistry.ToolSpec {
 			Floor:          domain.ToolFloorManual,
 			EditableFields: nil,
 		},
-		// Mutating public: publication. text editable.
 		{
 			DisplayName:     "Опубликовать пост в Яндекс Бизнес",
 			DisplayNameKey:  "tools.yandex_business.create_post.name",

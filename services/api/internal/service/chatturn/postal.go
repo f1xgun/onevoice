@@ -56,7 +56,7 @@ func (t *Turn) onToolCall(
 	}
 	sep := strings.Index(toolName, "__")
 	if sep == -1 {
-		return // internal tool — not surfaced on the Tasks page
+		return
 	}
 	if toolCallID == "" {
 		slog.WarnContext(ctx, "chatturn: tool_call without tool_call_id", "tool", toolName)
@@ -103,8 +103,6 @@ func (t *Turn) onToolResult(
 	}
 	taskID, ok := idMap[toolCallID]
 	if !ok {
-		// Result without a prior tool_call in this stream: skip rather than
-		// create a half-formed record.
 		slog.WarnContext(ctx, "chatturn: tool_result without matching tool_call", "tool_call_id", toolCallID)
 		return
 	}

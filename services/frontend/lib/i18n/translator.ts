@@ -13,7 +13,6 @@ type Messages = typeof ruMessagesType;
 type Namespaces = NamespaceKeys<Messages, NestedKeyOf<Messages>>;
 
 async function loadMessages(locale: Locale): Promise<Messages> {
-  // The webpack/turbopack JSON loader resolves these as ESM with `default`.
   const mod = await import(`@/messages/${locale}.json`);
   return (mod.default ?? mod) as Messages;
 }
@@ -32,10 +31,6 @@ async function resolveServerLocale(): Promise<Locale> {
   try {
     const detected = await getLocale();
     if (isLocale(detected)) return detected;
-  } catch {
-    // `getLocale()` throws when called outside a request scope (e.g.
-    // during static analysis or a test harness). Fall through to the
-    // default locale rather than crashing.
-  }
+  } catch {}
   return DEFAULT_LOCALE;
 }

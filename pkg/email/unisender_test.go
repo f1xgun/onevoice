@@ -162,7 +162,6 @@ func TestUnisenderSender_HeaderAuth(t *testing.T) {
 }
 
 func TestUnisenderSender_ContextCancel(t *testing.T) {
-	// A server we never call — Send must fail before reaching it.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"success","job_id":"never"}`))
 	}))
@@ -194,14 +193,10 @@ func TestUnisenderSender_HTMLOptional(t *testing.T) {
 		To:       "a@b.c",
 		Subject:  "s",
 		BodyText: "plain",
-		// BodyHTML intentionally empty.
 	}); err != nil {
 		t.Fatalf("Send: unexpected error: %v", err)
 	}
 
-	// Verify the JSON body includes "html":"" (explicit empty string,
-	// NOT omitted). Catches accidental `omitempty` regression that
-	// would change Unisender's accepted schema shape.
 	raw := string(seenRaw)
 	if !strings.Contains(raw, `"html":""`) {
 		t.Fatalf("expected body to contain literal `\"html\":\"\"`, got: %s", raw)

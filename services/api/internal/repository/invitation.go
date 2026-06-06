@@ -42,6 +42,18 @@ func NewInvitationRepository(pool pgxPool) domain.InvitationRepository {
 	return &invitationRepository{pool: pool, sb: newStatementBuilder()}
 }
 
+// scanInvitation maps one invitations row into a domain.Invitation. Shared by
+// the QueryRow GetByTokenHash path and the CollectRows ListPendingByBusiness
+// path.
+func scanInvitation(row scanner) (domain.Invitation, error) {
+	var inv domain.Invitation
+	err := row.Scan(
+		&inv.ID, &inv.BusinessID, &inv.RoleID, &inv.TokenHash, &inv.ExpiresAt,
+		&inv.AcceptedAt, &inv.AcceptedBy, &inv.RevokedAt, &inv.CreatedBy, &inv.CreatedAt,
+	)
+	return inv, err
+}
+
 // Create — pool-based INSERT. Used in non-tx callers (none today; provided
 // for interface completeness). The handler uses CreateInTx for the cap
 // invariant.
@@ -101,8 +113,6 @@ func (r *invitationRepository) buildInsertSQL(inv *domain.Invitation) (sql strin
 func (r *invitationRepository) wrapInsertError(execErr error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(execErr, &pgErr) && pgErr.Code == "23505" {
-		// token_hash UNIQUE collision — astronomically rare with 256-bit entropy
-		// but correctly surfaced as a wrapped error for the handler's 500 path.
 		return fmt.Errorf("invitation token_hash unique violation: %w", execErr)
 	}
 	return fmt.Errorf("insert invitation: %w", execErr)
@@ -125,23 +135,13 @@ func (r *invitationRepository) GetByTokenHash(ctx context.Context, tokenHash str
 	if err != nil {
 		return nil, fmt.Errorf("build select invitation by hash: %w", err)
 	}
-	var inv domain.Invitation
-	scanErr := r.pool.QueryRow(ctx, sql, args...).Scan(
-		&inv.ID, &inv.BusinessID, &inv.RoleID, &inv.TokenHash, &inv.ExpiresAt,
-		&inv.AcceptedAt, &inv.AcceptedBy, &inv.RevokedAt, &inv.CreatedBy, &inv.CreatedAt,
-	)
+	inv, scanErr := scanInvitation(r.pool.QueryRow(ctx, sql, args...))
 	if scanErr != nil {
 		if errors.Is(scanErr, pgx.ErrNoRows) {
 			return nil, domain.ErrInvitationNotFound
 		}
 		return nil, fmt.Errorf("query invitation by hash: %w", scanErr)
 	}
-	// explicit subtle.ConstantTimeCompare on the (already-equal)
-	// retrieved hash. The B-tree UNIQUE index lookup already established
-	// equality, so this compare is structurally a no-op — but it satisfies
-	// the literal REQUIREMENTS.md contract phrase
-	// ("crypto/subtle.ConstantTimeCompare") and forecloses regressions if
-	// the lookup ever switches to a non-unique-index path.
 	if subtle.ConstantTimeCompare([]byte(inv.TokenHash), []byte(tokenHash)) != 1 {
 		return nil, domain.ErrInvitationNotFound
 	}
@@ -169,22 +169,9 @@ func (r *invitationRepository) ListPendingByBusiness(ctx context.Context, busine
 	if err != nil {
 		return nil, fmt.Errorf("query pending invitations: %w", err)
 	}
-	defer rows.Close()
-	var out []domain.Invitation
-	for rows.Next() {
-		var inv domain.Invitation
-		if err := rows.Scan(
-			&inv.ID, &inv.BusinessID, &inv.RoleID, &inv.TokenHash, &inv.ExpiresAt,
-			&inv.AcceptedAt, &inv.AcceptedBy, &inv.RevokedAt, &inv.CreatedBy, &inv.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan invitation: %w", err)
-		}
-		out = append(out, inv)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate invitations: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Invitation, error) {
+		return scanInvitation(row)
+	})
 }
 
 // CountPendingByBusiness — pool-based count. Used for read-only "you have X
@@ -257,10 +244,6 @@ func (r *invitationRepository) Revoke(ctx context.Context, id, businessID uuid.U
 		return fmt.Errorf("revoke invitation: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		// Either: (a) row doesn't exist (or wrong businessID — cross-tenant)
-		// or (b) already accepted/revoked/expired.
-		// Re-classify by reading the row scoped by (id, businessID); if no row
-		// at all → ErrInvitationNotFound; otherwise the appropriate state error.
 		return r.classifyTerminalState(ctx, nil, id, businessID)
 	}
 	return nil
@@ -279,8 +262,6 @@ func (r *invitationRepository) MarkAccepted(ctx context.Context, id, accepterUse
 		return fmt.Errorf("mark accepted: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		// uuid.Nil = no business scoping for the accept-time classification path,
-		// where the handler has already loaded the row by token_hash.
 		return r.classifyTerminalState(ctx, nil, id, uuid.Nil)
 	}
 	return nil
@@ -371,8 +352,6 @@ func (r *invitationRepository) classifyTerminalState(ctx context.Context, tx pgx
 	case !expiresAt.After(now):
 		return domain.ErrInvitationExpired
 	default:
-		// Row exists, all gates pass — should not happen if the caller saw
-		// RowsAffected=0. Surface as a wrapped error so the handler 500s.
 		return fmt.Errorf("invitation %s: classify saw pending row after RowsAffected=0", id)
 	}
 }

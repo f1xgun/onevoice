@@ -107,15 +107,11 @@ func tierFromRequest(req ChatRequest) string {
 // checkRateLimit enforces the per-user/tier limit before any provider work.
 // Shared by Chat and ChatStream so they cannot drift.
 func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
-	// Skip when no limiter is wired, and skip cluster-internal calls
-	// (titler / review_drafter) that pass uuid.Nil UserID.
 	if r.rateLimiter == nil || req.UserID == uuid.Nil {
 		return nil
 	}
 	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), 0)
 	if err != nil {
-		// Pass the sentinel through verbatim so callers can branch on
-		// ErrDailySpendExceeded / ErrRateLimitUnavailable directly.
 		return err
 	}
 	if !allowed {
@@ -164,8 +160,6 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 
 		start := time.Now()
 		resp, callErr := cand.Provider.Chat(ctx, req)
-		// Feed the health rollup on every attempt — both successful retries
-		// and exhausted retries inform the next Pick.
 		providerLatency := time.Duration(0)
 		if resp != nil {
 			providerLatency = resp.Latency
@@ -180,9 +174,6 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		if callErr == nil {
 			metrics.LLMRouterRetry.WithLabelValues("success", retryLabel(attempt)).Inc()
 			resp.Provider = cand.Entry.Provider
-			// Skip billing for system-level callers (titler, review_drafter)
-			// that pass uuid.Nil BusinessID — the usage_logs.business_id
-			// column is NOT NULL.
 			if r.billing != nil && req.BusinessID != uuid.Nil {
 				go r.logBilling(context.Background(), req, cand.Entry, resp)
 			}
@@ -194,7 +185,6 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 			metrics.LLMRouterRetry.WithLabelValues("nonretryable", retryLabel(attempt)).Inc()
 			return nil, callErr
 		}
-		// Transient. Retry only when this is attempt 0 and a sibling exists.
 		if attempt == 0 && len(candidates) >= 2 {
 			metrics.LLMRouterRetry.WithLabelValues("retrying", retryLabel(attempt)).Inc()
 			continue
@@ -221,18 +211,12 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 			if callErr != nil {
 				return nil, 0, callErr
 			}
-			// Zero providerLatency: the channel-open instant is not user-perceived,
-			// so defaultSelector skips this sample for the rolling window.
 			return out, 0, nil
 		})
 	if err != nil || ch == nil {
 		return ch, err
 	}
 
-	// Wrap the provider channel so the first chunk arrival records
-	// llm_first_token_latency_seconds exactly once per ChatStream call.
-	// sync.Once guards against multi-reader races even though production
-	// code drains the channel from a single goroutine.
 	out := make(chan StreamChunk, cap(ch))
 	go func() {
 		defer close(out)
@@ -244,7 +228,6 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 			out <- chunk
 		}
 	}()
-	// ChatStream does not bill; the terminal turn (non-streaming) accounts the cost.
 	return out, nil
 }
 

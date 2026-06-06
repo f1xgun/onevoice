@@ -99,12 +99,6 @@ const pendingSweepLoopInterval = 5 * time.Second
 // boot. The sweep is advisory — production alerts should watch for
 // `tool_approval_whitelist_unknown` events in Loki/Grafana.
 func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Pool, orch *orchestratorclient.Client, fetchTimeout time.Duration) {
-	// Thread the parent (signal-derived) context so SIGTERM cancels the
-	// sweep early instead of waiting up to startupTimeout for a slow or
-	// dead orchestrator on the second retry.
-	// fetchTimeout is env-tunable per cfg.OrchestratorFetchTimeout
-	// (ORCHESTRATOR_FETCH_TIMEOUT) and bounds each individual orchestrator
-	// HTTP call; the outer startupTimeout caps the whole sweep.
 	sweepCtx, cancel := context.WithTimeout(parent, startupTimeout)
 	defer cancel()
 
@@ -205,9 +199,6 @@ func loadBusinessApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]app
 func loadProjectApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]approvalSource, error) {
 	rows, err := pool.Query(ctx, "SELECT id, COALESCE(approval_overrides, '{}'::jsonb)::text FROM projects")
 	if err != nil {
-		// Graceful degradation: if approval_overrides column doesn't yet exist
-		// (migration ordering race in dev), skip projects rather than failing
-		// the entire sweep.
 		slog.WarnContext(ctx, "tool_approval_whitelist_sweep: projects query failed, skipping projects",
 			"error", err,
 		)

@@ -93,18 +93,9 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Locale is resolved from the request ctx (set by middleware.Locale).
-	// The orchestrator middleware reads Accept-Language; in production the
-	// API forwards the cookie-driven header so reviews drafted while the
-	// owner has EN selected get an EN draft.
 	tag := i18n.LocaleFromContext(r.Context())
 	messages := buildDraftReplyPrompt(req, tag)
 
-	// Parse req.BusinessID into the typed uuid.UUID expected by
-	// ChatRequest.BusinessID so logBilling attributes the cost row to the
-	// review's business. Empty / malformed values degrade to uuid.Nil
-	// (router skips billing — fail-closed) and a warn log surfaces upstream
-	// drift.
 	bizID := uuid.Nil
 	if req.BusinessID != "" {
 		if parsed, perr := uuid.Parse(req.BusinessID); perr == nil {
@@ -116,9 +107,6 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chatReq := llm.ChatRequest{
-		// uuid.Nil → system-level call (skips per-user rate limiting in router).
-		// BusinessID carries the conversation's business so billing attributes
-		// the draft-reply LLM call against the right business.
 		UserID:      uuid.Nil,
 		BusinessID:  bizID,
 		Model:       h.model,

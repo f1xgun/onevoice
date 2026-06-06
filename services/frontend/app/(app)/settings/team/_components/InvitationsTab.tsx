@@ -24,7 +24,7 @@ import type { PendingInvitation } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 
-import { ConfirmDestructive } from './ConfirmDestructive';
+import { ConfirmDestructive } from '@/components/ui/confirm-destructive';
 
 interface InvitationsTabProps {
   businessId: string;
@@ -49,7 +49,6 @@ export function InvitationsTab({ businessId, invitations, sessionTokens }: Invit
       await navigator.clipboard.writeText(url);
       toast.success(tTeam('invite.copy.toastSuccess'));
     } catch {
-      // Browser refused clipboard write (no gesture / insecure context).
       toast.error(tTeam('invite.copy.toastError'));
     }
   };

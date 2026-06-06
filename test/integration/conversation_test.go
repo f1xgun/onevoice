@@ -14,7 +14,6 @@ import (
 func TestConversationManagement(t *testing.T) {
 	cleanupDatabase(t)
 
-	// Setup: create user
 	accessToken := setupTestUser(t, "conversation@example.com", "password123")
 
 	var conversationID string
@@ -115,7 +114,6 @@ func TestConversationManagement(t *testing.T) {
 	})
 
 	t.Run("CreateMultipleConversations", func(t *testing.T) {
-		// Create 3 more conversations
 		for i := 1; i <= 3; i++ {
 			payload := map[string]interface{}{
 				"title": fmt.Sprintf("Conversation %d", i),
@@ -132,7 +130,6 @@ func TestConversationManagement(t *testing.T) {
 			assert.Equal(t, http.StatusCreated, resp.StatusCode)
 		}
 
-		// List all conversations
 		req, _ := http.NewRequest("GET", baseURL+"/api/v1/conversations", nil)
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 
@@ -142,6 +139,6 @@ func TestConversationManagement(t *testing.T) {
 
 		var result []map[string]interface{}
 		json.NewDecoder(resp.Body).Decode(&result)
-		assert.Len(t, result, 4) // 1 initial + 3 new
+		assert.Len(t, result, 4)
 	})
 }

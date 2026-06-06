@@ -136,7 +136,6 @@ func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 // Feeds the PUT /api/v1/business/{id}/tool-approvals
 // endpoint.
 func (r *businessRepository) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
-	// Load current business so we keep unrelated settings keys intact.
 	business, err := r.GetByID(ctx, businessID)
 	if err != nil {
 		return err
@@ -144,7 +143,6 @@ func (r *businessRepository) UpdateToolApprovals(ctx context.Context, businessID
 	if business.Settings == nil {
 		business.Settings = make(map[string]interface{})
 	}
-	// Translate ToolFloor map into map[string]interface{} for the JSONB blob.
 	raw := make(map[string]interface{}, len(approvals))
 	for k, v := range approvals {
 		raw[k] = string(v)

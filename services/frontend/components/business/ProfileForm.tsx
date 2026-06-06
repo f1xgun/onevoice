@@ -20,8 +20,8 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { createBusinessSchema, type BusinessInput } from '@/lib/schemas';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -49,14 +49,10 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const canEdit = usePermission('business.update').allowed;
 
-  // Rebuild on locale-driven translator changes so the dropdown items
-  // re-render with the active language's copy (B1).
   const CATEGORIES = useMemo(
     () => CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) })),
     [tCategories]
   );
-  // Same idea for the Zod schema — validation messages must follow the
-  // active locale (B1).
   const businessSchema = useMemo(() => createBusinessSchema(tValidation), [tValidation]);
 
   const {
@@ -257,33 +253,5 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         </Button>
       </div>
     </form>
-  );
-}
-
-function Field({
-  label,
-  required,
-  error,
-  hint,
-  className,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  error?: string;
-  hint?: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
-      <Label className="text-xs font-medium text-ink-mid">
-        {label}
-        {required && <span className="ml-1 text-ochre">*</span>}
-      </Label>
-      {children}
-      {error && <p className="text-xs text-[var(--ov-danger)]">{error}</p>}
-      {hint && !error && <p className="text-xs leading-relaxed text-ink-soft">{hint}</p>}
-    </div>
   );
 }

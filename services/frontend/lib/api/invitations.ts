@@ -64,9 +64,6 @@ export async function revokeInvitation(businessId: string, invitationId: string)
 }
 
 export async function previewInvitation(token: string): Promise<InvitationPreview> {
-  // `metadata.skipBusinessNotFound` keeps the 404 interceptor from
-  // clearing the active business on a missing-token 404. The metadata
-  // field is declared on AxiosRequestConfig in types/axios.d.ts.
   const { data } = await api.get<unknown>(API_PATHS.INVITATIONS_PUBLIC.PREVIEW(token), {
     metadata: { skipBusinessNotFound: true },
   });

@@ -24,8 +24,6 @@ var handlers = handlersPkg{}
 
 func Setup(r Router) {
 	r.Route("/businesses/{id}", func(r Router) {
-		// No r.Use(authz.RequireBusinessAccess(...)) — would normally diagnose,
-		// but both routes below are in the test's activeAllowlist.
 		r.Get("/foo", handlers.GetFoo)
 		r.Post("/bar", handlers.PostFoo)
 	})

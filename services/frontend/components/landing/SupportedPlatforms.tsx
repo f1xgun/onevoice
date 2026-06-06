@@ -42,9 +42,6 @@ function statusForLanding(
 ): { tone: 'success' | 'neutral'; key: 'have' | 'soon' } {
   if (id === null) return { tone: 'neutral', key: 'soon' };
   const status = byId.get(id);
-  // Treat oauth_not_configured the same as coming_soon for the landing —
-  // visitors don't care that an admin hasn't configured creds, they care
-  // whether the channel is live for them.
   if (status === 'active') return { tone: 'success', key: 'have' };
   return { tone: 'neutral', key: 'soon' };
 }

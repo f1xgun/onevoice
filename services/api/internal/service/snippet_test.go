@@ -19,8 +19,8 @@ func TestBuildSnippet(t *testing.T) {
 		name        string
 		content     string
 		stems       map[string]struct{}
-		wantContain string // assert containsAll of these substrings
-		wantEqual   string // when non-empty, assert exact equality
+		wantContain string
+		wantEqual   string
 	}{
 		{
 			name:        "match in middle, both ellipses",
@@ -81,14 +81,12 @@ func TestHighlightRanges_FindsAllMatchingTokens(t *testing.T) {
 	require.GreaterOrEqual(t, len(marks), 2,
 		"expected at least 2 marks (запланировать + пост), got %d: %v", len(marks), marks)
 
-	// Validate every range slices the original snippet cleanly.
 	for _, m := range marks {
 		require.GreaterOrEqual(t, m[0], 0)
 		require.LessOrEqual(t, m[1], len(snippet))
 		require.Less(t, m[0], m[1])
 	}
 
-	// First mark must cover «запланировать» (starts at byte 0).
 	assert.Equal(t, 0, marks[0][0], "first mark should cover the leading word")
 	assert.Equal(t, "запланировать", snippet[marks[0][0]:marks[0][1]])
 }

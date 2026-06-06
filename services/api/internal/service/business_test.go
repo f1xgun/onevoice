@@ -148,7 +148,6 @@ func TestBusinessService_Create(t *testing.T) {
 		repo := &mockBusinessRepository{
 			createFunc: func(ctx context.Context, business *domain.Business) error {
 				createdBusiness = business
-				// Simulate repository setting timestamps
 				business.CreatedAt = time.Now()
 				business.UpdatedAt = time.Now()
 				return nil
@@ -185,7 +184,6 @@ func TestBusinessService_Create(t *testing.T) {
 		assert.NotZero(t, result.CreatedAt)
 		assert.NotZero(t, result.UpdatedAt)
 
-		// Verify repository was called via the CreateInTx → createFunc fallback
 		assert.NotNil(t, createdBusiness)
 
 		require.NoError(t, pool.ExpectationsWereMet())
@@ -373,9 +371,6 @@ func TestBusinessService_Create_Success_DualWrite(t *testing.T) {
 	assert.Equal(t, userID, memberSeen.UserID)
 	assert.Equal(t, uuid.MustParse(domain.SystemRoleOwnerID), memberSeen.RoleID)
 	assert.Equal(t, "active", memberSeen.Status)
-	// JoinedAt is left zero so the repository populates time.Now() during
-	// the actual INSERT — matches the businessMembershipRepository.Insert
-	// contract verified in repository/business_member_test.go.
 	assert.True(t, memberSeen.JoinedAt.IsZero())
 	require.NoError(t, pool.ExpectationsWereMet())
 }
@@ -600,7 +595,6 @@ func TestBusinessService_Update(t *testing.T) {
 		repo := &mockBusinessRepository{
 			updateFunc: func(ctx context.Context, business *domain.Business) error {
 				updatedBusiness = business
-				// Simulate repository updating timestamp
 				business.UpdatedAt = time.Now()
 				return nil
 			},
@@ -633,7 +627,6 @@ func TestBusinessService_Update(t *testing.T) {
 		assert.Equal(t, "light", result.Settings["theme"])
 		assert.NotZero(t, result.UpdatedAt)
 
-		// Verify repository was called
 		assert.NotNil(t, updatedBusiness)
 		assert.Equal(t, businessID, updatedBusiness.ID)
 	})

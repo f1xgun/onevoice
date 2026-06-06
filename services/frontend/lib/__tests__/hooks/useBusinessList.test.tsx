@@ -50,10 +50,8 @@ describe('useBusinessList', () => {
     const wrapper = createWrapper();
     const { result } = renderHook(() => useBusinessList(), { wrapper });
 
-    // Initially loading
     expect(result.current.isLoading).toBe(true);
 
-    // Wait for data to load
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.data).toHaveLength(1);
@@ -77,7 +75,6 @@ describe('useBusinessList', () => {
   });
 
   it('BUSINESS_LIST_QUERY_KEY is a constant array', () => {
-    // Verify it is the exact same reference (const as const)
     expect(BUSINESS_LIST_QUERY_KEY[0]).toBe('businesses');
     expect(BUSINESS_LIST_QUERY_KEY.length).toBe(1);
   });

@@ -38,6 +38,7 @@ import {
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 import { cn } from '@/lib/utils';
 
 // Yandex.Business RPA refresh poll cadence (ms). After kicking off a
@@ -112,9 +113,7 @@ export function PlatformCard({
       }
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        tCard('linkedGroupCheckFailed');
+      const msg = extractApiErrorCode(err) || tCard('linkedGroupCheckFailed');
       toast.error(msg);
     } finally {
       setRefreshingID(null);
@@ -238,14 +237,6 @@ function ChannelList({
   const refreshedRef = useRef<Set<string>>(new Set());
   const canRefresh = usePermission('integrations.connect').allowed;
 
-  // Lazy backfill of missing friendly names. The first time we see an
-  // integration without its platform-specific name field, we POST to the
-  // platform's refresh-name endpoint and invalidate the integrations
-  // query so the row re-renders with the resolved name. Tracked per-id
-  // so we don't loop if the lookup permanently yields nothing.
-  //
-  // - VK:               metadata.community_name (groups.getById, ~200ms)
-  // - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
   useEffect(() => {
     if (!activeBusinessId || !canRefresh) return;
     integrations.forEach((i) => {
@@ -257,8 +248,6 @@ function ChannelList({
         : undefined;
       if (!buildEndpoint) return;
 
-      // Skip platforms whose display field is already populated, so the
-      // backfill never repeats work the previous request already did.
       const displayField = PLATFORM_DISPLAY_FIELD[i.platform as PlatformId];
       if (displayField && typeof md[displayField] === 'string') return;
 
@@ -270,9 +259,6 @@ function ChannelList({
         .post(endpoint)
         .then(() => {
           if (isYandex) {
-            // Yandex returns 202 immediately and finishes the agent RPA in
-            // the background (~25–45s). Poll the integrations list a few
-            // times so the resolved name appears without a manual reload.
             YANDEX_REFRESH_POLL_MS.forEach((delay) => {
               setTimeout(
                 () =>
@@ -286,9 +272,7 @@ function ChannelList({
             qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
           }
         })
-        .catch(() => {
-          // Best-effort; swallow.
-        });
+        .catch(() => {});
     });
   }, [integrations, qc, activeBusinessId, canRefresh]);
 

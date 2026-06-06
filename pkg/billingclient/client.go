@@ -77,8 +77,6 @@ func (c *Client) LogUsage(ctx context.Context, log *llm.UsageLog) error {
 		metrics.BillingPostFailures.WithLabelValues(reasonInvalidPayload).Inc()
 		return fmt.Errorf("%w: nil log", ErrInvalidPayload)
 	}
-	// Matches usage_logs.business_id NOT NULL — fails fast at the client instead of a 400 round-trip
-	// for system-level callers (titler, review_drafter) that pass uuid.Nil.
 	if log.BusinessID == uuid.Nil {
 		metrics.BillingPostFailures.WithLabelValues(reasonInvalidPayload).Inc()
 		return fmt.Errorf("%w: business_id required", ErrInvalidPayload)
@@ -86,8 +84,6 @@ func (c *Client) LogUsage(ctx context.Context, log *llm.UsageLog) error {
 
 	body, err := json.Marshal(log)
 	if err != nil {
-		// In practice json.Marshal on UsageLog never errors; guarded so a future exotic
-		// MarshalJSON doesn't silently corrupt the silent-loss accounting.
 		metrics.BillingPostFailures.WithLabelValues(reasonInvalidPayload).Inc()
 		return fmt.Errorf("%w: marshal: %w", ErrInvalidPayload, err)
 	}
@@ -96,14 +92,12 @@ func (c *Client) LogUsage(ctx context.Context, log *llm.UsageLog) error {
 		c.baseURL+usageLogsPath,
 		bytes.NewReader(body))
 	if err != nil {
-		// Only fails on a malformed URL — NOT transient, do NOT chain ErrTransient.
 		return fmt.Errorf("billingclient: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// Network / DNS / TLS / canceled ctx all funnel here — chain ErrTransient + underlying.
 		metrics.BillingPostFailures.WithLabelValues(reasonTransient).Inc()
 		return fmt.Errorf("%w: request: %w", ErrTransient, err)
 	}
@@ -119,7 +113,6 @@ func (c *Client) LogUsage(ctx context.Context, log *llm.UsageLog) error {
 		metrics.BillingPostFailures.WithLabelValues(reasonTransient).Inc()
 		return fmt.Errorf("%w: status %d", ErrTransient, resp.StatusCode)
 	default:
-		// 401/403/404/418/etc — likely proxy/path misconfig. Bare error so caller fails closed.
 		metrics.BillingPostFailures.WithLabelValues(reasonUnexpectedStatus).Inc()
 		return fmt.Errorf("billingclient: unexpected status %d", resp.StatusCode)
 	}
@@ -136,8 +129,6 @@ type dailySpendResponse struct {
 // GetDailySpend fetches the per-business cumulative LLM spend for the UTC calendar day
 // containing day. See docs/pkg/billingclient.md for the outcome → sentinel matrix.
 func (c *Client) GetDailySpend(ctx context.Context, businessID uuid.UUID, day time.Time) (float64, error) {
-	// UTC pin matches the billing repository's day boundary — callers in other TZs still
-	// receive the UTC-day window.
 	dayStr := day.UTC().Format("2006-01-02")
 	url := fmt.Sprintf("%s%s?business_id=%s&date=%s", c.baseURL, dailySpendPath, businessID, dayStr)
 
@@ -164,7 +155,6 @@ func (c *Client) GetDailySpend(ctx context.Context, businessID uuid.UUID, day ti
 	case resp.StatusCode >= http.StatusInternalServerError:
 		return 0, fmt.Errorf("%w: status %d", ErrTransient, resp.StatusCode)
 	default:
-		// Surface without sentinel so the daily-spend gate fails CLOSED at the caller.
 		return 0, fmt.Errorf("billingclient: unexpected status %d", resp.StatusCode)
 	}
 }

@@ -23,6 +23,7 @@ import { useAuthStore } from '@/lib/auth';
 import { restoreAccount, type DeletionAccountError } from '@/lib/api/account';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { localeToIntlTag } from '@/lib/i18n/locales';
 import { cn } from '@/lib/utils';
 
 const HTTP_GONE = 410;
@@ -36,7 +37,7 @@ export function DeletionGraceBanner() {
   if (!user || !user.accountDeletion) return null;
 
   const deletionDate = new Date(user.accountDeletion.scheduledDeletionAt);
-  const dateLabel = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'ru-RU', {
+  const dateLabel = new Intl.DateTimeFormat(localeToIntlTag(locale), {
     day: 'numeric',
     month: 'long',
   }).format(deletionDate);
@@ -46,13 +47,11 @@ export function DeletionGraceBanner() {
     try {
       await restoreAccount();
       toast({ description: t('restoreSuccessToast') });
-      // Reload so /auth/me re-fetches and the banner unmounts.
       window.location.reload();
     } catch (e) {
       const err = e as DeletionAccountError;
       if (err.code === 'deletion_too_old' || err.status === HTTP_GONE) {
         toast({ description: t('errors.tooOld'), variant: 'destructive' });
-        // Session is effectively dead — bounce to login.
         window.location.href = '/login';
         return;
       }

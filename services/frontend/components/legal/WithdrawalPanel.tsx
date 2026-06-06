@@ -78,18 +78,11 @@ export function WithdrawalPanel() {
     setSubmitting(true);
     try {
       await withdrawPDN();
-      // 204 — deletion scheduled. Backend has already created the
-      // accountDeletion row; reload so /auth/me re-fetches and
-      // DeletionGraceBanner mounts. We don't have the precise date in
-      // hand here (backend computes it); the banner will surface it.
       toast.success(tToast('scheduled', { deletionDate: '—' }));
       setDialogOpen(false);
       window.location.reload();
     } catch (e) {
       const err = e as ConsentError;
-      // 423 account_pending_deletion = user already has a deletion
-      // pending. Treat as success: close, toast, reload so the banner
-      // surfaces (UI-SPEC §F edge case).
       if (err.status === HTTP_STATUS.LOCKED) {
         toast.success(tToast('scheduled', { deletionDate: err.deletionDate ?? '—' }));
         setDialogOpen(false);
@@ -101,8 +94,6 @@ export function WithdrawalPanel() {
     }
   }
 
-  // Already-scheduled state: hide the PDN action and surface the notice
-  // (UI-SPEC §F edge case).
   const alreadyScheduled = user?.accountDeletion != null;
   const alreadyScheduledDate = alreadyScheduled
     ? formatDate(user?.accountDeletion?.scheduledDeletionAt ?? '')
@@ -124,8 +115,6 @@ export function WithdrawalPanel() {
     );
   }
 
-  // Reorder rows to the canonical iteration order regardless of server
-  // ordering — tos, privacy, pdn.
   const bySlug = new Map(consents.map((c) => [c.slug, c]));
 
   return (
@@ -179,8 +168,6 @@ export function WithdrawalPanel() {
                       size="sm"
                       onClick={() => setDialogOpen(true)}
                       aria-haspopup="dialog"
-                      // Hide on locales other than RU/EN to avoid mismatch
-                      // (next-intl logs a warning but we don't rely on it).
                       lang={locale}
                     >
                       {t('pdn.cta')}

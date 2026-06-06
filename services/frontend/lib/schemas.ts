@@ -42,11 +42,6 @@ export function createLoginSchema(t: ValidationTranslator) {
 export function createRegisterSchema(t: ValidationTranslator) {
   const minChars = (count: number) => t('minChars', { count });
   const maxChars = (count: number) => t('maxChars', { count });
-  // two independent required-consent checkboxes.
-  // Both validate as literal(true), so unticked / partially-ticked
-  // submits surface FieldErrors independently per UI-SPEC §D state
-  // matrix. The error message reuses the validation namespace
-  // ('consentRequired') so a single i18n key covers both fields.
   const consentRequiredMessage = t('consentRequired');
   return z
     .object({

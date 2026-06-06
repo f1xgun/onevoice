@@ -52,9 +52,6 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  // Inject Accept-Language so the backend's locale middleware picks the
-  // right catalog. Cookie wins over browser preference — the user's
-  // explicit toggle in <LanguageSwitcher> is the source of truth.
   config.headers['Accept-Language'] = readClientLocale();
   return config;
 });
@@ -73,14 +70,11 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
 
-    // Don't intercept 401 from auth endpoints — let the caller handle it
     const url = original?.url ?? '';
 
-    // Track API errors with correlation ID (skip telemetry endpoint to prevent loops)
     if (error.response && !url.includes(API_PATHS.TELEMETRY)) {
       const correlationId = error.response.headers?.['x-correlation-id'] as string | undefined;
       if (correlationId) {
-        // Lazy import to avoid circular dependency (telemetry.ts imports api)
         import('./telemetry')
           .then(({ trackEvent }) => {
             trackEvent(
@@ -95,9 +89,7 @@ api.interceptors.response.use(
               }
             );
           })
-          .catch(() => {
-            // Silently ignore — telemetry must never break the app
-          });
+          .catch(() => {});
       }
     }
 
@@ -173,9 +165,6 @@ api.interceptors.response.use(
     ) {
       useBusinessStore.getState().clear();
       queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
-      // Interceptor runs outside the React tree — resolve the locale from
-      // the cookie and dynamically import the matching bundle so we never
-      // pin a single JSON bundle at module load.
       void showStaleBusinessToast();
     }
 
@@ -189,8 +178,5 @@ async function showStaleBusinessToast() {
     const messages = (await import(`@/messages/${locale}.json`)).default;
     const t = createTranslator({ locale, messages, namespace: 'team.errors' });
     toast.warning(t('staleBusiness'));
-  } catch {
-    // Bundle load failed — silent fall-through. The 404 itself is the
-    // primary signal; a missing toast is acceptable degradation.
-  }
+  } catch {}
 }

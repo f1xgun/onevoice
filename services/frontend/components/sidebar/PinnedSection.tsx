@@ -52,16 +52,8 @@ export function PinnedSection({
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
 
-  // Roving-tabindex on the chat-list portion. Tab enters the pinned list
-  // once, ↑/↓/Home/End navigate. The «Закреплённые» header chevron sits
-  // OUTSIDE the container — it remains a separate Tab stop.
-  //
-  // The hook MUST be called before the empty-state early return so that
-  // the rules of hooks are respected (hook count must be stable across
-  // renders).
   const { containerRef, onKeyDown } = useRovingTabIndex(visible.length);
 
-  // Empty section is hidden entirely.
   if (conversations.length === 0) return null;
 
   return (

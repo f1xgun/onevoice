@@ -134,7 +134,6 @@ func TestLoad_MissingFile(t *testing.T) {
 	})
 
 	t.Run("missing CA only", func(t *testing.T) {
-		// Valid leaf cert + key, missing CA — should still chain fs.ErrNotExist.
 		good := generatePKI(t, t.TempDir())
 		broken := mtls.ServiceCertPaths{
 			CACertPath: "/nonexistent/ca.crt",
@@ -188,9 +187,6 @@ func TestPathsFromEnv(t *testing.T) {
 	})
 
 	t.Run("disabled with stray vars set is still OK", func(t *testing.T) {
-		// Real-world: docker-compose may leak partial env into a dev shell.
-		// Without ONEVOICE_MTLS_ENABLED=true, we just hand back whatever is set
-		// — the caller branches on IsEnabled().
 		t.Setenv(mtls.EnvEnabled, "false")
 		t.Setenv(mtls.EnvCAPath, "/some/path")
 		t.Setenv(mtls.EnvCertPath, "")

@@ -11,7 +11,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -51,7 +50,7 @@ type UserDeletionHandler struct {
 func NewUserDeletionHandler(svc AccountDeletionServiceAPI, allowedOrigins []string) *UserDeletionHandler {
 	return &UserDeletionHandler{
 		service:        svc,
-		validate:       validate, // package-level validator from auth.go
+		validate:       validate,
 		allowedOrigins: allowedOrigins,
 	}
 }
@@ -66,32 +65,22 @@ const pendingDeletionCode = openapi.PendingDeletionResponseCode("account_pending
 // Delete handles DELETE /api/v1/users/me. See <api_contract> in the
 // plan for the canonical response shapes (204 / 401 / 409 / 423).
 func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
-	var req openapi.DeleteAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.DeleteAccountRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
-	// pass reason="" so the bcrypt password check runs.
-	// ConsentService.WithdrawPDN is the only caller that passes the
-	// "consent_withdrawn" reason (skips the password check).
-	err = h.service.RequestDeletion(r.Context(), userID, req.Password, middleware.ClientIP(r), r.UserAgent(), "")
+	err := h.service.RequestDeletion(r.Context(), userID, req.Password, middleware.ClientIP(r), r.UserAgent(), "")
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	// Map sentinels to public codes per the api_contract block.
 	switch {
 	case errors.Is(err, domain.ErrInvalidCredentials):
 		writeJSONCodeError(w, http.StatusUnauthorized, "password_invalid")
@@ -109,15 +98,10 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sole-owner blocking error carries the businesses payload.
-	// Use a closed-set type-import to keep the handler decoupled from
-	// the service struct shape — the typed error is referenced via
-	// errors.As + a thin interface contract.
 	var soleOwnerErr interface {
 		error
-		// duck-typing — see service.ErrSoleOwnerBusinesses
 	}
-	_ = soleOwnerErr // placeholder
+	_ = soleOwnerErr
 	if be, ok := asSoleOwnerErr(err); ok {
 		rows := make([]openapi.SoleOwnerBusinessEntry, len(be))
 		for i, b := range be {
@@ -146,9 +130,8 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // from a hostile origin. Origin is set by browsers on every
 // fetch/XHR POST and cannot be forged by JS in the victim's session.
 func (h *UserDeletionHandler) Restore(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -157,7 +140,7 @@ func (h *UserDeletionHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.CancelDeletion(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
+	err := h.service.CancelDeletion(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -170,8 +153,6 @@ func (h *UserDeletionHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		writeJSONCodeError(w, http.StatusNotFound, "no_deletion_pending")
 		return
 	case errors.Is(err, domain.ErrUserNotFound):
-		// Either auth lied or user got hard-deleted between auth and
-		// here; treat as already-purged for the UX.
 		writeJSONCodeError(w, http.StatusGone, "deletion_too_old")
 		return
 	}

@@ -146,7 +146,7 @@ func (h *AuthHandler) setRefreshTokenCookie(w http.ResponseWriter, token string)
 		Name:     h.cookieName(),
 		Value:    token,
 		Path:     "/",
-		MaxAge:   int(7 * 24 * time.Hour / time.Second), // 604800
+		MaxAge:   int(7 * 24 * time.Hour / time.Second),
 		HttpOnly: true,
 		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
@@ -166,7 +166,6 @@ func (h *AuthHandler) clearRefreshTokenCookie(w http.ResponseWriter) {
 }
 
 func (h *AuthHandler) readRefreshTokenCookie(r *http.Request) (string, error) {
-	// Try secure name first, then plain (handles upgrade path).
 	for _, name := range []string{"__Host-refresh_token", "refresh_token"} {
 		c, err := r.Cookie(name)
 		if err == nil && c.Value != "" {
@@ -207,15 +206,8 @@ func strDeref(s *string) string {
 // consent_required. On success, writes consents + user + verify token +
 // outbox enqueue in the same tx.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var req openapi.RegisterRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.RegisterRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -261,7 +253,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), email, req.Password)
 	if err != nil {
 		slog.Error("auto-login after register failed", "error", err)
-		// Distinct from register_internal — the account WAS created; only token issue failed.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeAutoLoginFailed)
 		return
 	}
@@ -279,14 +270,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 // requests, captcha gate verifies X-Captcha-Token when middleware demands it,
 // ErrInvalidCredentials increments the lockout counter, success clears it.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req openapi.LoginRequest
-	// Lockout middleware has already restored r.Body via io.NopCloser(bytes.NewReader(...)).
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.LoginRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 	email := string(req.Email)
@@ -299,14 +284,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		clientIPForCaptcha := middleware.LoginClientIP(r.Context())
 		if clientIPForCaptcha == "" {
-			// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF cannot be
-			// spoofed by an attacker whose TCP peer is outside the trusted set.
 			clientIPForCaptcha = middleware.ClientIP(r)
 		}
 		if verr := h.captcha.Verify(r.Context(), token, clientIPForCaptcha); verr != nil {
 			if errors.Is(verr, service.ErrCaptchaTransient) && h.captchaFailOpen {
-				// Fail-open during outage: bot-through is acceptable, locking
-				// every real user out is not.
 				slog.Warn("smartcaptcha: transient error, failing open",
 					slog.String("error", verr.Error()),
 					slog.String("client_ip", clientIPForCaptcha),
@@ -326,10 +307,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 				slog.String("remote_addr", r.RemoteAddr),
 				slog.String("user_agent", r.UserAgent()),
 			)
-			// user_id intentionally nil — attempted email goes only into Details
-			// for brute-force analysis, not into a users-table lookup.
 			audit.LogLoginFailed(r.Context(), h.audit, email, middleware.ClientIP(r), r.UserAgent(), "invalid_credentials")
-			// Best-effort — Redis error must not flip 401 into 500.
 			h.recordLoginFailure(r, email)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
@@ -423,9 +401,6 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Local claims-parse independent of the service so we capture user_id
-	// even when the service later reports an invalid token. Mismatched /
-	// unsigned tokens fall through to uuid.Nil and we skip the audit emission.
 	var auditUserID uuid.UUID
 	if tok, perr := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -527,13 +502,13 @@ const deletionGraceDurationForMe = 30 * 24 * time.Hour
 // Me uses the deletion-aware getter when wired so users inside the 30-day
 // grace window can still exercise restore.
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
 	var user *domain.User
+	var err error
 	if h.meUserExtraGetter != nil {
 		user, err = h.meUserExtraGetter(r.Context(), userID)
 	} else {
@@ -569,13 +544,9 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	if h.consents != nil {
 		diff, derr := h.consents.DiffAgainstCurrent(r.Context(), userID)
 		if derr != nil {
-			// Best-effort: /auth/me must not 500 because of a consent-diff failure.
 			slog.Warn("auth/me: diff against current consents failed", "userID", userID, "err", derr)
 		} else if diff != nil {
 			reconsent = diff
-			// Audit row records that ReConsentModal will be shown to this user —
-			// otherwise a user can later claim "I never saw the modal" and
-			// audit_logs will not contradict them. Fire-and-forget.
 			slugs := make([]string, 0, len(diff.Policies))
 			for _, p := range diff.Policies {
 				slugs = append(slugs, p.Slug)
@@ -589,20 +560,13 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 // ChangePassword handles PUT /api/v1/auth/password.
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
-	var req openapi.ChangePasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.ChangePasswordRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -620,7 +584,6 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// NO old/new password content in details — only IP + UA for forensics.
 	audit.LogPasswordChanged(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -629,20 +592,13 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 // UpdatePreferredLocale handles PATCH /api/v1/auth/locale. Deliberately does
 // NOT read Accept-Language — locale persistence is an explicit user action.
 func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
-	var req openapi.UpdatePreferredLocaleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.UpdatePreferredLocaleRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -665,16 +621,10 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 // outbox enqueue with symmetric timing across branches. Adding a chi.RateLimit
 // wrapper here would short-circuit and skew the timing-parity contract.
 func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
-	var req openapi.RequestPasswordResetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	req, ok := decodeAndValidate[openapi.RequestPasswordResetRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
-		return
-	}
-	// Service ALWAYS returns nil; we do not branch on its result.
 	_ = h.passwordResetService.RequestReset(r.Context(), string(req.Email), middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -683,13 +633,8 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 // On success the service has consumed the token, rotated the password hash,
 // and wiped all refresh tokens for the user.
 func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
-	var req openapi.ConfirmPasswordResetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.ConfirmPasswordResetRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 	if err := h.passwordResetService.ConfirmReset(r.Context(), req.Token, req.NewPassword, middleware.ClientIP(r), r.UserAgent()); err != nil {
@@ -707,13 +652,8 @@ func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Reques
 // On invalid-failure we run a single follow-up LookupExpired to surface the
 // "expired" UX hint — both codes are equally safe (token is burned either way).
 func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
-	var req openapi.VerifyConfirmRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.VerifyConfirmRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 	if h.emailVerificationService == nil {
@@ -724,7 +664,6 @@ func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 	userID, err := h.emailVerificationService.ConfirmVerify(r.Context(), req.Token)
 	if err != nil {
 		if errors.Is(err, domain.ErrVerifyTokenInvalid) {
-			// UX-only follow-up to differentiate invalid vs expired.
 			code := "verify_token_invalid"
 			if expired, _ := h.emailVerificationService.IsTokenExpired(r.Context(), req.Token); expired {
 				code = "verify_token_expired"
@@ -736,16 +675,14 @@ func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	// EXPLICITLY NO setRefreshTokenCookie — see VerifyConfirm doc.
 	audit.LogEmailVerified(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // VerifyResend handles POST /api/v1/auth/verify-email/resend. Auth-required.
 func (h *AuthHandler) VerifyResend(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 	if h.emailVerificationService == nil {
@@ -772,9 +709,8 @@ func (h *AuthHandler) VerifyResend(w http.ResponseWriter, r *http.Request) {
 // EmailBeforeVerify handles PATCH /api/v1/auth/email-before-verify. Only
 // allowed when email_verified=false; otherwise 403 email_already_verified.
 func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 	if h.emailVerificationService == nil {
@@ -782,13 +718,8 @@ func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var req openapi.EmailBeforeVerifyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.EmailBeforeVerifyRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 

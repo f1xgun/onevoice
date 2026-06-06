@@ -162,7 +162,7 @@ func TestDiffAgainstCurrent_SkipsWithdrawnRows(t *testing.T) {
 		listByUserRows: []repository.Consent{
 			{UserID: userID, Purpose: "tos", PolicyVersion: "v1.0"},
 			{UserID: userID, Purpose: "privacy", PolicyVersion: "v1.0"},
-			{UserID: userID, Purpose: "pdn", PolicyVersion: "pre-v22", WithdrawnAt: &now}, // withdrawn → skip.
+			{UserID: userID, Purpose: "pdn", PolicyVersion: "pre-v22", WithdrawnAt: &now},
 		},
 	}
 	svc := NewConsentService(nil, repo, &fakeAccountDeletion{}, nopAuditLogger{}, currentVersionV1)

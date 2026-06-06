@@ -33,9 +33,7 @@ function writePersistedOpen(platform: string, open: boolean) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(`${STORAGE_PREFIX}${platform}`, String(open));
-  } catch {
-    // ignore storage errors (quota, disabled, etc.)
-  }
+  } catch {}
 }
 
 function PlatformSection({
@@ -131,10 +129,6 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
   const platformFullLabels = usePlatformFullLabels();
   const { data: tools, isLoading } = useTools();
 
-  // Show all registered platforms (not just the user's active integrations)
-  // so a user can pre-configure a project before connecting a platform.
-  // If the user has zero integrations, still show
-  // the platforms but render a helpful message instead of the grid below.
   if (activeIntegrations.length === 0) {
     return <p className="text-sm text-muted-foreground">{tToolGrid('noIntegrations')}</p>;
   }

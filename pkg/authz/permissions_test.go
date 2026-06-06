@@ -43,7 +43,6 @@ func TestAllPermissions_NameFormat(t *testing.T) {
 			if !permNameRegex.MatchString(string(p.Name)) {
 				t.Errorf("permission %q does not match ^[a-z_]+\\.[a-z_]+$", p.Name)
 			}
-			// Resource segment of name MUST match the group's Resource.
 			expectedPrefix := g.Resource + "."
 			if len(string(p.Name)) <= len(expectedPrefix) || string(p.Name)[:len(expectedPrefix)] != expectedPrefix {
 				t.Errorf("permission %q is in group %q but resource segment differs", p.Name, g.Resource)
@@ -53,8 +52,6 @@ func TestAllPermissions_NameFormat(t *testing.T) {
 }
 
 func TestPermissionConstantsExist(t *testing.T) {
-	// Compile-time: every constant referenced below must exist as an exported identifier.
-	// If any constant is renamed, this test stops compiling — that's the point.
 	_ = []Permission{
 		PermBusinessRead, PermBusinessUpdate, PermBusinessDelete, PermBusinessTransferOwnership,
 		PermMembersRead, PermMembersInvite, PermMembersRemove, PermMembersUpdateRole,

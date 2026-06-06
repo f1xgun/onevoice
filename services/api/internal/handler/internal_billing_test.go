@@ -127,7 +127,6 @@ func TestLogUsage_MissingBusinessID_400(t *testing.T) {
 	repo := &mockBilling{}
 	h := handler.NewInternalBillingHandler(repo, nil)
 
-	// Construct body without business_id at all — uuid.Nil unmarshals.
 	body := []byte(`{"model":"x","provider":"y"}`)
 	rec := doRequest(t, h, body)
 
@@ -343,7 +342,6 @@ func TestLogUsage_OversizedBody_400(t *testing.T) {
 	repo := &mockBilling{}
 	h := handler.NewInternalBillingHandler(repo, nil)
 
-	// 128KB of JSON-ish payload (long string field) — past the 64KB cap.
 	big := strings.Repeat("a", 128*1024)
 	body := []byte(`{"business_id":"` + uuid.New().String() + `","model":"x","provider":"y","user_tier":"` + big + `"}`)
 	rec := doRequest(t, h, body)

@@ -18,8 +18,6 @@ describe('FieldError', () => {
 
   it('omits the leading dot when hideDot is true', () => {
     const { container } = render(<FieldError hideDot>Этот ID не распознан.</FieldError>);
-    // The dot is the only aria-hidden span inside the alert; without it,
-    // the alert contains a single text-only <span>.
     const dot = container.querySelector('span[aria-hidden="true"]');
     expect(dot).toBeNull();
   });

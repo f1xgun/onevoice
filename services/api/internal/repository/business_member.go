@@ -39,6 +39,19 @@ func NewBusinessMembershipRepository(pool pgxPool) domain.BusinessMembershipRepo
 	}
 }
 
+// scanBusinessMember maps one business_members row into a
+// domain.BusinessMember. Shared by the QueryRow Get path and the CollectRows
+// List paths.
+func scanBusinessMember(row scanner) (domain.BusinessMember, error) {
+	var m domain.BusinessMember
+	err := row.Scan(
+		&m.BusinessID, &m.UserID, &m.RoleID, &m.Status,
+		&m.InvitedBy, &m.InvitedAt, &m.JoinedAt,
+		&m.RoleChangedAt, &m.RoleChangedBy,
+	)
+	return m, err
+}
+
 // Insert writes the membership row using the supplied pgx.Tx. Callers
 // dual-write inside service.business.Create (Plan G / DATA-06): begin tx,
 // insert businesses, call Insert here, commit both or roll both back.
@@ -98,12 +111,7 @@ func (r *businessMembershipRepository) GetByBusinessUser(ctx context.Context, bu
 		return nil, fmt.Errorf("build select business_member: %w", err)
 	}
 
-	var m domain.BusinessMember
-	scanErr := r.pool.QueryRow(ctx, sql, args...).Scan(
-		&m.BusinessID, &m.UserID, &m.RoleID, &m.Status,
-		&m.InvitedBy, &m.InvitedAt, &m.JoinedAt,
-		&m.RoleChangedAt, &m.RoleChangedBy,
-	)
+	m, scanErr := scanBusinessMember(r.pool.QueryRow(ctx, sql, args...))
 	if scanErr != nil {
 		if errors.Is(scanErr, pgx.ErrNoRows) {
 			return nil, domain.ErrMembershipNotFound
@@ -234,23 +242,9 @@ func (r *businessMembershipRepository) ListByBusiness(ctx context.Context, busin
 	if err != nil {
 		return nil, fmt.Errorf("query business_members: %w", err)
 	}
-	defer rows.Close()
-	var out []domain.BusinessMember
-	for rows.Next() {
-		var m domain.BusinessMember
-		if err := rows.Scan(
-			&m.BusinessID, &m.UserID, &m.RoleID, &m.Status,
-			&m.InvitedBy, &m.InvitedAt, &m.JoinedAt,
-			&m.RoleChangedAt, &m.RoleChangedBy,
-		); err != nil {
-			return nil, fmt.Errorf("scan business_member: %w", err)
-		}
-		out = append(out, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate business_members: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.BusinessMember, error) {
+		return scanBusinessMember(row)
+	})
 }
 
 // ListByUser returns memberships the user holds across businesses ordered by
@@ -273,23 +267,9 @@ func (r *businessMembershipRepository) ListByUser(ctx context.Context, userID uu
 	if err != nil {
 		return nil, fmt.Errorf("query business_members by user: %w", err)
 	}
-	defer rows.Close()
-	var out []domain.BusinessMember
-	for rows.Next() {
-		var m domain.BusinessMember
-		if err := rows.Scan(
-			&m.BusinessID, &m.UserID, &m.RoleID, &m.Status,
-			&m.InvitedBy, &m.InvitedAt, &m.JoinedAt,
-			&m.RoleChangedAt, &m.RoleChangedBy,
-		); err != nil {
-			return nil, fmt.Errorf("scan business_member: %w", err)
-		}
-		out = append(out, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate business_members by user: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.BusinessMember, error) {
+		return scanBusinessMember(row)
+	})
 }
 
 // ListUserIDsByRole returns the user_id values for every business_members row
@@ -311,19 +291,11 @@ func (r *businessMembershipRepository) ListUserIDsByRole(ctx context.Context, bu
 	if err != nil {
 		return nil, fmt.Errorf("query user_ids by role: %w", err)
 	}
-	defer rows.Close()
-	var out []uuid.UUID
-	for rows.Next() {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (uuid.UUID, error) {
 		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("scan user_id: %w", err)
-		}
-		out = append(out, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate user_ids by role: %w", err)
-	}
-	return out, nil
+		err := row.Scan(&id)
+		return id, err
+	})
 }
 
 // CountOwnersByBusiness returns the count of active members holding the

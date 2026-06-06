@@ -26,7 +26,6 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
     const inherit = screen.getByLabelText('Как в настройках организации');
     expect(inherit).toHaveAttribute('data-state', 'checked');
 
-    // Business-default chip must render the business policy explicitly.
     expect(screen.getByText(/Организация:\s*Автоматически/)).toBeInTheDocument();
   });
 
@@ -73,10 +72,6 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
     expect(onChange).toHaveBeenCalledWith({ [telegramPost.name]: 'auto' });
   });
 
-  // CRITICAL: inherit must be encoded as KEY ABSENCE in the outgoing PUT
-  // body, never as the string "inherit". The backend strips "inherit" but
-  // the frontend contract (Overview invariant #8) is stricter: the frontend
-  // must never produce an inherit key at all.
   it('clicking Inherit DELETES the tool key — inherit selection results in a PUT body where the tool key is ABSENT from approvalOverrides', async () => {
     const onChange = vi.fn<(next: Record<string, ToolApprovalValue>) => void>();
     render(
@@ -90,7 +85,6 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
 
     await userEvent.click(screen.getByLabelText('Как в настройках организации'));
 
-    // Empty map — the tool key MUST NOT be present. NOT {tool: "inherit"}.
     expect(onChange).toHaveBeenCalledWith({});
     const received = onChange.mock.calls[0]?.[0] ?? {};
     expect(Object.keys(received)).not.toContain(telegramPost.name);

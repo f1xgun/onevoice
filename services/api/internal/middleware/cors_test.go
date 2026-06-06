@@ -49,7 +49,6 @@ func TestCORS_NoOriginHeader(t *testing.T) {
 	allowedOrigins := []string{"http://localhost:3000"}
 
 	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
-	// No Origin header
 
 	rr := httptest.NewRecorder()
 

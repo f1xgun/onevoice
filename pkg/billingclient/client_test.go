@@ -87,7 +87,7 @@ func TestLogUsage_Success_204(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
 
-	var seenBody atomic.Value // *llm.UsageLog
+	var seenBody atomic.Value
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/internal/v1/billing/usage_logs", r.URL.Path)
@@ -177,7 +177,6 @@ func TestLogUsage_NetworkError_IsTransient(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
 
-	// Bind + close a port — next Dial gets connection refused.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := l.Addr().String()
@@ -242,15 +241,13 @@ func TestLogUsage_ContextCancelled(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
 
-	// Server that blocks until the connection is closed — ensures the
-	// roundtripper does not complete before the ctx cancellation propagates.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // already canceled at call time
+	cancel()
 
 	before := counterValue("transient")
 	client := mustNewTestClient(t, srv.URL, nil)
@@ -391,10 +388,9 @@ func TestGetDailySpend_URLComposition(t *testing.T) {
 	defer srv.Close()
 
 	bizID := uuid.New()
-	// Input time is UTC+3 mid-afternoon — still maps to its UTC calendar day.
 	loc, err := time.LoadLocation("Europe/Moscow")
 	require.NoError(t, err)
-	day := time.Date(2026, 5, 30, 14, 0, 0, 0, loc) // 11:00 UTC same day
+	day := time.Date(2026, 5, 30, 14, 0, 0, 0, loc)
 
 	client := mustNewTestClient(t, srv.URL, nil)
 	_, err = client.GetDailySpend(context.Background(), bizID, day)

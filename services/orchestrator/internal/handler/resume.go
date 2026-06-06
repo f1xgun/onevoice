@@ -69,21 +69,15 @@ func (h *ResumeHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Body is optional: http.NoBody from chat_proxy's implicit-resume path is
-	// perfectly acceptable. Only attempt to decode if there's a content body.
 	var req resumeRequest
 	if r.Body != nil && r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			// Tolerant: ignore decode errors and proceed with zero-value request.
-			// The orchestrator will re-resolve with empty maps which means no
-			// business/project overrides apply — safe default.
 			slog.WarnContext(r.Context(), "resume: body decode failed, using zero-value request",
 				"batch_id", batchID, "error", err,
 			)
 		}
 	}
 
-	// SSE headers (same shape as chat_proxy expects).
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -118,11 +112,6 @@ func (h *ResumeHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for event := range events {
-		// sseevent.FromEvent owns the per-EventType field copy — same
-		// projection as chat.go. Approval events on the resume path are
-		// defense-in-depth (a resumed turn may hit another manual-floor
-		// tool on the next iteration); the builder forwards BatchID + Calls
-		// in that case.
 		writeSSE(ctx, w, flusher, sseevent.FromEvent(event))
 	}
 }

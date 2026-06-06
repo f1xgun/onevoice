@@ -76,9 +76,7 @@ export async function flushTelemetry(): Promise<void> {
 
   try {
     await api.post(API_PATHS.TELEMETRY, batch);
-  } catch {
-    // Silently swallow — telemetry must never break the app
-  }
+  } catch {}
 }
 
 // On page hide, flush remaining events via sendBeacon (works during unload)

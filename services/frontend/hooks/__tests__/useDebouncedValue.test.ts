@@ -23,13 +23,11 @@ describe('useDebouncedValue', () => {
     expect(result.current).toBe('a');
 
     rerender({ v: 'b' });
-    // 249 ms after the change, value still old.
     act(() => {
       vi.advanceTimersByTime(249);
     });
     expect(result.current).toBe('a');
 
-    // One more ms — fires.
     act(() => {
       vi.advanceTimersByTime(1);
     });
@@ -51,10 +49,8 @@ describe('useDebouncedValue', () => {
       vi.advanceTimersByTime(100);
     });
     rerender({ v: 'd' });
-    // Still no flip — each rerender restarted the timer.
     expect(result.current).toBe('a');
 
-    // After 250 ms of stillness, only the LATEST value lands.
     act(() => {
       vi.advanceTimersByTime(250);
     });

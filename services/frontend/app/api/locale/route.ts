@@ -37,7 +37,6 @@ type Bucket = { tokens: number; lastRefillMs: number };
 const buckets = new Map<string, Bucket>();
 
 function consume(ip: string, nowMs: number): boolean {
-  // Lazy prune: cheap O(n) walk only when the map has grown noticeably.
   if (buckets.size > BUCKET_PRUNE_THRESHOLD) {
     for (const [key, bucket] of buckets) {
       if (nowMs - bucket.lastRefillMs > BUCKET_TTL_MS) buckets.delete(key);
@@ -65,7 +64,6 @@ function consume(ip: string, nowMs: number): boolean {
 function clientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    // First entry in `X-Forwarded-For` is the original client.
     const first = forwarded.split(',')[0]?.trim();
     if (first) return first;
   }

@@ -46,8 +46,8 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 		"biz-1",
 		"call-1",
 		tools.TelegramSendChannelPost,
-		"Отправить пост",                        // legacy display name
-		"tools.telegram.send_channel_post.name", // displayNameKey
+		"Отправить пост",
+		"tools.telegram.send_channel_post.name",
 		map[string]interface{}{"text": "hi"},
 		idMap,
 	)
@@ -75,7 +75,7 @@ func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
 		"call-1",
 		tools.TelegramSendChannelPost,
 		"Отправить пост",
-		"", // no key from a legacy orchestrator
+		"",
 		map[string]interface{}{"text": "hi"},
 		idMap,
 	)
@@ -156,7 +156,7 @@ func TestOnToolCall_InternalToolSkipped(t *testing.T) {
 		context.Background(),
 		"biz-1",
 		"call-1",
-		"get_business_info", // internal tool
+		"get_business_info",
 		"Внутренний инструмент",
 		"tools.internal.get_business_info.name",
 		nil,

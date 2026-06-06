@@ -26,7 +26,6 @@ func TestCorrelationID_GeneratesWhenMissing(t *testing.T) {
 		t.Fatal("expected X-Correlation-ID response header to be set")
 	}
 
-	// Must be a valid UUID
 	if _, err := uuid.Parse(corrID); err != nil {
 		t.Fatalf("expected valid UUID, got %q: %v", corrID, err)
 	}
@@ -85,7 +84,6 @@ func TestCorrelationID_GeneratedIDInContext(t *testing.T) {
 		t.Fatal("expected generated correlation ID in context")
 	}
 
-	// Context value must match response header
 	if ctxCorrID != rec.Header().Get("X-Correlation-ID") {
 		t.Fatalf("context correlation ID %q does not match response header %q", ctxCorrID, rec.Header().Get("X-Correlation-ID"))
 	}

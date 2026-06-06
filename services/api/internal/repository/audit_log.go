@@ -15,6 +15,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -56,7 +57,6 @@ func (r *auditLogRepository) Insert(ctx context.Context, log *domain.AuditLog) e
 	if len(details) == 0 {
 		details = json.RawMessage(`{}`)
 	}
-	// Persist NULL (not "") for empty emails so `IS NULL` queries stay useful.
 	var emailAtEvent any
 	if log.UserEmailAtEvent != "" {
 		emailAtEvent = log.UserEmailAtEvent
@@ -95,7 +95,6 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 		Where(squirrel.Eq{"business_id": businessID})
 
 	if f.Category != "" {
-		// "rbac" → action LIKE 'rbac.%'. The (category, verb_noun) split is enforced by pkg/audit.actions.
 		q = q.Where(squirrel.Like{"action": f.Category + ".%"})
 	}
 	if f.Action != "" {
@@ -111,7 +110,6 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 		q = q.Where(squirrel.Lt{"created_at": *f.To})
 	}
 	if f.CursorTime != nil && f.CursorID != nil {
-		// Row-value tuple comparison — Postgres handles natively against the composite index for O(log n) seek-then-scan.
 		q = q.Where("(created_at, id) < (?, ?)", *f.CursorTime, *f.CursorID)
 	}
 
@@ -125,23 +123,15 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 	if err != nil {
 		return nil, fmt.Errorf("query audit_log list: %w", err)
 	}
-	defer rows.Close()
 
-	var out []domain.AuditLog
-	for rows.Next() {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.AuditLog, error) {
 		var l domain.AuditLog
-		if err := rows.Scan(
+		err := row.Scan(
 			&l.ID, &l.BusinessID, &l.UserID,
 			&l.Action, &l.Resource, &l.Details, &l.UserEmailAtEvent, &l.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan audit_log row: %w", err)
-		}
-		out = append(out, l)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate audit_log rows: %w", err)
-	}
-	return out, nil
+		)
+		return l, err
+	})
 }
 
 // AuditLogRow is the JOIN-enriched repository-package row returned by
@@ -174,9 +164,6 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 			"COALESCE(al.user_email_at_event, '') AS user_email_at_event",
 			"al.created_at",
 			"COALESCE(u.email, '') AS actor_email",
-			// users table has no display_name column today; emit '' so the
-			// scanner has a non-NULL string and the column stays in the SELECT
-			// list for forward compat with a future migration.
 			"'' AS actor_display_name",
 		).
 		From("audit_logs al").
@@ -212,25 +199,17 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 	if err != nil {
 		return nil, fmt.Errorf("query audit_log list-with-actors: %w", err)
 	}
-	defer rows.Close()
 
-	var out []AuditLogRow
-	for rows.Next() {
-		var row AuditLogRow
-		if err := rows.Scan(
-			&row.ID, &row.BusinessID, &row.UserID,
-			&row.Action, &row.Resource, &row.Details,
-			&row.UserEmailAtEvent, &row.CreatedAt,
-			&row.ActorEmail, &row.ActorDisplayName,
-		); err != nil {
-			return nil, fmt.Errorf("scan audit_log-with-actors row: %w", err)
-		}
-		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate audit_log-with-actors rows: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (AuditLogRow, error) {
+		var out AuditLogRow
+		err := row.Scan(
+			&out.ID, &out.BusinessID, &out.UserID,
+			&out.Action, &out.Resource, &out.Details,
+			&out.UserEmailAtEvent, &out.CreatedAt,
+			&out.ActorEmail, &out.ActorDisplayName,
+		)
+		return out, err
+	})
 }
 
 // DeleteOlderThan removes every audit_logs row older than cutoff and returns

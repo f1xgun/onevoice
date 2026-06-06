@@ -19,16 +19,8 @@ import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
-import type { Locale } from '@/lib/i18n/locales';
+import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
 import { cn } from '@/lib/utils';
-
-// BCP-47 tags for `Intl.DateTimeFormat`. Mirrors the table in
-// `app/(app)/reviews/page.tsx` — kept inline rather than centralised
-// because the only two consumers want different format options anyway.
-const INTL_LOCALE_TAG: Record<Locale, string> = {
-  ru: 'ru-RU',
-  en: 'en-US',
-};
 
 export interface NoConnectionProps {
   /** Override the default "reload the page" behavior. */
@@ -51,7 +43,7 @@ export interface NoConnectionProps {
 }
 
 function formatTime(d: Date, locale: Locale) {
-  return d.toLocaleTimeString(INTL_LOCALE_TAG[locale], {
+  return d.toLocaleTimeString(localeToIntlTag(locale), {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -77,11 +69,6 @@ export function NoConnection({
     }
   }, [onRetry]);
 
-  // useState lazy-init so the timestamp is computed once on mount and
-  // doesn't change between SSR and client hydration. Server renders an
-  // empty string; the effect below fills it in. The effect re-runs when
-  // the locale flips so the rendered clock follows the language switch
-  // without a remount.
   const [now, setNow] = React.useState<string>(timestamp ?? '');
   React.useEffect(() => {
     if (!timestamp) setNow(formatTime(new Date(), locale));

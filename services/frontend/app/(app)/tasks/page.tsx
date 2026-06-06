@@ -149,10 +149,6 @@ export default function TasksPage() {
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const tErrors = useTranslations('tasks.errors');
-  // agentTasks.displayName is the i18n namespace. Each task may
-  // carry a `displayNameKey` like "sync.business_name" or
-  // "tools.telegram.send_channel_post.name" — render the localized copy
-  // when present, fall back to the legacy `displayName` for older rows.
   const tAgentTaskNames = useTranslations('agentTasks.displayName');
   const taskStatusLabels = useTaskStatusLabels();
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
@@ -164,10 +160,6 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
       : 'text-sm font-medium text-ink tracking-[-0.005em]';
   const human = status === 'error' ? explainError(task) : null;
 
-  // Prefer localized name from the catalog; fall back to legacy DB literal
-  // then to the bare task type if neither is populated. tAgentTaskNames
-  // returns the key itself when missing (next-intl's default-missing
-  // behavior), so we guard explicitly.
   const localizedName = (() => {
     if (!task.displayNameKey) return null;
     const resolved = tAgentTaskNames(task.displayNameKey);

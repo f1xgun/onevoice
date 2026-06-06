@@ -55,7 +55,6 @@ func TestAnthropic_ListModels_Current(t *testing.T) {
 		byID[m.ID] = i
 	}
 
-	// Required entries.
 	require.Contains(t, byID, "claude-sonnet-4-6")
 	require.Contains(t, byID, "claude-haiku-4-5")
 	require.Contains(t, byID, "claude-opus-4-7")
@@ -82,7 +81,6 @@ func TestAnthropic_ListModels_Current(t *testing.T) {
 	assert.InDelta(t, 25.0, *opus.OutputCostPer1MTok, 0.0001)
 	assert.Equal(t, claudeOpus4_7ContextLength, opus.ContextLength)
 
-	// Regression guard: obsolete 3.5 entries must not reappear.
 	assert.NotContains(t, byID, "claude-3-5-sonnet-20241022")
 	assert.NotContains(t, byID, "claude-3-5-haiku-20241022")
 }

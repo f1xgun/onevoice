@@ -96,7 +96,6 @@ func ClientIP(r *http.Request) string {
 	for _, c := range cidrs {
 		if c.Contains(peer) {
 			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-				// Leftmost entry = original client per RFC 7239 / de-facto convention.
 				if idx := strings.IndexByte(xff, ','); idx > 0 {
 					return strings.TrimSpace(xff[:idx])
 				}
@@ -125,7 +124,6 @@ func Net16(ip string) string {
 	}
 	v4 := parsed.To4()
 	if v4 == nil {
-		// IPv6 — IPv6 lockout bucketing is an open question (v1.5 follow-up).
 		slog.Warn("trusted_proxy: Net16 called on IPv6 address; skipping", "ip", ip)
 		return ""
 	}

@@ -24,9 +24,6 @@ export interface EmptyReviewsProps {
 
 export function EmptyReviews({ mode = 'all', onLookBack }: EmptyReviewsProps) {
   const tStates = useTranslations('states.emptyReviews');
-  // Per-mode title/body live under states.emptyReviews.{mode}.* so a
-  // brand-voice pass can re-tone all three states without touching the
-  // component.
   const title = tStates(`${mode}.title` as `${ReviewsEmptyMode}.title`);
   const body = tStates(`${mode}.body` as `${ReviewsEmptyMode}.body`);
   return (

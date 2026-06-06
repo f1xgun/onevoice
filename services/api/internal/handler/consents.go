@@ -92,9 +92,8 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
 		return
 	}
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -111,8 +110,6 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pre-validate every required slug is present so the frontend gets a
-	// cleaner missing list than the service's version-match check.
 	bySlug := make(map[string]reconsentPolicy, len(req.Policies))
 	for _, p := range req.Policies {
 		bySlug[p.Slug] = p
@@ -137,14 +134,12 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	err = h.service.ReConsent(r.Context(), userID, middleware.ClientIP(r), r.UserAgent(), policies)
+	err := h.service.ReConsent(r.Context(), userID, middleware.ClientIP(r), r.UserAgent(), policies)
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case errors.Is(err, domain.ErrConsentVersionMismatch):
-		// PolicyTOS / PolicyPrivacy / PolicyPDN are bumped in lockstep; the
-		// TOS version is the canonical bump signal the frontend reloads against.
 		writeJSON(w, http.StatusConflict, versionMismatchBody{
 			Code:           openapi.VersionMismatch,
 			CurrentVersion: legalconfig.TOSVersion,
@@ -171,23 +166,17 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
 		return
 	}
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
-	err = h.service.WithdrawPDN(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
+	err := h.service.WithdrawPDN(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case errors.Is(err, domain.ErrDeletionAlreadyPending):
-		// Mirror the user_deletion.go 423 envelope shape (code +
-		// deletionDate + restoreUrl). The exact deletionDate value
-		// is omitted here because the handler doesn't have the
-		// AccountDeletionService.GetScheduledDeletionAt seam; the
-		// frontend can fall back to the value already in /auth/me.
 		writeJSON(w, http.StatusLocked, openapi.PendingDeletionResponse{
 			Code:         pendingDeletionCode,
 			DeletionDate: "",
@@ -205,9 +194,8 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 // ListMine handles GET /users/me/consents. Returns the user's current
 // consent state for Surface F (Withdraw / status panel).
 func (h *ConsentsHandler) ListMine(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 

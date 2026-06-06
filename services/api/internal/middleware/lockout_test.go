@@ -37,14 +37,12 @@ func newLoginReq(email string) *http.Request {
 }
 
 func TestLockoutMiddleware_PassesNormal(t *testing.T) {
-	// No prior failures → middleware passes through, downstream handler runs.
 	lock, _ := newTestLock(t)
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
 	var downstreamRan bool
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		downstreamRan = true
-		// Body must still be readable downstream — middleware promised to restore it.
 		bodyBytes, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		assert.Contains(t, string(bodyBytes), "alice@example.com")
@@ -61,8 +59,6 @@ func TestLockoutMiddleware_PassesNormal(t *testing.T) {
 }
 
 func TestLockoutMiddleware_AnnotatesCaptchaContext(t *testing.T) {
-	// 4 prior failures → TierCaptcha → middleware annotates ctx with
-	// CaptchaRequiredKey=true; downstream MUST see it.
 	lock, _ := newTestLock(t)
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
@@ -89,8 +85,6 @@ func TestLockoutMiddleware_AnnotatesCaptchaContext(t *testing.T) {
 }
 
 func TestLockoutMiddleware_Returns423OnLock(t *testing.T) {
-	// 10 prior failures → TierLocked → 423 + JSON body + Retry-After header.
-	// Downstream handler must NOT run.
 	lock, _ := newTestLock(t)
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
@@ -122,9 +116,6 @@ func TestLockoutMiddleware_Returns423OnLock(t *testing.T) {
 }
 
 func TestLockoutMiddleware_KeyUsesEmailHashAndNet16(t *testing.T) {
-	// Sanity: middleware writes/reads against the same key shape as
-	// lockout.RecordFailure does directly. We pre-populate via the lock,
-	// hit the middleware, observe the 423 — proves they share a key.
 	lock, mr := newTestLock(t)
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
@@ -134,9 +125,6 @@ func TestLockoutMiddleware_KeyUsesEmailHashAndNet16(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Inspect the live miniredis key set — must contain exactly one key
-	// for this (email_hash, /16) tuple. The hash is sha256 of the
-	// lowercased email — long opaque string.
 	keys := mr.Keys()
 	var matched int
 	for _, k := range keys {
@@ -146,7 +134,6 @@ func TestLockoutMiddleware_KeyUsesEmailHashAndNet16(t *testing.T) {
 	}
 	assert.Equal(t, 1, matched, "exactly one (email_hash, /16) key must exist")
 
-	// Now hit the middleware — should 423 (proves it derives the same key).
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Fatal("downstream must not run for a locked tuple")
 	})
@@ -156,19 +143,15 @@ func TestLockoutMiddleware_KeyUsesEmailHashAndNet16(t *testing.T) {
 }
 
 func TestLockoutMiddleware_DifferentNet16_NotLocked(t *testing.T) {
-	// Cross-/16 isolation: attacker on one /16 locking (email, their_/16)
-	// must NOT affect (email, victim_/16). Victim continues to log in.
 	lock, _ := newTestLock(t)
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		// Attacker /16 = 9.9.0.0/16
 		_, err := lock.RecordFailure(ctx, "alice@example.com", "9.9.0.0/16")
 		require.NoError(t, err)
 	}
 
-	// Victim request comes from 1.2.3.4 → /16 = 1.2.0.0/16, NOT locked.
 	var downstreamRan bool
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		downstreamRan = true
@@ -182,8 +165,6 @@ func TestLockoutMiddleware_DifferentNet16_NotLocked(t *testing.T) {
 }
 
 func TestLockoutMiddleware_InvalidJSON_PassesThrough(t *testing.T) {
-	// Garbage body → middleware MUST NOT block. Downstream handler will
-	// produce its own 400 on the same body.
 	lock, _ := newTestLock(t)
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 

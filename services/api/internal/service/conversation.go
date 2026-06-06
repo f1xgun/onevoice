@@ -111,7 +111,6 @@ func (s *ConversationService) MoveToProject(
 			return nil, projErr
 		}
 		if proj.BusinessID != businessID {
-			// Cross-tenant → not-found (avoid existence enumeration).
 			return nil, domain.ErrProjectNotFound
 		}
 		destName = proj.Name
@@ -128,7 +127,6 @@ func (s *ConversationService) MoveToProject(
 		CreatedAt:      time.Now(),
 	}
 	if err := s.messageRepo.Create(ctx, note); err != nil {
-		// Best-effort: move already landed; missing note is recoverable.
 		slog.WarnContext(ctx, "MoveToProject: failed to append system note",
 			"error", err, "conversation_id", conversationID)
 	}
@@ -180,10 +178,9 @@ func (s *ConversationService) OpenChat(
 			}
 			for _, c := range b.Calls {
 				summary.Calls = append(summary.Calls, ApprovalCallSummary{
-					CallID:   c.CallID,
-					ToolName: c.ToolName,
-					Args:     c.Arguments,
-					// EditableFields stays []; FE owns the live whitelist via GET /api/v1/tools.
+					CallID:         c.CallID,
+					ToolName:       c.ToolName,
+					Args:           c.Arguments,
 					EditableFields: []string{},
 				})
 			}

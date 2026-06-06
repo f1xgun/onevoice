@@ -184,7 +184,6 @@ func TestSyncBusiness_TaskPublisherNil_RecordsErrorTask(t *testing.T) {
 	}
 	rec := &fakeTaskRecorder{}
 
-	// nil publisher exercises the "publisher not configured" branch.
 	s := newYandexOnlySyncer(integ, rec, nil)
 
 	s.SyncBusiness(business)

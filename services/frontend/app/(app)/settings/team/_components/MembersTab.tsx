@@ -32,7 +32,7 @@ import type { Member, Role } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { useAuthStore } from '@/lib/auth';
 
-import { ConfirmDestructive } from './ConfirmDestructive';
+import { ConfirmDestructive } from '@/components/ui/confirm-destructive';
 import { RoleChangeDialog } from './RoleChangeDialog';
 
 const SKELETON_ROW_COUNT = 4;
@@ -59,8 +59,6 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
   const [roleChange, setRoleChange] = useState<Member | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
 
-  // Defensive: gate against the auth-store hydration race where currentUserId
-  // is still undefined on first paint.
   const isSelf = (m: Member) => currentUserId !== undefined && m.user.id === currentUserId;
 
   const handleRoleChange = async (m: Member, newRoleId: string) => {
@@ -203,9 +201,6 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
 
       {roleChange && (
         <RoleChangeDialog
-          // Key by member id so React re-mounts the dialog per member;
-          // useState(currentRoleId) initializer otherwise sticks to the
-          // previously-opened member's value.
           key={roleChange.user.id}
           open
           onOpenChange={() => setRoleChange(null)}

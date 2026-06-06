@@ -38,11 +38,9 @@ func TestDefaultSelector_MetricsEvictsOldestWhenAtCap(t *testing.T) {
 		t.Fatalf("expected 3 entries at cap, got %d", len(s.metrics))
 	}
 
-	// Touch "a" so "b" becomes the oldest by lastTouchedUnix.
 	clock = base.Add(10 * time.Second)
 	s.Record(&ModelProviderEntry{Provider: "a", Model: "m"}, Outcome{Success: true})
 
-	// Insert a fourth → forces eviction of the LRU entry ("b:m").
 	clock = base.Add(11 * time.Second)
 	s.Record(&ModelProviderEntry{Provider: "d", Model: "m"}, Outcome{Success: true})
 

@@ -102,13 +102,11 @@ func TestNewFromConfig_CustomLevel(t *testing.T) {
 		Level:   slog.LevelWarn,
 	})
 
-	// Debug should be suppressed
 	l.Debug("should not appear")
 	if buf.Len() > 0 {
 		t.Errorf("expected no output for debug at warn level, got: %s", buf.String())
 	}
 
-	// Warn should appear
 	l.Warn("should appear")
 	if buf.Len() == 0 {
 		t.Error("expected output for warn message at warn level, got nothing")

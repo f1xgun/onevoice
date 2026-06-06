@@ -169,7 +169,6 @@ func TestReadyHandler_AllFailing(t *testing.T) {
 	if !ok {
 		t.Fatalf("failed field missing or wrong type: %v", body["failed"])
 	}
-	// failed[] must be alphabetically sorted for stable serialization.
 	if len(failed) != 2 || failed[0] != "cache" || failed[1] != "db" {
 		t.Fatalf("expected failed=[cache db] (sorted), got %v", failed)
 	}
@@ -182,7 +181,6 @@ func TestReadyHandler_ContextTimeout(t *testing.T) {
 		return ctx.Err()
 	})
 
-	// Use a pre-canceled context so the check returns immediately.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
@@ -330,7 +328,7 @@ func TestReadyHandler_MixedResults(t *testing.T) {
 // well under the sum-of-checks (6s) and within roughly the per-check budget.
 // Serial execution would exceed 6s; concurrent execution finishes in ~1.5s.
 func TestReadyHandler_Concurrent_DoesNotExceedBudget(t *testing.T) {
-	c := New() // default WithCheckTimeout(2s)
+	c := New()
 	for _, name := range []string{"a", "b", "c", "d"} {
 		c.AddCheck(name, func(ctx context.Context) error {
 			select {
@@ -406,7 +404,6 @@ func TestReadyHandler_AnyFailure_Returns503_WithFailedList(t *testing.T) {
 	if !ok {
 		t.Fatal("checks field missing or wrong type")
 	}
-	// All four names must appear in the checks map.
 	for _, name := range []string{"postgres", "mongo", "nats", "redis"} {
 		if _, present := checks[name]; !present {
 			t.Fatalf("expected %s to appear in checks map; got %v", name, checks)

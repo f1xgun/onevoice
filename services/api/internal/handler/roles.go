@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -91,13 +90,8 @@ const maxPermissionsPerRole = 100
 // List handles GET /api/v1/businesses/{id}/roles (PermRolesRead).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesRead)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -123,13 +117,8 @@ func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
 // Note: `?clone_from=` is intentionally ignored server-side — the frontend
 // pre-fills permissions on the client and POSTs the result here.
 func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesCreate)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesCreate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -157,7 +146,6 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist the deduplicated slice — duplicates must not leak into JSONB.
 	dedupedPerms := typedPermsToStrings(proposed)
 
 	businessID := bc.BusinessID
@@ -193,9 +181,6 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// No InvalidateRole on Create — no existing memberships reference this
-	// brand-new role, so no cache entry can be stale.
-
 	audit.LogRoleCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, role.ID, role.Name, role.Permissions)
 
 	slog.InfoContext(r.Context(), "role created",
@@ -211,13 +196,8 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update handles PATCH /api/v1/businesses/{id}/roles/{roleId} (PermRolesUpdate).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesUpdate)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	roleID, ok := parseRoleIDParam(w, r)
@@ -250,8 +230,6 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAuthzInvariantError(r.Context(), w, "update_role.lookup", err)
 		return
 	}
-	// Cross-tenant masquerade as 404 — runs BEFORE CheckSystemRoleImmutable so
-	// roles owned by another business never reveal themselves as "system" 422.
 	if existing.BusinessID != nil && *existing.BusinessID != bc.BusinessID {
 		writeJSONError(w, http.StatusNotFound, "role_not_found")
 		return
@@ -271,7 +249,6 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	existing.Name = name
 	existing.Description = strDeref(req.Description)
-	// Persist deduplicated slice — reads must never observe duplicates.
 	existing.Permissions = typedPermsToStrings(proposed)
 	existing.UpdatedBy = &bc.UserID
 
@@ -297,8 +274,6 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// InvalidateRole AFTER commit only — pre-commit eviction would cache
-	// stale-then-rolled-back permissions for up to the ~30s TTL.
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
 
 	audit.LogRoleUpdated(r.Context(), h.audit, bc.BusinessID, bc.UserID, roleID, existing.Name, existing.Permissions)
@@ -315,13 +290,8 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE /api/v1/businesses/{id}/roles/{roleId}?reassign_to=<uuid> (PermRolesDelete).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesDelete)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesDelete) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	roleID, ok := parseRoleIDParam(w, r)
@@ -337,7 +307,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if parsed == roleID {
-			// Self-reassign would orphan members on the doomed role.
 			writeJSONError(w, http.StatusBadRequest, "invalid_reassign_to")
 			return
 		}
@@ -350,7 +319,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.BusinessID != nil && *existing.BusinessID != bc.BusinessID {
-		// Cross-tenant rejection masquerades as 404.
 		writeJSONError(w, http.StatusNotFound, "role_not_found")
 		return
 	}
@@ -365,12 +333,10 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if memberCount > 0 && reassignTo == nil {
-		// Role-in-use: refuse before opening the tx (no `?reassign_to=` supplied).
 		writeAuthzInvariantError(r.Context(), w, "delete_role.in_use", domain.ErrRoleInUse)
 		return
 	}
 
-	// Validate target role: exists, in-tenant, AND grantable by the actor.
 	if reassignTo != nil && memberCount > 0 {
 		target, err := h.roleRepo.GetByID(r.Context(), *reassignTo)
 		if err != nil {
@@ -381,7 +347,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			writeAuthzInvariantError(r.Context(), w, "delete_role.target_lookup", err)
 			return
 		}
-		// Target must be system (BusinessID == nil) OR belong to this business.
 		if target.BusinessID != nil && *target.BusinessID != bc.BusinessID {
 			writeJSONError(w, http.StatusBadRequest, "invalid_reassign_to")
 			return
@@ -397,9 +362,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Capture affected user IDs BEFORE the tx — the DELETE deletes the rows,
-	// so reading after commit returns the NEW role_id. Needed for the per-member
-	// membership cache fanout after commit.
 	var affectedUserIDs []uuid.UUID
 	if memberCount > 0 && reassignTo != nil {
 		affectedUserIDs, err = h.membershipRepo.ListUserIDsByRole(r.Context(), bc.BusinessID, roleID)
@@ -439,10 +401,7 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// InvalidateRole AFTER commit only — pre-commit eviction would cache stale state.
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
-	// InvalidateRole evicts only the role-perms cache; the membership cache
-	// still pins the OLD role_id. Fanout so the next Can pulls fresh membership.
 	for _, uid := range affectedUserIDs {
 		h.invalidator.InvalidateMember(bc.BusinessID, uid)
 	}
@@ -468,13 +427,10 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // route already rejects non-members (404) and suspended members (403); any
 // active member can read their own permissions.
 func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := businessContext(w, r, "")
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-	// Defensive copy — bc.Permissions backs the middleware LRU cache; aliasing
-	// it into the JSON encoder would race with cache mutations.
 	perms := make([]string, len(bc.Permissions))
 	for i, p := range bc.Permissions {
 		perms[i] = string(p)
@@ -484,13 +440,7 @@ func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 
 // parseRoleIDParam extracts {roleId}; writes 400 invalid_role_id on failure.
 func parseRoleIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, "roleId")
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_role_id")
-		return uuid.Nil, false
-	}
-	return id, true
+	return parseUUIDParam(w, r, "roleId", "invalid_role_id")
 }
 
 // typedPermsToStrings converts []authz.Permission back to []string for persistence.

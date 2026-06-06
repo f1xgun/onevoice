@@ -23,7 +23,6 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -142,13 +141,7 @@ func domainInvitationToPreview(inv *domain.Invitation, businessName, roleName st
 
 // parseInvitationIDParam extracts {inviteId} from chi URL params; writes 400 on failure.
 func parseInvitationIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, "inviteId")
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_invite_id")
-		return uuid.Nil, false
-	}
-	return id, true
+	return parseUUIDParam(w, r, "inviteId", "invalid_invite_id")
 }
 
 // computeTokenHash hashes the raw token with hex(sha256) to match the
@@ -162,13 +155,8 @@ func computeTokenHash(raw string) string {
 // Create handles POST /api/v1/businesses/{id}/invitations.
 // See docs/api/handlers/invitations.md.
 func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersInvite) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -190,7 +178,6 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cross-tenant defense: role must be a system role OR belong to this business.
 	role, err := h.roleRepo.GetByID(r.Context(), req.RoleId)
 	if err != nil {
 		if errors.Is(err, domain.ErrRoleNotFound) {
@@ -205,7 +192,6 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Escalation-subset check: actor cannot grant a permission they don't hold.
 	rolePerms := make([]authz.Permission, 0, len(role.Permissions))
 	for _, p := range role.Permissions {
 		rolePerms = append(rolePerms, authz.Permission(p))
@@ -221,9 +207,6 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serializable: the 20-pending cap is an insert-phantom invariant; RepeatableRead
-	// in Postgres is Snapshot Isolation and would let two concurrent creates each
-	// see 19 pending rows and both commit a 20th.
 	tx, err := h.pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		writeAuthzInvariantError(r.Context(), w, "create_invitation.begin", err)
@@ -265,7 +248,6 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// SECURITY: never log rawToken or hash; only invitation_id is safe.
 	slog.InfoContext(r.Context(), "invitation created",
 		"business_id", bc.BusinessID,
 		"actor_user_id", bc.UserID,
@@ -273,7 +255,6 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"role_id", inv.RoleID,
 	)
 
-	// Audit AFTER commit so a rolled-back tx never leaves an orphaned audit row.
 	audit.LogInvitationCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, inv.ID, inv.RoleID, inv.ExpiresAt)
 
 	writeJSON(w, http.StatusCreated, domainInvitationToCreateResponse(inv, rawToken))
@@ -282,13 +263,8 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 // ListPending handles GET /api/v1/businesses/{id}/invitations.
 // See docs/api/handlers/invitations.md.
 func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersInvite) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -310,8 +286,6 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 			writeAuthzInvariantError(r.Context(), w, "list_pending.user_lookup", err)
 			return
 		}
-		// inv is a value type from the range loop; take its address for the
-		// pointer-typed mapper signature.
 		invCopy := inv
 		out = append(out, domainInvitationToPending(&invCopy, role.Name, user))
 	}
@@ -321,13 +295,8 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 // Revoke handles DELETE /api/v1/businesses/{id}/invitations/{inviteId}.
 // See docs/api/handlers/invitations.md.
 func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersInvite) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	invID, ok := parseInvitationIDParam(w, r)
@@ -340,7 +309,6 @@ func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Audit AFTER successful repo update.
 	audit.LogInvitationRevoked(r.Context(), h.audit, bc.BusinessID, bc.UserID, invID)
 
 	slog.InfoContext(r.Context(), "invitation revoked",
@@ -391,7 +359,6 @@ func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SECURITY: no token/hash in the slog line.
 	slog.InfoContext(r.Context(), "invitation preview",
 		"business_id", inv.BusinessID,
 		"invitation_id", inv.ID,
@@ -403,9 +370,8 @@ func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 // Accept handles POST /api/v1/invitations/{token}/accept — auth-required, NOT business-scoped.
 // See docs/api/handlers/invitations.md for the race-safe accept order.
 func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -428,14 +394,11 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Pool-based read is fine — token_hash is immutable post-insert; the
-	// conditional UPDATE in MarkAcceptedInTx is the race-safe primitive.
 	inv, err := h.invitationRepo.GetByTokenHash(r.Context(), hash)
 	if err != nil {
 		writeInvitationStateError(w, err)
 		return
 	}
-	// Pre-classify terminal states (cold-fail before touching membership).
 	if inv.AcceptedAt != nil {
 		writeInvitationStateError(w, domain.ErrInvitationAccepted)
 		return
@@ -449,8 +412,6 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Already-a-member → 409, rollback; MarkAcceptedInTx is NEVER called → token
-	// NOT consumed (idempotent retry remains possible after fixing membership).
 	existing, err := h.membershipRepo.GetByBusinessUser(r.Context(), inv.BusinessID, userID)
 	if err != nil && !errors.Is(err, domain.ErrMembershipNotFound) {
 		writeAuthzInvariantError(r.Context(), w, "accept.membership_check", err)
@@ -482,8 +443,6 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Race-safe single-use: conditional UPDATE. RowsAffected=0 means a concurrent
-	// winner consumed the token; repo returns the classified terminal sentinel.
 	if err := h.invitationRepo.MarkAcceptedInTx(r.Context(), tx, inv.ID, userID); err != nil {
 		writeInvitationStateError(w, err)
 		return
@@ -495,12 +454,10 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// Invalidate AFTER commit; pre-commit eviction would cache a rolled-back state.
 	h.invalidator.InvalidateMember(inv.BusinessID, userID)
 
 	audit.LogInvitationAccepted(r.Context(), h.audit, inv.BusinessID, userID, inv.ID, inv.RoleID)
 
-	// SECURITY: no token/hash in the slog line.
 	slog.InfoContext(r.Context(), "invitation accepted",
 		"business_id", inv.BusinessID,
 		"user_id", userID,

@@ -23,14 +23,11 @@ describe('RolePill', () => {
   });
 
   it('truncates long custom role names and exposes the full value via title attribute', () => {
-    // 30 chars — exceeds the 24-char cap
     const longName = 'super-long-marketing-strategist';
     render(<RolePill roleName={longName} />);
-    // Expect a span with ellipsis + title attribute carrying the full lowercase string.
     const visible = screen.getByText((content) => content.endsWith('…'));
     expect(visible).toBeInTheDocument();
     expect(visible).toHaveAttribute('title', longName.toLowerCase());
-    // The visible string should be 24 chars max (23 + ellipsis).
     expect(visible.textContent?.length).toBeLessThanOrEqual(24);
   });
 
@@ -40,7 +37,6 @@ describe('RolePill', () => {
     expect(pill.className).toMatch(/font-mono/);
     expect(pill.className).toMatch(/bg-paper-sunken/);
     expect(pill.className).toMatch(/text-ink-soft/);
-    // Critical: MonoLabel forces uppercase — RolePill must NOT.
     expect(pill.className).not.toMatch(/\buppercase\b/);
   });
 });

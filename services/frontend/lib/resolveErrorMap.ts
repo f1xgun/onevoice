@@ -47,19 +47,10 @@ export interface ResolveErrorMap {
 export function createResolveErrorMap(tErrors: TranslateFn): ResolveErrorMap {
   return {
     resolveError(status: number, body: unknown): string {
-      // 409 → concurrent resolve lost the race.
       if (status === HTTP_STATUS.CONFLICT) return tErrors('alreadyHandled');
-      // 403 → resolve handler rejected the request because the requester's
-      // business scope does not match `batch.business_id` (auth check).
-      // Distinct from 409 (race) and policy_revoked (TOCTOU). Wins over a
-      // body.reason='policy_revoked' precedence: a 403 is auth/scope, NOT
-      // a policy gate, even if the server happened to attach a
-      // policy_revoked body shape.
       if (status === HTTP_STATUS.FORBIDDEN) return tErrors('outOfScope');
-      // Policy revocation can surface on any 4xx.
       const reason = (body as { reason?: unknown } | null | undefined)?.reason;
       if (reason === 'policy_revoked') return tErrors('policyRevoked');
-      // Fall-through: 400-with-editable, other 4xx, 5xx, network-thrown → generic.
       return tErrors('connectionRetry');
     },
     resumeStreamError: tErrors('resumeStream'),
@@ -88,6 +79,14 @@ function extractStatusAndCode(err: unknown): {
   const code = axiosErr?.response?.data?.error;
   const reason = axiosErr?.response?.data?.reason;
   return { status, code, reason };
+}
+
+// Pulls the backend error code from an axios-shaped error
+// (`response.data.error`). Returns `undefined` when the error has no such
+// field (network failure, non-axios throw). Callers typically `?? ''` or
+// `|| fallback` the result for their toast copy.
+export function extractApiErrorCode(err: unknown): string | undefined {
+  return extractStatusAndCode(err).code;
 }
 
 // ----- central error-code registry -----------------------------------------

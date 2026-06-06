@@ -178,7 +178,6 @@ func TestInvitationsHandler_Create_HappyPath(t *testing.T) {
 	userID := uuid.New()
 	roleID := uuid.New()
 
-	// System role (BusinessID nil) — passes.
 	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 		ID:          roleID,
 		BusinessID:  nil,
@@ -227,7 +226,6 @@ func TestInvitationsHandler_Create_CrossTenantRoleID_400(t *testing.T) {
 	userID := uuid.New()
 	roleID := uuid.New()
 
-	// Role belongs to a DIFFERENT business — / /.
 	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 		ID: roleID, BusinessID: &otherBizID, Name: "custom", Permissions: []string{},
 	}, nil)
@@ -251,11 +249,10 @@ func TestInvitationsHandler_Create_EscalationSubset_403(t *testing.T) {
 	bc := authz.BusinessContext{
 		BusinessID:  bizID,
 		UserID:      userID,
-		RoleID:      editorRoleID, // NOT system Owner — CheckEscalationSubset enforces
+		RoleID:      editorRoleID,
 		Permissions: []authz.Permission{authz.PermMembersInvite, authz.PermContentRead},
 	}
 
-	// Target role demands a permission the actor does not hold.
 	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 		ID: roleID, BusinessID: nil, Name: "admin",
 		Permissions: []string{string(authz.PermMembersInvite), "members.update_role"},
@@ -336,7 +333,7 @@ func TestInvitationsHandler_Create_ExpiresInDefault_7Days(t *testing.T) {
 	})).Return(nil)
 	f.mockPool.ExpectCommit()
 
-	body := fmt.Sprintf(`{"role_id":%q}`, roleID) // no expires_in → default 7d
+	body := fmt.Sprintf(`{"role_id":%q}`, roleID)
 	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, userID))
 	w := httptest.NewRecorder()
 	f.handler.Create(w, req)
@@ -431,12 +428,11 @@ func TestInvitationsHandler_Revoke_AlreadyAccepted_410(t *testing.T) {
 
 func TestInvitationsHandler_Accept_RefusalMatrix(t *testing.T) {
 	type tc struct {
-		name string
-		// seed configures all mocks; returns the userID and rawToken for the request
+		name        string
 		seed        func(t *testing.T, f *invitationTestFixture) (userID uuid.UUID, rawToken string)
 		wantStatus  int
 		wantSubstr  []string
-		mustNotCall []string // method names that MUST NOT have been called
+		mustNotCall []string
 	}
 	cases := []tc{
 		{
@@ -521,7 +517,7 @@ func TestInvitationsHandler_Accept_RefusalMatrix(t *testing.T) {
 			},
 			wantStatus:  http.StatusConflict,
 			wantSubstr:  []string{`"already_member"`},
-			mustNotCall: []string{"MarkAcceptedInTx", "Insert", "InvalidateMember"}, // token NOT consumed
+			mustNotCall: []string{"MarkAcceptedInTx", "Insert", "InvalidateMember"},
 		},
 		{
 			name: "pending_valid_happy",
@@ -591,12 +587,6 @@ func TestInvitationsHandler_Accept_NoJWT_401(t *testing.T) {
 }
 
 func TestInvitationsHandler_Accept_HappyPath_InvalidateAfterCommit(t *testing.T) {
-	// Critical assertion: pgxmock.ExpectationsWereMet enforces
-	// strict ORDER (BeginTx → ... → Commit). MockCacheInvalidator.AssertCalled
-	// confirms invalidator was invoked. Together they prove
-	// "Invalidate AFTER Commit" — not strictly literal-ordering but
-	// structurally enforced because Invalidate is only reachable after
-	// committed=true is set, which only happens after Commit returns nil.
 	f := newInvitationFixture(t)
 	userID := uuid.New()
 	bizID := uuid.New()
@@ -628,7 +618,6 @@ func TestInvitationsHandler_Accept_HappyPath_InvalidateAfterCommit(t *testing.T)
 }
 
 func TestInvitationsHandler_Accept_CommitFails_NoInvalidate(t *testing.T) {
-	// If Commit fails, Invalidate MUST NOT fire.
 	f := newInvitationFixture(t)
 	userID := uuid.New()
 	bizID := uuid.New()
@@ -660,7 +649,6 @@ func TestInvitationsHandler_Accept_CommitFails_NoInvalidate(t *testing.T) {
 // --- Tests: Token never logged ---
 
 func TestInvitationsHandler_Accept_TokenNotLogged(t *testing.T) {
-	// capture slog default output and assert raw token + hash absent.
 	var buf bytes.Buffer
 	prevLog := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -714,7 +702,7 @@ func TestInvitationsHandler_Preview_PublicNoAuth(t *testing.T) {
 	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{ID: roleID, Name: "editor"}, nil)
 	f.bizRepo.On("GetByID", mock.Anything, bizID).Return(&domain.Business{ID: bizID, Name: "Acme"}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/x", http.NoBody) // NO BC, NO JWT
+	req := httptest.NewRequest(http.MethodGet, "/x", http.NoBody)
 	req = withChiParams(req, map[string]string{"token": "any-raw"})
 	w := httptest.NewRecorder()
 

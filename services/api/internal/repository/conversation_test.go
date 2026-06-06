@@ -18,15 +18,11 @@ import (
 func setupMongoTestDB(t *testing.T) *mongo.Database {
 	ctx := context.Background()
 
-	// Get MongoDB URI from environment or use default
 	mongoURI := os.Getenv("MONGODB_TEST_URI")
 	if mongoURI == "" {
 		mongoURI = "mongodb://localhost:27017"
 	}
 
-	// Short server-selection timeout so CI without Mongo skips fast.
-	// Default mongo-driver timeout is 30s — multiplied across 30+ test
-	// functions that's >15 min and blows the 10-min `go test` budget.
 	clientOpts := options.Client().
 		ApplyURI(mongoURI).
 		SetServerSelectionTimeout(2 * time.Second).
@@ -36,7 +32,6 @@ func setupMongoTestDB(t *testing.T) *mongo.Database {
 		t.Skipf("MongoDB not available: %v", err)
 	}
 
-	// Test connection
 	pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
 	defer pingCancel()
 	if err := client.Ping(pingCtx, nil); err != nil {
@@ -44,7 +39,6 @@ func setupMongoTestDB(t *testing.T) *mongo.Database {
 	}
 
 	t.Cleanup(func() {
-		// Clean up test data
 		db := client.Database("test_onevoice")
 		if err := db.Drop(ctx); err != nil {
 			t.Logf("Warning: failed to drop test database: %v", err)
@@ -130,7 +124,6 @@ func TestConversationRepository_GetByID(t *testing.T) {
 	})
 
 	t.Run("returns error for invalid ObjectID", func(t *testing.T) {
-		// This should still work - we treat it as a string ID that doesn't exist
 		found, err := repo.GetByID(ctx, "invalid-object-id")
 		assert.Nil(t, found)
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
@@ -145,7 +138,6 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 	t.Run("returns all conversations for user", func(t *testing.T) {
 		userID := "user-list-123"
 
-		// Create 3 conversations for the user
 		for i := 0; i < 3; i++ {
 			conv := &domain.Conversation{
 				UserID: userID,
@@ -155,7 +147,6 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// Create conversation for different user
 		otherConv := &domain.Conversation{
 			UserID: "other-user",
 			Title:  "Other User Conversation",
@@ -181,7 +172,6 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 	t.Run("respects limit parameter", func(t *testing.T) {
 		userID := "user-limit-test"
 
-		// Create 5 conversations
 		for i := 0; i < 5; i++ {
 			conv := &domain.Conversation{
 				UserID: userID,
@@ -199,7 +189,6 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 	t.Run("respects offset parameter", func(t *testing.T) {
 		userID := "user-offset-test"
 
-		// Create 5 conversations
 		for i := 0; i < 5; i++ {
 			conv := &domain.Conversation{
 				UserID: userID,
@@ -229,14 +218,13 @@ func TestConversationRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 
 		originalUpdatedAt := conv.UpdatedAt
-		time.Sleep(10 * time.Millisecond) // Ensure timestamp difference
+		time.Sleep(10 * time.Millisecond)
 
 		conv.Title = "Updated Title"
 		err = repo.Update(ctx, conv)
 		require.NoError(t, err)
 		assert.True(t, conv.UpdatedAt.After(originalUpdatedAt))
 
-		// Verify update persisted
 		found, err := repo.GetByID(ctx, conv.ID)
 		require.NoError(t, err)
 		assert.Equal(t, "Updated Title", found.Title)
@@ -271,7 +259,6 @@ func TestConversationRepository_Delete(t *testing.T) {
 		err = repo.Delete(ctx, conv.ID)
 		require.NoError(t, err)
 
-		// Verify deleted
 		found, err := repo.GetByID(ctx, conv.ID)
 		assert.Nil(t, found)
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
@@ -301,7 +288,7 @@ func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 			ProjectID:     &projID,
 			Title:         "Test",
 			TitleStatus:   domain.TitleStatusAutoPending,
-			PinnedAt:      &pinnedAt, // replaces legacy `Pinned bool`
+			PinnedAt:      &pinnedAt,
 			LastMessageAt: &lastMsg,
 		}
 		err := repo.Create(ctx, conv)
@@ -330,7 +317,6 @@ func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 		err := repo.Create(ctx, conv)
 		require.NoError(t, err)
 
-		// Verify stored document has project_id: null (present but nil), not missing.
 		var raw bson.M
 		err = db.Collection("conversations").FindOne(ctx, bson.M{"_id": conv.ID}).Decode(&raw)
 		require.NoError(t, err)
@@ -360,7 +346,7 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 			ProjectID:   &origProj,
 			Title:       "Immutable Title",
 			TitleStatus: domain.TitleStatusManual,
-			PinnedAt:    &pinnedAt, // replaces legacy `Pinned bool`
+			PinnedAt:    &pinnedAt,
 		}
 		require.NoError(t, repo.Create(ctx, conv))
 		origUpdatedAt := conv.UpdatedAt
@@ -374,14 +360,12 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, found.ProjectID)
 		assert.Equal(t, "proj-new", *found.ProjectID)
-		// Untouched fields stay the same
 		assert.Equal(t, "Immutable Title", found.Title)
 		assert.Equal(t, domain.TitleStatusManual, found.TitleStatus)
 		require.NotNil(t, found.PinnedAt)
 		assert.WithinDuration(t, pinnedAt, *found.PinnedAt, time.Second)
 		assert.Equal(t, "biz-move-1", found.BusinessID)
 		assert.Equal(t, "user-move-1", found.UserID)
-		// updated_at bumped
 		assert.True(t, found.UpdatedAt.After(origUpdatedAt))
 	})
 
@@ -402,7 +386,6 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, found.ProjectID)
 
-		// Mongo stored explicit null.
 		var raw bson.M
 		err = db.Collection("conversations").FindOne(ctx, bson.M{"_id": conv.ID}).Decode(&raw)
 		require.NoError(t, err)
@@ -454,7 +437,7 @@ func TestUpdateTitleIfPending(t *testing.T) {
 
 	cases := []struct {
 		name            string
-		initialStatus   string // "" means field absent (legacy / null)
+		initialStatus   string
 		wantSuccess     bool
 		wantStatusAfter string
 	}{
@@ -511,11 +494,6 @@ func TestTransitionToAutoPending(t *testing.T) {
 		{"success: status=auto", domain.TitleStatusAuto, true, domain.TitleStatusAutoPending},
 		{"success: status=null/empty (legacy row)", "", true, domain.TitleStatusAutoPending},
 		{"no-op: status=manual (sovereign)", domain.TitleStatusManual, false, domain.TitleStatusManual},
-		// auto_pending is now ALSO accepted (idempotent re-pending). The
-		// handler enforces double-click protection via a 30s grace window
-		// on UpdatedAt; the repo accepts the transition deterministically
-		// so stuck-pending recovery (handler.RegenerateTitle) can bump
-		// updated_at without an ErrConversationNotFound dance.
 		{"success: status=auto_pending (idempotent re-pending)", domain.TitleStatusAutoPending, true, domain.TitleStatusAutoPending},
 	}
 	for _, c := range cases {
@@ -532,8 +510,6 @@ func TestTransitionToAutoPending(t *testing.T) {
 			got, err := repo.GetByID(ctx, id)
 			require.NoError(t, err)
 			assert.Equal(t, c.wantStatusAfter, got.TitleStatus)
-			// Title is never touched by TransitionToAutoPending regardless of
-			// branch — only the status field flips.
 			assert.Equal(t, "seed", got.Title,
 				"TransitionToAutoPending MUST NOT touch title")
 		})
@@ -557,7 +533,6 @@ func TestUpdate_PersistsTitleStatus(t *testing.T) {
 
 	id := insertConvWithStatus(t, db, domain.TitleStatusAutoPending)
 
-	// Simulate the PUT handler: read, mutate Title + TitleStatus, Update.
 	conv, err := repo.GetByID(ctx, id)
 	require.NoError(t, err)
 	conv.Title = "User-Picked Title"
@@ -650,7 +625,6 @@ func TestPin(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound,
 			"defense-in-depth: scope filter must mismatch and return 404, not silently succeed")
 
-		// State must remain unchanged — pinned_at still nil.
 		got, err := repo.GetByID(ctx, id)
 		require.NoError(t, err)
 		assert.Nil(t, got.PinnedAt, "Pin under wrong userID must NOT mutate the doc")
@@ -685,12 +659,10 @@ func TestUnpin(t *testing.T) {
 		id := insertConvForPin(t, db, "biz-3", "user-3")
 		require.NoError(t, repo.Pin(ctx, id, "biz-3", "user-3"))
 
-		// Confirm pinned first.
 		got, err := repo.GetByID(ctx, id)
 		require.NoError(t, err)
 		require.NotNil(t, got.PinnedAt)
 
-		// Unpin.
 		require.NoError(t, repo.Unpin(ctx, id, "biz-3", "user-3"))
 
 		got, err = repo.GetByID(ctx, id)
@@ -705,7 +677,6 @@ func TestUnpin(t *testing.T) {
 		err := repo.Unpin(ctx, id, "biz-4", "user-attacker")
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
 
-		// State must remain pinned.
 		got, err := repo.GetByID(ctx, id)
 		require.NoError(t, err)
 		assert.NotNil(t, got.PinnedAt, "Unpin under wrong userID must NOT mutate the doc")

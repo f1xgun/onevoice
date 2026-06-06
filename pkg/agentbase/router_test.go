@@ -23,8 +23,6 @@ type recordingExec struct {
 func (r *recordingExec) Exec(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	r.calls++
 	if r.resp != nil {
-		// Stamp the TaskID on the recorded response so the caller can assert
-		// it propagated through the dispatch chain.
 		r.resp.TaskID = req.TaskID
 	}
 	return r.resp, r.err
@@ -90,7 +88,6 @@ func TestNewRouter_NilDispatcher_AppliesFallbackClassifier(t *testing.T) {
 		if err == nil {
 			return nil
 		}
-		// Substitute every error with wrappedErr to make the assertion crisp.
 		return wrappedErr
 	}
 	router := agentbase.NewRouter(map[string]agentbase.ToolExec{
@@ -117,7 +114,7 @@ func TestNewRouter_NilDispatcher_NilClassifier_PropagatesErrorUnchanged(t *testi
 func TestNewRouter_NonNilDispatcher_ForwardsThroughDispatch(t *testing.T) {
 	exec := &recordingExec{resp: &a2a.ToolResponse{Success: true}}
 	dispatcher := &stubDispatcher{
-		invokeExec: true, // so the recordingExec actually gets called
+		invokeExec: true,
 	}
 	router := agentbase.NewRouter(map[string]agentbase.ToolExec{
 		"x__post": exec.Exec,
@@ -133,15 +130,10 @@ func TestNewRouter_NonNilDispatcher_ForwardsThroughDispatch(t *testing.T) {
 }
 
 func TestNewRouter_NonNilDispatcher_IgnoresFallbackClassifier(t *testing.T) {
-	// When a dispatcher is present, NewRouter must NOT apply the fallback
-	// classifier — the dispatcher owns its own classifier (configured via
-	// NewDispatcher). Passing one to NewRouter is harmless: it stays unused.
-	// This test guards against accidentally double-wrapping.
 	rawErr := errors.New("transient")
 	exec := &recordingExec{err: rawErr}
 	dispatcher := &stubDispatcher{
 		invokeExec: true,
-		// dispatcher returns rawErr unwrapped (no classifier wired into stub).
 	}
 
 	wrapEverything := func(_ error) error {
@@ -157,9 +149,6 @@ func TestNewRouter_NonNilDispatcher_IgnoresFallbackClassifier(t *testing.T) {
 }
 
 func TestNewRouter_NonNilDispatcher_UnknownToolErrorReachesDispatcher(t *testing.T) {
-	// The unknown-tool error comes from the routeTool callback, which the
-	// dispatcher invokes when invokeExec is true. The dispatcher's own
-	// HITL/classify pipeline runs around it.
 	dispatcher := &stubDispatcher{invokeExec: true}
 	router := agentbase.NewRouter(map[string]agentbase.ToolExec{
 		"x__known": (&recordingExec{resp: &a2a.ToolResponse{Success: true}}).Exec,
@@ -171,20 +160,13 @@ func TestNewRouter_NonNilDispatcher_UnknownToolErrorReachesDispatcher(t *testing
 }
 
 func TestNewRouter_RoutesMapIsCapturedNotShared(t *testing.T) {
-	// Sanity: the routes map is captured at construction time. Adding entries
-	// to the original map after NewRouter is called does NOT change routing.
-	// (Maps are reference types in Go, so this is more an assertion of intent
-	// than a language guarantee — but it documents the contract.)
 	original := map[string]agentbase.ToolExec{
 		"x__a": (&recordingExec{resp: &a2a.ToolResponse{Success: true}}).Exec,
 	}
 	router := agentbase.NewRouter(original, nil, nil)
 
-	// Mutate the source map AFTER construction.
 	original["x__b"] = (&recordingExec{resp: &a2a.ToolResponse{Success: true}}).Exec
 
-	// The router holds a reference to the same map, so x__b is now routable.
-	// Document this contract — callers should not mutate the map post-hoc.
 	resp, err := router(context.Background(), a2a.ToolRequest{Tool: "x__b"})
 	require.NoError(t, err, "routes map is referenced (not copied); mutations after construction take effect")
 	require.NotNil(t, resp)

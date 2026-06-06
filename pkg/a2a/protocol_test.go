@@ -96,8 +96,6 @@ func TestToolRequest_JSONRoundTrip_WithApprovalID(t *testing.T) {
 }
 
 func TestToolRequest_JSONRoundTrip_WithoutApprovalID_IsOmitted(t *testing.T) {
-	// Zero-value ApprovalID must NOT appear in JSON — omitempty invariant.
-	// This protects backward compatibility for auto-floor tool calls which never have an approval_id.
 	req := a2a.ToolRequest{
 		TaskID:     "task-xyz",
 		Tool:       tools.TelegramSendChannelPost,
@@ -112,8 +110,6 @@ func TestToolRequest_JSONRoundTrip_WithoutApprovalID_IsOmitted(t *testing.T) {
 }
 
 func TestToolRequest_Unmarshal_LegacyPayload(t *testing.T) {
-	// A v1.2 orchestrator message with no approval_id field at all.
-	// ApprovalID must decode cleanly to "" (backward-compat invariant).
 	legacy := `{"task_id":"t1","tool":"telegram__send_channel_post","args":{"text":"hi"},"business_id":"biz-1","request_id":"r1"}`
 
 	var req a2a.ToolRequest

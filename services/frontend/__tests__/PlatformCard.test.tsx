@@ -80,9 +80,6 @@ const baseProps = {
 describe('<PlatformCard /> Preview badge', () => {
   afterEach(() => {
     cleanup();
-    // The global setup file resets the locale to `ru` in its own
-    // `afterEach`; explicit local reset documents intent and survives
-    // any future reordering of teardown hooks.
     globalThis.__setTestLocale('ru');
   });
 
@@ -127,9 +124,6 @@ describe('<PlatformCard /> Preview badge', () => {
       </Wrapper>
     );
 
-    // Neither locale's label may surface — `isPreview` defaults to false
-    // and the badge slot must be skipped entirely for the regression
-    // guard to mean anything to first-class integrations.
     expect(screen.queryByText('Предпросмотр')).toBeNull();
     expect(screen.queryByText('Preview')).toBeNull();
   });

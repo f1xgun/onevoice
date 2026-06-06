@@ -152,10 +152,6 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 // names, same task types, same input shapes.
 func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, integ domain.Integration, platImpl any) {
 	if t, ok := platImpl.(TitleSyncer); ok {
-		// Error branch records only channel_id; done branch additionally
-		// records name. displayNameKey lets the FE render localized text
-		// while displayName remains the source-of-truth literal that the
-		// backfill maps to the same key for legacy rows.
 		s.runWithTask(ctx, b, integ, capabilityDispatch{
 			taskType:       "sync_title",
 			displayName:    "Синхронизация названия",
@@ -199,11 +195,6 @@ func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, i
 	}
 	if sch, ok := platImpl.(ScheduleSyncer); ok {
 		hours := scheduleToYandexJSON(b.Settings)
-		// Schedule sync silent-skips when the business has no schedule
-		// configured; preserve that "no noisy AgentTask row" behavior here
-		// at the dispatch layer so SyncSchedule stays a thin verbatim move.
-		// Skip is local to this branch so subsequently-added capabilities
-		// after Schedule are unaffected.
 		if hours != "" {
 			input := map[string]string{"permalink": integ.ExternalID, "hours": hours}
 			s.runWithTask(ctx, b, integ, capabilityDispatch{

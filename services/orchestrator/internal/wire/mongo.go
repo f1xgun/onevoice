@@ -38,10 +38,6 @@ func Mongo(ctx context.Context, log *slog.Logger, cfg *config.Config) (*mongo.Da
 		return nil, nil, fmt.Errorf("wire: mongo connect: %w", err)
 	}
 	if pingErr := client.Ping(dialCtx, nil); pingErr != nil {
-		// Disconnect the half-open client so a ping failure doesn't leak the
-		// underlying socket pool. Use a fresh background ctx
-		// because dialCtx may already be expired or carry the same timeout
-		// that just tripped.
 		_ = client.Disconnect(context.Background())
 		log.Error("orchestrator: mongo ping failed", "uri", cfg.RedactMongoURI(), "error", pingErr)
 		return nil, nil, fmt.Errorf("wire: mongo ping: %w", pingErr)

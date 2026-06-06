@@ -222,9 +222,6 @@ func TestHandler_GetComments(t *testing.T) {
 }
 
 func TestHandler_GetComments_UsesServiceKeyWithoutUserToken(t *testing.T) {
-	// wall.getComments is callable with the Mini-App service key. When an
-	// integration has no user token, we must fall through to the service
-	// key rather than erroring out — getReadClient handles the priority.
 	tokens := &mockTokenFetcher{token: "community-tok", userToken: ""}
 	var capturedToken string
 	vkClient := &mockVKClient{
@@ -254,18 +251,14 @@ func TestHandler_GetComments_UsesServiceKeyWithoutUserToken(t *testing.T) {
 }
 
 func TestHandler_GetComments_NoPostID_WalksPostsWithComments(t *testing.T) {
-	// When post_id is omitted (sync path), the handler must scan recent
-	// posts and gather comments from any with comments.count > 0. The
-	// previous behavior — picking only the latest post — silently dropped
-	// reviews as soon as a newer post (with no comments) appeared.
 	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
 	calls := []int{}
 	vkClient := &mockVKClient{
 		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
 			assert.Equal(t, 20, count)
 			return []map[string]interface{}{
-				{"id": 14, "comments": 0}, // newest, no comments — must skip
-				{"id": 11, "comments": 2}, // older, has comments — must walk
+				{"id": 14, "comments": 0},
+				{"id": 11, "comments": 2},
 				{"id": 9, "comments": 0},
 			}, 3, nil
 		},
@@ -1047,7 +1040,6 @@ func TestReadClient_FallsBackToCommunityToken(t *testing.T) {
 			},
 		}
 	}
-	// No service key set
 	h := agent.NewHandler(tokens, factory, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
@@ -1060,8 +1052,6 @@ func TestReadClient_FallsBackToCommunityToken(t *testing.T) {
 }
 
 func TestWriteClient_AlwaysUsesCommunityToken(t *testing.T) {
-	// Write operations (publishPost, updateGroupInfo, etc.) should always use community token,
-	// even when user token and service key are available.
 	tokens := &mockTokenFetcher{token: "community-tok", userToken: "user-tok", extID: "-123456"}
 	var capturedToken string
 	factory := func(token string) agent.VKClient {
@@ -1082,8 +1072,6 @@ func TestWriteClient_AlwaysUsesCommunityToken(t *testing.T) {
 }
 
 func TestReadClient_ExternalIDFallback(t *testing.T) {
-	// When group_id is empty, getReadClient should use ExternalID from TokenInfo.
-	// getCommunityInfo properly uses the resolved group_id from getReadClient.
 	tokens := &mockTokenFetcher{token: "tok", extID: "-999888"}
 	var capturedGroupID string
 	factory := func(_ string) agent.VKClient {
@@ -1099,14 +1087,13 @@ func TestReadClient_ExternalIDFallback(t *testing.T) {
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       tools.VKGetCommunityInfo,
 		BusinessID: "biz-1",
-		Args:       map[string]interface{}{}, // no group_id — should resolve from ExternalID
+		Args:       map[string]interface{}{},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "-999888", capturedGroupID, "should resolve group_id from TokenInfo.ExternalID")
 }
 
 func TestGetComments_UsesResolvedGroupID(t *testing.T) {
-	// getComments now requires a user OAuth token for wall.getComments.
 	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok", extID: "999888"}
 	var capturedGroupID string
 	factory := func(_ string) agent.VKClient {
@@ -1122,7 +1109,7 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       tools.VKGetComments,
 		BusinessID: "biz-1",
-		Args:       map[string]interface{}{"post_id": float64(1)}, // provide post_id to skip auto-fetch
+		Args:       map[string]interface{}{"post_id": float64(1)},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "-999888", capturedGroupID, "getComments should use resolved groupID with negative sign")

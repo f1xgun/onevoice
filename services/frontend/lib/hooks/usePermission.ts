@@ -28,13 +28,7 @@ export function usePermission(perm: string): PermissionResult {
     enabled: !!activeBusinessId,
     staleTime: PERM_REFRESH_INTERVAL_MS,
     refetchInterval: PERM_REFRESH_INTERVAL_MS,
-    // Only poll while the tab is foreground; the focus-refetch picks up
-    // changes when the user returns.
     refetchIntervalInBackground: false,
-    // `retry: 1` is intentional fail-closed posture: brief network blips
-    // recover, but a hard 5xx surfaces as `{allowed: false, isLoading: false}`
-    // rather than masking the failure. Tuning higher would just amplify log
-    // noise during real outages.
     retry: 1,
   });
   if (isLoading) return { allowed: false, isLoading: true };

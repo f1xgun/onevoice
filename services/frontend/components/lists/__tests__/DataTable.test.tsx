@@ -47,7 +47,6 @@ describe('DataTable', () => {
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText('Bravo')).toBeInTheDocument();
     expect(screen.getByText('Charlie')).toBeInTheDocument();
-    // Three status values render too — distinct strings, no collisions.
     expect(screen.getByText('published')).toBeInTheDocument();
     expect(screen.getByText('scheduled')).toBeInTheDocument();
     expect(screen.getByText('error')).toBeInTheDocument();
@@ -63,7 +62,6 @@ describe('DataTable', () => {
         isLoading
       />
     );
-    // Skeleton uses data-state="static" (per components/ui/skeleton.tsx).
     const skeletons = container.querySelectorAll('[data-state="static"]');
     expect(skeletons.length).toBeGreaterThan(0);
   });
@@ -120,14 +118,11 @@ describe('DataTable', () => {
       />
     );
 
-    // Initially collapsed — expanded body not rendered.
     expect(screen.queryByText('Expanded for Alpha')).not.toBeInTheDocument();
 
-    // Click the row button (any text inside is enough; the button wraps the row).
     await user.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('Expanded for Alpha')).toBeInTheDocument();
 
-    // Click again to collapse.
     await user.click(screen.getByRole('button', { expanded: true }));
     expect(screen.queryByText('Expanded for Alpha')).not.toBeInTheDocument();
   });
@@ -141,7 +136,6 @@ describe('DataTable', () => {
         gridTemplate="1fr 140px"
       />
     );
-    // No buttons exist in this rendering — the row is a plain div.
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
@@ -154,7 +148,6 @@ describe('DataTable', () => {
         gridTemplate="1fr 140px"
       />
     );
-    // Re-render with the same rowKey output and same data — content remains.
     rerender(
       <DataTable<Row>
         columns={baseColumns}

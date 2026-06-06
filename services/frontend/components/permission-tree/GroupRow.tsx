@@ -68,11 +68,8 @@ export function handleGroupToggle(
   if (currentState === 'checked') {
     enabledKeys.forEach((k) => next.delete(k));
   } else {
-    // 'unchecked' or 'indeterminate' → fill in every enabled leaf.
     enabledKeys.forEach((k) => next.add(k));
   }
-  // Actor-disabled leaves (those NOT in enabledKeys) stay untouched — that's
-  // the invariant the backend relies on for the escalation-subset check.
   onChange(Array.from(next));
 }
 

@@ -122,9 +122,7 @@ describe('"Обновить заголовок" menu item visibility', () => {
   it("is visible when titleStatus === 'auto'", async () => {
     const user = userEvent.setup();
     renderItem({ ...baseAuto, titleStatus: 'auto' });
-    // Open kebab.
     await user.click(screen.getByRole('button', { name: /Меню чата/ }));
-    // Item rendered with verbatim Russian label.
     expect(await screen.findByText('Обновить заголовок')).toBeInTheDocument();
   });
 
@@ -139,10 +137,7 @@ describe('"Обновить заголовок" menu item visibility', () => {
     const user = userEvent.setup();
     renderItem({ ...baseAuto, titleStatus: 'manual', title: 'My manual title' });
     await user.click(screen.getByRole('button', { name: /Меню чата/ }));
-    // Wait for the dropdown to render so the absence assertion is meaningful:
-    // 'Переименовать' is a sibling item that renders unconditionally.
     expect(await screen.findByText('Переименовать')).toBeInTheDocument();
-    // Now confirm the regen item is NOT in the DOM.
     expect(screen.queryByText('Обновить заголовок')).not.toBeInTheDocument();
   });
 
@@ -168,7 +163,6 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
   });
 
   it('toasts the verbatim Russian body when server returns 409 title_is_manual', async () => {
-    // bizApi().get → returns the conversations list on mount.
     bizApiGet.mockResolvedValue({
       data: [
         {
@@ -181,8 +175,6 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
       ],
     });
 
-    // bizApi().post → rejects with the locked Russian body for the
-    // regenerate-title call; resolves successfully for any create-conversation call.
     bizApiPost.mockRejectedValueOnce({
       isAxiosError: true,
       response: {
@@ -202,12 +194,8 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
       </Wrapper>
     );
 
-    // Wait for the row.
     await screen.findByText('Some auto title');
 
-    // Open the kebab — the trigger button is the only icon-only button next
-    // to the row content. We locate it via getAllByRole('button') and pick
-    // the unnamed (icon-only) trigger.
     const buttons = screen.getAllByRole('button');
     const trigger = buttons.find((b) => b.getAttribute('aria-haspopup') === 'menu');
     expect(trigger).toBeDefined();
@@ -216,7 +204,6 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
     const item = await screen.findByText('Обновить заголовок');
     await user.click(item);
 
-    // The toast renders the verbatim Russian copy in the DOM.
     await waitFor(
       async () => {
         expect(

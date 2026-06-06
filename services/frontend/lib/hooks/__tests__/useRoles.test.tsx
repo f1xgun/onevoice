@@ -50,7 +50,6 @@ describe('useRoles', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([fakeRole]);
     expect(mockedListRoles).toHaveBeenCalledWith('biz-1');
-    // Confirm the entry landed at the expected key
     expect(qc.getQueryData(QUERY_KEYS.ROLES('biz-1'))).toEqual([fakeRole]);
   });
 

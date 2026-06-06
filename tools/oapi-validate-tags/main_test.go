@@ -110,10 +110,7 @@ func TestBuildValidateTag(t *testing.T) {
 			name:     "nullable_required_skips_required",
 			snippet:  "type: string\nnullable: true\nformat: email\n",
 			required: true,
-			// nullable+required: validator on pointer field — required is
-			// effectively presence-of-pointer, but we model this as
-			// optional because nullable allows JSON null.
-			want: "omitempty,email",
+			want:     "omitempty,email",
 		},
 	}
 	for _, tc := range cases {

@@ -26,7 +26,6 @@ func TestBrowserPool_ContextReuse(t *testing.T) {
 	pc.touch()
 	pool.contexts.Store("biz-1", pc)
 
-	// Load should find the same entry
 	val, ok := pool.contexts.Load("biz-1")
 	if !ok {
 		t.Fatal("expected context to be found in pool")
@@ -86,7 +85,6 @@ func TestBrowserPool_EvictContext_NonExistent(t *testing.T) {
 	}
 	defer close(pool.stopEvict)
 
-	// Should not panic
 	pool.EvictContext("nonexistent")
 }
 
@@ -102,7 +100,7 @@ func TestBrowserPool_Close_SetsClosedFlag(t *testing.T) {
 func TestBrowserPool_Close_Idempotent(t *testing.T) {
 	pool := NewBrowserPool()
 	pool.Close()
-	pool.Close() // Should not panic
+	pool.Close()
 }
 
 func TestBrowserPool_Close_EvictsAllContexts(t *testing.T) {
@@ -164,11 +162,6 @@ func TestNormalizeWhitespace(t *testing.T) {
 			want: "Москва, ул. Тверская, 1",
 		},
 		{
-			// Reproduction of garbage seen in chat 69f19ad5b793d06ad276d3a8 — when the
-			// old broad selector matched the service-area tab widget. We assert the
-			// helper only collapses whitespace; the real fix is the narrowed selector
-			// in GetInfo, but if such garbage ever reaches us again we still want
-			// readable text rather than embedded newlines.
 			name: "service-area tab garbage stays single-line",
 			in:   "По регионамВокруг точкиРегионыМосква\n \n \n \n",
 			want: "По регионамВокруг точкиРегионыМосква",
@@ -221,7 +214,6 @@ func (m *recordingMockContext) AddCookies(_ []playwright.OptionalCookie) error {
 // can assert on their close state afterwards.
 func newCappedPool(t *testing.T, maxCtx int) (*BrowserPool, *[]*recordingMockContext) {
 	t.Helper()
-	// Reset metrics so per-test assertions are not polluted by sibling tests.
 	metrics.BrowserPoolEvictions.Reset()
 	metrics.BrowserPoolContexts.Set(0)
 
@@ -261,7 +253,6 @@ func TestBrowserPool_CapEviction_BeyondCap_EvictsLRU(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire biz-A: %v", err)
 	}
-	// Make biz-A older than biz-B so the LRU victim is unambiguous.
 	pcA.lastUsed.Store(time.Now().Add(-2 * time.Second).UnixMilli())
 
 	pcB, err := acquire(t, pool, "biz-B")
@@ -303,12 +294,9 @@ func TestBrowserPool_CapEviction_SkipsBusy_WaitsForFree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire biz-B: %v", err)
 	}
-	// Mark both busy — eviction must skip them.
 	pcA.busy.Store(true)
 	pcB.busy.Store(true)
 
-	// Free one slot after a short delay; the acquire goroutine should pick up
-	// the slot via waitForNonBusy and succeed within ~ a few poll intervals.
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		pcA.busy.Store(false)
@@ -347,7 +335,6 @@ func TestBrowserPool_CapEviction_TimeoutReturnsExhausted(t *testing.T) {
 	}
 	pcA.busy.Store(true)
 
-	// Use a short caller-side deadline so we don't wait the full 30s.
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
@@ -372,7 +359,6 @@ func TestBrowserPool_CapEviction_DoesNotEvictRequestedBusiness(t *testing.T) {
 
 	before := testutil.ToFloat64(metrics.BrowserPoolEvictions.WithLabelValues("lru"))
 
-	// Re-acquiring an existing businessID must NOT trigger eviction.
 	if _, err := acquire(t, pool, "biz-A"); err != nil {
 		t.Fatalf("re-acquire biz-A: %v", err)
 	}
@@ -396,14 +382,11 @@ func TestBrowserPool_IdleEviction_StillWorks(t *testing.T) {
 	for _, id := range []string{"biz-1", "biz-2", "biz-3"} {
 		mockCtx := &mockBrowserContext{}
 		pc := &pooledContext{cookies: "[]", ctx: mockCtx}
-		// Pre-age the timestamp so the idle check fires immediately.
 		pc.lastUsed.Store(time.Now().Add(-1 * time.Second).UnixMilli())
 		pool.contexts.Store(id, pc)
 		metrics.BrowserPoolContexts.Inc()
 	}
 
-	// Reproduce the evictLoop body inline so the test does not have to wait
-	// for the 1-minute ticker.
 	now := time.Now().UnixMilli()
 	pool.contexts.Range(func(key, value any) bool {
 		pc := value.(*pooledContext)
@@ -439,8 +422,6 @@ func TestBrowserPool_CapEviction_CloseRunsAsync(t *testing.T) {
 	}
 	pcA.lastUsed.Store(time.Now().Add(-2 * time.Second).UnixMilli())
 
-	// Make the underlying Close slow so the test can observe that the
-	// acquire path returns BEFORE the close completes.
 	mc := (*ctxs)[0]
 	mc.closeDelay = 200 * time.Millisecond
 
@@ -457,7 +438,6 @@ func TestBrowserPool_CapEviction_CloseRunsAsync(t *testing.T) {
 		t.Fatalf("expected biz-A Close still pending at this moment; got closed already")
 	}
 
-	// Now wait long enough for the async close to finish.
 	time.Sleep(300 * time.Millisecond)
 	if !mc.closeCalled.Load() {
 		t.Fatalf("expected biz-A Close to have completed after async wait")

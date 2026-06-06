@@ -74,7 +74,6 @@ func TestAuth_ValidToken(t *testing.T) {
 
 func TestAuth_MissingAuthorizationHeader(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
-	// No Authorization header
 
 	rr := httptest.NewRecorder()
 
@@ -133,7 +132,6 @@ func TestAuth_InvalidTokenSignature(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	// Use different secret to cause signature validation failure
 	wrongSecret := []byte("wrong-secret-key")
 	handler := Auth(wrongSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("handler should not be called")
@@ -150,7 +148,6 @@ func TestAuth_InvalidTokenSignature(t *testing.T) {
 
 func TestAuth_ExpiredToken(t *testing.T) {
 	userID := uuid.New()
-	// Create token that expired 1 hour ago
 	token := createTestToken(userID, "test@example.com", -1*time.Hour)
 
 	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
@@ -320,7 +317,6 @@ func TestAuth_WrongSigningMethod(t *testing.T) {
 		},
 	}
 
-	// Sign with HS384 instead of HS256
 	token := jwt.NewWithClaims(jwt.SigningMethodHS384, claims)
 	tokenString, err := token.SignedString(testJWTSecret)
 	require.NoError(t, err)
@@ -406,9 +402,6 @@ func TestAuth_WrongAudience(t *testing.T) {
 }
 
 func TestAuth_NoneAlgorithm(t *testing.T) {
-	// Manually construct an unsigned JWT (alg: none)
-	// Header: {"alg":"none","typ":"JWT"}
-	// Claims: valid-looking claims with correct issuer/audience
 	header := base64RawURL([]byte(`{"alg":"none","typ":"JWT"}`))
 	payload := base64RawURL([]byte(`{"user_id":"` + uuid.New().String() + `","email":"test@example.com","iss":"` + auth.TokenIssuer + `","aud":["` + auth.TokenAudience + `"],"exp":` + fmt.Sprintf("%d", time.Now().Add(15*time.Minute).Unix()) + `}`))
 	tokenString := header + "." + payload + "."

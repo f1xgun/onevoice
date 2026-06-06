@@ -91,7 +91,7 @@ func (m *mockIntegrationRepository) Delete(ctx context.Context, id uuid.UUID) er
 // testEncryptor creates a test encryptor with a 32-byte key
 func testEncryptor(t *testing.T) *crypto.Encryptor {
 	t.Helper()
-	testKey := []byte("12345678901234567890123456789012") // 32 bytes
+	testKey := []byte("12345678901234567890123456789012")
 	enc, err := crypto.NewEncryptor(testKey)
 	require.NoError(t, err)
 	return enc
@@ -411,17 +411,14 @@ func TestConnect_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// Verify the token stored in repo is encrypted (not plaintext)
 	require.NotNil(t, capturedIntegration)
 	assert.NotEqual(t, []byte(plaintext), capturedIntegration.EncryptedAccessToken)
 	assert.NotEmpty(t, capturedIntegration.EncryptedAccessToken)
 
-	// Verify we can decrypt it back to the original plaintext
 	decrypted, err := enc.Decrypt(capturedIntegration.EncryptedAccessToken)
 	require.NoError(t, err)
 	assert.Equal(t, plaintext, string(decrypted))
 
-	// Verify returned integration fields
 	assert.Equal(t, "telegram", result.Platform)
 	assert.Equal(t, "ext_telegram_123", result.ExternalID)
 	assert.Equal(t, "active", result.Status)
@@ -497,7 +494,6 @@ func TestGetDecryptedToken_Success(t *testing.T) {
 	externalID := "vk_user_999"
 	plaintext := "plaintext_access_token"
 
-	// Encrypt the token as it would be stored
 	encryptedToken, err := enc.Encrypt([]byte(plaintext))
 	require.NoError(t, err)
 
@@ -556,7 +552,6 @@ func TestGetDecryptedToken_Expired(t *testing.T) {
 	platform := "vk"
 	externalID := "vk_user_expired"
 
-	// Token expired in the past, no refresh token
 	past := time.Now().Add(-1 * time.Hour)
 	integration := &domain.Integration{
 		ID:                    uuid.New(),
@@ -690,7 +685,6 @@ func TestGetDecryptedToken_RefreshesExpiredGoogleToken(t *testing.T) {
 			return integration, nil
 		},
 		getByIDFunc: func(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
-			// Return the same expired integration for double-check after lock
 			return integration, nil
 		},
 		updateFunc: func(ctx context.Context, i *domain.Integration) error {
@@ -714,13 +708,11 @@ func TestGetDecryptedToken_RefreshesExpiredGoogleToken(t *testing.T) {
 	assert.Equal(t, newAccess, resp.AccessToken)
 	assert.Equal(t, 1, refresher.callCount)
 
-	// Verify tokens were persisted
 	require.NotNil(t, updatedIntegration)
 	decAccess, err := enc.Decrypt(updatedIntegration.EncryptedAccessToken)
 	require.NoError(t, err)
 	assert.Equal(t, newAccess, string(decAccess))
 
-	// Verify expiry was updated
 	require.NotNil(t, updatedIntegration.TokenExpiresAt)
 	assert.True(t, updatedIntegration.TokenExpiresAt.After(time.Now()))
 }
@@ -780,7 +772,6 @@ func TestGetDecryptedToken_RefreshRotatesRefreshToken(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, newAccess, resp.AccessToken)
 
-	// Verify rotated refresh token was persisted
 	require.NotNil(t, updatedIntegration)
 	decRefresh, err := enc.Decrypt(updatedIntegration.EncryptedRefreshToken)
 	require.NoError(t, err)
@@ -816,7 +807,6 @@ func TestGetDecryptedToken_ExpiredNoRefresher_ReturnsError(t *testing.T) {
 		},
 	}
 
-	// nil refresher
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
 
@@ -838,7 +828,7 @@ func TestGetDecryptedToken_ExpiredNoRefreshToken_ReturnsError(t *testing.T) {
 		ExternalID:            "loc/1",
 		Status:                "active",
 		EncryptedAccessToken:  []byte("some_encrypted_bytes"),
-		EncryptedRefreshToken: nil, // no refresh token
+		EncryptedRefreshToken: nil,
 		TokenExpiresAt:        &past,
 	}
 
@@ -911,7 +901,6 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 
 	past := time.Now().Add(-1 * time.Hour)
 
-	// After first refresh, return updated integration from DB
 	refreshed := false
 	newEncAccess, _ := enc.Encrypt([]byte(newAccess))
 	future := time.Now().Add(1 * time.Hour)
@@ -931,7 +920,6 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 		},
 		getByIDFunc: func(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
 			if refreshed {
-				// Second concurrent call sees already-refreshed token
 				return &domain.Integration{
 					ID:                    integrationID,
 					BusinessID:            businessID,
@@ -968,7 +956,6 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 
-	// Make two sequential calls (serialized by mutex)
 	resp1, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
 	require.NoError(t, err)
 	assert.Equal(t, newAccess, resp1.AccessToken)
@@ -977,6 +964,5 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, newAccess, resp2.AccessToken)
 
-	// Only one actual refresh should have happened (second call sees fresh token after re-read)
 	assert.Equal(t, 1, refresher.callCount, "should only refresh once due to mutex + double-check")
 }

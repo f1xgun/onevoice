@@ -96,8 +96,6 @@ func TestTokenResolver_GetToken_EmptyExternalID_Propagates(t *testing.T) {
 
 	assert.Equal(t, "", receivedExternalID, "empty externalID must reach upstream as empty")
 	assert.Equal(t, "fallback-token", got.AccessToken)
-	// The server's resolved externalID flows back to the caller — same semantic
-	// the API's GetDecryptedToken honors.
 	assert.Equal(t, "resolved-by-server", got.ExternalID)
 }
 
@@ -106,7 +104,6 @@ func TestTokenResolver_GetToken_EmptyExternalID_Propagates(t *testing.T) {
 // empty UserToken in the returned TokenInfo. Consumers treat empty as absent.
 func TestTokenResolver_GetToken_NoUserToken_LeavesEmpty(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Telegram-style response — UserToken omitted (json:"omitempty").
 		require.NoError(t, json.NewEncoder(w).Encode(&tokenclient.TokenResponse{
 			AccessToken: "bot-token",
 			ExternalID:  "channel-1001",
@@ -154,7 +151,6 @@ func TestWrapTokenFetchError(t *testing.T) {
 	})
 
 	t.Run("transient_stays_retryable", func(t *testing.T) {
-		// Simulate the call-site pattern: outer wrap preserves sentinel chain.
 		ctx := fmt.Errorf("fetch token: %w", tokenclient.ErrTransient)
 		out := agentbase.WrapTokenFetchError(ctx)
 		require.Error(t, out)
@@ -183,8 +179,6 @@ func TestWrapTokenFetchError(t *testing.T) {
 	})
 
 	t.Run("unclassified_marks_non_retryable", func(t *testing.T) {
-		// 4xx-other-than-404/410 surfaces without a sentinel chain — likely
-		// a request-shape bug. Default is NonRetryable.
 		out := agentbase.WrapTokenFetchError(errors.New("tokenclient: unexpected status 400"))
 		require.Error(t, out)
 		assert.True(t, errors.Is(out, &a2a.NonRetryableError{}),

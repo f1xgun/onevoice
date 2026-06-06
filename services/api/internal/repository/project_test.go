@@ -31,9 +31,6 @@ func newTestProjectRepoPG(t *testing.T) (*projectRepository, pgxmock.PgxPoolIfac
 	repo := &projectRepository{
 		pool: mockPool,
 		sb:   newStatementBuilder(),
-		// convColl / msgColl left nil — tests that hit Mongo are handled
-		// by TestProjectRepository_MongoCascade below, which uses a real
-		// Mongo instance and skips cleanly when unavailable.
 	}
 	return repo, mockPool
 }
@@ -53,24 +50,19 @@ func TestProjectRepository_Create(t *testing.T) {
 			QuickActions:  []string{},
 		}
 
-		// Squirrel serializes uuid.UUID to string via Stringer before passing
-		// to pgx; pgxmock sees a string, not the original uuid.UUID. Use
-		// AnyArg() for every value to avoid driver-specific conversions.
-		// approval_overrides JSONB column is inserted between allowed_tools
-		// and quick_actions — 11 args total.
 		mockPool.ExpectExec(`INSERT INTO projects`).
 			WithArgs(
-				pgxmock.AnyArg(), // id
-				pgxmock.AnyArg(), // business_id (serialized as string)
+				pgxmock.AnyArg(),
+				pgxmock.AnyArg(),
 				"Reviews",
 				"",
 				"",
 				"inherit",
 				[]string{},
-				pgxmock.AnyArg(), // approval_overrides JSONB
+				pgxmock.AnyArg(),
 				[]string{},
-				pgxmock.AnyArg(), // created_at
-				pgxmock.AnyArg(), // updated_at
+				pgxmock.AnyArg(),
+				pgxmock.AnyArg(),
 			).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -120,7 +112,6 @@ func TestProjectRepository_GetByID(t *testing.T) {
 			"explicit", []string{tools.TelegramSendChannelPost}, "{}", []string{"Reply nicely"},
 			now, now)
 
-		// squirrel/pgx convert uuid.UUID to string via Stringer — match with AnyArg.
 		mockPool.ExpectQuery(`SELECT .+ FROM projects WHERE`).
 			WithArgs(pgxmock.AnyArg()).
 			WillReturnRows(rows)
@@ -212,9 +203,6 @@ func TestProjectRepository_Update(t *testing.T) {
 			QuickActions:  []string{"quick"},
 		}
 
-		// UPDATE has 9 bound arguments (name, description, system_prompt,
-		// whitelist_mode, allowed_tools, approval_overrides, quick_actions,
-		// updated_at, id).
 		mockPool.ExpectExec(`UPDATE projects SET`).
 			WithArgs(
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
@@ -294,8 +282,6 @@ func setupMongoTestDBForProject(t *testing.T) *mongo.Database {
 		mongoURI = "mongodb://localhost:27017"
 	}
 
-	// Short timeouts so CI without Mongo skips fast (see conversation_test.go
-	// setupMongoTestDB rationale).
 	clientOpts := options.Client().
 		ApplyURI(mongoURI).
 		SetServerSelectionTimeout(2 * time.Second).
@@ -331,7 +317,6 @@ func TestProjectRepository_CountConversationsByID(t *testing.T) {
 	projectID := uuid.New()
 	otherProjectID := uuid.New()
 
-	// Seed 3 conversations for our project + 1 for a different project.
 	convColl := db.Collection("conversations")
 	_, err := convColl.InsertMany(ctx, []any{
 		bson.M{"_id": "c1", "project_id": projectID.String()},
@@ -342,7 +327,7 @@ func TestProjectRepository_CountConversationsByID(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &projectRepository{
-		pool:     nil, // not exercised
+		pool:     nil,
 		sb:       newStatementBuilder(),
 		convColl: convColl,
 		msgColl:  db.Collection("messages"),
@@ -369,7 +354,6 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 	convColl := db.Collection("conversations")
 	msgColl := db.Collection("messages")
 
-	// Seed 2 conversations for the project + 1 for a different project.
 	_, err := convColl.InsertMany(ctx, []any{
 		bson.M{"_id": "c1", "project_id": projectID.String()},
 		bson.M{"_id": "c2", "project_id": projectID.String()},
@@ -377,7 +361,6 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Seed 4 messages across the project's conversations + 1 for the other project.
 	_, err = msgColl.InsertMany(ctx, []any{
 		bson.M{"_id": "m1", "conversation_id": "c1"},
 		bson.M{"_id": "m2", "conversation_id": "c1"},
@@ -387,7 +370,6 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Mock pool: expect the final Postgres delete.
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	mockPool.ExpectExec(`DELETE FROM projects WHERE`).
@@ -407,7 +389,6 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 	assert.Equal(t, 4, deletedMessages)
 	require.NoError(t, mockPool.ExpectationsWereMet())
 
-	// Verify other-project conversation/message untouched.
 	otherConvCount, err := convColl.CountDocuments(ctx, bson.M{"project_id": otherProjectID.String()})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), otherConvCount)

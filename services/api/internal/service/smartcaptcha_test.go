@@ -15,7 +15,6 @@ import (
 )
 
 func TestYandexSmartCaptcha_OK(t *testing.T) {
-	// Stub returns the documented success shape — Verify must return nil.
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok","message":"","host":"localhost"}`))
 	}))
@@ -27,7 +26,6 @@ func TestYandexSmartCaptcha_OK(t *testing.T) {
 }
 
 func TestYandexSmartCaptcha_Failed(t *testing.T) {
-	// Status != "ok" → ErrCaptchaInvalid wrapping the upstream message.
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"failed","message":"invalid token"}`))
 	}))
@@ -40,10 +38,6 @@ func TestYandexSmartCaptcha_Failed(t *testing.T) {
 }
 
 func TestYandexSmartCaptcha_NetworkError(t *testing.T) {
-	// Stub started then immediately closed → dial fails → ErrCaptchaTransient.
-	// The handler's fail-open path hinges on the caller distinguishing
-	// transient from invalid; we MUST surface ErrCaptchaTransient here,
-	// not ErrCaptchaInvalid.
 	stub := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := stub.URL
 	stub.Close()
@@ -55,9 +49,6 @@ func TestYandexSmartCaptcha_NetworkError(t *testing.T) {
 }
 
 func TestYandexSmartCaptcha_BodyShape(t *testing.T) {
-	// Asserts the contract Yandex documents: application/x-www-form-urlencoded
-	// body containing secret + token + ip. Without this test a future refactor
-	// could silently switch to JSON and break verification.
 	var (
 		gotMethod      string
 		gotContentType string
@@ -83,8 +74,6 @@ func TestYandexSmartCaptcha_BodyShape(t *testing.T) {
 }
 
 func TestYandexSmartCaptcha_OmitsIPWhenEmpty(t *testing.T) {
-	// clientIP="" → the "ip" form field is omitted entirely. Yandex docs
-	// state ip is optional; sending ip="" would be a protocol oddity.
 	var gotForm url.Values
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -101,8 +90,6 @@ func TestYandexSmartCaptcha_OmitsIPWhenEmpty(t *testing.T) {
 }
 
 func TestYandexSmartCaptcha_GarbageResponse_Transient(t *testing.T) {
-	// Non-JSON response → ErrCaptchaTransient (not ErrCaptchaInvalid).
-	// Same fail-open reasoning as TestYandexSmartCaptcha_NetworkError.
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("<html><body>500</body></html>"))
 	}))

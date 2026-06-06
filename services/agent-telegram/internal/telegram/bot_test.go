@@ -17,7 +17,6 @@ import (
 func newMockTelegramServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Handle getMe (called during BotAPI initialization)
 		if strings.HasSuffix(r.URL.Path, "/getMe") {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -98,7 +97,6 @@ func TestSendMessage_APIError(t *testing.T) {
 }
 
 func TestSendPhoto_Success(t *testing.T) {
-	// Photo server that serves an image
 	photoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		_, _ = w.Write([]byte("fake-jpeg-data"))
@@ -125,7 +123,6 @@ func TestSendPhoto_Success(t *testing.T) {
 
 	bot := newTestBot(t, srv)
 
-	// Override the package-level photoHTTPClient for testing
 	origClient := photoHTTPClient
 	photoHTTPClient = photoSrv.Client()
 	t.Cleanup(func() { photoHTTPClient = origClient })
@@ -138,7 +135,6 @@ func TestSendPhoto_Success(t *testing.T) {
 }
 
 func TestSendPhoto_DownloadFails(t *testing.T) {
-	// Photo server that returns 404
 	photoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -176,7 +172,6 @@ func TestSendPhoto_InvalidURL(t *testing.T) {
 
 func TestSendMessage_EmptyText(t *testing.T) {
 	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
-		// Telegram API rejects empty messages
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":          false,

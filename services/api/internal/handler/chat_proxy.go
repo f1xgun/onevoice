@@ -109,7 +109,6 @@ func NewChatProxyHandler(
 		panic("NewChatProxyHandler: pendingRepo cannot be nil")
 	}
 	if orchClient == nil {
-		// Tests pass nil; no-op client keeps the SSE path's unavailable branch clean.
 		orchClient = orchestratorclient.New("", http.DefaultClient)
 	}
 	var titlerImpl chatturn.Titler
@@ -149,19 +148,11 @@ func (a titlerAdapter) GenerateAndSave(ctx context.Context, businessID, conversa
 // Chat handles POST /chat/{conversationID}; delegates lifecycle to Turn.Run
 // and maps TurnOutcome → HTTP. See docs/api/handlers/chat-proxy.md.
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Chat", authz.PermContentCreate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Chat: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentCreate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
-	// Acquire BEFORE any SSE header write so a rejection is a JSON 429,
-	// never a half-stream. release() is idempotent.
 	if h.sseCounter != nil {
 		tier := h.defaultTier
 		if tier == "" {
@@ -182,9 +173,6 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		headerBatch = r.URL.Query().Get("batch_id")
 	}
 
-	// Explicit-resume calls reuse the persisted user message → skip decode.
-	// Fresh calls decode unconditionally so an empty Message still reaches
-	// Turn.Run's gate (inline-error / re-emit-approval branches).
 	var body openapi.ChatTurnRequest
 	if headerBatch == "" {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -212,13 +200,10 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	case chatturn.OutcomeOrchestratorUnavailable:
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
 	case chatturn.OutcomeError:
-		// Bytes may already be on the wire — log only, do not overwrite.
 		if err != nil {
 			slog.ErrorContext(r.Context(), "chat turn errored", "error", err)
 		}
 	default:
-		// SSE bytes already committed for OutcomeDone / PauseHITL /
-		// RejoinedResume / ReemittedApproval / InlineError — nothing to do.
 	}
 }
 

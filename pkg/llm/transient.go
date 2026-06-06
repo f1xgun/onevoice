@@ -33,11 +33,6 @@ func isTransientLLMError(err error) bool {
 		return false
 	}
 	var netErr net.Error
-	// Temporary() is deprecated upstream but remains the only signal for
-	// non-timeout transient transport errors (connection reset, refused).
-	// Keeping it preserves coverage of those classes without forcing a
-	// substring-based fallback.
-	//
 	//nolint:staticcheck // SA1019: net.Error.Temporary() still useful for retry classification.
 	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
 		return true

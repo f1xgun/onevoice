@@ -27,11 +27,7 @@ export function SkeletonMetricStrip({ count = 4, className }: SkeletonMetricStri
       role="status"
       aria-label={tSkeleton('metricStrip')}
       aria-busy="true"
-      className={cn(
-        // Mirrors mock-posts.jsx StatCard grid (2 cols on mobile, 4 on md).
-        'grid grid-cols-2 gap-3 md:grid-cols-4',
-        className
-      )}
+      className={cn('grid grid-cols-2 gap-3 md:grid-cols-4', className)}
       style={{
         gridTemplateColumns:
           count <= DEFAULT_GRID_TRACK_COUNT ? undefined : `repeat(${count}, minmax(0, 1fr))`,

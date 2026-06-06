@@ -37,15 +37,15 @@ type (
 func EmailVerificationErrorStatus(code string) int {
 	switch code {
 	case "email_verification_required":
-		return http.StatusPreconditionFailed // 412
+		return http.StatusPreconditionFailed
 	case "verify_token_invalid", "verify_token_expired":
-		return http.StatusBadRequest // 400
+		return http.StatusBadRequest
 	case "verify_resend_throttled":
-		return http.StatusTooManyRequests // 429
+		return http.StatusTooManyRequests
 	case "email_already_verified":
-		return http.StatusForbidden // 403
+		return http.StatusForbidden
 	case "email_taken":
-		return http.StatusConflict // 409
+		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
 	}
@@ -159,7 +159,6 @@ func writeInvitationStateError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvitationAccepted):
 		writeJSON(w, http.StatusGone, newInvitationGone("accepted"))
 	case errors.Is(err, domain.ErrInvitationNotFound):
-		// Token-existence enumeration defense: uniform 410 with reason "unknown".
 		writeJSON(w, http.StatusGone, newInvitationGone("unknown"))
 	case errors.Is(err, domain.ErrAlreadyMember):
 		writeJSONError(w, http.StatusConflict, "already_member")

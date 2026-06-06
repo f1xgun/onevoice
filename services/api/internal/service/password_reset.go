@@ -4,9 +4,7 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -96,7 +94,6 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 	user, err := s.userRepo.GetByEmail(ctx, emailAddr)
 	switch {
 	case errors.Is(err, domain.ErrUserNotFound):
-		// Symmetric-load branch: dummy audit row keeps DB write cost constant.
 		s.audit(ctx, audit.ActionPasswordResetUnknownEmail, nil, map[string]any{
 			"attempted_email": emailAddr,
 			"ip":              clientIP,
@@ -123,8 +120,8 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		return nil
 	}
 
-	rawToken := make([]byte, resetTokenEntropyBytes)
-	if _, err := rand.Read(rawToken); err != nil {
+	plaintext, hash, err := generateOpaqueToken()
+	if err != nil {
 		slog.ErrorContext(ctx, "password reset: rand.Read failed", "error", err)
 		s.audit(ctx, audit.ActionPasswordResetRequested, &user.ID, map[string]any{
 			"ip":         clientIP,
@@ -133,8 +130,6 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		})
 		return nil
 	}
-	plaintext := base64.RawURLEncoding.EncodeToString(rawToken)
-	hash := sha256.Sum256([]byte(plaintext))
 	expiresAt := time.Now().Add(resetTokenTTL)
 
 	tx, err := s.pool.Begin(ctx)
@@ -148,7 +143,7 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		slog.ErrorContext(ctx, "password reset: invalidate prior tokens", "error", err)
 		return nil
 	}
-	if err := s.tokenRepo.Insert(ctx, tx, user.ID, hash[:], expiresAt); err != nil {
+	if err := s.tokenRepo.Insert(ctx, tx, user.ID, hash, expiresAt); err != nil {
 		slog.ErrorContext(ctx, "password reset: insert token", "error", err)
 		return nil
 	}
@@ -209,14 +204,10 @@ func (s *PasswordResetService) ConfirmReset(ctx context.Context, plaintextToken,
 		return fmt.Errorf("password reset: tx commit: %w", err)
 	}
 
-	// Best-effort post-commit wipe: errors here do not poison the success response.
 	if err := s.wipeRefreshTokens(ctx, userID); err != nil {
 		slog.ErrorContext(ctx, "password reset: wipe refresh tokens", "error", err, "user_id", userID)
 	}
 
-	// Self-unlock: a successful reset clears the per-(email_hash, /16) lockout state
-	// so the user is not still tier-locked the moment they try to log in with the
-	// new password. Best-effort — never poisons the success response.
 	if s.lockout != nil {
 		if u, err := s.userRepo.GetByID(ctx, userID); err == nil && u != nil {
 			if err := s.lockout.ClearAllForEmail(ctx, u.Email); err != nil {

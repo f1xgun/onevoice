@@ -96,7 +96,6 @@ func (h *ProjectHandler) buildApprovalOverrides(body *map[string]openapi.Project
 		case "manual":
 			out[toolName] = domain.ToolFloorManual
 		case "inherit":
-			// Key absence encoding — do not persist.
 			continue
 		default:
 			return nil, http.StatusBadRequest, map[string]string{
@@ -139,14 +138,8 @@ func parseProjectID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 
 // Create handles POST /api/v1/projects.
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Create", authz.PermContentCreate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Create: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentCreate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -171,14 +164,8 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // List handles GET /api/v1/projects.
 func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "List", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "List: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -192,14 +179,8 @@ func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/v1/projects/{id}.
 func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Get", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Get: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	id, ok := parseProjectID(w, r)
@@ -217,14 +198,8 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/v1/projects/{id}.
 func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Update", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Update: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	id, ok := parseProjectID(w, r)
@@ -255,14 +230,8 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 // every Mongo conversation/message assigned to it, returning the
 // counts so the frontend can show "deleted N chats" feedback.
 func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "Delete", authz.PermContentDelete)
 	if !ok {
-		slog.ErrorContext(r.Context(), "Delete: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentDelete) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	id, ok := parseProjectID(w, r)
@@ -285,14 +254,8 @@ func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // Feeds the frontend delete-confirmation dialog so the user sees how
 // many chats will be destroyed before confirming.
 func (h *ProjectHandler) ConversationCount(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ConversationCount", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ConversationCount: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	id, ok := parseProjectID(w, r)

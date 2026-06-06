@@ -22,8 +22,8 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 import { createBusinessSchema, type BusinessInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
 import {
@@ -200,33 +200,5 @@ export default function NewBusinessPage() {
         </section>
       </div>
     </>
-  );
-}
-
-function Field({
-  label,
-  required,
-  error,
-  hint,
-  className,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  error?: string;
-  hint?: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
-      <Label className="text-xs font-medium text-ink-mid">
-        {label}
-        {required && <span className="ml-1 text-ochre">*</span>}
-      </Label>
-      {children}
-      {error && <p className="text-xs text-[var(--ov-danger)]">{error}</p>}
-      {hint && !error && <p className="text-xs leading-relaxed text-ink-soft">{hint}</p>}
-    </div>
   );
 }

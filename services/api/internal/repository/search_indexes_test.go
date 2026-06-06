@@ -23,8 +23,6 @@ func TestEnsureSearchIndexes_DropsLegacyTextIndexes(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()
 
-	// Plant legacy v19 + v20 text indexes (simulating upgrade from older
-	// deploys). EnsureSearchIndexes must remove them.
 	mustCreate := func(coll *mongo.Collection, field, name, lang string) {
 		_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: field, Value: "text"}},

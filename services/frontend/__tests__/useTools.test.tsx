@@ -101,7 +101,6 @@ describe('useTools', () => {
   });
 
   it('surfaces a Zod parse error when the payload is malformed', async () => {
-    // Missing required `floor` field — Zod should reject.
     bizApiGet.mockResolvedValueOnce({ data: [{ name: 'bad_tool', platform: 'telegram' }] });
     const client = makeClient();
 

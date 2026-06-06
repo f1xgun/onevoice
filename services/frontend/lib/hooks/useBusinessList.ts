@@ -22,8 +22,6 @@ export function useBusinessList() {
       const { data } = await api.get<BusinessSummary[]>('/businesses');
       return data;
     },
-    // The 404 interceptor invalidates this key on stale-business detection;
-    // default 3-retry exponential backoff would amplify load on backend hiccups.
     retry: 1,
     staleTime: STALE_TIME_MS,
   });

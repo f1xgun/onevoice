@@ -41,7 +41,6 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 		activeMsg = nil
 	}
 
-	// Implicit-resume branch: no header but active message → tri-case over active batches.
 	if activeMsg != nil && headerBatchID == "" {
 		batches, berr := t.deps.Pending.ListPendingByConversation(ctx, conversationID)
 		if berr != nil {
@@ -64,7 +63,6 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 
 		switch {
 		case resolving != nil:
-			// Reuse activeMsg.ID so tool_result events extend the same Message row.
 			return gateRejoinResume, activeMsg, resolving, resolving.ID
 		case pending != nil:
 			return gateReemitApproval, activeMsg, pending, ""
@@ -144,7 +142,6 @@ func (t *Turn) streamResume(
 		return OutcomeInlineError, nil
 	}
 
-	// Local copy so we flush full final state in one Update; preserve Content from pause-time.
 	msg := *activeMsg
 	var postText strings.Builder
 	postText.WriteString(msg.Content)
@@ -164,7 +161,6 @@ func (t *Turn) streamResume(
 		OrchCtxBudget:  streamBudget,
 		OnEvent: func(ev sse.Event) {
 			if terminated {
-				// Defensive: ignore frames after terminal done/error → persist decision stays idempotent.
 				return
 			}
 			switch ev.Type {
@@ -195,7 +191,6 @@ func (t *Turn) streamResume(
 					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 				}
 			case sseEventError:
-				// MUST flip off pending_approval/in_progress here, else the conversation is bricked.
 				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
 				t.persistResumeDone(ctx, &msg)
 				terminated = true
@@ -208,12 +203,10 @@ func (t *Turn) streamResume(
 		},
 	})
 
-	// Connect failure: no bytes written to w yet → handler may emit a 502 JSON body.
 	if streamErr != nil && !terminated && strings.Contains(streamErr.Error(), "stream resume:") {
 		slog.ErrorContext(ctx, "chatturn: orchestrator resume request failed", "error", streamErr)
 		return OutcomeOrchestratorUnavailable, fmt.Errorf("chatturn: orchestrator resume: %w", streamErr)
 	}
-	// Mid-drain failure: response is committed; log and fall through to partial-persist.
 	if streamErr != nil {
 		slog.WarnContext(ctx, "chatturn: resume stream ended with error",
 			"error", streamErr, "conversation_id", conversationID)
@@ -226,7 +219,6 @@ func (t *Turn) streamResume(
 		return OutcomeRejoinedResume, nil
 	}
 
-	// Non-terminal exit (transient drop, unhandled event): force Complete to avoid bricking the conversation.
 	msg.Content = postText.String()
 	if msg.Status == domain.MessageStatusPendingApproval || msg.Status == domain.MessageStatusInProgress {
 		msg.Status = domain.MessageStatusComplete

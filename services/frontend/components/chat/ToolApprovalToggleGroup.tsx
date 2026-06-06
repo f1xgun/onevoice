@@ -59,10 +59,7 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
       onClick={onClick}
       className={cn(
         'h-8 px-3',
-        // Edit's active state needs an extra ring (UI-SPEC — "neutral,
-        // distinguishable from Approve's primary fill").
         active && action === 'edit' && 'ring-2 ring-ring',
-        // Dim inactive siblings (UI-SPEC — "opacity-60 hover:opacity-100").
         !active && 'opacity-60 hover:opacity-100'
       )}
     >

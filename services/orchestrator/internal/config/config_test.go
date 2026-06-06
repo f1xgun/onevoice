@@ -16,12 +16,12 @@ func TestLoad_RequiredFields(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "gpt-4o-mini", cfg.LLMModel)
-	assert.Equal(t, "8090", cfg.Port)      // default
-	assert.Equal(t, 10, cfg.MaxIterations) // default
+	assert.Equal(t, "8090", cfg.Port)
+	assert.Equal(t, 10, cfg.MaxIterations)
 }
 
 func TestLoad_MissingLLMModel(t *testing.T) {
-	t.Setenv("LLM_MODEL", "") // explicitly clear
+	t.Setenv("LLM_MODEL", "")
 	_, err := config.Load()
 	assert.ErrorContains(t, err, "LLM_MODEL")
 }
@@ -77,7 +77,6 @@ func TestLoad_SelfHostedEndpoints(t *testing.T) {
 func TestLoad_SelfHostedEndpoints_MissingModel_Skipped(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4o-mini")
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
-	// no SELF_HOSTED_0_MODEL
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
@@ -131,7 +130,7 @@ func TestConfig_DraftReplyModel_PropagatesEmptyWhenLLMModelMissing(t *testing.T)
 // and only surface when the first billing POST hit a TLS-only listener.
 func TestConfig_APIInternalURL_DefaultHTTPS(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4o-mini")
-	t.Setenv("API_INTERNAL_URL", "") // explicitly clear
+	t.Setenv("API_INTERNAL_URL", "")
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
@@ -153,7 +152,6 @@ func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4o-mini")
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
 	t.Setenv("SELF_HOSTED_0_MODEL", "llama3.1")
-	// index 1 missing — scan stops here
 	t.Setenv("SELF_HOSTED_2_URL", "http://vm3:11434/v1")
 	t.Setenv("SELF_HOSTED_2_MODEL", "gemma")
 

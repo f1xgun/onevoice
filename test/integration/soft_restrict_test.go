@@ -127,7 +127,6 @@ func TestSoftRestrict_VerifyEndpointsAlwaysAllowed(t *testing.T) {
 
 	resp := postVerifyResend(t, accessToken)
 	defer resp.Body.Close()
-	// Either 204 (succeeded) or 429 (rate-limited from setup) — anything BUT 412.
 	require.NotEqual(t, httpSoftRestrictBlocked, resp.StatusCode,
 		"verify-email/resend must NEVER be gated by RequireVerifiedEmail")
 }

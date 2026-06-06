@@ -23,9 +23,6 @@ export function Sidebar() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  // Same route-gating contract as desktop: ProjectPane only renders on
-  // /chat/* and /projects/*. Other routes show only the NavRail in the
-  // drawer.
   const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
 
   return (
@@ -41,13 +38,7 @@ export function Sidebar() {
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent
-          side="left"
-          // Drawer width follows content: full 288 px when the project tree
-          // is shown (chat / projects routes), tight 56 px (just the
-          // NavRail) on every other route — no awkward empty cream gap.
-          className={`flex gap-0 p-0 ${showProjectPane ? 'w-72' : 'w-14'}`}
-        >
+        <SheetContent side="left" className={`flex gap-0 p-0 ${showProjectPane ? 'w-72' : 'w-14'}`}>
           <SheetTitle className="sr-only">{tSide('menuLabel')}</SheetTitle>
           <SheetDescription className="sr-only">{tSide('menuDescription')}</SheetDescription>
           <NavRail onNavigate={() => setOpen(false)} />

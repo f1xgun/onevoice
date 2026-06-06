@@ -56,9 +56,6 @@ func tokenizeQuery(query string) []string {
 // case-fold pipeline.
 func wordPrefixRegex(token string) string {
 	if token == "" {
-		// Pattern that matches nothing (empty token shouldn't reach here,
-		// but stay defensive — never emit a pattern that matches every
-		// document).
 		return `\b\B`
 	}
 	return `(?:^|[^\p{L}\p{N}_])` + regexp.QuoteMeta(token)

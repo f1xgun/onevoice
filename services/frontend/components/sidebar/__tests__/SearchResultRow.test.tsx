@@ -22,7 +22,6 @@ const baseResult: SearchResult = {
 describe('SearchResultRow', () => {
   it('renders title + snippet + date and links to /chat/{id}?highlight={topMessageId}', () => {
     render(<SearchResultRow result={baseResult} query="hello" />);
-    // Title row link is the first interactive link (the snippet duplicate is aria-hidden).
     const links = screen.getAllByRole('link');
     expect(links[0]).toHaveAttribute('href', '/chat/c-1?highlight=msg-1');
     expect(screen.getByText('My conversation')).toBeInTheDocument();
@@ -43,8 +42,6 @@ describe('SearchResultRow', () => {
     const { container } = render(
       <SearchResultRow result={{ ...baseResult, projectId: 'p-1' }} query="hello" />
     );
-    // The chip renders an icon with 10 px width for size=xs (per ProjectChip iconSize map).
-    // Probe via the SVG width attribute — the only stable hook.
     const icon = container.querySelector('svg');
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute('width')).toBe('10');
@@ -54,7 +51,6 @@ describe('SearchResultRow', () => {
     const { container } = render(
       <SearchResultRow result={{ ...baseResult, projectId: 'p-1' }} query="hello" />
     );
-    // No <a> should have another <a> as descendant.
     const anchors = container.querySelectorAll('a');
     for (const a of Array.from(anchors)) {
       expect(a.querySelector('a')).toBeNull();
@@ -103,8 +99,6 @@ describe('renderHighlightedSnippet', () => {
   });
 
   it('handles Russian (BMP — byte offsets coincide with JS chars for Cyrillic up to 2-byte UTF-8)', () => {
-    // «привет» is 6 chars, each char is 2 bytes in UTF-8 → 12 bytes total.
-    // Mark «риве» (chars 1..5) → bytes 2..10.
     const { container } = render(<div>{renderHighlightedSnippet('привет', [[2, 10]])}</div>);
     const mark = container.querySelector('mark');
     expect(mark?.textContent).toBe('риве');

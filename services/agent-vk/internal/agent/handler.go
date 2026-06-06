@@ -97,13 +97,11 @@ func classifyVKError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Preserve an already-typed code from upstream wrapping sites.
 	if a2a.CodeOf(err) != "" {
 		return err
 	}
 	var vkErr *vkapi.Error
 	if !errors.As(err, &vkErr) {
-		// network or non-VK error — transient, retryable; carry the code.
 		return a2a.NewCodedError("transient", err)
 	}
 	switch int(vkErr.Code) {
@@ -116,8 +114,6 @@ func classifyVKError(err error) error {
 		if strings.Contains(lower, "community") || strings.Contains(lower, "group") {
 			return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
 		}
-		// Generic code 100 — treat as transient (retryable) to preserve
-		// the legacy "retry on unknown VK 100" semantics.
 		return a2a.NewCodedError("transient", err)
 	default:
 		return a2a.NewCodedError("transient", err)
@@ -162,15 +158,12 @@ func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKCli
 		groupID = info.ExternalID
 	}
 	groupID = ensureNegativeGroupID(groupID)
-	// User token has broadest read access
 	if info.UserToken != "" {
 		return h.clientFactory(info.UserToken), groupID, nil
 	}
-	// Service key can read public/open community walls
 	if h.serviceKey != "" {
 		return h.clientFactory(h.serviceKey), groupID, nil
 	}
-	// Community token — limited read access (groups.getById works, wall.get does not)
 	return h.clientFactory(info.AccessToken), groupID, nil
 }
 
@@ -186,11 +179,7 @@ func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, fmt.Errorf("vk: publish post: %w", classifyVKError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"post_id": float64(postID)},
-	}, nil
+	return a2a.OK(req, map[string]any{"post_id": float64(postID)}), nil
 }
 
 func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -208,11 +197,7 @@ func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.Tool
 	if err != nil {
 		return nil, fmt.Errorf("vk: post photo: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"post_id": float64(postID)},
-	}, nil
+	return a2a.OK(req, map[string]any{"post_id": float64(postID)}), nil
 }
 
 func (h *Handler) schedulePost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -241,11 +226,7 @@ func (h *Handler) schedulePost(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	if err != nil {
 		return nil, fmt.Errorf("vk: schedule post: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"post_id": float64(postID), "scheduled": true},
-	}, nil
+	return a2a.OK(req, map[string]any{"post_id": float64(postID), "scheduled": true}), nil
 }
 
 // parsePublishDate accepts a Unix timestamp string or RFC3339 formatted date.
@@ -271,19 +252,10 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 		return nil, fmt.Errorf("vk: update group info: %w", classifyVKError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "updated"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "updated"}), nil
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	// wall.getComments is callable with the Mini-App service key (profile
-	// type = app). VK ID tokens fail with error 1051; community tokens fail
-	// with error 27 "group auth unavailable". We route all reads through
-	// getReadClient: it prefers user token if the integration has one,
-	// otherwise falls back to service key — which is the supported path.
 	client, groupID, err := h.getReadClient(ctx, req)
 	if err != nil {
 		return nil, err
@@ -301,11 +273,6 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	}
 
 	if postID == 0 {
-		// Sync mode: walk recent posts and gather comments from any that
-		// have at least one. Capping at 20 keeps the call bounded; the
-		// review UI only paginates back so far anyway. We previously took
-		// just the latest post, which silently dropped reviews as soon as
-		// a newer post (with no comments) appeared on the wall.
 		posts, _, postsErr := client.GetWallPosts(groupID, recentPostsBatchSize)
 		if postsErr != nil {
 			return nil, fmt.Errorf("vk: get latest posts: %w", classifyVKError(postsErr))
@@ -326,11 +293,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 			}
 			merged = append(merged, cs...)
 		}
-		return &a2a.ToolResponse{
-			TaskID:  req.TaskID,
-			Success: true,
-			Result:  map[string]interface{}{"comments": merged, "count": len(merged)},
-		}, nil
+		return a2a.OK(req, map[string]any{"comments": merged, "count": len(merged)}), nil
 	}
 
 	comments, err := client.GetComments(groupID, postID, count)
@@ -338,11 +301,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, fmt.Errorf("vk: get comments: %w", classifyVKError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"comments": comments, "count": len(comments)},
-	}, nil
+	return a2a.OK(req, map[string]any{"comments": comments, "count": len(comments)}), nil
 }
 
 func (h *Handler) replyComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -369,11 +328,7 @@ func (h *Handler) replyComment(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	if err != nil {
 		return nil, fmt.Errorf("vk: reply comment: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"comment_id": float64(newCommentID)},
-	}, nil
+	return a2a.OK(req, map[string]any{"comment_id": float64(newCommentID)}), nil
 }
 
 func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -390,11 +345,7 @@ func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.
 	if err := client.DeleteComment(groupID, commentID); err != nil {
 		return nil, fmt.Errorf("vk: delete comment: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"status": "deleted"},
-	}, nil
+	return a2a.OK(req, map[string]any{"status": "deleted"}), nil
 }
 
 func (h *Handler) getCommunityInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -410,11 +361,7 @@ func (h *Handler) getCommunityInfo(ctx context.Context, req a2a.ToolRequest) (*a
 	if err != nil {
 		return nil, fmt.Errorf("vk: get community info: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  info,
-	}, nil
+	return a2a.OK(req, info), nil
 }
 
 func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -442,9 +389,5 @@ func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	if err != nil {
 		return nil, fmt.Errorf("vk: get wall posts: %w", classifyVKError(err))
 	}
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result:  map[string]interface{}{"posts": posts, "total": total},
-	}, nil
+	return a2a.OK(req, map[string]any{"posts": posts, "total": total}), nil
 }

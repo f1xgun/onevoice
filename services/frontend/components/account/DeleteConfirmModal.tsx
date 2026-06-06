@@ -35,6 +35,7 @@ import {
   type DeletionAccountError,
   type SoleOwnerBusiness,
 } from '@/lib/api/account';
+import { localeToIntlTag } from '@/lib/i18n/locales';
 import { SoleOwnerBlockedModal } from './SoleOwnerBlockedModal';
 
 interface DeleteConfirmModalProps {
@@ -62,12 +63,8 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
   const [soleOwnerOpen, setSoleOwnerOpen] = useState(false);
   const [soleOwnerBusinesses, setSoleOwnerBusinesses] = useState<SoleOwnerBusiness[]>([]);
 
-  // The deletion date displayed in the modal body is approximately
-  // now + 30 days. We render the date locally rather than round-tripping
-  // because the user hasn't submitted yet; the backend computes the
-  // authoritative date when DELETE returns.
   const deletionDate = new Date(Date.now() + DELETION_GRACE_MS);
-  const dateLabel = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'ru-RU', {
+  const dateLabel = new Intl.DateTimeFormat(localeToIntlTag(locale), {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -88,7 +85,6 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
     setSubmitting(true);
     try {
       await deleteAccount(password);
-      // 204: success. Toast + bounce to /login.
       toast({ description: t('successToast') });
       window.location.href = '/login';
     } catch (e) {
@@ -99,13 +95,11 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
           setFieldError(tErrors('passwordInvalid'));
           return;
         case 'sole_owner_of_businesses':
-          // Close self, open the sole-owner modal with the businesses.
           setSoleOwnerBusinesses(err.businesses ?? []);
           setSoleOwnerOpen(true);
           onOpenChange(false);
           return;
         case 'account_pending_deletion':
-          // Already pending — close + reload so banner renders.
           toast({ description: tErrors('pendingDeletion'), variant: 'destructive' });
           onOpenChange(false);
           window.location.reload();
@@ -155,8 +149,6 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
             <AlertDialogCancel disabled={submitting}>{t('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               asChild
-              // Override the default submit-on-action behavior so we control
-              // the flow (need to keep the modal open on field errors).
               onClick={(e) => {
                 e.preventDefault();
                 void handleSubmit();

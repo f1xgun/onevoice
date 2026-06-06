@@ -46,9 +46,6 @@ export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
   const tCommon = useTranslations('common');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  // Local override so we can show the picked value optimistically and
-  // revert it if /api/locale fails. When undefined, the trigger renders
-  // the value resolved from next-intl (server source of truth).
   const [pendingValue, setPendingValue] = useState<Locale | undefined>(undefined);
 
   function handleChange(next: string) {

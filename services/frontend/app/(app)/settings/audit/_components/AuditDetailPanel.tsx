@@ -10,9 +10,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 
 const JSON_INDENT = 2;
-const LOCALE = 'ru-RU';
+const LOCALE = localeToIntlTag(DEFAULT_LOCALE);
 
 interface Props {
   item: AuditLogDTO | null;

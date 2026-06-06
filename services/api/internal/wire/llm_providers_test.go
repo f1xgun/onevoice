@@ -32,7 +32,6 @@ func TestLLMProviderOpts_RegistersTitlerModel(t *testing.T) {
 	opts := LLMProviderOpts(cfg, reg, discardLogger())
 	require.NotEmpty(t, opts, "at least one provider option must be returned when AnthropicAPIKey is set")
 
-	// Both LLMModel and TitlerModel must be reachable through the registry.
 	mainEntries := reg.GetModelProviders("anthropic/claude-sonnet-4-6")
 	require.Len(t, mainEntries, 1, "LLMModel must be registered")
 	assert.Equal(t, "anthropic", mainEntries[0].Provider)
@@ -41,9 +40,6 @@ func TestLLMProviderOpts_RegistersTitlerModel(t *testing.T) {
 	require.Len(t, titlerEntries, 1, "TitlerModel must be registered — this is the WR-02 regression guard")
 	assert.Equal(t, "anthropic", titlerEntries[0].Provider)
 
-	// Both entries must carry non-zero pricing so usage_logs rows surface
-	// actual cost. WR-02 also called out that registered entries previously
-	// landed at $0 even when they existed.
 	assert.InDelta(t, 3.00, mainEntries[0].InputCostPer1MTok, 1e-9, "sonnet input price")
 	assert.InDelta(t, 15.00, mainEntries[0].OutputCostPer1MTok, 1e-9, "sonnet output price")
 	assert.InDelta(t, 1.00, titlerEntries[0].InputCostPer1MTok, 1e-9, "haiku input price")

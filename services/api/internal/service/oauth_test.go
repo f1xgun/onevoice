@@ -28,7 +28,7 @@ func TestGenerateState_StoresInRedis(t *testing.T) {
 	}
 	state, err := svc.GenerateState(ctx, data)
 	require.NoError(t, err)
-	assert.Len(t, state, 64) // 32 bytes hex-encoded
+	assert.Len(t, state, 64)
 }
 
 func TestValidateState_Success(t *testing.T) {
@@ -57,7 +57,6 @@ func TestValidateState_SingleUse(t *testing.T) {
 	_, err := svc.ValidateState(ctx, state)
 	require.NoError(t, err)
 
-	// Second validation should fail (single-use)
 	_, err = svc.ValidateState(ctx, state)
 	assert.Error(t, err)
 }

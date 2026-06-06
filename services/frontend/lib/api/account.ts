@@ -49,9 +49,7 @@ export async function deleteAccount(password: string): Promise<void> {
   let body: DeletionAccountError = {};
   try {
     body = (await res.json()) as DeletionAccountError;
-  } catch {
-    // body not JSON — fall through with empty.
-  }
+  } catch {}
   body.status = res.status;
   throw body;
 }
@@ -78,9 +76,7 @@ export async function restoreAccount(): Promise<void> {
   let body: DeletionAccountError = {};
   try {
     body = (await res.json()) as DeletionAccountError;
-  } catch {
-    // ignore
-  }
+  } catch {}
   body.status = res.status;
   throw body;
 }

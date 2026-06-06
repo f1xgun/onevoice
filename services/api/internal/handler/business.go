@@ -15,7 +15,6 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
@@ -114,9 +113,8 @@ func domainMembershipToOpenAPI(m service.MembershipSummary) openapi.BusinessMemb
 // with business name + role. Auth-only (no BusinessContext needed — the
 // user is not yet in a business scope).
 func (h *BusinessHandler) ListUserBusinesses(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -137,20 +135,13 @@ func (h *BusinessHandler) ListUserBusinesses(w http.ResponseWriter, r *http.Requ
 // CreateBusiness handles POST /api/v1/businesses (BIZ-03).
 // Creates a new business and owner membership for the authenticated user.
 func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
-	var req openapi.CreateBusinessRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.CreateBusinessRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -184,15 +175,8 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 // GetBusiness returns the business profile for the request's BusinessContext.
 // Requires PermBusinessRead.
 func (h *BusinessHandler) GetBusiness(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "GetBusiness", authz.PermBusinessRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "GetBusiness: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermBusinessRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -213,26 +197,13 @@ func (h *BusinessHandler) GetBusiness(w http.ResponseWriter, r *http.Request) {
 // UpdateBusiness updates the business profile for the request's BusinessContext.
 // Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "UpdateBusiness", authz.PermBusinessUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "UpdateBusiness: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
-		return
-	}
-
-	var req openapi.UpdateBusinessRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.UpdateBusinessRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -272,15 +243,8 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 // UpdateSchedule updates the business schedule (stored in settings).
 // Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "UpdateSchedule", authz.PermBusinessUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "UpdateSchedule: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -332,15 +296,8 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 // Body: {"tones": ["Тёплый", "Дружеский"]}.
 // Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "UpdateVoiceTone", authz.PermBusinessUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "UpdateVoiceTone: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -386,15 +343,8 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 // Absence from the map means the registry floor applies.
 // Requires PermBusinessRead.
 func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "GetBusinessToolApprovals", authz.PermBusinessRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "GetBusinessToolApprovals: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermBusinessRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -417,15 +367,8 @@ func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *htt
 // UpdateBusinessToolApprovals handles PUT /business/{id}/tool-approvals.
 // Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "UpdateBusinessToolApprovals", authz.PermBusinessUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "UpdateBusinessToolApprovals: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -440,8 +383,6 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 		return
 	}
 
-	// "forbidden" is a valid ToolFloor in the spec but rejected here — only
-	// auto/manual can be overridden via PUT; the registry floor is server-owned.
 	approvals := make(map[string]domain.ToolFloor, len(req.ToolApprovals))
 	for toolName, floor := range req.ToolApprovals {
 		if !h.toolsCache.Has(toolName) {
@@ -479,15 +420,8 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 // and updates the business logo_url to the public URL.
 // Requires PermBusinessUpdate.
 func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "UploadLogo", authz.PermBusinessUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "UploadLogo: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-
-	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -510,7 +444,6 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = file.Close() }()
 
-	// Detect MIME type from first 512 bytes
 	buf := make([]byte, 512)
 	n, err := file.Read(buf)
 	if err != nil && err != io.EOF {
@@ -539,7 +472,6 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cache-bust on re-upload by including UpdatedAt nanos in the key.
 	key := fmt.Sprintf("businesses/%s/logo-%d%s", business.ID, time.Now().UnixNano(), ext)
 	if err := h.storage.Upload(r.Context(), key, file, header.Size, mimeType); err != nil {
 		slog.ErrorContext(r.Context(), "upload logo: storage upload failed", "key", key, "error", err)

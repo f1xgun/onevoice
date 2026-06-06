@@ -96,8 +96,6 @@ beforeEach(() => {
   useBusinessStore.setState({ activeBusinessId: 'biz-1' });
   mockedGetMyPerms.mockResolvedValue(FULL_ACTOR_PERMS);
   mockedListRoles.mockResolvedValue([...SYSTEM_ROLES, MARKETING_ROLE]);
-  // Match the shape returned by getPermissionsCatalog — flat
-  // PermissionGroup[] (the api/permissions.ts wrapper unwraps `groups`).
   mockedGetCatalog.mockResolvedValue([
     {
       resource: 'business',
@@ -144,7 +142,6 @@ describe('NewRolePage create flow', () => {
       expect((screen.getByLabelText(/Название/i) as HTMLInputElement).value).toBe('')
     );
     const saveButtons = screen.getAllByRole('button', { name: /Сохранить/i });
-    // Sticky bar Save button is the form-submit one.
     expect(saveButtons[0]).toBeDisabled();
   });
 
@@ -182,7 +179,6 @@ describe('NewRolePage create flow', () => {
     await user.type(screen.getByLabelText(/Название/i), 'BadRole');
     await user.click(screen.getByRole('button', { name: /Сохранить/i }));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
-    // Form stays open — the name input is still in the DOM and not navigated away.
     expect(screen.getByLabelText(/Название/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });

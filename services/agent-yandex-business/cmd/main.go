@@ -4,28 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
-
-	natslib "github.com/nats-io/nats.go"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
-	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	agentpkg "github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/config"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
-)
-
-const (
-	healthReadHeaderTimeout = 5 * time.Second
-	shutdownTimeout         = 5 * time.Second
 )
 
 func main() {
@@ -41,10 +30,6 @@ func run() error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	nc, err := natslib.Connect(cfg.NATSUrl)
-	if err != nil {
-		return fmt.Errorf("failed to connect to NATS (url=%s): %w", cfg.NATSUrl, err)
-	}
 	tc, err := tokenclient.New(cfg.APIInternalURL, nil)
 	if err != nil {
 		return fmt.Errorf("tokenclient init: %w", err)
@@ -55,34 +40,16 @@ func run() error {
 	dedupe := agentbase.NewDedupeClient(cfg.RedisURL)
 	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyYandexError))
 	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher)
-	transport := a2a.NewNATSTransport(nc)
-	ag := a2a.NewAgent(a2a.AgentYandexBusiness, transport, handler.Handle)
 
-	// Health server
-	hc := health.New()
-	hc.AddCheck("nats", func(ctx context.Context) error {
-		if !nc.IsConnected() {
-			return fmt.Errorf("nats disconnected")
-		}
-		return nil
-	})
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health/live", hc.LiveHandler())
-	mux.HandleFunc("/health/ready", hc.ReadyHandler())
-	mux.HandleFunc("/health", hc.LiveHandler())
-	mux.Handle("/metrics", promhttp.Handler())
-	healthSrv := &http.Server{Addr: ":" + cfg.HealthPort, Handler: mux, ReadHeaderTimeout: healthReadHeaderTimeout}
-	go func() {
-		slog.Info("health server listening", "addr", ":"+cfg.HealthPort)
-		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("health server error", "error", err)
-		}
-	}()
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	yandex.StartScreenshotSweeper(ctx, slog.Default())
+	// Screenshot sweeper runs as a background goroutine for the lifetime of
+	// the process; bind it to a signal-driven ctx so SIGTERM tears it down
+	// in lockstep with agentbase.Run's own internal signal handler. The
+	// sweeper is unconditional — captureScreenshot re-reads SCREENSHOT_MODE
+	// on every call so operators can flip off→tmpfs mid-incident without
+	// restart. See pkg/agent-yandex-business/internal/yandex/browser.go.
+	sweeperCtx, stopSweeper := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSweeper()
+	yandex.StartScreenshotSweeper(sweeperCtx, slog.Default())
 
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {
 		mode := strings.ToLower(strings.TrimSpace(os.Getenv("SCREENSHOT_MODE")))
@@ -92,20 +59,13 @@ func run() error {
 		}
 	}
 
-	if err := ag.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start agent: %w", err)
-	}
-
-	slog.Info("Yandex.Business RPA agent started", "subject", a2a.Subject(a2a.AgentYandexBusiness))
-	<-ctx.Done()
-	slog.Info("Yandex.Business agent shutting down — draining in-flight requests")
-	shutCtx, shutCancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer shutCancel()
-	_ = healthSrv.Shutdown(shutCtx)
-	transport.Close() // drain NATS — no new messages
-	ag.Stop()         // wait for in-flight handlers
-	slog.Info("Yandex.Business agent stopped")
-	return nil
+	return agentbase.Run(agentbase.RunConfig{
+		AgentID:    a2a.AgentYandexBusiness,
+		Name:       "Yandex.Business",
+		NATSURL:    cfg.NATSUrl,
+		HealthPort: cfg.HealthPort,
+		Exec:       handler.Handle,
+	})
 }
 
 // poolAdapter wraps *yandex.BrowserPool to satisfy agent.BrowserPool interface.

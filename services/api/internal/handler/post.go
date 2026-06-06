@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -89,38 +88,17 @@ func domainPostToOpenAPI(p domain.Post) openapi.Post {
 
 // ListPosts handles GET /api/v1/posts
 func (h *PostHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ListPosts", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ListPosts: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
-	// Parse query parameters
+	limit, offset := parseLimitOffset(r, DefaultPostLimit, MaxPostLimit)
 	filter := domain.PostFilter{
 		Platform: r.URL.Query().Get("platform"),
 		Status:   r.URL.Query().Get("status"),
-		Limit:    DefaultPostLimit,
-		Offset:   0,
-	}
-
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			filter.Limit = parsedLimit
-			if filter.Limit > MaxPostLimit {
-				filter.Limit = MaxPostLimit
-			}
-		}
-	}
-
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
-			filter.Offset = parsedOffset
-		}
+		Limit:    limit,
+		Offset:   offset,
 	}
 
 	posts, total, err := h.postService.List(r.Context(), bc.BusinessID, filter)
@@ -147,14 +125,8 @@ func (h *PostHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
 
 // GetPost handles GET /api/v1/posts/{id}
 func (h *PostHandler) GetPost(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "GetPost", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "GetPost: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 

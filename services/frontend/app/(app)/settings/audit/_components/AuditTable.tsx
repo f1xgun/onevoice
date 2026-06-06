@@ -5,6 +5,7 @@ import type { AuditLogDTO } from '../_lib/types';
 import { actionToI18nKey } from '../_lib/actionLabels';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 
 interface Props {
   items: AuditLogDTO[];
@@ -20,7 +21,7 @@ const SEC_PER_MIN = 60;
 const MIN_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
 const SKELETON_ROW_COUNT = 5;
-const LOCALE = 'ru-RU';
+const LOCALE = localeToIntlTag(DEFAULT_LOCALE);
 
 type AuditTableTranslator = ReturnType<typeof useTranslations<'audit.table'>>;
 type AuditFiltersTranslator = ReturnType<typeof useTranslations<'audit.filters'>>;
@@ -40,9 +41,6 @@ function formatRelative(iso: string, tTable: AuditTableTranslator): string {
 function actorLabel(item: AuditLogDTO, tFilters: AuditFiltersTranslator): string {
   if (item.actor_display_name) return item.actor_display_name;
   if (item.actor_email) return item.actor_email;
-  // Failed-login: details may carry attempted_email (pkg/audit/details.go
-  // LoginFailedDetails). Falling back to "—" preserves the "Неизвестен"
-  // shape even when details is absent.
   const d = item.details as Record<string, unknown> | null;
   if (d && typeof d === 'object' && typeof d.attempted_email === 'string') {
     return tFilters('actorUnknown', { email: d.attempted_email });

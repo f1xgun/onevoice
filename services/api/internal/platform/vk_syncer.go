@@ -61,7 +61,6 @@ func (v *VKSyncer) SyncInfo(ctx context.Context, b *domain.Business, integ domai
 		return errTokenFetchFailed{cause: err}
 	}
 
-	// groups.edit supports: description, phone, website.
 	params := url.Values{
 		"group_id":     {groupID},
 		"access_token": {token},

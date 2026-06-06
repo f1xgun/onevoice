@@ -18,107 +18,94 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 	}
 
 	var reviews []map[string]interface{}
-	err := recordStep("getReviews", func() error {
-		return withRetry(ctx, 3, func() error {
-			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-				reviewsURL := bb.baseURL() + "/reviews"
-				if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
-					WaitUntil: playwright.WaitUntilStateNetworkidle,
-					Timeout:   playwright.Float(pageNavTimeoutMs),
-				}); err != nil {
-					debugScreenshot(page, "reviews_navigate_error")
-					return fmt.Errorf("navigate to reviews: %w", err)
-				}
-				debugScreenshot(page, "reviews_after_navigate")
+	err := bb.runStep(ctx, "getReviews", 3, func(page playwright.Page) error {
+		reviewsURL := bb.baseURL() + "/reviews"
+		if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateNetworkidle,
+			Timeout:   playwright.Float(pageNavTimeoutMs),
+		}); err != nil {
+			debugScreenshot(page, "reviews_navigate_error")
+			return fmt.Errorf("navigate to reviews: %w", err)
+		}
+		debugScreenshot(page, "reviews_after_navigate")
 
-				// Close popups that may overlay the page
-				closePopups(page)
+		closePopups(page)
 
-				// Session canary — bail immediately if cookies expired
-				if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
-					debugScreenshot(page, "reviews_session_expired")
-					return err
-				}
-				humanDelay()
+		if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+			debugScreenshot(page, "reviews_session_expired")
+			return err
+		}
+		humanDelay()
 
-				// Wait for reviews container with fallback selectors
-				// Selectors ordered: data-testid (stable) > class-based > structural
-				containerSelectors := []string{
-					"[data-testid='reviews-list']",
-					".reviews-list",
-					"[class*='ReviewsList']",
-					"[class*='reviews-list']",
-				}
-				containerFound := false
-				for _, sel := range containerSelectors {
-					err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(primaryActionTimeoutMs),
-					})
-					if err == nil {
-						containerFound = true
-						break
-					}
-				}
-				if !containerFound {
-					// No reviews container — page loaded but no reviews exist
-					debugScreenshot(page, "reviews_no_container")
-					reviews = []map[string]interface{}{}
-					return nil
-				}
-
-				// Load more reviews if needed (pagination)
-				reviews = make([]map[string]interface{}, 0, limit)
-				for len(reviews) < limit {
-					cards, err := scrapeReviewCards(page, limit-len(reviews))
-					if err != nil {
-						return fmt.Errorf("scrape review cards: %w", err)
-					}
-					reviews = append(reviews, cards...)
-
-					if len(reviews) >= limit {
-						break
-					}
-
-					// Try to click "Load more" / "Show more" button
-					loadMoreSelectors := []string{
-						"[data-testid='load-more-reviews']",
-						"button:has-text('Показать ещё')",
-						"button:has-text('Ещё отзывы')",
-						"[class*='LoadMore'] button",
-					}
-					clicked := false
-					for _, sel := range loadMoreSelectors {
-						btn := page.Locator(sel).First()
-						if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-							Timeout: playwright.Float(uiPollTimeoutMs),
-							State:   playwright.WaitForSelectorStateVisible,
-						}); err == nil {
-							if err := btn.Click(); err == nil {
-								clicked = true
-								humanDelay()
-								break
-							}
-						}
-					}
-					if !clicked {
-						break // No more pages
-					}
-				}
-
-				// Trim to limit
-				if len(reviews) > limit {
-					reviews = reviews[:limit]
-				}
-				return nil
+		containerSelectors := []string{
+			"[data-testid='reviews-list']",
+			".reviews-list",
+			"[class*='ReviewsList']",
+			"[class*='reviews-list']",
+		}
+		containerFound := false
+		for _, sel := range containerSelectors {
+			err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(primaryActionTimeoutMs),
 			})
-		})
+			if err == nil {
+				containerFound = true
+				break
+			}
+		}
+		if !containerFound {
+			debugScreenshot(page, "reviews_no_container")
+			reviews = []map[string]interface{}{}
+			return nil
+		}
+
+		reviews = make([]map[string]interface{}, 0, limit)
+		for len(reviews) < limit {
+			cards, err := scrapeReviewCards(page, limit-len(reviews))
+			if err != nil {
+				return fmt.Errorf("scrape review cards: %w", err)
+			}
+			reviews = append(reviews, cards...)
+
+			if len(reviews) >= limit {
+				break
+			}
+
+			loadMoreSelectors := []string{
+				"[data-testid='load-more-reviews']",
+				"button:has-text('Показать ещё')",
+				"button:has-text('Ещё отзывы')",
+				"[class*='LoadMore'] button",
+			}
+			clicked := false
+			for _, sel := range loadMoreSelectors {
+				btn := page.Locator(sel).First()
+				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: playwright.Float(uiPollTimeoutMs),
+					State:   playwright.WaitForSelectorStateVisible,
+				}); err == nil {
+					if err := btn.Click(); err == nil {
+						clicked = true
+						humanDelay()
+						break
+					}
+				}
+			}
+			if !clicked {
+				break
+			}
+		}
+
+		if len(reviews) > limit {
+			reviews = reviews[:limit]
+		}
+		return nil
 	})
 	return reviews, err
 }
 
 // scrapeReviewCards extracts review data from visible review card elements.
 func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interface{}, error) { //nolint:unparam // error return reserved for future DOM validation errors
-	// Try multiple selectors for review cards
 	cardSelectors := []string{
 		"[data-testid='review-card']",
 		".review-card",
@@ -135,7 +122,7 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		}
 	}
 	if len(cards) == 0 {
-		return nil, nil // No cards found — not an error, just empty
+		return nil, nil
 	}
 
 	results := make([]map[string]interface{}, 0, maxCards)
@@ -146,17 +133,14 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 
 		review := map[string]interface{}{}
 
-		// Extract review ID from data attribute
 		if id, err := card.GetAttribute("data-review-id"); err == nil && id != "" {
 			review["id"] = id
 		} else {
 			review["id"] = fmt.Sprintf("review-%d", i)
 		}
 
-		// Extract rating — try data attribute, then star count, then aria-label
 		review["rating"] = extractRating(card)
 
-		// Extract author name
 		authorSelectors := []string{
 			"[data-testid='review-author']",
 			".review-author",
@@ -165,7 +149,6 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		}
 		review["author"] = extractText(card, authorSelectors, "Unknown")
 
-		// Extract review text
 		textSelectors := []string{
 			"[data-testid='review-text']",
 			".review-text",
@@ -174,7 +157,6 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		}
 		review["text"] = extractText(card, textSelectors, "")
 
-		// Extract date
 		dateSelectors := []string{
 			"[data-testid='review-date']",
 			".review-date",
@@ -202,7 +184,6 @@ func extractText(parent playwright.Locator, selectors []string, fallback string)
 
 // extractRating extracts the rating number from a review card.
 func extractRating(card playwright.Locator) interface{} {
-	// Try data-rating attribute
 	ratingSelectors := []string{
 		"[data-testid='review-rating']",
 		"[class*='Rating']",

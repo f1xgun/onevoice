@@ -49,7 +49,6 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
 
   it('sets pendingApproval when tool_approval_required event arrives and stream closes naturally', async () => {
     const fetchMock = vi.fn();
-    // 1) GET /messages — empty history, no pending.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(
         /\/api\/v1\/businesses\/biz-test\/conversations\/.+\/messages$/
@@ -59,7 +58,6 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
         headers: { 'Content-Type': 'application/json' },
       });
     });
-    // 2) POST /chat/{id} — SSE stream with a partial text then tool_approval_required, then natural close.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(/\/api\/v1\/businesses\/biz-test\/chat\/cid-1$/);
       return mockSSEResponse([
@@ -90,9 +88,7 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
       await result.current.sendMessage('post hi');
     });
 
-    // Stream closed naturally → not streaming anymore.
     expect(result.current.isStreaming).toBe(false);
-    // Pending approval has been hydrated from the SSE event.
     expect(result.current.pendingApproval).not.toBeNull();
     expect(result.current.pendingApproval!.batchId).toBe('b1');
     expect(result.current.pendingApproval!.calls).toHaveLength(1);
@@ -100,12 +96,10 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
     expect(result.current.pendingApproval!.calls[0].toolName).toBe('telegram__send_channel_post');
     expect(result.current.pendingApproval!.calls[0].editableFields).toEqual(['text']);
     expect(result.current.pendingApproval!.calls[0].floor).toBe('manual');
-    // createdAt is synthesized on SSE arrival — just assert it's a non-empty ISO-ish string.
     expect(typeof result.current.pendingApproval!.createdAt).toBe('string');
     expect(result.current.pendingApproval!.createdAt.length).toBeGreaterThan(0);
     expect(result.current.pendingApproval!.status).toBe('pending');
 
-    // Partial content before the approval event is preserved on the assistant message.
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
     expect(assistant).toBeDefined();
     expect(assistant!.content).toBe('I will post to ');
@@ -147,7 +141,6 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
       await result.current.sendMessage('anything');
     });
 
-    // abort must not be invoked on the tool_approval_required path.
     expect(abortSpy).not.toHaveBeenCalled();
     expect(result.current.pendingApproval).not.toBeNull();
   });

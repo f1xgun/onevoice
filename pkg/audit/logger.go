@@ -103,14 +103,8 @@ func (l *loggerImpl) write(reqCtx context.Context, e Entry) {
 		Action:     e.Action,
 		Resource:   e.Resource,
 		Details:    e.Details,
-		// ID + CreatedAt are filled by the DB
-		// (DEFAULT gen_random_uuid / now).
 	}
 
-	// snapshot email at write-time so audit_logs survives user delete.
-	// Resolver failure must NEVER block the audit row — log and leave
-	// UserEmailAtEvent empty (the user_id FK will be NULLed on delete, so
-	// we lose identity for this single event but preserve the action history).
 	if e.UserID != nil {
 		email, err := l.resolver.EmailByID(spawnCtx, *e.UserID)
 		if err != nil {
@@ -137,7 +131,7 @@ func (l *loggerImpl) write(reqCtx context.Context, e Entry) {
 			}
 		}
 		if err := l.repo.Insert(spawnCtx, row); err == nil {
-			return // success
+			return
 		} else {
 			lastErr = err
 		}
@@ -150,8 +144,6 @@ func (l *loggerImpl) write(reqCtx context.Context, e Entry) {
 // includes e.Details in the slog attrs — Details may contain emails / IPs
 func (l *loggerImpl) fail(reqCtx context.Context, e Entry, lastErr error) {
 	IncWriteFailure(e.Action)
-	// Use the REQUEST ctx for slog so the correlation_id stays attached.
-	// NEVER log e.Details — it may contain emails / IPs.
 	slog.ErrorContext(reqCtx, "audit log write failed",
 		"action", e.Action,
 		"business_id", e.BusinessID,

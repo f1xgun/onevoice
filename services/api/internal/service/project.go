@@ -99,16 +99,15 @@ func (s *ProjectService) Create(ctx context.Context, businessID, actorID uuid.UU
 		return nil, err
 	}
 
-	// emit project.created AFTER successful insert.
 	audit.LogProjectCreated(ctx, s.audit, businessID, actorID, p.ID, p.Name)
 
 	return p, nil
 }
 
-// GetByID returns the project if it exists and is owned by businessID.
-// Cross-business access returns ErrProjectNotFound — do NOT leak existence
-// via a 403 (see docs/security.md).
-func (s *ProjectService) GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error) {
+// getOwned loads a project and enforces tenant ownership. Cross-business
+// access returns ErrProjectNotFound — do NOT leak existence via a 403
+// (see docs/security.md).
+func (s *ProjectService) getOwned(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error) {
 	p, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -117,6 +116,11 @@ func (s *ProjectService) GetByID(ctx context.Context, businessID, id uuid.UUID) 
 		return nil, domain.ErrProjectNotFound
 	}
 	return p, nil
+}
+
+// GetByID returns the project if it exists and is owned by businessID.
+func (s *ProjectService) GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error) {
+	return s.getOwned(ctx, businessID, id)
 }
 
 // ListByBusinessID returns all projects owned by the given business.
@@ -134,12 +138,9 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id, actorID uui
 	if err := s.validate(input); err != nil {
 		return nil, err
 	}
-	p, err := s.repo.GetByID(ctx, id)
+	p, err := s.getOwned(ctx, businessID, id)
 	if err != nil {
 		return nil, err
-	}
-	if p.BusinessID != businessID {
-		return nil, domain.ErrProjectNotFound
 	}
 	p.Name = input.Name
 	p.Description = input.Description
@@ -152,7 +153,6 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id, actorID uui
 		return nil, err
 	}
 
-	// emit project.updated AFTER successful repo write.
 	audit.LogProjectUpdated(ctx, s.audit, businessID, actorID, id)
 
 	return p, nil
@@ -165,20 +165,15 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id, actorID uui
 // actorID is threaded so the service can emit a
 // project.deleted audit row carrying blast-radius (deletedConversations).
 func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id, actorID uuid.UUID) (deletedConversations, deletedMessages int, err error) {
-	p, err := s.repo.GetByID(ctx, id)
+	p, err := s.getOwned(ctx, businessID, id)
 	if err != nil {
 		return 0, 0, err
-	}
-	if p.BusinessID != businessID {
-		return 0, 0, domain.ErrProjectNotFound
 	}
 	convs, msgs, err := s.repo.HardDeleteCascade(ctx, id)
 	if err != nil {
 		return convs, msgs, err
 	}
 
-	// emit project.deleted AFTER successful cascade.
-	// Details capture blast-radius (deletedConversations).
 	audit.LogProjectDeleted(ctx, s.audit, businessID, actorID, id, p.Name, convs)
 
 	return convs, msgs, nil
@@ -187,12 +182,8 @@ func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id, acto
 // CountConversations returns how many Mongo conversations are currently
 // assigned to the project.
 func (s *ProjectService) CountConversations(ctx context.Context, businessID, id uuid.UUID) (int, error) {
-	p, err := s.repo.GetByID(ctx, id)
-	if err != nil {
+	if _, err := s.getOwned(ctx, businessID, id); err != nil {
 		return 0, err
-	}
-	if p.BusinessID != businessID {
-		return 0, domain.ErrProjectNotFound
 	}
 	return s.repo.CountConversationsByID(ctx, id)
 }

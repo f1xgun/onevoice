@@ -12,6 +12,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 
 interface Props {
   open: boolean;
@@ -57,17 +58,12 @@ export function VKCommunityModal({ open, onClose }: Props) {
       );
       toast.success(tVk('connected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
-      // Reset local state then call parent close to keep the modal logic clean.
       setToken('');
       setSubmitting(false);
       onClose();
-      // Note: returning data avoids an unused-var lint hint when adding
-      // post-connect UX later (e.g., showing the resolved community name).
       return data;
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        tVk('connectFailed');
+      const msg = extractApiErrorCode(err) || tVk('connectFailed');
       toast.error(msg);
       setSubmitting(false);
     }

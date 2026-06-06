@@ -12,6 +12,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 
 interface Props {
   open: boolean;
@@ -58,7 +59,6 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
   const [selectedPermalink, setSelectedPermalink] = useState<string>('');
   const probeAbortRef = useRef<AbortController | null>(null);
 
-  // Debounced probe as the user pastes / types (only on the paste step).
   useEffect(() => {
     if (!open || step !== 'paste') return;
     const trimmed = value.trim();
@@ -110,7 +110,6 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     onClose();
   }
 
-  // Step 1 → 2: fetch companies via the agent's Playwright RPA.
   async function handleSearchCompanies(e: React.FormEvent) {
     e.preventDefault();
     if (!probe?.ok) return;
@@ -132,21 +131,17 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       setCompanies(list);
       setSelectedPermalink(list[0].permalink);
       if (list.length === 1) {
-        // Single org — skip the picker entirely.
         await connectWith(list[0]);
         return;
       }
       setStep('pick');
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        tYa('fetchOrgsFailed');
+      const msg = extractApiErrorCode(err) || tYa('fetchOrgsFailed');
       toast.error(msg);
       setStep('paste');
     }
   }
 
-  // Step 2 → 3: send the final connect with the chosen permalink + name.
   async function connectWith(company: CompanyEntry) {
     setStep('connecting');
     try {
@@ -162,9 +157,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       handleClose();
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        tYa('connectFailed');
+      const msg = extractApiErrorCode(err) || tYa('connectFailed');
       toast.error(msg);
       setStep('pick');
     }

@@ -86,13 +86,9 @@ func TestEmailOutbox_Enqueue_Rollback(t *testing.T) {
 		ToEmail:  "alice@example.com",
 		Subject:  "Reset",
 		BodyText: "Plain body",
-		// BodyHTML omitted = ""
 	})
 	require.NoError(t, err)
 	require.NoError(t, tx.Rollback(ctx))
-	// Critical assertion: every expected interaction was through tx
-	// (Begin + INSERT + Rollback). The mock would error if any SQL
-	// happened against the underlying pool outside the tx.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -104,7 +100,6 @@ func TestEmailOutbox_Enqueue_NilTxFallsBackToPool(t *testing.T) {
 	ctx := context.Background()
 	expectedID := uuid.New()
 
-	// No ExpectBegin/Commit — the pool path issues a bare QueryRow.
 	mock.ExpectQuery(`INSERT INTO email_outbox`).
 		WithArgs("sweeper@example.com", "Удаление аккаунта — осталось 7 дней", "txt", "html").
 		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
@@ -207,10 +202,6 @@ func TestEmailOutbox_DrainPending_ReturnsDuePendingOnly(t *testing.T) {
 	dueID := uuid.New()
 	dueTime := time.Now().UTC().Add(-1 * time.Minute)
 
-	// Mock returns the single due+pending row. The query's WHERE clause
-	// is the load-bearing assertion: it filters status='pending' AND
-	// next_attempt_at <= NOW server-side, and orders ASC. Pgxmock
-	// regex-matches the SQL and replays the rows we hand it.
 	mock.ExpectQuery(`SELECT id, to_email, subject, body_text, COALESCE\(body_html, ''\), attempts, created_at\s+FROM email_outbox\s+WHERE status = 'pending'\s+AND next_attempt_at <= NOW\(\)\s+ORDER BY next_attempt_at ASC\s+LIMIT \$1`).
 		WithArgs(10).
 		WillReturnRows(mock.NewRows([]string{"id", "to_email", "subject", "body_text", "body_html", "attempts", "created_at"}).
@@ -229,9 +220,6 @@ func TestEmailOutbox_DrainPending_LimitRespected(t *testing.T) {
 	mock, repo := newEmailOutboxRepoMock(t)
 	ctx := context.Background()
 
-	// Build 5 rows even though "12 pending due" would exist in a real
-	// DB — the SQL's LIMIT $1 enforces the cap server-side, and the
-	// mock proves the limit bind value is correctly threaded.
 	rs := mock.NewRows([]string{"id", "to_email", "subject", "body_text", "body_html", "attempts", "created_at"})
 	for i := 0; i < 5; i++ {
 		rs.AddRow(uuid.New(), fmt.Sprintf("u%d@example.com", i), "subj", "text", "", 0, time.Now().UTC())
@@ -251,8 +239,6 @@ func TestEmailOutbox_MarkSent(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 
-	// MarkSent SQL atomically transitions to 'sent' guarded by status='pending'.
-	// last_error is cleared. attempts is incremented by 1.
 	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'sent',\s+sent_at = NOW\(\),\s+last_error = NULL,\s+attempts = attempts \+ 1\s+WHERE id = \$1 AND status = 'pending'`).
 		WithArgs(id).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -287,7 +273,6 @@ func TestEmailOutbox_Reschedule_ExpBackoff(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 
-	// currentAttempts=2 + 1 = newAttempts=3 → 2^3 minutes = 480 seconds.
 	mock.ExpectExec(`UPDATE email_outbox\s+SET attempts = \$2,\s+last_error = \$3,\s+next_attempt_at = NOW\(\) \+ \(\$4::interval\)\s+WHERE id = \$1 AND status = 'pending'`).
 		WithArgs(id, 3, "transient err", "480 seconds").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -301,8 +286,6 @@ func TestEmailOutbox_Reschedule_AtCapMarksFailed(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 
-	// currentAttempts=4 + 1 = newAttempts=5; newAttempts >= maxAttempts (5)
-	// → transitions to status='failed' branch.
 	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'failed',\s+attempts = \$2,\s+last_error = \$3\s+WHERE id = \$1 AND status = 'pending'`).
 		WithArgs(id, 5, "final fail").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -335,7 +318,6 @@ func TestEmailOutbox_Reschedule_TruncatesLongError(t *testing.T) {
 	huge := strings.Repeat("X", outboxLastErrorMaxLen+500)
 	expectedTrimmed := strings.Repeat("X", outboxLastErrorMaxLen) + "..."
 
-	// currentAttempts=0 + 1 = newAttempts=1 → 2^1 minutes = 120 seconds.
 	mock.ExpectExec(`UPDATE email_outbox`).
 		WithArgs(id, 1, expectedTrimmed, "120 seconds").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))

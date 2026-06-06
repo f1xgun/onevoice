@@ -60,7 +60,6 @@ describe('useDataTableSearch', () => {
       })
     );
 
-    // 'bob' only appears in author — not in content.
     act(() => {
       result.current.setQuery('bob');
     });
@@ -73,7 +72,6 @@ describe('useDataTableSearch', () => {
       useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] })
     );
 
-    // Whitespace-only string matches as if empty.
     act(() => {
       result.current.setQuery('   ');
     });
@@ -95,13 +93,11 @@ describe('useDataTableSearch', () => {
       result.current.setQuery('mars');
     });
 
-    // Before timer fires — visibleRows still reflects empty query (all rows).
     act(() => {
       vi.advanceTimersByTime(249);
     });
     expect(result.current.visibleRows).toHaveLength(3);
 
-    // After 250 ms — debounced query lands.
     act(() => {
       vi.advanceTimersByTime(1);
     });

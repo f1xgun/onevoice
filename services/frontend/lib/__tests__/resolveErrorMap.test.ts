@@ -50,9 +50,6 @@ describe('resolveErrorToRussian', () => {
   });
 
   it('maps body.reason === "policy_revoked" on a non-403 status → policy-revoked toast', () => {
-    // The 403 branch wins over body-shape parsing —
-    // see the dedicated block below. policy_revoked still wins on
-    // any other 4xx (e.g. 400).
     expect(resolveErrorToRussian(400, { reason: 'policy_revoked', detail: 'tool denied' })).toBe(
       'Отказано: инструмент запрещён текущей политикой'
     );
@@ -101,14 +98,6 @@ describe('resolveErrorToRussian', () => {
     expect(RESUME_STREAM_ERROR).toBe('Ошибка продолжения — перезагрузите страницу');
   });
 
-  // ---------- dedicated 403 toast ----------
-  // The resolve handler returns 403 when the requester's business scope does
-  // not match `batch.business_id` (auth check). Previously this
-  // fell through to the generic connection error, misleading operators into
-  // retrying a permission failure. The new branch returns scope-accurate
-  // copy distinct from 409 (race), policy_revoked (TOCTOU), and the
-  // generic network/5xx fallback.
-
   it('JJ) maps HTTP 403 with null body → "Отказано: это действие выходит за рамки вашей организации"', () => {
     expect(resolveErrorToRussian(403, null)).toBe(
       'Отказано: это действие выходит за рамки вашей организации'
@@ -128,10 +117,6 @@ describe('resolveErrorToRussian', () => {
   });
 
   it('LL) 403 wins over policy_revoked body precedence (auth/scope > policy)', () => {
-    // A 403 is an auth/scope failure NOT a
-    // policy revocation. If the server returns 403 with a body that also
-    // says reason=policy_revoked, the 403 branch wins because the user is
-    // crossing a trust boundary, not just hitting a policy gate.
     expect(resolveErrorToRussian(403, { reason: 'policy_revoked' })).toBe(
       'Отказано: это действие выходит за рамки вашей организации'
     );

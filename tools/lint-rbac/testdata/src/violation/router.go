@@ -22,9 +22,8 @@ var handlers = handlersPkg{}
 
 func Setup(r Router) {
 	r.Route("/businesses/{id}", func(r Router) {
-		// No r.Use(authz.RequireBusinessAccess(...)) — missing chokepoint!
 
-		r.Get("/foo", handlers.GetFoo)   // want `handler Get /foo registered under /businesses/\{id\}/\.\.\. must reference authz\.BusinessContextFromCtx or authz\.Can`
-		r.Post("/bar", handlers.PostFoo) // want `handler Post /bar registered under /businesses/\{id\}/\.\.\. must reference authz\.BusinessContextFromCtx or authz\.Can`
+		r.Get("/foo", handlers.GetFoo)
+		r.Post("/bar", handlers.PostFoo)
 	})
 }

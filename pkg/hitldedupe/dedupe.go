@@ -80,12 +80,9 @@ func (d *DedupeClient) Claim(ctx context.Context, businessID, approvalID string)
 	if ok {
 		return ClaimOutcomeClaimed, "", nil
 	}
-	// Key exists — GET to distinguish in-flight from completed.
 	val, err := d.rdb.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			// Race: key existed at SetNX time but got evicted/expired between SetNX and Get.
-			// Treat as duplicate (safer than retrying — avoids double-post).
 			return ClaimOutcomeDuplicate, "", nil
 		}
 		return ClaimOutcomeSkip, "", fmt.Errorf("hitldedupe: Get after SetNX miss: %w", err)

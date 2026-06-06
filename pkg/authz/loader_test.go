@@ -73,8 +73,6 @@ func TestMembershipLoader_Interface(t *testing.T) {
 	})
 
 	t.Run("compile-time interface assertion passes", func(t *testing.T) {
-		// var _ authz.MembershipLoader = (*fakeLoader)(nil) at package level
-		// is the actual compile-time check; this test is a no-op runtime guard.
 		var loader authz.MembershipLoader = &fakeLoader{}
 		require.NotNil(t, loader)
 	})

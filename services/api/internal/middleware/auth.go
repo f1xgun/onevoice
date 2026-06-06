@@ -31,14 +31,12 @@ type ErrorResponse struct {
 func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Extract token from Authorization header
 			tokenString, err := extractToken(r)
 			if err != nil {
 				writeJSONError(w, err.Error())
 				return
 			}
 
-			// Parse and validate token
 			token, err := jwt.ParseWithClaims(tokenString, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -67,7 +65,6 @@ func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
 
-			// Call next handler with updated context
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

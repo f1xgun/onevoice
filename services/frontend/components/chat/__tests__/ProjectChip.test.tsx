@@ -19,7 +19,6 @@ describe('ProjectChip — size variants', () => {
   it('default size (no prop) renders the `sm` Tailwind classes', () => {
     render(<ProjectChip projectId="p-1" projectName="Отзывы" />);
     const link = screen.getByRole('link');
-    // sm size: px-2 py-0.5 text-xs gap-1.5
     expect(link.className).toContain('px-2');
     expect(link.className).toContain('text-xs');
   });
@@ -27,7 +26,6 @@ describe('ProjectChip — size variants', () => {
   it('size="xs" renders the xs Tailwind classes (mini chip for PinnedSection rows)', () => {
     render(<ProjectChip projectId="p-1" projectName="Отзывы" size="xs" />);
     const link = screen.getByRole('link');
-    // xs size: px-1 py-0 text-[10px] gap-1
     expect(link.className).toContain('px-1');
     expect(link.className).toContain('text-[10px]');
   });
@@ -42,7 +40,6 @@ describe('ProjectChip — size variants', () => {
   it('renders the unassigned span variant when projectId is null (Без проекта)', () => {
     const { container } = render(<ProjectChip projectId={null} />);
     expect(screen.getByText('Без проекта')).toBeInTheDocument();
-    // It's a <span> not a Link.
     expect(container.querySelector('a')).toBeNull();
   });
 });

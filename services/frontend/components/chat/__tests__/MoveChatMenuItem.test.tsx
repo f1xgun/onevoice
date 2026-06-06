@@ -76,7 +76,6 @@ function renderWithTrigger(currentProjectId: string | null) {
 
 async function openMenu(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Меню' }));
-  // Focus the submenu trigger and open the submenu via ArrowRight (jsdom-friendly).
   const trigger = await screen.findByText('Переместить в…');
   trigger.focus();
   await user.keyboard('{ArrowRight}');
@@ -87,7 +86,6 @@ describe('MoveChatMenuItem', () => {
     vi.clearAllMocks();
     bizApiGet.mockReset();
     bizApiPost.mockReset();
-    // Default: listProjects returns two projects.
     bizApiGet.mockImplementation((_bizId: string, path: string) => {
       if (path === '/projects') {
         return Promise.resolve({ data: [projectB, projectA] });
@@ -152,7 +150,6 @@ describe('MoveChatMenuItem', () => {
     renderWithTrigger(null);
     await openMenu(user);
 
-    // Alphabetical sorting (ru locale): "Альфа" before "Бета".
     const alpha = await screen.findByText('Альфа');
     await user.click(alpha);
 
@@ -191,14 +188,12 @@ describe('MoveChatMenuItem', () => {
     const beta = await screen.findByText('Бета');
     await user.click(beta);
 
-    // Collect the action handler that sonner received.
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalled();
     });
     const [, options] = (toast.success as unknown as { mock: { calls: unknown[][] } }).mock
       .calls[0] as [string, { action: { onClick: () => void } }];
 
-    // Invoke Undo — should fire a second move back to the original project.
     options.action.onClick();
 
     await waitFor(() => {

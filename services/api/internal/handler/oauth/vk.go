@@ -44,11 +44,6 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Scopes match the original working config of this VK app:
-	// `wall,groups,manage` — the `offline` scope triggers "Security Error"
-	// on this app's oauth.vk.com flow (not enabled in app settings).
-	// Without `offline`, user tokens expire in ~24h; the ReviewSyncer
-	// warns once per expired token (tracked separately).
 	authURL := fmt.Sprintf("%s/authorize?client_id=%s&redirect_uri=%s&scope=wall,groups,manage&response_type=code&state=%s&v="+vkapi.APIVersion,
 		h.vkTokenBaseURL(),
 		url.QueryEscape(h.cfg.VKClientID),
@@ -77,7 +72,6 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange code for token via classic VK OAuth (GET with query params).
 	tokenEndpoint := fmt.Sprintf("%s/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
 		h.vkTokenBaseURL(),
 		url.QueryEscape(h.cfg.VKClientID),
@@ -113,12 +107,6 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Park the user token in Redis while the user picks a community. The
-	// community-callback picks it up from Redis and hands both tokens to
-	// integrationService.Connect, which persists the user token encrypted
-	// in integrations.encrypted_user_token. The community token is
-	// mandatory for write operations (post/reply); the user token unlocks
-	// wall.getComments, which VK refuses to serve with group auth.
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
 	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, tempOAuthCredsTTL).Err(); err != nil {
 		slog.Error("failed to store temp VK token", "error", err)
@@ -131,7 +119,6 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		"user_id", tokenResp.UserID,
 	)
 
-	// Redirect to frontend community selection step
 	http.Redirect(w, r, "/integrations?vk_step=select_community", http.StatusFound)
 }
 
@@ -150,7 +137,6 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get temp token from Redis
 	redisKey := fmt.Sprintf("vk_temp_token:%s", bc.BusinessID.String())
 	token, err := h.redis.Get(r.Context(), redisKey).Result()
 	if err != nil {
@@ -159,7 +145,6 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Call VK API: groups.get with filter=admin
 	vkURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL+"/method/groups.get?filter=admin&extended=1&fields=name,photo_50,screen_name,members_count&access_token=%s&v="+vkapi.APIVersion,
 		url.QueryEscape(token),
 	)
@@ -222,10 +207,6 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Accept a numeric ID, a screen_name, or a full VK URL. Resolve
-	// everything non-numeric to a numeric group_id via groups.getById
-	// using the Mini-App service key — VK's community OAuth endpoint
-	// only accepts numeric ids in group_ids.
 	groupID, err := h.resolveVKGroupID(r.Context(), groupInput)
 	if err != nil {
 		slog.Warn("VK group resolution failed", "input", groupInput, "error", err)
@@ -244,7 +225,6 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Old VK OAuth with group_ids — returns community-scoped token
 	authURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL+"/authorize?client_id=%s&redirect_uri=%s&group_ids=%s&scope=wall,manage&response_type=code&state=%s&v="+vkapi.APIVersion,
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
@@ -272,7 +252,6 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Exchange code for community token via old VK OAuth
 	tokenURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL+"/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
 		h.cfg.VKClientID,
 		h.cfg.VKClientSecret,
@@ -289,7 +268,6 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 
 	body, _ := io.ReadAll(resp.Body)
 
-	// VK returns community tokens as: {"access_token_GROUPID": "xxx", "groups": [{"group_id": N, "access_token": "xxx"}]}
 	var tokenResp struct {
 		Groups []struct {
 			GroupID     int64  `json:"group_id"`
@@ -297,7 +275,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		} `json:"groups"`
 		Error       string `json:"error"`
 		ErrorDesc   string `json:"error_description"`
-		AccessToken string `json:"access_token"` // user token (we ignore this)
+		AccessToken string `json:"access_token"`
 	}
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		slog.Error("VK community token response parse error", "error", err, "body", string(body))
@@ -319,15 +297,11 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	group := tokenResp.Groups[0]
 	groupIDStr := strconv.FormatInt(group.GroupID, 10)
 
-	// Retrieve user token from Redis before deleting (for dual-token strategy)
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
 	userToken, _ := h.redis.Get(r.Context(), redisKey).Result()
 
-	// Best-effort fetch of the community display name. Stored in metadata so
-	// the UI can render "OneVoice" instead of the bare 236912172 group id.
 	communityName, _ := h.fetchVKCommunityName(r.Context(), groupIDStr, group.AccessToken)
 
-	// Store community token + user token (user token enables read operations on private data)
 	metadata := map[string]any{
 		"group_id": group.GroupID,
 	}
@@ -349,7 +323,6 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Delete temp user token from Redis
 	_ = h.redis.Del(r.Context(), redisKey).Err()
 
 	slog.Info("VK community integration connected",

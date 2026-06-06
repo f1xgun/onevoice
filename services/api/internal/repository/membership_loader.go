@@ -81,8 +81,6 @@ func (l *membershipLoader) LoadRole(ctx context.Context, roleID uuid.UUID) (*aut
 		return nil, fmt.Errorf("unmarshal role permissions: %w", err)
 	}
 
-	// Build a set of known permissions from the registry so we can detect stale
-	// or renamed entries in the DB without failing hard (IN-02).
 	known := make(map[authz.Permission]struct{})
 	for _, g := range authz.AllPermissions() {
 		for _, pm := range g.Permissions {

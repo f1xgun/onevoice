@@ -77,7 +77,6 @@ afterEach(() => {
 
 describe('PermissionTree', () => {
   it('renders Skeleton block (aria-busy) while catalog is loading', () => {
-    // Resolved promise that never settles within the test: keep isLoading=true.
     mockedGetCatalog.mockImplementation(() => new Promise(() => {}));
     const { container } = renderTree();
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
@@ -96,8 +95,6 @@ describe('PermissionTree', () => {
   });
 
   it('is purely catalog-driven — arbitrary perm names render', async () => {
-    // A permission never declared in Go source still renders if the catalog
-    // returns it — proves there are no hardcoded keys in the components.
     mockedGetCatalog.mockResolvedValue([
       {
         resource: 'imaginary',
@@ -114,9 +111,7 @@ describe('PermissionTree', () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     const onChange = vi.fn();
     renderTree({ onChange });
-    // Wait for the catalog to resolve.
     await waitFor(() => expect(screen.getByText('business.read')).toBeInTheDocument());
-    // Click the leaf-level checkbox for business.read.
     await userEvent.setup().click(screen.getByRole('checkbox', { name: 'business.read' }));
     expect(onChange).toHaveBeenCalledWith(['business.read']);
   });
@@ -129,8 +124,6 @@ describe('PermissionTree', () => {
       actorPermissions: new Set(['roles.read', 'roles.update']), // partial
     });
     await waitFor(() => expect(screen.getByText('roles.read')).toBeInTheDocument());
-    // Click the group checkbox for the "roles" resource — only enabled
-    // leaves should flip; roles.create stays out of the value.
     await userEvent.setup().click(screen.getByRole('checkbox', { name: 'roles' }));
     expect(onChange).toHaveBeenCalledTimes(1);
     const next = onChange.mock.calls[0][0] as string[];
@@ -140,7 +133,6 @@ describe('PermissionTree', () => {
   it('disabled leaf renders «У вас нет этого права» tooltip aria-label', async () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     renderTree({
-      // Actor lacks roles.create — the leaf must render disabled tooltip text.
       actorPermissions: new Set(['business.read', 'business.update', 'roles.read', 'roles.update']),
     });
     await waitFor(() => expect(screen.getByText('roles.create')).toBeInTheDocument());

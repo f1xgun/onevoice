@@ -37,8 +37,6 @@ func TestRegenerateTitle_409_Manual_EnglishLocale(t *testing.T) {
 	}
 	h, _, _ := newTitlerHandlerWithRealTitler(t, conv, nil)
 
-	// Build the request the production pipeline would: BusinessContext
-	// from authz middleware AND the language tag from middleware.Locale.
 	req := httptest.NewRequest(http.MethodPost,
 		"/api/v1/conversations/"+convID+"/regenerate-title", http.NoBody)
 	rctx := chi.NewRouteContext()
@@ -55,7 +53,6 @@ func TestRegenerateTitle_409_Manual_EnglishLocale(t *testing.T) {
 	var body map[string]string
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "title_is_manual", body["error"])
-	// EN catalog entry — verbatim string from pkg/i18n/catalog_en.go.
 	assert.Equal(t,
 		"Can't regenerate — you've already renamed this chat manually",
 		body["message"])

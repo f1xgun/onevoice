@@ -20,6 +20,7 @@ import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
+import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 import { EmailChangeBeforeVerifyModal } from './EmailChangeBeforeVerifyModal';
 
 const HTTP_NO_CONTENT = 204;
@@ -32,20 +33,20 @@ export function VerificationBanner() {
   const [cooldownSec, setCooldownSec] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
 
-  // Tick the cooldown countdown. Clears itself on unmount.
   useEffect(() => {
     if (cooldownSec <= 0) return;
     const id = setTimeout(() => setCooldownSec((s) => s - 1), 1000);
     return () => clearTimeout(id);
   }, [cooldownSec]);
 
-  // Render nothing for verified users / no-session pages — the banner is
-  // explicitly opt-in via me.emailVerified===false.
   if (!user || user.emailVerified !== false) return null;
 
   const deadline = user.emailVerificationDeadline ? new Date(user.emailVerificationDeadline) : null;
   const deadlineLabel = deadline
-    ? deadline.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+    ? deadline.toLocaleDateString(localeToIntlTag(DEFAULT_LOCALE), {
+        day: 'numeric',
+        month: 'long',
+      })
     : '';
 
   async function resend() {

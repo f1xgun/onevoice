@@ -55,20 +55,13 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Probe groups.getById with the user-supplied token. If group_id is
-	// supplied (legacy / explicit picker), pass it; otherwise rely on the
-	// community-token-knows-its-group behavior. Either way the response
-	// gives us the canonical numeric id, name, screen_name, and avatar.
 	var groupID string
 	if req.GroupId != nil {
 		groupID = *req.GroupId
 	}
 	group, vkErr, transportErr := h.probeVKCommunityToken(r.Context(), req.AccessToken, groupID)
 	if transportErr != nil {
-		// Domain-classified sentinel — the resolver step before the API
-		// call failed. Surface as 400 with a localized template.
 		if errors.Is(transportErr, ErrVKCommunityResolveFailed) {
-			// Underlying detail follows ": " after the sentinel name.
 			detail := strings.TrimPrefix(transportErr.Error(), ErrVKCommunityResolveFailed.Error()+": ")
 			writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.community_resolve_failed", detail)
 			return
@@ -86,8 +79,6 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the token has `wall` scope. Without it, vk__reply_comment
-	// will fail at runtime — surface the issue at connect time instead.
 	if scopeErr := h.checkVKWallScope(r.Context(), req.AccessToken); scopeErr != nil {
 		if errors.Is(scopeErr, ErrVKWallPermissionMissing) {
 			writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.wall_permission_missing")
@@ -149,8 +140,6 @@ func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Find the integration scoped to this business — defends against
-	// cross-tenant id guessing.
 	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), bc.BusinessID, a2a.AgentVK)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -168,10 +157,6 @@ func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Use the integration's own community admin token rather than the
-	// Mini-App service key — the latter is often unset in self-hosted
-	// installs and fails closed groups, while the stored token is always
-	// present for a connected VK community.
 	accessToken := ""
 	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID); tokErr == nil && tok != nil {
 		accessToken = tok.AccessToken

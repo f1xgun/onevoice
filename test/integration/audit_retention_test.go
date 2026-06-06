@@ -10,7 +10,7 @@ package integration
 // auth.user_registered + auth.consent_recorded asynchronously).
 // 3. Poll for the audit row + assert user_email_at_event matches the
 // registration email (resolver populated it BEFORE the INSERT).
-// 4. Hard-delete the user (DELETE FROM users WHERE id = $1; 
+// 4. Hard-delete the user (DELETE FROM users WHERE id = $1;
 // will wrap this in a proper service path).
 // 5. Re-query the same audit row: user_id IS NULL (FK SET NULL) AND
 // user_email_at_event still equals the original email.
@@ -41,7 +41,6 @@ func TestAuditLog_SurvivesUserDelete(t *testing.T) {
 	require.NoError(t, pgPool.QueryRow(context.Background(),
 		`SELECT id FROM users WHERE email = $1`, email).Scan(&userID))
 
-	// Poll the async audit goroutine — Register emits user_registered.
 	var auditID uuid.UUID
 	var emailAtEvent string
 	require.Eventually(t, func() bool {
@@ -56,14 +55,10 @@ func TestAuditLog_SurvivesUserDelete(t *testing.T) {
 	require.Equal(t, email, emailAtEvent,
 		"user_email_at_event MUST be populated by the audit logger's UserResolver before INSERT")
 
-	// Hard-delete the user. wraps this in a service path; the
-	// SQL is the same primitive.
 	_, err := pgPool.Exec(context.Background(),
 		`DELETE FROM users WHERE id = $1`, userID)
 	require.NoError(t, err, "hard-delete must succeed (FK SET NULL on audit_logs.user_id)")
 
-	// Re-query the SAME audit row by id — user_id is now NULL (CASCADE → SET NULL),
-	// but the email survives.
 	var nullableUserID *uuid.UUID
 	var preservedEmail string
 	err = pgPool.QueryRow(context.Background(),

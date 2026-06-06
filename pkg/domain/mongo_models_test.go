@@ -40,10 +40,6 @@ func TestConversation_PinnedAtJSON(t *testing.T) {
 	})
 
 	t.Run("legacy Pinned bool field is removed (single source of truth)", func(t *testing.T) {
-		// If `Pinned bool` ever returns to the struct it would re-introduce
-		// the dual-source-of-truth bug.
-		// Marshal a zero Conversation and assert the JSON contains no
-		// `"pinned"` token (only `pinnedAt` is allowed).
 		conv := Conversation{ID: "abc"}
 		b, err := json.Marshal(conv)
 		require.NoError(t, err)
@@ -107,7 +103,6 @@ func TestAgentTask_JSONRoundtrip_UsesErrorCodeKey(t *testing.T) {
 }
 
 func TestAgentTask_BSONRoundtrip_BackwardCompat(t *testing.T) {
-	// Simulate a historical document — no error_code field at all.
 	legacy := bson.M{
 		"_id":         "task-legacy",
 		"business_id": "biz-1",

@@ -342,7 +342,6 @@ func TestResolve_CrossTenant_Returns403(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"decisions": []map[string]interface{}{{"id": "tc_a", "action": "approve"}},
 	})
-	// attacker.ID != ownerID → service-layer 403
 	rec := hitlRouteRequest(t, h, attacker.ID, "c1", "b1", body)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", rec.Code)
@@ -567,7 +566,6 @@ func TestResolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *testing.T) {
 	if first["reason"] != "policy_revoked" {
 		t.Errorf("reason = %v, want policy_revoked", first["reason"])
 	}
-	// Persisted batch must reflect the rewrite.
 	b, _ := pr.GetByBatchID(context.Background(), "b1")
 	if b.Calls[0].Verdict != "reject" {
 		t.Errorf("persisted Verdict = %q, want reject", b.Calls[0].Verdict)
@@ -594,7 +592,6 @@ func TestResolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.T) {
 		},
 	})
 	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
-	// Expect 400 because "tool_name" is not in EditableFields.
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
 	}
@@ -619,13 +616,10 @@ func TestResume_BatchResolving_Allowed(t *testing.T) {
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
 		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
-	// Move batch to status=resolving (post-resolve, pre-dispatch).
 	pr.mu.Lock()
 	pr.batches["b1"].Status = "resolving"
 	pr.mu.Unlock()
 
-	// Stub the orchestrator so we can verify the api forwards instead of
-	// rejecting with 409. The orchestrator returns a tiny SSE-like payload.
 	orchHits := 0
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orchHits++
@@ -710,7 +704,6 @@ func TestResume_Happy_OpensSSEStream_ForwardingOrchestratorEvents(t *testing.T) 
 		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 
-	// Mock orchestrator resume endpoint.
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, "/chat/c1/resume") {
 			t.Errorf("orchestrator path = %q", r.URL.Path)
@@ -759,7 +752,6 @@ func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 
-	// Mock orchestrator /internal/tools — proves the cache actually fetches.
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/internal/tools") {
 			t.Fatalf("unexpected path %q", r.URL.Path)

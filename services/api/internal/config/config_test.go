@@ -41,8 +41,8 @@ func minTestEnv(t *testing.T) {
 func TestLoad_TitlerModel_Fallback(t *testing.T) {
 	cases := []struct {
 		name        string
-		titlerModel string // "" means unset
-		llmModel    string // "" means unset
+		titlerModel string
+		llmModel    string
 		want        string
 	}{
 		{
@@ -80,8 +80,6 @@ func TestLoad_TitlerModel_Fallback(t *testing.T) {
 }
 
 func TestLoad_GracefulDisable_NoLLMEnv(t *testing.T) {
-	// API must boot cleanly when neither TITLER_MODEL nor LLM_MODEL is set,
-	// AND when no provider key is set.
 	minTestEnv(t)
 	t.Setenv("TITLER_MODEL", "")
 	t.Setenv("LLM_MODEL", "")
@@ -103,7 +101,6 @@ func TestLoad_ProviderKeys(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
 	t.Setenv("OPENAI_API_KEY", "sk-oai-test")
-	// ANTHROPIC_API_KEY left unset → empty string
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
@@ -115,7 +112,7 @@ func TestLoad_ProviderKeys(t *testing.T) {
 func TestLoad_LLMTier_Default(t *testing.T) {
 	cases := []struct {
 		name string
-		tier string // "" means unset
+		tier string
 		want string
 	}{
 		{name: "unset → free default", tier: "", want: "free"},
@@ -135,15 +132,12 @@ func TestLoad_LLMTier_Default(t *testing.T) {
 }
 
 func TestLoad_SelfHostedEndpoints(t *testing.T) {
-	// Mirrors orchestrator's TestLoad_SelfHostedEndpoints — the parser is
-	// lifted verbatim so the same expectations apply.
 	minTestEnv(t)
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
 	t.Setenv("SELF_HOSTED_0_MODEL", "llama3.1")
 	t.Setenv("SELF_HOSTED_0_API_KEY", "sk-local")
 	t.Setenv("SELF_HOSTED_1_URL", "http://vm2:8080/v1")
 	t.Setenv("SELF_HOSTED_1_MODEL", "mistral")
-	// SELF_HOSTED_1_API_KEY left unset
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
@@ -159,8 +153,6 @@ func TestLoad_SelfHostedEndpoints(t *testing.T) {
 func TestLoad_SelfHostedEndpoints_MissingModel_Skipped(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
-	// no SELF_HOSTED_0_MODEL → entry skipped, but scan continues to N=1
-	// which is also unset, ending the loop.
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
@@ -238,7 +230,7 @@ func TestLoad_HTTPTimeouts(t *testing.T) {
 func TestLoad_CORSAllowedOrigins(t *testing.T) {
 	cases := []struct {
 		name  string
-		value string // "" means unset
+		value string
 		want  []string
 	}{
 		{
@@ -284,7 +276,6 @@ func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
 	t.Setenv("SELF_HOSTED_0_MODEL", "llama3.1")
-	// index 1 missing — scan stops here
 	t.Setenv("SELF_HOSTED_2_URL", "http://vm3:11434/v1")
 	t.Setenv("SELF_HOSTED_2_MODEL", "gemma")
 
@@ -377,7 +368,7 @@ func TestConfig_PG_MaxConnsZero_FailsLoud(t *testing.T) {
 
 func TestConfig_PG_MaxConnsExceedsInt32_FailsLoud(t *testing.T) {
 	minTestEnv(t)
-	t.Setenv("PG_MAX_CONNS", "2147483648") // math.MaxInt32 + 1
+	t.Setenv("PG_MAX_CONNS", "2147483648")
 	_, err := config.Load()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "PG_MAX_CONNS")

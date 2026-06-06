@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
-import type { Locale } from '@/lib/i18n/locales';
+import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
@@ -140,21 +140,13 @@ function ReviewSkeleton() {
   );
 }
 
-// BCP-47 locale tag for Intl.DateTimeFormat. We map the in-app `Locale`
-// values to the canonical regional tags (`ru-RU`, `en-US`) so the
-// month-abbreviation form matches what the rest of the dashboard renders.
-const INTL_LOCALE_TAG: Record<Locale, string> = {
-  ru: 'ru-RU',
-  en: 'en-US',
-};
-
 // Format YYYY-MM-DD-ish ISO into "23 апр" / "Apr 23" style for the
 // timestamp slot. The locale comes from the consumer so a language
 // switch reformats existing rows without a remount.
 function formatReviewDate(iso: string, locale: Locale): string {
   try {
     const d = new Date(iso);
-    return new Intl.DateTimeFormat(INTL_LOCALE_TAG[locale], {
+    return new Intl.DateTimeFormat(localeToIntlTag(locale), {
       day: 'numeric',
       month: 'short',
     }).format(d);
@@ -174,10 +166,6 @@ export default function ReviewsPage() {
   const [replyText, setReplyText] = useState('');
   const canReply = usePermission('content.update').allowed;
 
-  // Reply-status radiogroup keyboard handler — wires ArrowLeft/Right/Up/Down
-  // + Home/End so the `role="radiogroup"` chips below satisfy the
-  // WAI-ARIA radiogroup keyboard contract. Native <button role="radio">
-  // doesn't get this for free; only <input type="radio"> does.
   const replyStatusRadio = useRadiogroupKeyboard<ReplyStatusFilter>({
     options: REVIEWS_REPLY_STATUS_OPTIONS,
     value: replyStatus,
@@ -193,8 +181,6 @@ export default function ReviewsPage() {
       return bizApi(activeBusinessId!)
         .get(`${BIZ_API_PATHS.REVIEWS.ROOT}?${params}`)
         .then((r) => {
-          // API shape: { reviews: Review[], total: number }. Older
-          // callers expected a bare array — accept both for safety.
           const data = r.data as unknown;
           if (Array.isArray(data)) return data as Review[];
           const reviews = (data as { reviews?: Review[] } | null)?.reviews;
@@ -218,10 +204,6 @@ export default function ReviewsPage() {
     onError: () => toast.error(tReviews('sendReplyError')),
   });
 
-  // Manual refresh — POSTs to /reviews/refresh which synchronously fans
-  // out a sync request to every connected platform agent in parallel.
-  // The 120s timeout accommodates Yandex.Business RPA scraping, which can
-  // take up to ~60s; the backend caps total work at 90s per call.
   const refreshMutation = useMutation({
     mutationFn: () =>
       api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
@@ -232,15 +214,9 @@ export default function ReviewsPage() {
     onError: () => toast.error(tReviews('refreshError')),
   });
 
-  // Stats are computed from the loaded slice — they reflect what the
-  // operator currently sees, not a global count. That keeps the strip
-  // honest under platform/status filters.
   const stats = useMemo(() => {
     const total = reviews.length;
     const pending = reviews.filter((r) => r.replyStatus === 'pending').length;
-    // Only include reviews from platforms that actually carry a rating —
-    // VK comments and Telegram messages have rating=0 by default which
-    // would otherwise drag the average toward zero.
     const ratings = reviews
       .filter((r) => platformHasRating(r.platform) && r.rating > 0)
       .map((r) => r.rating);
@@ -250,9 +226,6 @@ export default function ReviewsPage() {
 
   function openReply(review: Review, prefill?: string) {
     setReplyDialog(review);
-    // Edit-prefill priority: explicit prefill > AI draft > already-sent reply.
-    // The drafter writes draftReply only on pending reviews, so once the
-    // operator sends, draftReply is unset and replyText fills the slot.
     setReplyText(prefill ?? review.draftReply ?? review.replyText ?? '');
   }
 
@@ -491,8 +464,6 @@ function ReviewCard({
   const tPlatformLabels = useTranslations('reviews.platformLabels');
   const statusBadge = useReviewStatusBadges();
   const locale = useLocale() as Locale;
-  // ChannelMark icon hint is EN/brand-id; display label resolves via i18n
-  // platformLabels.<id> so a locale switch retitles the row.
   const channelMark = PLATFORM_CHANNEL_MARK[review.platform] ?? review.platform;
   const meta = {
     channel: channelMark,
@@ -504,11 +475,6 @@ function ReviewCard({
     (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
   const badge = statusBadge[status];
 
-  // AI-draft surface conditions. Status semantics:
-  //   draftStatus=ready  → show "Образец ответа AI" with send/edit actions
-  //   draftStatus=generating → show a quiet "готовим черновик" block
-  //   draftStatus=failed → fall through to the "write your own" fallback
-  //   draftStatus=""|undefined → not yet attempted (also fallback)
   const draftReady =
     status === 'pending' &&
     review.draftStatus === 'ready' &&
@@ -601,8 +567,6 @@ function ReviewCard({
 }
 
 function ReviewsEmptyState({ replyStatus }: { replyStatus: string }) {
-  // Tailor the copy to the active filter so the page doesn't claim
-  // there are zero reviews when really we're just filtered to "pending".
   const mode: ReviewsEmptyMode =
     replyStatus === 'pending' ? 'pending' : replyStatus === 'replied' ? 'replied' : 'all';
   return <EmptyReviews mode={mode} />;

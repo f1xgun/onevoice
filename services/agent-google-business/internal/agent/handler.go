@@ -80,7 +80,6 @@ func classifyGBPError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Preserve an already-typed code from upstream wrapping sites.
 	if a2a.CodeOf(err) != "" {
 		return err
 	}
@@ -141,16 +140,12 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		reviews = append(reviews, review)
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result: map[string]interface{}{
-			"reviews":        reviews,
-			"count":          len(reviews),
-			"average_rating": resp.AverageRating,
-			"total_count":    resp.TotalReviewCount,
-		},
-	}, nil
+	return a2a.OK(req, map[string]any{
+		"reviews":        reviews,
+		"count":          len(reviews),
+		"average_rating": resp.AverageRating,
+		"total_count":    resp.TotalReviewCount,
+	}), nil
 }
 
 func (h *Handler) replyReview(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -174,13 +169,9 @@ func (h *Handler) replyReview(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, fmt.Errorf("google_business: reply review: %w", classifyGBPError(err))
 	}
 
-	return &a2a.ToolResponse{
-		TaskID:  req.TaskID,
-		Success: true,
-		Result: map[string]interface{}{
-			"status":     "replied",
-			"reply_text": reply.Comment,
-			"updated_at": reply.UpdateTime,
-		},
-	}, nil
+	return a2a.OK(req, map[string]any{
+		"status":     "replied",
+		"reply_text": reply.Comment,
+		"updated_at": reply.UpdateTime,
+	}), nil
 }

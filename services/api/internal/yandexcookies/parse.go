@@ -76,7 +76,6 @@ func Parse(input string) (Parsed, error) {
 		return Parsed{}, ErrEmpty
 	}
 
-	// Format 1: JSON array
 	if strings.HasPrefix(trimmed, "[") {
 		cookies, err := parseJSONArray(trimmed)
 		if err != nil {
@@ -88,7 +87,6 @@ func Parse(input string) (Parsed, error) {
 		return Parsed{Cookies: cookies, Format: "json"}, nil
 	}
 
-	// Format 2: bare Session_id value (no "=" sign at all)
 	if !strings.Contains(trimmed, "=") {
 		if looksLikeSessionIDValue(trimmed) {
 			return Parsed{
@@ -99,8 +97,6 @@ func Parse(input string) (Parsed, error) {
 		return Parsed{}, ErrInvalidJSON
 	}
 
-	// Format 3: cookie header. Covers both the single "Session_id=..." pair
-	// and the multi-cookie "k=v; k=v; ..." string.
 	cookies, ok := parseCookieHeader(trimmed)
 	if !ok {
 		return Parsed{}, ErrInvalidJSON
@@ -117,9 +113,6 @@ func Parse(input string) (Parsed, error) {
 func parseJSONArray(input string) ([]Cookie, error) {
 	var raw []map[string]any
 	if err := json.Unmarshal([]byte(input), &raw); err != nil {
-		// Wrap ErrJSONUnmarshal so the handler boundary can map it to a
-		// localized message via errors.Is; the underlying json error stays
-		// reachable for slog diagnostics.
 		return nil, fmt.Errorf("%w: %w", ErrJSONUnmarshal, err)
 	}
 	cookies := make([]Cookie, 0, len(raw))

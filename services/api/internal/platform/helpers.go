@@ -40,7 +40,6 @@ func formatTelegramDescription(b *domain.Business) string {
 
 	result := strings.Join(parts, "\n\n")
 
-	// Truncate to Telegram's limit.
 	runes := []rune(result)
 	if len(runes) > maxTelegramDescription {
 		result = string(runes[:maxTelegramDescription-1]) + "…"
@@ -87,7 +86,6 @@ func formatSchedule(settings map[string]interface{}) string {
 		return ""
 	}
 
-	// Index by day key.
 	type slot struct{ open, close string }
 	byDay := make(map[string]slot)
 	for _, d := range days {
@@ -96,7 +94,6 @@ func formatSchedule(settings map[string]interface{}) string {
 		}
 	}
 
-	// Walk dayOrder and group consecutive days with identical hours.
 	type group struct {
 		start, end string
 		open, cls  string

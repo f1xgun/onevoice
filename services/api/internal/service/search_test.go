@@ -133,7 +133,7 @@ func TestSearcher_RejectsEmptyScope(t *testing.T) {
 func TestSearcher_RejectsBeforeIndexReady(t *testing.T) {
 	cr := &fakeConvRepoSearch{}
 	mr := &fakeMsgRepoSearch{}
-	s := NewSearcher(cr, mr) // do NOT call MarkIndexesReady
+	s := NewSearcher(cr, mr)
 
 	_, err := s.Search(context.Background(), "biz-1", "user-1", "anything", nil, 20)
 	assert.ErrorIs(t, err, domain.ErrSearchIndexNotReady)
@@ -175,19 +175,16 @@ func TestSearcher_HappyPath(t *testing.T) {
 	require.Contains(t, byID, "conv-A")
 	require.Contains(t, byID, "conv-B")
 
-	// conv-A is title-only: title × 20 = 30, no snippet.
 	convA := byID["conv-A"]
 	assert.InDelta(t, 30.0, convA.Score, 0.001)
 	assert.Empty(t, convA.Snippet)
 
-	// conv-B is content-only: content × 10 = 10, snippet must be set.
 	convB := byID["conv-B"]
 	assert.InDelta(t, 10.0, convB.Score, 0.001)
 	assert.NotEmpty(t, convB.Snippet, "content match must produce a snippet")
 	assert.Equal(t, "msg-1", convB.TopMessageID)
 	assert.Equal(t, 1, convB.MatchCount)
 
-	// Sort: convA (30) before convB (10).
 	assert.Equal(t, "conv-A", results[0].ConversationID)
 }
 
@@ -208,7 +205,7 @@ func TestSearcher_TitleAndContentMerge(t *testing.T) {
 				ConversationID: "conv-A",
 				TopMessageID:   "msg-1",
 				TopContent:     "Тут содержание про инвойс",
-				TopScore:       2.0, // 2 × 10 = 20 > title 0.5 × 20 = 10
+				TopScore:       2.0,
 				MatchCount:     3,
 			},
 		},
@@ -257,12 +254,8 @@ func TestSearcher_StableTieBreak_RecencyThenID(t *testing.T) {
 	tOld := tNew.Add(-2 * time.Hour)
 
 	titles := []domain.ConversationTitleHit{
-		// Same recency as conv-z; ConversationID is the tiebreaker. "conv-a"
-		// must come before "conv-z" in alphabetic order even though they
-		// were inserted z-then-a.
 		{ID: "conv-z", Title: "z-title", Score: 1.0, LastMessageAt: &tOld},
 		{ID: "conv-a", Title: "a-title", Score: 1.0, LastMessageAt: &tOld},
-		// Newest — must come first.
 		{ID: "conv-m", Title: "m-title", Score: 1.0, LastMessageAt: &tNew},
 	}
 	cr := &fakeConvRepoSearch{
@@ -283,7 +276,6 @@ func TestSearcher_StableTieBreak_RecencyThenID(t *testing.T) {
 	assert.Equal(t, wantOrder, gotOrder,
 		"expected order: newest LastMessageAt first, then ConversationID asc")
 
-	// Determinism: 50 repeated calls must produce identical orderings.
 	for i := 0; i < 50; i++ {
 		got, err := s.Search(context.Background(), "biz", "user", "anything", nil, 20)
 		require.NoError(t, err)

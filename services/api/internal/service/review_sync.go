@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -21,6 +20,10 @@ import (
 // the upper bound that platform agents accept and gives the syncer headroom
 // to ingest a backlog after a long disconnect without paging.
 const reviewSyncBatchSize = 50
+
+// reviewSyncDispatchTimeout caps the per-platform NATS request budget for a
+// single sync fetch.
+const reviewSyncDispatchTimeout = 60 * time.Second
 
 // reviewToolByPlatform maps a platform ID to the tool name that returns
 // review/comment-like entries. Not every platform follows the __get_reviews
@@ -127,7 +130,6 @@ func (s *ReviewSyncer) SyncAll(ctx context.Context) error {
 				"platform", integ.Platform,
 				"error", err,
 			)
-			// Continue with remaining integrations
 		}
 	}
 	return nil
@@ -144,8 +146,6 @@ func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID
 	}
 	platforms := make(map[string]bool, len(integrations))
 	for _, integ := range integrations {
-		// Only active integrations on platforms the syncer knows how to
-		// fetch reviews for. Mirrors ListAllActiveByPlatforms semantics.
 		if integ.Status != domain.IntegrationStatusActive {
 			continue
 		}
@@ -153,11 +153,6 @@ func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID
 			platforms[integ.Platform] = true
 		}
 	}
-	// Detach the per-platform sync from the request context so a client
-	// disconnect (e.g. browser-side fetch timeout while Yandex.Business RPA
-	// is still scraping) does not cancel sibling syncs that have already
-	// started. We still cap each platform with the existing 60s budget
-	// inside syncOne. Total wall time = the slowest platform, not the sum.
 	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 90*time.Second)
 	defer cancel()
 
@@ -170,9 +165,6 @@ func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID
 				slog.Error("review refresh: platform sync failed",
 					"business_id", businessID, "platform", p, "error", err,
 				)
-				// Per-platform failure is non-fatal — partial refresh
-				// is better than dropping the whole request on one
-				// slow/broken platform.
 			}
 		}(platform)
 	}
@@ -188,44 +180,18 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		return fmt.Errorf("no review tool registered for platform %q", platform)
 	}
 
-	req := a2a.ToolRequest{
-		TaskID:     uuid.NewString(),
-		Tool:       toolName,
-		Args:       map[string]interface{}{"limit": float64(reviewSyncBatchSize)},
-		BusinessID: businessID.String(),
-	}
-	data, err := json.Marshal(req)
+	resp, err := dispatchTool(ctx, s.nc, platform, toolName,
+		map[string]interface{}{"limit": float64(reviewSyncBatchSize)}, businessID.String(), reviewSyncDispatchTimeout)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
+		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	msg, err := s.nc.RequestMsgWithContext(reqCtx, &natslib.Msg{
-		Subject: a2a.Subject(platform),
-		Data:    data,
-	})
-	if err != nil {
-		return fmt.Errorf("nats request to %s: %w", a2a.Subject(platform), err)
-	}
-
-	var resp a2a.ToolResponse
-	if err := json.Unmarshal(msg.Data, &resp); err != nil {
-		return fmt.Errorf("unmarshal response: %w", err)
-	}
-	if !resp.Success {
-		return fmt.Errorf("agent error: %s", resp.Error)
-	}
-
-	// Different tools return the list under different keys:
-	// telegram/yandex_business use "reviews"; VK's get_comments returns "comments".
 	reviewsRaw, ok := resp.Result["reviews"]
 	if !ok {
 		reviewsRaw, ok = resp.Result["comments"]
 	}
 	if !ok {
-		return nil // no review-like field — nothing to persist
+		return nil
 	}
 	reviewsList, ok := reviewsRaw.([]interface{})
 	if !ok {
@@ -254,14 +220,10 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		}
 	}
 
-	// AI-draft hook: pick up any newly-pending reviews (and previously-failed
-	// ones) and ask the orchestrator to generate replies. Run with a fresh
-	// context so a slow LLM doesn't block on the upsertCtx 10s budget.
 	if s.drafter != nil {
 		draftCtx, draftCancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer draftCancel()
 		if err := s.drafter.GenerateForBusiness(draftCtx, businessID, platform); err != nil {
-			// Non-fatal — sync delivered the data, draft is value-add.
 			slog.Warn("review sync: draft pass failed",
 				"business_id", businessID,
 				"platform", platform,
@@ -284,7 +246,7 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 
 	author, _ := m["author"].(string)
 	if author == "" {
-		if fromID, ok := intFromMap(m, "from_id"); ok {
+		if fromID, ok := metaInt(m, "from_id"); ok {
 			author = fmt.Sprintf("vk_user_%d", fromID)
 		}
 	}
@@ -302,7 +264,7 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {
 			createdAt = t
 		}
-	} else if unix, ok := intFromMap(m, "date"); ok && unix > 0 {
+	} else if unix, ok := metaInt(m, "date"); ok && unix > 0 {
 		createdAt = time.Unix(unix, 0).UTC()
 	}
 
@@ -332,28 +294,14 @@ func externalIDFromMap(m map[string]interface{}, platform string) string {
 	if s, ok := m["id"].(string); ok && s != "" {
 		return s
 	}
-	id, hasID := intFromMap(m, "id")
+	id, hasID := metaInt(m, "id")
 	if !hasID {
 		return ""
 	}
 	if platform == a2a.AgentVK {
-		if postID, ok := intFromMap(m, "post_id"); ok {
+		if postID, ok := metaInt(m, "post_id"); ok {
 			return fmt.Sprintf("%d_%d", postID, id)
 		}
 	}
 	return fmt.Sprintf("%d", id)
-}
-
-// intFromMap extracts an integer from a JSON-unmarshalled map, tolerating the
-// float64 representation Go uses by default.
-func intFromMap(m map[string]interface{}, key string) (int64, bool) {
-	switch v := m[key].(type) {
-	case float64:
-		return int64(v), true
-	case int:
-		return int64(v), true
-	case int64:
-		return v, true
-	}
-	return 0, false
 }

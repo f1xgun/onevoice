@@ -33,7 +33,6 @@ function useMessagesReadyWhenHighlightTargetMounts(targetId: string | null): boo
 
     const poll = () => {
       if (cancelled) return;
-      // CSS.escape mirrors the hook's selector defense.
       const el = document.querySelector(`[data-message-id="${CSS.escape(targetId)}"]`);
       if (el) {
         setReady(true);

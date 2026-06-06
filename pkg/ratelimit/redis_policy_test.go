@@ -26,7 +26,6 @@ func TestPolicyFromEnv_LocalFallback_BucketSized(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ratelimit.PolicyLocalFallback, p.Mode)
 	require.NotNil(t, p.Bucket)
-	// Burst should match perHour input (3600).
 	assert.Equal(t, 3600, p.Bucket.Burst())
 }
 
@@ -61,7 +60,6 @@ func TestPolicy_HandleRedisError_NilErr_ShortCircuits(t *testing.T) {
 }
 
 func TestPolicy_HandleRedisError_LocalFallback_Allow_WithinBucket(t *testing.T) {
-	// Bucket sized at 10 burst — first call should pass.
 	p, err := ratelimit.PolicyFromEnv("local_fallback", 10)
 	require.NoError(t, err)
 
@@ -71,7 +69,6 @@ func TestPolicy_HandleRedisError_LocalFallback_Allow_WithinBucket(t *testing.T) 
 }
 
 func TestPolicy_HandleRedisError_LocalFallback_Deny_ExhaustedBucket(t *testing.T) {
-	// Bucket sized at 1 burst → second call without time advance fails.
 	p, err := ratelimit.PolicyFromEnv("local_fallback", 1)
 	require.NoError(t, err)
 
@@ -84,8 +81,6 @@ func TestPolicy_HandleRedisError_LocalFallback_Deny_ExhaustedBucket(t *testing.T
 }
 
 func TestPolicy_ZeroValue_FailsClosed(t *testing.T) {
-	// Zero-value Policy (Mode=PolicyBlock, Bucket=nil) is documented as
-	// a valid fail-closed sentinel for tests that don't exercise fallback.
 	var p ratelimit.Policy
 	allowed, sentinel := p.HandleRedisError(errors.New("any error"))
 	assert.False(t, allowed)

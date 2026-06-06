@@ -70,9 +70,6 @@ func (r *billingRepository) LogUsage(ctx context.Context, log *llm.UsageLog) err
 		log.ID = uuid.New()
 	}
 	if log.CreatedAt.IsZero() {
-		// Defense in depth — Router.logBilling sets time.Now(); the DB also
-		// has DEFAULT now() so this fallback prevents an explicit zero-time
-		// value from overriding the default.
 		log.CreatedAt = time.Now()
 	}
 
