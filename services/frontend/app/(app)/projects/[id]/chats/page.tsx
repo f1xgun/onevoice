@@ -18,7 +18,7 @@ import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { cn } from '@/lib/utils';
-import type { Conversation } from '@/lib/conversations';
+import { type Conversation, UNASSIGNED_PROJECT_ID } from '@/lib/conversations';
 
 export default function ProjectChatsPage() {
   const router = useRouter();
@@ -27,15 +27,19 @@ export default function ProjectChatsPage() {
 
   const tProjects = useTranslations('projects');
   const tChat = useTranslations('chat');
+  const tSide = useTranslations('sidebar');
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
 
-  const { data: project, isLoading: projectLoading } = useProjectQuery(id);
+  const isUnassigned = id === UNASSIGNED_PROJECT_ID;
+  const { data: project, isLoading: projectLoading } = useProjectQuery(isUnassigned ? '' : id);
   const { data: conversations, isLoading: conversationsLoading } = useConversationsQuery();
   const createConversation = useCreateConversation();
   const canCreate = usePermission('content.create').allowed;
 
   const chats = useMemo<Conversation[]>(() => {
-    const list = (conversations ?? []).filter((c) => c.projectId === id);
+    const list = (conversations ?? []).filter((c) =>
+      isUnassigned ? c.projectId == null : c.projectId === id
+    );
     const recencyKey = (c: Conversation) => c.lastMessageAt ?? c.updatedAt ?? c.createdAt;
     return [...list].sort((a, b) => {
       const aPinned = a.pinnedAt != null;
@@ -43,13 +47,13 @@ export default function ProjectChatsPage() {
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
       return recencyKey(b).localeCompare(recencyKey(a));
     });
-  }, [conversations, id]);
+  }, [conversations, id, isUnassigned]);
 
   async function handleCreate() {
     try {
       const conv = await createConversation.mutateAsync({
         title: tChat('newConversation'),
-        projectId: id,
+        projectId: isUnassigned ? null : id,
       });
       router.push(`/chat/${conv.id}`);
     } catch {
@@ -71,12 +75,14 @@ export default function ProjectChatsPage() {
 
   const headerActions = (
     <div className="flex items-center gap-2">
-      <Button asChild variant="ghost" size="md">
-        <Link href={`/projects/${id}`} aria-label={tProjects('settings')}>
-          <Settings size={16} aria-hidden />
-          {tProjects('settings')}
-        </Link>
-      </Button>
+      {!isUnassigned && (
+        <Button asChild variant="ghost" size="md">
+          <Link href={`/projects/${id}`} aria-label={tProjects('settings')}>
+            <Settings size={16} aria-hidden />
+            {tProjects('settings')}
+          </Link>
+        </Button>
+      )}
       {newChatButton}
     </div>
   );
@@ -94,7 +100,7 @@ export default function ProjectChatsPage() {
     );
   }
 
-  if (!project) {
+  if (!isUnassigned && !project) {
     return (
       <>
         <PageHeader title={tProjects('fallbackTitle')} />
@@ -109,19 +115,25 @@ export default function ProjectChatsPage() {
 
   return (
     <>
-      <PageHeader title={project.name} sub={project.description} actions={headerActions} />
+      <PageHeader
+        title={isUnassigned ? tSide('unassigned') : (project?.name ?? '')}
+        sub={isUnassigned ? undefined : project?.description}
+        actions={headerActions}
+      />
 
       <div className="mx-auto w-full max-w-2xl px-4 pb-10 sm:px-12 sm:pb-16">
         {chats.length === 0 ? (
           <EmptyFrame
-            title={tProjects('chats.empty.title')}
-            body={tProjects('chats.empty.body')}
+            title={isUnassigned ? tChat('noConversations') : tProjects('chats.empty.title')}
+            body={isUnassigned ? tChat('newConversationCta') : tProjects('chats.empty.body')}
             action={newChatButton}
           />
         ) : (
           <section className="overflow-hidden rounded-lg border border-line bg-paper-raised">
             <div className="flex items-center justify-between border-b border-line-soft px-5 py-3">
-              <MonoLabel>{tProjects('chats.sectionLabel')}</MonoLabel>
+              <MonoLabel>
+                {isUnassigned ? tSide('unassignedChats') : tProjects('chats.sectionLabel')}
+              </MonoLabel>
               <MonoLabel>{chats.length}</MonoLabel>
             </div>
             <ul className="divide-y divide-line-soft">
