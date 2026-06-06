@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -38,36 +37,37 @@ type Client struct {
 }
 
 // New constructs a Client. nil httpClient → mTLS-aware default via defaultHTTPClient().
-// Signature MUST stay aligned with pkg/tokenclient.New.
-func New(baseURL string, httpClient *http.Client) *Client {
+// Signature MUST stay aligned with pkg/tokenclient.New: when mTLS is enabled and
+// the cert/CA env paths cannot be loaded, New returns an error rather than
+// degrading to plain HTTP.
+func New(baseURL string, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
-		httpClient = defaultHTTPClient()
+		c, err := defaultHTTPClient()
+		if err != nil {
+			return nil, err
+		}
+		httpClient = c
 	}
 	return &Client{
 		baseURL:    baseURL,
 		httpClient: httpClient,
-	}
+	}, nil
 }
 
-// defaultHTTPClient honors ONEVOICE_MTLS_* env via pkg/mtls.
-// Misconfigured mTLS env logs warn + falls back to plain transport — New has no error return.
-func defaultHTTPClient() *http.Client {
+func defaultHTTPClient() (*http.Client, error) {
 	tr := &http.Transport{}
 	if mtls.IsEnabled() {
 		paths, err := mtls.PathsFromEnv()
-		switch {
-		case err != nil:
-			slog.Warn("billingclient: mtls enabled but env misconfigured — falling back to plain transport", "error", err)
-		default:
-			tlsCfg, terr := mtls.LoadClientTLSConfig(paths)
-			if terr != nil {
-				slog.Warn("billingclient: mtls enabled but cert load failed — falling back to plain transport", "error", terr)
-			} else {
-				tr.TLSClientConfig = tlsCfg
-			}
+		if err != nil {
+			return nil, fmt.Errorf("billingclient: mtls enabled but env misconfigured: %w", err)
 		}
+		tlsCfg, err := mtls.LoadClientTLSConfig(paths)
+		if err != nil {
+			return nil, fmt.Errorf("billingclient: mtls enabled but cert load failed: %w", err)
+		}
+		tr.TLSClientConfig = tlsCfg
 	}
-	return &http.Client{Timeout: defaultHTTPTimeout, Transport: tr}
+	return &http.Client{Timeout: defaultHTTPTimeout, Transport: tr}, nil
 }
 
 // LogUsage POSTs a UsageLog to the API billing endpoint. See docs/pkg/billingclient.md for the

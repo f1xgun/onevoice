@@ -44,7 +44,8 @@ func TestGetToken_FetchesFromAPI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, nil)
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
 	got, err := client.GetToken(context.Background(), "biz-1", "vk", "group-456")
 	require.NoError(t, err)
 	assert.Equal(t, "secret-token", got.AccessToken)
@@ -60,9 +61,10 @@ func TestGetToken_CachesResult(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, nil)
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
 
-	_, err := client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.NoError(t, err)
 
 	_, err = client.GetToken(context.Background(), "b", "vk", "g")
@@ -77,8 +79,9 @@ func TestGetToken_NotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, nil)
-	_, err := client.GetToken(context.Background(), "b", "vk", "g")
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrIntegrationNotFound),
 		"404 must surface as ErrIntegrationNotFound; got %v", err)
@@ -92,8 +95,9 @@ func TestGetToken_Gone(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, nil)
-	_, err := client.GetToken(context.Background(), "b", "vk", "g")
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrTokenExpired),
 		"410 must surface as ErrTokenExpired; got %v", err)
@@ -111,8 +115,9 @@ func TestGetToken_ServerError_IsTransient(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := New(srv.URL, nil)
-			_, err := client.GetToken(context.Background(), "b", "vk", "g")
+			client, err := New(srv.URL, nil)
+			require.NoError(t, err)
+			_, err = client.GetToken(context.Background(), "b", "vk", "g")
 			require.Error(t, err)
 			assert.True(t, errors.Is(err, ErrTransient),
 				"%d must surface as ErrTransient; got %v", status, err)
@@ -130,7 +135,8 @@ func TestGetToken_NetworkError_IsTransient(t *testing.T) {
 	addr := l.Addr().String()
 	require.NoError(t, l.Close())
 
-	client := New("http://"+addr, &http.Client{Timeout: 500 * time.Millisecond})
+	client, err := New("http://"+addr, &http.Client{Timeout: 500 * time.Millisecond})
+	require.NoError(t, err)
 	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrTransient),
@@ -146,8 +152,9 @@ func TestGetToken_UnexpectedNon5xx_NoSentinel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, nil)
-	_, err := client.GetToken(context.Background(), "b", "vk", "g")
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, ErrTransient),
 		"4xx other than 404/410 must NOT chain ErrTransient — likely a bug not a blip")
@@ -291,7 +298,8 @@ func TestGetToken_mTLS_Success(t *testing.T) {
 	srv.StartTLS()
 	defer srv.Close()
 
-	client := New(srv.URL, nil) // nil → default client picks up ONEVOICE_MTLS_* env
+	client, err := New(srv.URL, nil) // nil → default client picks up ONEVOICE_MTLS_* env
+	require.NoError(t, err)
 	got, err := client.GetToken(context.Background(), "b", "vk", "g")
 	require.NoError(t, err)
 	assert.Equal(t, "mtls-ok", got.AccessToken)
@@ -317,8 +325,9 @@ func TestGetToken_mTLS_RejectsUnsignedClient(t *testing.T) {
 	srv.StartTLS()
 	defer srv.Close()
 
-	client := New(srv.URL, nil)
-	_, err := client.GetToken(context.Background(), "b", "vk", "g")
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrTransient),
 		"unsigned client cert handshake failure must surface as ErrTransient; got %v", err)
@@ -353,7 +362,8 @@ func TestGetToken_mTLS_PlainHTTPRejected(t *testing.T) {
 	plainURL := "http://" + strings.TrimPrefix(srv.URL, "https://")
 
 	// Use a short timeout so the test doesn't hang on a hopeless connection.
-	client := New(plainURL, &http.Client{Timeout: 2 * time.Second})
+	client, err := New(plainURL, &http.Client{Timeout: 2 * time.Second})
+	require.NoError(t, err)
 	tok, err := client.GetToken(context.Background(), "b", "vk", "g")
 	require.Error(t, err, "TLS-only listener must NEVER serve a useful response to a plain-HTTP client")
 	assert.Nil(t, tok, "no token should leak through a plain-HTTP attempt against a TLS-only listener")
@@ -376,9 +386,10 @@ func TestGetToken_CacheEvictsExpiringSoon(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, nil)
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
 
-	_, err := client.GetToken(context.Background(), "b", "vk", "g")
+	_, err = client.GetToken(context.Background(), "b", "vk", "g")
 	require.NoError(t, err)
 
 	// Second call should fetch again because token expires within 1 minute
@@ -386,4 +397,66 @@ func TestGetToken_CacheEvictsExpiringSoon(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(2), callCount.Load(), "should call API twice since token is expiring soon")
+}
+
+// TestNew_FailClosedOnMissingCertFiles — ONEVOICE_MTLS_ENABLED=true with all
+// path env vars pointing at nonexistent files must return an error, not a
+// degraded plain-HTTP client.
+func TestNew_FailClosedOnMissingCertFiles(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(mtls.EnvEnabled, "true")
+	t.Setenv(mtls.EnvCAPath, filepath.Join(dir, "missing-ca.crt"))
+	t.Setenv(mtls.EnvCertPath, filepath.Join(dir, "missing-client.crt"))
+	t.Setenv(mtls.EnvKeyPath, filepath.Join(dir, "missing-client.key"))
+
+	c, err := New("https://api.test", nil)
+	require.Error(t, err, "mTLS enabled + missing cert files must fail closed")
+	assert.Nil(t, c, "no client may be returned on mTLS load failure")
+	assert.Contains(t, strings.ToLower(err.Error()), "mtls",
+		"error must identify mtls as the root cause; got %v", err)
+}
+
+// TestNew_FailClosedOnUnreadableCA — ONEVOICE_MTLS_ENABLED=true with CA path
+// pointing at a directory instead of a file must return an error.
+func TestNew_FailClosedOnUnreadableCA(t *testing.T) {
+	h := mtlsTestHarness(t)
+	dir := t.TempDir() // directory in place of CA file
+	t.Setenv(mtls.EnvEnabled, "true")
+	t.Setenv(mtls.EnvCAPath, dir)
+	t.Setenv(mtls.EnvCertPath, h.clientCertPath)
+	t.Setenv(mtls.EnvKeyPath, h.clientKeyPath)
+
+	c, err := New("https://api.test", nil)
+	require.Error(t, err, "unreadable CA must fail closed")
+	assert.Nil(t, c)
+	assert.Contains(t, strings.ToLower(err.Error()), "mtls")
+}
+
+// TestNew_NoMTLSAllowsPlain — when mTLS is disabled the legacy plain
+// transport path is preserved so unit tests + dev keep working.
+func TestNew_NoMTLSAllowsPlain(t *testing.T) {
+	t.Setenv(mtls.EnvEnabled, "false")
+	t.Setenv(mtls.EnvCAPath, "")
+	t.Setenv(mtls.EnvCertPath, "")
+	t.Setenv(mtls.EnvKeyPath, "")
+
+	c, err := New("http://api.test", nil)
+	require.NoError(t, err)
+	require.NotNil(t, c)
+}
+
+// TestNew_CallerProvidedClient_BypassesMTLSCheck — when the caller passes a
+// non-nil http.Client, the mTLS env state is ignored entirely so unit tests
+// that inject an httptest client never trip the boot-time cert check.
+func TestNew_CallerProvidedClient_BypassesMTLSCheck(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(mtls.EnvEnabled, "true")
+	t.Setenv(mtls.EnvCAPath, filepath.Join(dir, "missing-ca.crt"))
+	t.Setenv(mtls.EnvCertPath, filepath.Join(dir, "missing-client.crt"))
+	t.Setenv(mtls.EnvKeyPath, filepath.Join(dir, "missing-client.key"))
+
+	custom := &http.Client{Timeout: time.Second}
+	c, err := New("https://api.test", custom)
+	require.NoError(t, err, "caller-supplied client must bypass mTLS env loading")
+	require.NotNil(t, c)
 }
