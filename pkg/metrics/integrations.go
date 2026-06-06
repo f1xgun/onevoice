@@ -5,6 +5,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// IntegrationTokenDecryptedCounter exposes the {platform,caller_service} child
+// of the token-decrypted counter so other packages can read its current value
+// (e.g. assert the increment in a fail-closed audit test).
+func IntegrationTokenDecryptedCounter(platform, callerService string) prometheus.Counter {
+	return integrationTokenDecryptedTotal.WithLabelValues(platform, callerService)
+}
+
 // integrationsRevokedReceivedTotal counts revoke fan-out messages received by
 // agent subscribers, labeled by platform. Cardinality bounded by the four
 // known agent platforms.

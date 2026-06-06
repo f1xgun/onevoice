@@ -2,18 +2,22 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // Mock IntegrationRepository
@@ -533,7 +537,7 @@ func TestGetDecryptedToken_Success(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -554,7 +558,7 @@ func TestGetDecryptedToken_NotFound(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "telegram", "ext_999")
+	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "telegram", "ext_999", "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
@@ -587,7 +591,7 @@ func TestGetDecryptedToken_Expired(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrTokenExpired)
@@ -717,7 +721,7 @@ func TestGetDecryptedToken_RefreshesExpiredGoogleToken(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -782,7 +786,7 @@ func TestGetDecryptedToken_RefreshRotatesRefreshToken(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "locations/99")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "locations/99", "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -824,7 +828,7 @@ func TestGetDecryptedToken_ExpiredNoRefresher_ReturnsError(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrTokenExpired)
@@ -856,7 +860,7 @@ func TestGetDecryptedToken_ExpiredNoRefreshToken_ReturnsError(t *testing.T) {
 
 	refresher := &mockTokenRefresher{}
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrTokenExpired)
@@ -892,7 +896,7 @@ func TestGetDecryptedToken_NotExpired_NoRefresh(t *testing.T) {
 
 	refresher := &mockTokenRefresher{}
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/2")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/2", "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -972,13 +976,169 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 
-	resp1, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp1, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 	require.NoError(t, err)
 	assert.Equal(t, newAccess, resp1.AccessToken)
 
-	resp2, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp2, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 	require.NoError(t, err)
 	assert.Equal(t, newAccess, resp2.AccessToken)
 
 	assert.Equal(t, 1, refresher.callCount, "should only refresh once due to mutex + double-check")
+}
+
+type recordingSyncLogger struct {
+	syncCalls   []audit.Entry
+	logSyncErr  error
+	logSyncSeen bool
+}
+
+func (r *recordingSyncLogger) Log(_ context.Context, _ audit.Entry) {}
+
+func (r *recordingSyncLogger) LogSync(_ context.Context, e audit.Entry) error {
+	r.logSyncSeen = true
+	r.syncCalls = append(r.syncCalls, e)
+	return r.logSyncErr
+}
+
+func tokenTestIntegration(t *testing.T, businessID uuid.UUID, platform, externalID string) (*domain.Integration, *crypto.Encryptor) {
+	t.Helper()
+	enc := testEncryptor(t)
+	encryptedToken, err := enc.Encrypt([]byte("plaintext_access_token"))
+	require.NoError(t, err)
+	return &domain.Integration{
+		ID:                   uuid.New(),
+		BusinessID:           businessID,
+		Platform:             platform,
+		ExternalID:           externalID,
+		Status:               "active",
+		EncryptedAccessToken: encryptedToken,
+	}, enc
+}
+
+func TestGetDecryptedToken_EmitsAuditRow(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "vk", "vk_999")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	rec := &recordingSyncLogger{}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "vk", "vk_999", "vk_post")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	require.True(t, rec.logSyncSeen, "audit LogSync must be invoked before returning the token")
+	require.Len(t, rec.syncCalls, 1)
+	entry := rec.syncCalls[0]
+	assert.Equal(t, audit.ActionIntegrationTokenDecrypted, entry.Action)
+	require.NotNil(t, entry.BusinessID)
+	assert.Equal(t, businessID, *entry.BusinessID)
+
+	var details audit.TokenDecryptedDetails
+	require.NoError(t, json.Unmarshal(entry.Details, &details))
+	assert.Equal(t, integration.ID, details.IntegrationID)
+	assert.Equal(t, "vk", details.Platform)
+	assert.Equal(t, "api.internal", details.CallerService)
+	assert.Equal(t, "vk_post", details.Reason)
+}
+
+func TestGetDecryptedToken_AuditInsertFails_NoToken(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "vk", "vk_999")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	sentinel := errors.New("audit insert exploded")
+	rec := &recordingSyncLogger{logSyncErr: sentinel}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "vk", "vk_999", "vk_post")
+	require.Error(t, err)
+	assert.Nil(t, resp, "token must not be returned when the audit INSERT fails")
+	assert.ErrorIs(t, err, sentinel)
+}
+
+func TestGetDecryptedToken_CallerFromMTLSCN(t *testing.T) {
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "telegram", "chan_1")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	t.Run("identity from mTLS CN", func(t *testing.T) {
+		rec := &recordingSyncLogger{}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+		ctx := middleware.WithServiceIdentity(context.Background(), "agent-telegram")
+
+		_, err := svc.GetDecryptedToken(ctx, businessID, "telegram", "chan_1", "telegram_notify")
+		require.NoError(t, err)
+		require.Len(t, rec.syncCalls, 1)
+
+		var details audit.TokenDecryptedDetails
+		require.NoError(t, json.Unmarshal(rec.syncCalls[0].Details, &details))
+		assert.Equal(t, "agent-telegram", details.CallerService)
+	})
+
+	t.Run("falls back to api.internal", func(t *testing.T) {
+		rec := &recordingSyncLogger{}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+
+		_, err := svc.GetDecryptedToken(context.Background(), businessID, "telegram", "chan_1", "telegram_notify")
+		require.NoError(t, err)
+		require.Len(t, rec.syncCalls, 1)
+
+		var details audit.TokenDecryptedDetails
+		require.NoError(t, json.Unmarshal(rec.syncCalls[0].Details, &details))
+		assert.Equal(t, "api.internal", details.CallerService)
+	})
+}
+
+func TestGetDecryptedToken_MetricOnSuccessNotOnAuditFailure(t *testing.T) {
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "vk", "vk_999")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	t.Run("success increments metric", func(t *testing.T) {
+		before := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		rec := &recordingSyncLogger{}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+
+		_, err := svc.GetDecryptedToken(context.Background(), businessID, "vk", "vk_999", "vk_post")
+		require.NoError(t, err)
+
+		after := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		assert.InDelta(t, before+1, after, 0.0001, "metric must increment once on success")
+	})
+
+	t.Run("audit failure does not increment metric", func(t *testing.T) {
+		before := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		rec := &recordingSyncLogger{logSyncErr: errors.New("boom")}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+
+		_, err := svc.GetDecryptedToken(context.Background(), businessID, "vk", "vk_999", "vk_post")
+		require.Error(t, err)
+
+		after := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		assert.InDelta(t, before, after, 0.0001, "metric must not increment when audit fails")
+	})
 }

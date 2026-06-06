@@ -40,7 +40,7 @@ type ConnectIntegrationService interface {
 	Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
-	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error)
+	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*service.TokenResponse, error)
 }
 
 // BusinessService is intentionally empty — paste-flow handlers do not invoke

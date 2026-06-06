@@ -13,6 +13,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // TokenRefresher abstracts the HTTP call to refresh an expired OAuth token.
@@ -57,7 +60,7 @@ type IntegrationService interface {
 	Delete(ctx context.Context, integrationID uuid.UUID) error
 
 	Connect(ctx context.Context, params ConnectParams) (*domain.Integration, error)
-	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*TokenResponse, error)
+	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*TokenResponse, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
@@ -273,8 +276,11 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 }
 
 // GetDecryptedToken returns decrypted tokens, refreshing on expiry; empty externalID falls back to first-active.
+// A synchronous fail-closed audit row is emitted before the token is returned;
+// if the audit INSERT fails the token is never released. reason records the
+// caller's purpose for the forensic trail.
 // See docs/services/integration.md.
-func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*TokenResponse, error) {
+func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*TokenResponse, error) {
 	var integration *domain.Integration
 	var err error
 
@@ -381,6 +387,16 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 			userToken = string(decrypted)
 		}
 	}
+
+	caller := middleware.ServiceIdentityFromContext(ctx)
+	if caller == "" {
+		caller = "api.internal"
+	}
+	correlationID := logger.CorrelationIDFromContext(ctx)
+	if err := audit.LogTokenDecryptedSync(ctx, s.audit, businessID, integration.ID, platform, caller, correlationID, reason); err != nil {
+		return nil, fmt.Errorf("audit token_decrypted: %w", err)
+	}
+	metrics.IncIntegrationTokenDecrypted(platform, caller)
 
 	return &TokenResponse{
 		IntegrationID:    integration.ID,

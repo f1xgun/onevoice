@@ -32,8 +32,8 @@ func (a *IntegrationSyncAdapterImpl) ListByBusinessID(ctx context.Context, busin
 	return a.svc.ListByBusinessID(ctx, businessID)
 }
 
-func (a *IntegrationSyncAdapterImpl) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, plt, externalID string) (string, error) {
-	resp, err := a.svc.GetDecryptedToken(ctx, businessID, plt, externalID)
+func (a *IntegrationSyncAdapterImpl) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, plt, externalID, reason string) (string, error) {
+	resp, err := a.svc.GetDecryptedToken(ctx, businessID, plt, externalID, reason)
 	if err != nil {
 		return "", err
 	}

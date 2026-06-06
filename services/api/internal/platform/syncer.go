@@ -52,7 +52,7 @@ type (
 // integrationProvider fetches integration data for a business.
 type integrationProvider interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
-	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (accessToken string, err error)
+	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (accessToken string, err error)
 }
 
 // taskRecorder creates AgentTask records for sync operations.

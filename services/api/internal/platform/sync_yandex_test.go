@@ -26,7 +26,7 @@ func (f *fakeIntegrations) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]d
 	return f.list, nil
 }
 
-func (f *fakeIntegrations) GetDecryptedToken(_ context.Context, _ uuid.UUID, _, _ string) (string, error) {
+func (f *fakeIntegrations) GetDecryptedToken(_ context.Context, _ uuid.UUID, _, _, _ string) (string, error) {
 	return "stub-token", nil
 }
 
