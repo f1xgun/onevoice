@@ -32,7 +32,7 @@ import (
 )
 
 // mustNewTestClient wraps New for tests that want a Client and treat any
-// construction error as fatal — the bulk of the suite asserts behaviour of
+// construction error as fatal — the bulk of the suite asserts behavior of
 // an already-built client, so error-handling boilerplate at every call site
 // would obscure intent. Tests that exercise the fail-closed contract call
 // New directly.

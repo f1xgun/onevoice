@@ -161,7 +161,7 @@ func TestRedactHandler_AllowList(t *testing.T) {
 }
 
 // TestRedactHandler_WithAttrs exercises the WithAttrs path: pre-bound attrs
-// must also be scrubbed (defence-in-depth — without this a deny-listed key
+// must also be scrubbed (defense-in-depth — without this a deny-listed key
 // passed via Logger.With would leak straight through).
 func TestRedactHandler_WithAttrs(t *testing.T) {
 	l, buf := newRedactTestLogger(t, nil)

@@ -169,7 +169,7 @@ func TestNewFromConfig_HandlerChainOrder(t *testing.T) {
 	}
 }
 
-// TestNewFromConfig_EnvExtension confirms LOG_REDACT_EXTRA_KEYS is honoured
+// TestNewFromConfig_EnvExtension confirms LOG_REDACT_EXTRA_KEYS is honored
 // by the default builder, not only when callers pass extras explicitly.
 func TestNewFromConfig_EnvExtension(t *testing.T) {
 	t.Setenv("LOG_REDACT_EXTRA_KEYS", "my_custom_field")

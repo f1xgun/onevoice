@@ -35,11 +35,17 @@ const (
 	// minZxcvbnScore: zxcvbn returns 0..4. 3 = "safely unguessable, moderate
 	// protection from offline slow-hash scenario" per zxcvbn docs.
 	minZxcvbnScore = 3
+	// minCyrillicCharsInLegalEntityName: cheap heuristic that the value is a
+	// real Russian legal-entity name (ООО / АО / etc), not an English fixture.
+	minCyrillicCharsInLegalEntityName = 4
+	// minLegalAddressRunes: short addresses ("Москва", "—") slip past the
+	// placeholder regex; require enough content to be plausibly real.
+	minLegalAddressRunes = 20
 )
 
-// validateEncryptionKey enforces the SEC-11 defence-in-depth gate: deny-list
-// → repeat pattern → Shannon entropy → zxcvbn score. Returns the first
-// failure so the operator sees one specific reason at boot.
+// validateEncryptionKey is a defense-in-depth gate for the AES-256 master
+// key: deny-list → repeat pattern → Shannon entropy → zxcvbn score. Returns
+// the first failure so the operator sees one specific reason at boot.
 func validateEncryptionKey(key string) error {
 	if key == "" {
 		return fmt.Errorf("ENCRYPTION_KEY is empty")
@@ -183,7 +189,7 @@ func validateLegalProduction(cfg *Config) error {
 				cyrillicCount++
 			}
 		}
-		if cyrillicCount < 4 {
+		if cyrillicCount < minCyrillicCharsInLegalEntityName {
 			problems = append(problems, "LEGAL_ENTITY_NAME must contain >=4 Cyrillic characters")
 		}
 	}
@@ -196,7 +202,7 @@ func validateLegalProduction(cfg *Config) error {
 
 	if isLegalPlaceholder(cfg.LegalAddress) {
 		problems = append(problems, "LEGAL_ADDRESS is empty or placeholder")
-	} else if len([]rune(cfg.LegalAddress)) < 20 {
+	} else if len([]rune(cfg.LegalAddress)) < minLegalAddressRunes {
 		problems = append(problems, "LEGAL_ADDRESS must be at least 20 characters")
 	}
 
