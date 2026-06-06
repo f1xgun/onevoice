@@ -31,7 +31,7 @@ type mockTokenFetcher struct {
 	err       error
 }
 
-func (m *mockTokenFetcher) GetToken(_ context.Context, _, _, _ string) (agent.TokenInfo, error) {
+func (m *mockTokenFetcher) GetToken(_ context.Context, _, _, _, _ string) (agent.TokenInfo, error) {
 	if m.err != nil {
 		return agent.TokenInfo{}, m.err
 	}

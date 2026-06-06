@@ -12,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -154,6 +155,9 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 				"location_id":    loc.LocationName,
 				"location_title": loc.Title,
 			},
+			ActorIP:      middleware.ClientIP(r),
+			UserAgent:    r.Header.Get("User-Agent"),
+			ParsedFormat: service.ParsedFormatOAuthCode,
 		})
 		if err != nil {
 			slog.ErrorContext(r.Context(), "failed to connect Google Business integration", "error", err)
@@ -344,6 +348,9 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 			"location_id":    req.LocationId,
 			"location_title": locationTitle,
 		},
+		ActorIP:      middleware.ClientIP(r),
+		UserAgent:    r.Header.Get("User-Agent"),
+		ParsedFormat: "oauth_code",
 	})
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to connect Google Business integration", "error", err)

@@ -2,18 +2,22 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // Mock IntegrationRepository
@@ -26,6 +30,8 @@ type mockIntegrationRepository struct {
 	getByBusinessPlatformExternalFunc func(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error)
 	updateFunc                        func(ctx context.Context, integration *domain.Integration) error
 	deleteFunc                        func(ctx context.Context, id uuid.UUID) error
+	softDeleteFunc                    func(ctx context.Context, id uuid.UUID) error
+	deleteOlderThanFunc               func(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 func (m *mockIntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
@@ -86,6 +92,20 @@ func (m *mockIntegrationRepository) Delete(ctx context.Context, id uuid.UUID) er
 		return m.deleteFunc(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockIntegrationRepository) SoftDelete(ctx context.Context, id uuid.UUID) error {
+	if m.softDeleteFunc != nil {
+		return m.softDeleteFunc(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockIntegrationRepository) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	if m.deleteOlderThanFunc != nil {
+		return m.deleteOlderThanFunc(ctx, cutoff)
+	}
+	return 0, nil
 }
 
 // testEncryptor creates a test encryptor with a 32-byte key
@@ -309,45 +329,158 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 	})
 }
 
+type stubNATSPublisher struct {
+	published []publishedMsg
+	err       error
+}
+
+type publishedMsg struct {
+	subject string
+	data    []byte
+}
+
+func (s *stubNATSPublisher) Publish(subject string, data []byte) error {
+	s.published = append(s.published, publishedMsg{subject: subject, data: data})
+	return s.err
+}
+
+func deleteTestIntegration(id, businessID uuid.UUID, platform, externalID string) *domain.Integration {
+	return &domain.Integration{
+		ID:         id,
+		BusinessID: businessID,
+		Platform:   platform,
+		Status:     "active",
+		ExternalID: externalID,
+	}
+}
+
 func TestIntegrationService_Delete(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success soft-deletes and does not hard-delete", func(t *testing.T) {
 		integrationID := uuid.New()
-		var deletedID uuid.UUID
+		businessID := uuid.New()
+		var softDeletedID uuid.UUID
+		hardDeleted := false
 
 		repo := &mockIntegrationRepository{
-			deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-				deletedID = id
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+			softDeleteFunc: func(_ context.Context, id uuid.UUID) error {
+				softDeletedID = id
+				return nil
+			},
+			deleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				hardDeleted = true
 				return nil
 			},
 		}
 
 		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
-		err := svc.Delete(ctx, integrationID)
+		err := svc.Delete(ctx, integrationID, uuid.New())
 
 		require.NoError(t, err)
-		assert.Equal(t, integrationID, deletedID)
+		assert.Equal(t, integrationID, softDeletedID)
+		assert.False(t, hardDeleted, "Delete must soft-delete, never hard-delete")
 	})
 
-	t.Run("integration not found", func(t *testing.T) {
+	t.Run("GetByID failure aborts before soft-delete and publish", func(t *testing.T) {
+		softDeleteCalled := false
+		nats := &stubNATSPublisher{}
 		repo := &mockIntegrationRepository{
-			deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-				return domain.ErrIntegrationNotFound
+			getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Integration, error) {
+				return nil, domain.ErrIntegrationNotFound
+			},
+			softDeleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				softDeleteCalled = true
+				return nil
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
-		err := svc.Delete(ctx, uuid.New())
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		err := svc.Delete(ctx, uuid.New(), uuid.New())
 
 		assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+		assert.False(t, softDeleteCalled, "soft-delete must not run when GetByID fails")
+		assert.Empty(t, nats.published, "publish must not run when GetByID fails")
+	})
+
+	t.Run("emits integration.deleted audit with actorID after soft-delete", func(t *testing.T) {
+		integrationID := uuid.New()
+		businessID := uuid.New()
+		actorID := uuid.New()
+		rec := &recordingSyncLogger{}
+
+		repo := &mockIntegrationRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "vk", "grp-9"), nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, rec)
+		require.NoError(t, svc.Delete(ctx, integrationID, actorID))
+
+		require.Len(t, rec.asyncCalls, 1, "expected one integration.deleted audit entry")
+		entry := rec.asyncCalls[0]
+		assert.Equal(t, audit.ActionIntegrationDeleted, entry.Action)
+		require.NotNil(t, entry.BusinessID)
+		assert.Equal(t, businessID, *entry.BusinessID)
+		require.NotNil(t, entry.UserID)
+		assert.Equal(t, actorID, *entry.UserID)
+	})
+
+	t.Run("publishes revoke on integrations.revoked.<platform>.<businessID>", func(t *testing.T) {
+		integrationID := uuid.New()
+		businessID := uuid.New()
+		nats := &stubNATSPublisher{}
+
+		repo := &mockIntegrationRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		require.NoError(t, svc.Delete(ctx, integrationID, uuid.New()))
+
+		require.Len(t, nats.published, 1)
+		assert.Equal(t, "integrations.revoked.telegram."+businessID.String(), nats.published[0].subject)
+		assert.Equal(t, []byte("{}"), nats.published[0].data)
+	})
+
+	t.Run("publish failure is fail-open", func(t *testing.T) {
+		integrationID := uuid.New()
+		businessID := uuid.New()
+		nats := &stubNATSPublisher{err: errors.New("nats down")}
+		var softDeleted bool
+
+		repo := &mockIntegrationRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+			softDeleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				softDeleted = true
+				return nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		err := svc.Delete(ctx, integrationID, uuid.New())
+
+		require.NoError(t, err, "publish failure must not abort deletion (fail-open)")
+		assert.True(t, softDeleted, "soft-delete must have succeeded before the failed publish")
+		require.Len(t, nats.published, 1, "publish must have been attempted")
 	})
 
 	t.Run("error - nil integration id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
 		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
-		err := svc.Delete(ctx, uuid.Nil)
+		err := svc.Delete(ctx, uuid.Nil, uuid.New())
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "integration id is required")
@@ -360,25 +493,31 @@ func TestIntegrationService_Delete(t *testing.T) {
 		repo := &mockIntegrationRepository{}
 		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
-		err := svc.Delete(cancelledCtx, uuid.New())
+		err := svc.Delete(cancelledCtx, uuid.New(), uuid.New())
 
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
-	t.Run("error - repository error", func(t *testing.T) {
-		repoErr := errors.New("database error")
+	t.Run("error - soft-delete repository error aborts", func(t *testing.T) {
+		businessID := uuid.New()
+		nats := &stubNATSPublisher{}
 		repo := &mockIntegrationRepository{
-			deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-				return repoErr
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+			softDeleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				return errors.New("database error")
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
-		err := svc.Delete(ctx, uuid.New())
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		err := svc.Delete(ctx, uuid.New(), uuid.New())
 
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "delete integration")
+		assert.Contains(t, err.Error(), "soft-delete")
+		assert.Empty(t, nats.published, "publish must not run when soft-delete fails")
 	})
 }
 
@@ -422,6 +561,74 @@ func TestConnect_Success(t *testing.T) {
 	assert.Equal(t, "telegram", result.Platform)
 	assert.Equal(t, "ext_telegram_123", result.ExternalID)
 	assert.Equal(t, "active", result.Status)
+}
+
+func TestConnect_ForwardsActorIP(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+	businessID := uuid.New()
+
+	repo := &mockIntegrationRepository{
+		createFunc: func(_ context.Context, integration *domain.Integration) error {
+			integration.ID = uuid.New()
+			return nil
+		},
+	}
+
+	rec := &recordingSyncLogger{}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	_, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:   businessID,
+		Platform:     "yandex_business",
+		ExternalID:   "ext_1",
+		AccessToken:  "tok",
+		ActorIP:      "1.2.3.4",
+		UserAgent:    "UA/1.0",
+		ParsedFormat: "json",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, rec.asyncCalls, 1)
+	entry := rec.asyncCalls[0]
+	assert.Equal(t, audit.ActionIntegrationConnected, entry.Action)
+
+	var details audit.IntegrationConnectedDetails
+	require.NoError(t, json.Unmarshal(entry.Details, &details))
+	assert.Equal(t, "1.2.3.4", details.ActorIP)
+	assert.Equal(t, "UA/1.0", details.UserAgent)
+	assert.Equal(t, "json", details.ParsedFormat)
+}
+
+func TestConnect_ForwardsParsedFormat(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+	businessID := uuid.New()
+
+	repo := &mockIntegrationRepository{
+		createFunc: func(_ context.Context, integration *domain.Integration) error {
+			integration.ID = uuid.New()
+			return nil
+		},
+	}
+
+	rec := &recordingSyncLogger{}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	_, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:  businessID,
+		Platform:    "telegram",
+		ExternalID:  "ext_2",
+		AccessToken: "tok",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, rec.asyncCalls, 1)
+	var details audit.IntegrationConnectedDetails
+	require.NoError(t, json.Unmarshal(rec.asyncCalls[0].Details, &details))
+	assert.Empty(t, details.ActorIP)
+	assert.Empty(t, details.UserAgent)
+	assert.Empty(t, details.ParsedFormat)
 }
 
 func TestConnect_Duplicate(t *testing.T) {
@@ -517,7 +724,7 @@ func TestGetDecryptedToken_Success(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -538,7 +745,7 @@ func TestGetDecryptedToken_NotFound(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "telegram", "ext_999")
+	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "telegram", "ext_999", "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
@@ -571,7 +778,7 @@ func TestGetDecryptedToken_Expired(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrTokenExpired)
@@ -701,7 +908,7 @@ func TestGetDecryptedToken_RefreshesExpiredGoogleToken(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -766,7 +973,7 @@ func TestGetDecryptedToken_RefreshRotatesRefreshToken(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "locations/99")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "locations/99", "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -808,7 +1015,7 @@ func TestGetDecryptedToken_ExpiredNoRefresher_ReturnsError(t *testing.T) {
 	}
 
 	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrTokenExpired)
@@ -840,7 +1047,7 @@ func TestGetDecryptedToken_ExpiredNoRefreshToken_ReturnsError(t *testing.T) {
 
 	refresher := &mockTokenRefresher{}
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 
 	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, domain.ErrTokenExpired)
@@ -876,7 +1083,7 @@ func TestGetDecryptedToken_NotExpired_NoRefresh(t *testing.T) {
 
 	refresher := &mockTokenRefresher{}
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
-	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/2")
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/2", "test")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -956,13 +1163,172 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 
 	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 
-	resp1, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp1, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 	require.NoError(t, err)
 	assert.Equal(t, newAccess, resp1.AccessToken)
 
-	resp2, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	resp2, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1", "test")
 	require.NoError(t, err)
 	assert.Equal(t, newAccess, resp2.AccessToken)
 
 	assert.Equal(t, 1, refresher.callCount, "should only refresh once due to mutex + double-check")
+}
+
+type recordingSyncLogger struct {
+	syncCalls   []audit.Entry
+	asyncCalls  []audit.Entry
+	logSyncErr  error
+	logSyncSeen bool
+}
+
+func (r *recordingSyncLogger) Log(_ context.Context, e audit.Entry) {
+	r.asyncCalls = append(r.asyncCalls, e)
+}
+
+func (r *recordingSyncLogger) LogSync(_ context.Context, e audit.Entry) error {
+	r.logSyncSeen = true
+	r.syncCalls = append(r.syncCalls, e)
+	return r.logSyncErr
+}
+
+func tokenTestIntegration(t *testing.T, businessID uuid.UUID, platform, externalID string) (*domain.Integration, *crypto.Encryptor) {
+	t.Helper()
+	enc := testEncryptor(t)
+	encryptedToken, err := enc.Encrypt([]byte("plaintext_access_token"))
+	require.NoError(t, err)
+	return &domain.Integration{
+		ID:                   uuid.New(),
+		BusinessID:           businessID,
+		Platform:             platform,
+		ExternalID:           externalID,
+		Status:               "active",
+		EncryptedAccessToken: encryptedToken,
+	}, enc
+}
+
+func TestGetDecryptedToken_EmitsAuditRow(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "vk", "vk_999")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	rec := &recordingSyncLogger{}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "vk", "vk_999", "vk_post")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	require.True(t, rec.logSyncSeen, "audit LogSync must be invoked before returning the token")
+	require.Len(t, rec.syncCalls, 1)
+	entry := rec.syncCalls[0]
+	assert.Equal(t, audit.ActionIntegrationTokenDecrypted, entry.Action)
+	require.NotNil(t, entry.BusinessID)
+	assert.Equal(t, businessID, *entry.BusinessID)
+
+	var details audit.TokenDecryptedDetails
+	require.NoError(t, json.Unmarshal(entry.Details, &details))
+	assert.Equal(t, integration.ID, details.IntegrationID)
+	assert.Equal(t, "vk", details.Platform)
+	assert.Equal(t, "api.internal", details.CallerService)
+	assert.Equal(t, "vk_post", details.Reason)
+}
+
+func TestGetDecryptedToken_AuditInsertFails_NoToken(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "vk", "vk_999")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	sentinel := errors.New("audit insert exploded")
+	rec := &recordingSyncLogger{logSyncErr: sentinel}
+	svc := NewIntegrationService(repo, enc, nil, rec)
+
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "vk", "vk_999", "vk_post")
+	require.Error(t, err)
+	assert.Nil(t, resp, "token must not be returned when the audit INSERT fails")
+	assert.ErrorIs(t, err, sentinel)
+}
+
+func TestGetDecryptedToken_CallerFromMTLSCN(t *testing.T) {
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "telegram", "chan_1")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	t.Run("identity from mTLS CN", func(t *testing.T) {
+		rec := &recordingSyncLogger{}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+		ctx := middleware.WithServiceIdentity(context.Background(), "agent-telegram")
+
+		_, err := svc.GetDecryptedToken(ctx, businessID, "telegram", "chan_1", "telegram_notify")
+		require.NoError(t, err)
+		require.Len(t, rec.syncCalls, 1)
+
+		var details audit.TokenDecryptedDetails
+		require.NoError(t, json.Unmarshal(rec.syncCalls[0].Details, &details))
+		assert.Equal(t, "agent-telegram", details.CallerService)
+	})
+
+	t.Run("falls back to api.internal", func(t *testing.T) {
+		rec := &recordingSyncLogger{}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+
+		_, err := svc.GetDecryptedToken(context.Background(), businessID, "telegram", "chan_1", "telegram_notify")
+		require.NoError(t, err)
+		require.Len(t, rec.syncCalls, 1)
+
+		var details audit.TokenDecryptedDetails
+		require.NoError(t, json.Unmarshal(rec.syncCalls[0].Details, &details))
+		assert.Equal(t, "api.internal", details.CallerService)
+	})
+}
+
+func TestGetDecryptedToken_MetricOnSuccessNotOnAuditFailure(t *testing.T) {
+	businessID := uuid.New()
+	integration, enc := tokenTestIntegration(t, businessID, "vk", "vk_999")
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	t.Run("success increments metric", func(t *testing.T) {
+		before := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		rec := &recordingSyncLogger{}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+
+		_, err := svc.GetDecryptedToken(context.Background(), businessID, "vk", "vk_999", "vk_post")
+		require.NoError(t, err)
+
+		after := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		assert.InDelta(t, before+1, after, 0.0001, "metric must increment once on success")
+	})
+
+	t.Run("audit failure does not increment metric", func(t *testing.T) {
+		before := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		rec := &recordingSyncLogger{logSyncErr: errors.New("boom")}
+		svc := NewIntegrationService(repo, enc, nil, rec)
+
+		_, err := svc.GetDecryptedToken(context.Background(), businessID, "vk", "vk_999", "vk_post")
+		require.Error(t, err)
+
+		after := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
+		assert.InDelta(t, before, after, 0.0001, "metric must not increment when audit fails")
+	})
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -295,12 +296,15 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:  bc.BusinessID,
-		ActorID:     bc.UserID,
-		Platform:    a2a.AgentTelegram,
-		ExternalID:  req.ChannelId,
-		AccessToken: h.cfg.TelegramBotToken,
-		Metadata:    metadata,
+		BusinessID:   bc.BusinessID,
+		ActorID:      bc.UserID,
+		Platform:     a2a.AgentTelegram,
+		ExternalID:   req.ChannelId,
+		AccessToken:  h.cfg.TelegramBotToken,
+		Metadata:     metadata,
+		ActorIP:      middleware.ClientIP(r),
+		UserAgent:    r.Header.Get("User-Agent"),
+		ParsedFormat: service.ParsedFormatBotToken,
 	})
 	if err != nil {
 		slog.Error("failed to connect Telegram integration", "error", err)

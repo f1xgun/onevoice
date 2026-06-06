@@ -188,3 +188,90 @@ func TestLogger_NewLoggerKeepsNopResolver(t *testing.T) {
 	defer repo.mu.Unlock()
 	require.Equal(t, "", repo.inserted[0].UserEmailAtEvent)
 }
+
+// syncStubRepo counts Insert calls synchronously and optionally returns a
+// sentinel error verbatim, so LogSync tests can assert fail-closed behavior.
+type syncStubRepo struct {
+	calls     int
+	lastRow   *domain.AuditLog
+	insertErr error
+}
+
+func (s *syncStubRepo) Insert(_ context.Context, log *domain.AuditLog) error {
+	s.calls++
+	s.lastRow = log
+	return s.insertErr
+}
+
+func (s *syncStubRepo) ListByBusiness(context.Context, uuid.UUID, domain.AuditLogFilter) ([]domain.AuditLog, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *syncStubRepo) DeleteOlderThan(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func TestLogger_LogSync_PropagatesInsertError(t *testing.T) {
+	sentinel := errors.New("insert exploded")
+	repo := &syncStubRepo{insertErr: sentinel}
+	l := NewLogger(repo)
+	bizID := uuid.New()
+	err := l.LogSync(context.Background(), Entry{
+		Action:     ActionIntegrationTokenDecrypted,
+		Resource:   "integration",
+		BusinessID: &bizID,
+		Details:    json.RawMessage(`{"platform":"telegram"}`),
+	})
+	require.ErrorIs(t, err, sentinel)
+	require.Equal(t, 1, repo.calls, "LogSync must call Insert exactly once")
+	require.Equal(t, ActionIntegrationTokenDecrypted, repo.lastRow.Action)
+	require.Equal(t, "integration", repo.lastRow.Resource)
+}
+
+func TestLogger_LogSync_SuccessReturnsNil(t *testing.T) {
+	repo := &syncStubRepo{}
+	l := NewLogger(repo)
+	bizID := uuid.New()
+	err := l.LogSync(context.Background(), Entry{
+		Action:     ActionIntegrationTokenDecrypted,
+		Resource:   "integration",
+		BusinessID: &bizID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.calls)
+}
+
+func TestLogger_LogSync_ResolverErrorDoesNotBlockInsert(t *testing.T) {
+	repo := &syncStubRepo{}
+	resolver := &fakeUserResolver{errResult: errors.New("resolver boom")}
+	l := NewLoggerWithResolver(repo, resolver)
+	uid := uuid.New()
+	err := l.LogSync(context.Background(), Entry{
+		Action:   ActionIntegrationTokenDecrypted,
+		Resource: "integration",
+		UserID:   &uid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, "", repo.lastRow.UserEmailAtEvent)
+	require.Equal(t, int32(1), resolver.calls.Load())
+}
+
+func TestLogger_LogSync_ResolverPopulatesEmail(t *testing.T) {
+	repo := &syncStubRepo{}
+	resolver := &fakeUserResolver{emailResult: "bob@example.com"}
+	l := NewLoggerWithResolver(repo, resolver)
+	uid := uuid.New()
+	err := l.LogSync(context.Background(), Entry{
+		Action:   ActionIntegrationTokenDecrypted,
+		Resource: "integration",
+		UserID:   &uid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "bob@example.com", repo.lastRow.UserEmailAtEvent)
+}
+
+func TestNopLogger_LogSyncReturnsNil(t *testing.T) {
+	l := Nop()
+	require.NoError(t, l.LogSync(context.Background(), Entry{Action: ActionIntegrationTokenDecrypted, Resource: "integration"}))
+}

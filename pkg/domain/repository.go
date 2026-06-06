@@ -51,6 +51,8 @@ type IntegrationRepository interface {
 	ListAllActiveByPlatforms(ctx context.Context, platforms []string) ([]Integration, error)
 	Update(ctx context.Context, integration *Integration) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	SoftDelete(ctx context.Context, id uuid.UUID) error
+	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // BusinessMembershipRepository persists the v2 RBAC membership graph.

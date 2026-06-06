@@ -43,8 +43,8 @@ func (m *MockConnectIntegrationService) UpdateMetadata(ctx context.Context, inte
 	return args.Error(0)
 }
 
-func (m *MockConnectIntegrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error) {
-	args := m.Called(ctx, businessID, platform, externalID)
+func (m *MockConnectIntegrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*service.TokenResponse, error) {
+	args := m.Called(ctx, businessID, platform, externalID, reason)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

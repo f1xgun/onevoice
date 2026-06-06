@@ -18,7 +18,7 @@ import (
 type IntegrationService interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
 	GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
-	Delete(ctx context.Context, integrationID uuid.UUID) error
+	Delete(ctx context.Context, integrationID uuid.UUID, actorID uuid.UUID) error
 }
 
 // IntegrationHandler handles integration endpoints
@@ -96,7 +96,7 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	err = h.integrationService.Delete(r.Context(), integrationID)
+	err = h.integrationService.Delete(r.Context(), integrationID, bc.UserID)
 	if err != nil {
 		slog.Error("failed to delete integration", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")

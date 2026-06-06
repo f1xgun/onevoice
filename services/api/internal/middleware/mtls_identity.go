@@ -73,3 +73,11 @@ func ServiceIdentityFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(ctxKeyServiceIdentity{}).(string)
 	return v
 }
+
+// WithServiceIdentity stores a service identity on ctx under the same private
+// key RequireServiceIdentity uses. It is the exported counterpart to
+// ServiceIdentityFromContext for callers that resolve identity outside the
+// middleware chain (e.g. in-process callers or tests).
+func WithServiceIdentity(ctx context.Context, identity string) context.Context {
+	return context.WithValue(ctx, ctxKeyServiceIdentity{}, identity)
+}

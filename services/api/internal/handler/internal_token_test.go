@@ -21,8 +21,8 @@ type MockTokenService struct {
 	mock.Mock
 }
 
-func (m *MockTokenService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error) {
-	args := m.Called(ctx, businessID, platform, externalID)
+func (m *MockTokenService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*service.TokenResponse, error) {
+	args := m.Called(ctx, businessID, platform, externalID, reason)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -45,7 +45,7 @@ func TestGetToken_Success(t *testing.T) {
 	}
 
 	mockTokenService := new(MockTokenService)
-	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "telegram", "channel_123").Return(expectedToken, nil)
+	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "telegram", "channel_123", "unknown").Return(expectedToken, nil)
 
 	h := NewInternalTokenHandler(mockTokenService)
 
@@ -134,7 +134,7 @@ func TestGetToken_NotFound(t *testing.T) {
 	businessID := uuid.New()
 
 	mockTokenService := new(MockTokenService)
-	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "telegram", "channel_123").Return(nil, domain.ErrIntegrationNotFound)
+	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "telegram", "channel_123", "unknown").Return(nil, domain.ErrIntegrationNotFound)
 
 	h := NewInternalTokenHandler(mockTokenService)
 
@@ -158,12 +158,66 @@ func TestGetToken_NotFound(t *testing.T) {
 	mockTokenService.AssertExpectations(t)
 }
 
+// TestInternalToken_ReasonQueryParam verifies the handler forwards the reason
+// query param verbatim to the service.
+func TestInternalToken_ReasonQueryParam(t *testing.T) {
+	businessID := uuid.New()
+	expectedToken := &service.TokenResponse{
+		IntegrationID: uuid.New(),
+		Platform:      "telegram",
+		ExternalID:    "channel_123",
+		AccessToken:   "secret",
+	}
+
+	mockTokenService := new(MockTokenService)
+	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "telegram", "channel_123", "telegram_notify").Return(expectedToken, nil)
+
+	h := NewInternalTokenHandler(mockTokenService)
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=telegram&external_id=channel_123&reason=telegram_notify", businessID.String()), http.NoBody)
+	rr := httptest.NewRecorder()
+	h.GetToken(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	mockTokenService.AssertExpectations(t)
+}
+
+// TestInternalToken_ReasonQueryParam_MissingDefaultsToUnknown verifies a
+// missing reason query param is forwarded as "unknown".
+func TestInternalToken_ReasonQueryParam_MissingDefaultsToUnknown(t *testing.T) {
+	businessID := uuid.New()
+	expectedToken := &service.TokenResponse{
+		IntegrationID: uuid.New(),
+		Platform:      "telegram",
+		ExternalID:    "channel_123",
+		AccessToken:   "secret",
+	}
+
+	mockTokenService := new(MockTokenService)
+	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "telegram", "channel_123", "unknown").Return(expectedToken, nil)
+
+	h := NewInternalTokenHandler(mockTokenService)
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=telegram&external_id=channel_123", businessID.String()), http.NoBody)
+	rr := httptest.NewRecorder()
+	h.GetToken(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	mockTokenService.AssertExpectations(t)
+}
+
 // TestGetToken_Expired tests that ErrTokenExpired returns 410
 func TestGetToken_Expired(t *testing.T) {
 	businessID := uuid.New()
 
 	mockTokenService := new(MockTokenService)
-	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "vk", "group_456").Return(nil, domain.ErrTokenExpired)
+	mockTokenService.On("GetDecryptedToken", mock.Anything, businessID, "vk", "group_456", "unknown").Return(nil, domain.ErrTokenExpired)
 
 	h := NewInternalTokenHandler(mockTokenService)
 

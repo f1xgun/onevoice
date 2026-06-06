@@ -35,6 +35,14 @@ func (c *capturingAuditLogger) Log(_ context.Context, e audit.Entry) {
 	c.wg.Done()
 }
 
+func (c *capturingAuditLogger) LogSync(_ context.Context, e audit.Entry) error {
+	c.mu.Lock()
+	c.entries = append(c.entries, e)
+	c.mu.Unlock()
+	c.wg.Done()
+	return nil
+}
+
 // expect prepares the WaitGroup for n upcoming Log calls.
 func (c *capturingAuditLogger) expect(n int) { c.wg.Add(n) }
 

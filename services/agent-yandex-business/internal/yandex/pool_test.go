@@ -208,6 +208,10 @@ func (m *recordingMockContext) AddCookies(_ []playwright.OptionalCookie) error {
 	return nil
 }
 
+func (m *recordingMockContext) ClearCookies(_ ...playwright.BrowserContextClearCookiesOptions) error {
+	return nil
+}
+
 // newCappedPool builds a pool with the cap-eviction path enabled but no real
 // Chromium. newContextFn returns a fresh recordingMockContext on each call;
 // the per-test sequenceCtxs slice captures all contexts created so the test

@@ -29,7 +29,7 @@ type fakeTokenFetcher struct {
 	lastPlatform string
 }
 
-func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, _ string) (agent.TokenInfo, error) {
+func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, _, _ string) (agent.TokenInfo, error) {
 	f.lastBizID = businessID
 	f.lastPlatform = platform
 	if f.err != nil {

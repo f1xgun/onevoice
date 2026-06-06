@@ -125,6 +125,10 @@ func (m *mockBrowserContext) Close(_ ...playwright.BrowserContextCloseOptions) e
 	return nil
 }
 
+func (m *mockBrowserContext) ClearCookies(_ ...playwright.BrowserContextClearCookiesOptions) error {
+	return nil
+}
+
 // mockPage implements playwright.Page for testing.
 type mockPage struct {
 	playwright.Page // embed for unused methods

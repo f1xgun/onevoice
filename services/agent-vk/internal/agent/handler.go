@@ -134,7 +134,7 @@ func ensureNegativeGroupID(groupID string) string {
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID)
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID, req.Tool)
 	if err != nil {
 		return nil, "", err
 	}
@@ -150,7 +150,7 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 // Community wall must be open/limited for service key reads to work.
 func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID)
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID, req.Tool)
 	if err != nil {
 		return nil, "", err
 	}

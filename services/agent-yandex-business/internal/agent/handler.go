@@ -128,7 +128,7 @@ func classifyYandexError(err error) error {
 }
 
 func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {
-	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentYandexBusiness, "")
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentYandexBusiness, "", req.Tool)
 	if err != nil {
 		return nil, err
 	}

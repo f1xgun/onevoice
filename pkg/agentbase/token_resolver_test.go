@@ -64,13 +64,33 @@ func TestTokenResolver_GetToken_DelegatesToClient(t *testing.T) {
 	tc, err := tokenclient.New(srv.URL, nil)
 	require.NoError(t, err)
 	resolver := agentbase.NewTokenResolver(tc)
-	got, err := resolver.GetToken(context.Background(), "biz-1", "vk", "group-456")
+	got, err := resolver.GetToken(context.Background(), "biz-1", "vk", "group-456", "test")
 	require.NoError(t, err)
 
 	assert.Equal(t, "community-token-secret", got.AccessToken)
 	assert.Equal(t, "user-token-secret", got.UserToken,
 		"UserToken must propagate — VK agent depends on it (see services/agent-vk/internal/agent/handler.go:201)")
 	assert.Equal(t, "group-456", got.ExternalID)
+}
+
+// TestTokenResolver_GetToken_ReasonPropagates verifies the resolver forwards
+// the reason to the underlying *tokenclient.Client without rewriting it, so the
+// server-side decrypt audit row records the agent's purpose verbatim.
+func TestTokenResolver_GetToken_ReasonPropagates(t *testing.T) {
+	var gotReason string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotReason = r.URL.Query().Get("reason")
+		require.NoError(t, json.NewEncoder(w).Encode(&tokenclient.TokenResponse{AccessToken: "tok"}))
+	}))
+	defer srv.Close()
+
+	tc, err := tokenclient.New(srv.URL, nil)
+	require.NoError(t, err)
+	resolver := agentbase.NewTokenResolver(tc)
+	_, err = resolver.GetToken(context.Background(), "biz-1", "telegram", "channel-1001", "telegram__send_channel_post")
+	require.NoError(t, err)
+
+	assert.Equal(t, "telegram__send_channel_post", gotReason, "resolver must forward reason verbatim")
 }
 
 // TestTokenResolver_GetToken_EmptyExternalID_Propagates verifies the
@@ -91,7 +111,7 @@ func TestTokenResolver_GetToken_EmptyExternalID_Propagates(t *testing.T) {
 	tc, err := tokenclient.New(srv.URL, nil)
 	require.NoError(t, err)
 	resolver := agentbase.NewTokenResolver(tc)
-	got, err := resolver.GetToken(context.Background(), "biz-1", "telegram", "")
+	got, err := resolver.GetToken(context.Background(), "biz-1", "telegram", "", "test")
 	require.NoError(t, err)
 
 	assert.Equal(t, "", receivedExternalID, "empty externalID must reach upstream as empty")
@@ -114,7 +134,7 @@ func TestTokenResolver_GetToken_NoUserToken_LeavesEmpty(t *testing.T) {
 	tc, err := tokenclient.New(srv.URL, nil)
 	require.NoError(t, err)
 	resolver := agentbase.NewTokenResolver(tc)
-	got, err := resolver.GetToken(context.Background(), "biz-1", "telegram", "channel-1001")
+	got, err := resolver.GetToken(context.Background(), "biz-1", "telegram", "channel-1001", "test")
 	require.NoError(t, err)
 
 	assert.Equal(t, "bot-token", got.AccessToken)
@@ -135,7 +155,7 @@ func TestTokenResolver_GetToken_ErrorPropagates(t *testing.T) {
 	tc, err := tokenclient.New(srv.URL, nil)
 	require.NoError(t, err)
 	resolver := agentbase.NewTokenResolver(tc)
-	got, err := resolver.GetToken(context.Background(), "biz-1", "vk", "group-456")
+	got, err := resolver.GetToken(context.Background(), "biz-1", "vk", "group-456", "test")
 	require.Error(t, err)
 	assert.Equal(t, agentbase.TokenInfo{}, got, "error path must return zero TokenInfo")
 	assert.True(t, errors.Is(err, tokenclient.ErrIntegrationNotFound),

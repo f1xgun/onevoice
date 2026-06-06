@@ -147,6 +147,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set, generate with openssl rand -base64 48}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set, generate with openssl rand -base64 24}
       INTERNAL_PORT: 8443
+      ONEVOICE_INTERNAL_ACL_JSON: ${ONEVOICE_INTERNAL_ACL_JSON:?ONEVOICE_INTERNAL_ACL_JSON must be set (CN->platforms map for /internal/v1/tokens); see .env.example}
       ORCHESTRATOR_URL: http://orchestrator:8090
       NATS_URL: nats://nats:4222
       REVIEW_SYNC_INTERVAL_MINUTES: ${REVIEW_SYNC_INTERVAL_MINUTES:-30}

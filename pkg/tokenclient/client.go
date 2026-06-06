@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +14,10 @@ import (
 )
 
 // defaultCacheTTL is how long a fetched token is reused before a fresh lookup.
-const defaultCacheTTL = 5 * time.Minute
+// It doubles as the revoke backstop: when the NATS revoke fan-out is
+// unavailable (broker down, late-joining pod), a deleted integration's token
+// can linger in an agent cache for at most this long.
+const defaultCacheTTL = 30 * time.Second
 
 type TokenResponse struct {
 	IntegrationID    string                 `json:"integration_id"`
@@ -82,7 +86,11 @@ func cacheKey(businessID, platform, externalID string) string {
 	return businessID + ":" + platform + ":" + externalID
 }
 
-func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID string) (*TokenResponse, error) {
+// GetToken fetches a decrypted token from the API internal endpoint, caching
+// the result by (businessID, platform, externalID). reason records the caller's
+// purpose for the server-side decrypt audit row; it is forwarded as a URL query
+// param and deliberately does NOT participate in the cache key.
+func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID, reason string) (*TokenResponse, error) {
 	key := cacheKey(businessID, platform, externalID)
 
 	c.mu.RLock()
@@ -95,11 +103,12 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 	}
 	c.mu.RUnlock()
 
-	u := fmt.Sprintf("%s/internal/v1/tokens?business_id=%s&platform=%s&external_id=%s",
+	u := fmt.Sprintf("%s/internal/v1/tokens?business_id=%s&platform=%s&external_id=%s&reason=%s",
 		c.baseURL,
 		url.QueryEscape(businessID),
 		url.QueryEscape(platform),
 		url.QueryEscape(externalID),
+		url.QueryEscape(reason),
 	)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", u, http.NoBody)
@@ -144,4 +153,26 @@ func tokenExpiringSoon(t *TokenResponse) bool {
 		return false
 	}
 	return time.Until(*t.ExpiresAt) < 5*time.Minute
+}
+
+// Invalidate drops cached tokens for an integration so a subsequent GetToken
+// re-fetches from the API. With a non-empty externalID it removes exactly the
+// matching entry; with an empty externalID it removes every cached entry for
+// the (businessID, platform) pair — the wildcard form used by the revoke
+// fan-out, where the externalID of the deleted integration is not carried on
+// the wire. It takes the write lock and is safe to call concurrently with
+// GetToken.
+func (c *Client) Invalidate(businessID, platform, externalID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if externalID != "" {
+		delete(c.cache, cacheKey(businessID, platform, externalID))
+		return
+	}
+	prefix := businessID + ":" + platform + ":"
+	for k := range c.cache {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.cache, k)
+		}
+	}
 }

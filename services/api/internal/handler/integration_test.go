@@ -39,8 +39,8 @@ func (m *MockIntegrationService) GetByBusinessAndPlatform(ctx context.Context, b
 	return args.Get(0).(*domain.Integration), args.Error(1)
 }
 
-func (m *MockIntegrationService) Delete(ctx context.Context, integrationID uuid.UUID) error {
-	args := m.Called(ctx, integrationID)
+func (m *MockIntegrationService) Delete(ctx context.Context, integrationID, actorID uuid.UUID) error {
+	args := m.Called(ctx, integrationID, actorID)
 	return args.Error(0)
 }
 
@@ -230,7 +230,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{
 		{ID: integrationID, BusinessID: businessID, Platform: "google", Status: "active"},
 	}, nil)
-	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(nil)
+	mockIntegrationService.On("Delete", mock.Anything, integrationID, userID).Return(nil)
 
 	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
@@ -253,6 +253,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	}
 
 	mockIntegrationService.AssertExpectations(t)
+	mockIntegrationService.AssertCalled(t, "Delete", mock.Anything, integrationID, userID)
 }
 
 // TestDeleteIntegration_NoBusinessContext tests 500 when no BusinessContext in ctx
@@ -348,7 +349,7 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{
 		{ID: integrationID, BusinessID: businessID, Platform: "google", Status: "active"},
 	}, nil)
-	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(errors.New("redis deletion failed"))
+	mockIntegrationService.On("Delete", mock.Anything, integrationID, userID).Return(errors.New("redis deletion failed"))
 
 	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {

@@ -102,6 +102,13 @@ func (r *recordingAudit) Log(_ context.Context, e audit.Entry) {
 	r.entries = append(r.entries, e)
 }
 
+func (r *recordingAudit) LogSync(_ context.Context, e audit.Entry) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, e)
+	return nil
+}
+
 func (r *recordingAudit) actions() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()

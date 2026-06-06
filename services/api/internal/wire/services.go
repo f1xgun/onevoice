@@ -189,6 +189,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		)
 	}
 	s.Integration = service.NewIntegrationService(repos.Integration, h.Enc, refresher, s.AuditLogger)
+	if h.NATS != nil {
+		s.Integration = service.WithNATSPublisher(s.Integration, h.NATS)
+	}
 	s.OAuth = service.NewOAuthService(h.Redis)
 	s.Post = service.NewPostService(repos.Post, s.Business)
 	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business)

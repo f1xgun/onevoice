@@ -70,6 +70,16 @@ func (e *NATSExecutor) ExecuteWithApproval(ctx context.Context, args map[string]
 // and ExecuteWithApproval share the exact same transport logic — any
 // future retry / tracing / metric change lands here once.
 func (e *NATSExecutor) dispatch(ctx context.Context, req a2a.ToolRequest) (interface{}, error) {
+	if hit, key := violatesDenyList(req.Args); hit {
+		metrics.IncNATSPublishRejected("denylist_key")
+		slog.WarnContext(ctx, "natsexec: deny-list key in tool args — refused publish",
+			"tool", e.toolName,
+			"agent", e.agentID,
+			"denied_key", key,
+		)
+		return nil, ErrDenyListed
+	}
+
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("natsexec: marshal request: %w", err)

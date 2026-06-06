@@ -11,6 +11,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -102,6 +103,9 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    &expiresAt,
+		ActorIP:      middleware.ClientIP(r),
+		UserAgent:    r.Header.Get("User-Agent"),
+		ParsedFormat: service.ParsedFormatOAuthCode,
 	})
 	if err != nil {
 		slog.Error("failed to connect Yandex.Business integration", "error", err)

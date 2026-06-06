@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
@@ -313,7 +314,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 var internalServiceIdentityAllowlist = []string{"orchestrator", "api"}
 
 // SetupInternal creates the internal mTLS-protected router.
-func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
+func SetupInternal(handlers *Handlers, hc *health.Checker, cfg *config.Config) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
@@ -321,7 +322,10 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 
-	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequirePlatformACL(cfg.InternalACL, nil))
+		r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
+	})
 
 	if handlers.InternalBilling != nil {
 		r.Group(func(r chi.Router) {

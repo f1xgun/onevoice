@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,9 @@ import (
 
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 )
+
+// canonicalACLJSON is a representative internal-ACL value used across config tests.
+const canonicalACLJSON = `{"agent-telegram":["telegram"],"agent-vk":["vk"],"agent-yandex-business":["yandex_business"],"agent-google-business":["google_business"],"orchestrator":["telegram","vk","yandex_business","google_business"],"api":["*"]}`
 
 // setValidLegal sets every LEGAL_* env var to a non-placeholder value that
 // passes validateLegalProduction. Tests that gate on APP_ENV=production
@@ -32,6 +36,7 @@ func minTestEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("JWT_SECRET", "Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8")
 	t.Setenv("ENCRYPTION_KEY", "uW4qX9pTzN3vM8yJ7sR2bL5kH1gD0fA6")
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", canonicalACLJSON)
 }
 
 func TestLoad_TitlerModel_Fallback(t *testing.T) {
@@ -457,4 +462,47 @@ func TestLoad_AllowPlaceholders_Dev(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "[Юридическое лицо — будет обновлено]", cfg.LegalEntityName)
+}
+
+func TestConfigInternalACL_Loaded(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", canonicalACLJSON)
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	require.Len(t, cfg.InternalACL, 6)
+	assert.Equal(t, []string{"telegram"}, cfg.InternalACL["agent-telegram"])
+}
+
+func TestConfigInternalACL_APIWildcard(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", canonicalACLJSON)
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.True(t, reflect.DeepEqual([]string{"*"}, cfg.InternalACL["api"]),
+		"api CN must map to the wildcard value list")
+}
+
+func TestConfigInternalACL_MissingFailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", "")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ONEVOICE_INTERNAL_ACL_JSON")
+}
+
+func TestConfigInternalACL_InvalidJSONFailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", "{not-valid-json")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ONEVOICE_INTERNAL_ACL_JSON")
+}
+
+func TestConfigInternalACL_EmptyObjectFailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", "{}")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ONEVOICE_INTERNAL_ACL_JSON")
+	assert.Contains(t, err.Error(), "at least one")
 }

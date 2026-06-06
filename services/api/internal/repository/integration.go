@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -76,7 +76,8 @@ func (r *integrationRepository) Create(ctx context.Context, integration *domain.
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key") {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return domain.ErrIntegrationExists
 		}
 		return fmt.Errorf("insert integration: %w", err)
@@ -85,10 +86,15 @@ func (r *integrationRepository) Create(ctx context.Context, integration *domain.
 	return nil
 }
 
-func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
-	sql, args, err := r.sb.
+func (r *integrationRepository) activeQuery() squirrel.SelectBuilder {
+	return r.sb.
 		Select(integrationColumns...).
 		From("integrations").
+		Where(squirrel.Eq{"deleted_at": nil})
+}
+
+func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
+	sql, args, err := r.activeQuery().
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
 	if err != nil {
@@ -107,9 +113,7 @@ func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 }
 
 func (r *integrationRepository) GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error) {
-	sql, args, err := r.sb.
-		Select(integrationColumns...).
-		From("integrations").
+	sql, args, err := r.activeQuery().
 		Where(squirrel.Eq{
 			"business_id": businessID,
 			"platform":    platform,
@@ -131,9 +135,7 @@ func (r *integrationRepository) GetByBusinessAndPlatform(ctx context.Context, bu
 }
 
 func (r *integrationRepository) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
-	sql, args, err := r.sb.
-		Select(integrationColumns...).
-		From("integrations").
+	sql, args, err := r.activeQuery().
 		Where(squirrel.Eq{"business_id": businessID}).
 		ToSql()
 	if err != nil {
@@ -203,10 +205,61 @@ func (r *integrationRepository) Delete(ctx context.Context, id uuid.UUID) error 
 	return nil
 }
 
-func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {
+// SoftDelete marks an integration as deleted by stamping deleted_at; reads
+// through activeQuery() then treat it as not-found. Idempotent re-delete is a
+// no-op that returns ErrIntegrationNotFound.
+func (r *integrationRepository) SoftDelete(ctx context.Context, id uuid.UUID) error {
+	now := time.Now()
 	sql, args, err := r.sb.
-		Select(integrationColumns...).
-		From("integrations").
+		Update("integrations").
+		Set("deleted_at", now).
+		Set("updated_at", now).
+		Where(squirrel.And{
+			squirrel.Eq{"id": id},
+			squirrel.Eq{"deleted_at": nil},
+		}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build soft-delete: %w", err)
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("soft-delete integration: %w", err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrIntegrationNotFound
+	}
+
+	return nil
+}
+
+// DeleteOlderThan hard-deletes soft-deleted integrations whose tombstone is
+// older than cutoff; it is the retention purge path and intentionally bypasses
+// activeQuery(). Returns the number of rows removed.
+func (r *integrationRepository) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	sql, args, err := r.sb.
+		Delete("integrations").
+		Where(squirrel.And{
+			squirrel.NotEq{"deleted_at": nil},
+			squirrel.Lt{"deleted_at": cutoff},
+		}).
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("build purge: %w", err)
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, fmt.Errorf("purge integrations: %w", err)
+	}
+
+	return cmdTag.RowsAffected(), nil
+}
+
+func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {
+	sql, args, err := r.activeQuery().
 		Where(squirrel.Eq{"business_id": businessID, "platform": platform}).
 		ToSql()
 	if err != nil {
@@ -224,9 +277,7 @@ func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, b
 }
 
 func (r *integrationRepository) ListAllActiveByPlatforms(ctx context.Context, platforms []string) ([]domain.Integration, error) {
-	sql, args, err := r.sb.
-		Select(integrationColumns...).
-		From("integrations").
+	sql, args, err := r.activeQuery().
 		Where(ActiveIntegrationStatusEq()).
 		Where(squirrel.Eq{"platform": platforms}).
 		ToSql()
@@ -245,9 +296,7 @@ func (r *integrationRepository) ListAllActiveByPlatforms(ctx context.Context, pl
 }
 
 func (r *integrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error) {
-	sql, args, err := r.sb.
-		Select(integrationColumns...).
-		From("integrations").
+	sql, args, err := r.activeQuery().
 		Where(squirrel.Eq{"business_id": businessID, "platform": platform, "external_id": externalID}).
 		ToSql()
 	if err != nil {

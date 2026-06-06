@@ -62,7 +62,7 @@ type OAuthIntegrationService interface {
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
-	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error)
+	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*service.TokenResponse, error)
 }
 
 // BusinessService is intentionally empty — OAuth handlers do not invoke any

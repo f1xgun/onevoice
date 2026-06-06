@@ -13,8 +13,12 @@ import (
 
 // TokenService defines the interface for decrypted token retrieval
 type TokenService interface {
-	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error)
+	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*service.TokenResponse, error)
 }
+
+// Compile-time guard against signature drift between this handler's
+// TokenService and the concrete service.IntegrationService surface.
+var _ TokenService = service.IntegrationService(nil)
 
 // InternalTokenHandler handles internal token endpoints.
 type InternalTokenHandler struct {
@@ -44,7 +48,13 @@ func (h *InternalTokenHandler) GetToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	token, err := h.tokenService.GetDecryptedToken(r.Context(), businessID, platform, externalID)
+	const reasonUnknown = "unknown"
+	reason := r.URL.Query().Get("reason")
+	if reason == "" {
+		reason = reasonUnknown
+	}
+
+	token, err := h.tokenService.GetDecryptedToken(r.Context(), businessID, platform, externalID, reason)
 	if err != nil {
 		if errors.Is(err, domain.ErrIntegrationNotFound) {
 			writeJSONError(w, http.StatusNotFound, "integration not found")

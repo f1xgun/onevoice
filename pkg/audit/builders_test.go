@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -36,17 +37,29 @@ func (f *fakeTx) Exec(_ context.Context, sql string, args ...interface{}) (pgcon
 	return pgconn.CommandTag{}, f.execErr
 }
 
-// captureLogger captures the last Entry passed to Log so per-builder
-// tests can assert its shape without touching the database.
+// captureLogger captures the last Entry passed to Log or LogSync so
+// per-builder tests can assert its shape without touching the database.
+// syncErr is returned verbatim by LogSync to exercise the fail-closed path.
 type captureLogger struct {
-	mu   sync.Mutex
-	last Entry
+	mu        sync.Mutex
+	last      Entry
+	lastSync  Entry
+	syncCalls int
+	syncErr   error
 }
 
 func (c *captureLogger) Log(_ context.Context, e Entry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.last = e
+}
+
+func (c *captureLogger) LogSync(_ context.Context, e Entry) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastSync = e
+	c.syncCalls++
+	return c.syncErr
 }
 
 func TestBuilder_LogRoleGranted(t *testing.T) {
@@ -144,7 +157,7 @@ func TestBuilder_AllBuildersExist_smoke(_ *testing.T) {
 	LogLogout(ctx, c, u)
 	LogPasswordChanged(ctx, c, u, "ip", "ua")
 	LogUserRegistered(ctx, c, u, "e", "ip", "ua")
-	LogIntegrationConnected(ctx, c, u, u, u, "tg", "ext")
+	LogIntegrationConnected(ctx, c, u, u, u, "tg", "ext", "1.2.3.4", "ua", "bot_token")
 	LogIntegrationDisconnected(ctx, c, u, u, u, "tg")
 	LogIntegrationTokenRotated(ctx, c, u, u, "tg")
 	LogBusinessCreated(ctx, c, u, u, "n")
@@ -255,4 +268,79 @@ func TestLogConsentPolicyVersionBumped_SystemEvent(t *testing.T) {
 	require.Equal(t, "v1.0", d.FromVersion)
 	require.Equal(t, "v1.1", d.ToVersion)
 	require.Equal(t, "sha-new", d.SHA256)
+}
+
+// ---- integration sec-hardening builders ----------------------------------
+
+func TestLogIntegrationConnected_CarriesMetadata(t *testing.T) {
+	c := &captureLogger{}
+	biz, actor, integ := uuid.New(), uuid.New(), uuid.New()
+	LogIntegrationConnected(context.Background(), c, biz, actor, integ, "yandex_business", "org-1", "203.0.113.7", "Mozilla/5.0", "cookie_header")
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, ActionIntegrationConnected, c.last.Action)
+	require.Equal(t, "integration", c.last.Resource)
+	require.NotNil(t, c.last.BusinessID)
+	require.Equal(t, biz, *c.last.BusinessID)
+	require.NotNil(t, c.last.UserID)
+	require.Equal(t, actor, *c.last.UserID)
+	var d IntegrationConnectedDetails
+	require.NoError(t, json.Unmarshal(c.last.Details, &d))
+	require.Equal(t, integ, d.IntegrationID)
+	require.Equal(t, "yandex_business", d.Platform)
+	require.Equal(t, "org-1", d.ExternalID)
+	require.Equal(t, "203.0.113.7", d.ActorIP)
+	require.Equal(t, "Mozilla/5.0", d.UserAgent)
+	require.Equal(t, "cookie_header", d.ParsedFormat)
+}
+
+func TestLogTokenDecryptedSync_PropagatesError(t *testing.T) {
+	sentinel := errors.New("insert failed")
+	c := &captureLogger{syncErr: sentinel}
+	biz, integ := uuid.New(), uuid.New()
+	err := LogTokenDecryptedSync(context.Background(), c, biz, integ, "telegram", "agent-telegram", "corr-9", "telegram_notify")
+	require.ErrorIs(t, err, sentinel)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, 1, c.syncCalls, "LogTokenDecryptedSync must call LogSync exactly once")
+	require.Equal(t, ActionIntegrationTokenDecrypted, c.lastSync.Action)
+	require.Equal(t, "integration", c.lastSync.Resource)
+	require.NotNil(t, c.lastSync.BusinessID)
+	require.Equal(t, biz, *c.lastSync.BusinessID)
+	var d TokenDecryptedDetails
+	require.NoError(t, json.Unmarshal(c.lastSync.Details, &d))
+	require.Equal(t, integ, d.IntegrationID)
+	require.Equal(t, "telegram", d.Platform)
+	require.Equal(t, "agent-telegram", d.CallerService)
+	require.Equal(t, "corr-9", d.CorrelationID)
+	require.Equal(t, "telegram_notify", d.Reason)
+}
+
+func TestLogTokenDecryptedSync_SuccessReturnsNil(t *testing.T) {
+	c := &captureLogger{}
+	err := LogTokenDecryptedSync(context.Background(), c, uuid.New(), uuid.New(), "vk", "agent-vk", "", "vk_post")
+	require.NoError(t, err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, 1, c.syncCalls)
+}
+
+func TestLogIntegrationDeleted_FireAndForget(t *testing.T) {
+	c := &captureLogger{}
+	biz, actor, integ := uuid.New(), uuid.New(), uuid.New()
+	LogIntegrationDeleted(context.Background(), c, biz, actor, integ, "vk", "club123")
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, 0, c.syncCalls, "LogIntegrationDeleted must be fire-and-forget, not sync")
+	require.Equal(t, ActionIntegrationDeleted, c.last.Action)
+	require.Equal(t, "integration", c.last.Resource)
+	require.NotNil(t, c.last.BusinessID)
+	require.Equal(t, biz, *c.last.BusinessID)
+	require.NotNil(t, c.last.UserID)
+	require.Equal(t, actor, *c.last.UserID)
+	var d IntegrationDeletedDetails
+	require.NoError(t, json.Unmarshal(c.last.Details, &d))
+	require.Equal(t, integ, d.IntegrationID)
+	require.Equal(t, "vk", d.Platform)
+	require.Equal(t, "club123", d.ExternalID)
 }

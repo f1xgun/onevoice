@@ -22,13 +22,17 @@ type Entry struct {
 	Details    json.RawMessage
 }
 
-// Logger is the public audit-write surface. The single Log method is
-// intentionally non-blocking and non-error-returning (fire-and-forget).
+// Logger is the public audit-write surface. The Log method is intentionally
+// non-blocking and non-error-returning (fire-and-forget): callers do not need
+// to handle errors — terminal failures (3 retries exhausted) increment
+// audit_log_write_failures_total and log via slog.
 //
-// Callers do not need to handle errors — terminal failures (3 retries
-// exhausted) increment audit_log_write_failures_total and log via slog.
+// LogSync persists the entry inline and returns the INSERT error verbatim.
+// It is fail-closed and reserved for callers (e.g. token-decrypt audit) that
+// MUST NOT proceed when the forensic row cannot be written.
 type Logger interface {
 	Log(ctx context.Context, e Entry)
+	LogSync(ctx context.Context, e Entry) error
 }
 
 // UserResolver returns the email-at-event for a given userID, or "" + error
@@ -140,6 +144,33 @@ func (l *loggerImpl) write(reqCtx context.Context, e Entry) {
 	l.fail(reqCtx, e, lastErr)
 }
 
+// LogSync persists the entry inline and returns the repository Insert error
+// verbatim. No goroutine, no retry. A resolver failure is non-blocking
+// (slog.Warn + empty email, parity with write); only an Insert failure is
+// surfaced to the caller so security paths can fail closed.
+func (l *loggerImpl) LogSync(ctx context.Context, e Entry) error {
+	row := &domain.AuditLog{
+		BusinessID: e.BusinessID,
+		UserID:     e.UserID,
+		Action:     e.Action,
+		Resource:   e.Resource,
+		Details:    e.Details,
+	}
+	if e.UserID != nil {
+		email, err := l.resolver.EmailByID(ctx, *e.UserID)
+		if err != nil {
+			slog.WarnContext(ctx, "audit: user resolver failed during sync write",
+				"user_id", e.UserID,
+				"action", e.Action,
+				"error", err,
+			)
+		} else {
+			row.UserEmailAtEvent = email
+		}
+	}
+	return l.repo.Insert(ctx, row)
+}
+
 // fail records a terminal failure: increments the metric + slog. NEVER
 // includes e.Details in the slog attrs — Details may contain emails / IPs
 func (l *loggerImpl) fail(reqCtx context.Context, e Entry, lastErr error) {
@@ -167,3 +198,5 @@ func Nop() Logger { return nopLogger{} }
 type nopLogger struct{}
 
 func (nopLogger) Log(context.Context, Entry) {}
+
+func (nopLogger) LogSync(context.Context, Entry) error { return nil }

@@ -23,6 +23,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
@@ -226,6 +227,16 @@ func (stubBilling) GetDailySpend(_ context.Context, _ uuid.UUID, _ time.Time) (f
 	return 0, nil
 }
 
+// testInternalACL is the CN→[]platforms map wired into SetupInternal by the
+// internal-router tests so the /internal/v1/tokens platform gate is exercised.
+func testInternalACL() map[string][]string {
+	return map[string][]string{
+		"agent-telegram": {"telegram"},
+		"orchestrator":   {"telegram", "vk", "yandex_business", "google_business"},
+		"api":            {"*"},
+	}
+}
+
 // buildTestInternalRouter wires SetupInternal with a fake billing repo so
 // the route's middleware stack is exercised end-to-end without DB.
 func buildTestInternalRouter(t *testing.T) http.Handler {
@@ -233,7 +244,59 @@ func buildTestInternalRouter(t *testing.T) http.Handler {
 	hc := health.New()
 	h := buildTestHandlers()
 	h.InternalBilling = handler.NewInternalBillingHandler(stubBilling{}, nil)
-	return router.SetupInternal(h, hc)
+	cfg := &config.Config{InternalACL: testInternalACL()}
+	return router.SetupInternal(h, hc, cfg)
+}
+
+// TestInternalTokens_ACL_RejectsCrossPlatform — CN agent-telegram requesting
+// platform=yandex_business is gated by RequirePlatformACL before the handler
+// runs, returning 403.
+func TestInternalTokens_ACL_RejectsCrossPlatform(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	r := buildTestInternalRouter(t)
+
+	url := "/internal/v1/tokens?platform=yandex_business&business_id=" + uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, url, http.NoBody)
+	cert := &x509.Certificate{Subject: pkix.Name{CommonName: "agent-telegram"}}
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+// TestInternalTokens_ACL_AllowsOwnPlatform — CN agent-telegram requesting
+// platform=telegram passes the ACL gate and reaches the handler. With
+// business_id omitted the handler returns 400, proving the middleware allowed
+// the request through.
+func TestInternalTokens_ACL_AllowsOwnPlatform(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	r := buildTestInternalRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/v1/tokens?platform=telegram", http.NoBody)
+	cert := &x509.Certificate{Subject: pkix.Name{CommonName: "agent-telegram"}}
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code,
+		"request must reach the handler (400 for missing business_id), not be ACL-rejected")
+}
+
+// TestInternalTokens_ACL_RejectsUnknownCN — a CN absent from the ACL map is
+// rejected before reaching the handler.
+func TestInternalTokens_ACL_RejectsUnknownCN(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	r := buildTestInternalRouter(t)
+
+	url := "/internal/v1/tokens?platform=telegram&business_id=" + uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, url, http.NoBody)
+	cert := &x509.Certificate{Subject: pkix.Name{CommonName: "attacker"}}
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 // Test 8: SetupInternal applies RequireServiceIdentity to /billing/usage_logs.

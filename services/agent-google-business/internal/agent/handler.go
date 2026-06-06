@@ -95,7 +95,7 @@ func classifyGBPError(err error) error {
 }
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (GBPClient, string, error) {
-	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentGoogleBusiness, "")
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentGoogleBusiness, "", req.Tool)
 	if err != nil {
 		return nil, "", err
 	}

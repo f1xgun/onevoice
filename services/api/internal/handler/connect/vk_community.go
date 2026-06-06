@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -102,6 +103,9 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 			"photo_url":      group.Photo50,
 			"input_method":   "paste",
 		},
+		ActorIP:      middleware.ClientIP(r),
+		UserAgent:    r.Header.Get("User-Agent"),
+		ParsedFormat: service.ParsedFormatAccessToken,
 	})
 	if err != nil {
 		slog.Error("failed to connect VK integration", "error", err)
@@ -157,8 +161,9 @@ func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	const reasonVKCommunityProbe = "vk_community_probe"
 	accessToken := ""
-	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID); tokErr == nil && tok != nil {
+	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID, reasonVKCommunityProbe); tokErr == nil && tok != nil {
 		accessToken = tok.AccessToken
 	}
 

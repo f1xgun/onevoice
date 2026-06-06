@@ -30,6 +30,12 @@ type RunConfig struct {
 	NATSURL    string
 	HealthPort string
 	Exec       a2a.Exec
+
+	// OnNATSConn, when set, runs once after the NATS connection is established
+	// and before the agent starts serving. It receives the live connection so
+	// the per-agent main can attach side subscriptions (e.g. the revoke
+	// fan-out). It returns an optional cleanup func invoked during shutdown.
+	OnNATSConn func(nc *natslib.Conn) (func(), error)
 }
 
 // Run connects to NATS, starts the agent over a NATS transport, serves the
@@ -48,6 +54,15 @@ func Run(cfg RunConfig) error {
 
 	healthSrv := serveHealth(nc, cfg.HealthPort)
 
+	var cleanup func()
+	if cfg.OnNATSConn != nil {
+		c, err := cfg.OnNATSConn(nc)
+		if err != nil {
+			return fmt.Errorf("nats hook: %w", err)
+		}
+		cleanup = c
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -60,6 +75,9 @@ func Run(cfg RunConfig) error {
 	slog.Info(cfg.Name + " agent shutting down — draining in-flight requests")
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), runShutdownTimeout)
 	defer shutCancel()
+	if cleanup != nil {
+		cleanup()
+	}
 	_ = healthSrv.Shutdown(shutCtx)
 	transport.Close()
 	ag.Stop()

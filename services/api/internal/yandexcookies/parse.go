@@ -42,8 +42,15 @@ type Cookie struct {
 // Parsed is the result of a successful parse.
 type Parsed struct {
 	Cookies []Cookie
-	Format  string // "json", "cookie_header", "session_id_value"
+	Format  string // one of the Format* constants
 }
+
+// Format values for Parsed.Format record which input shape produced the cookies.
+const (
+	FormatJSON           = "json"
+	FormatCookieHeader   = "cookie_header"
+	FormatSessionIDValue = "session_id_value"
+)
 
 // JSON returns the canonical JSON-array representation that the agent's
 // injectCookies expects.
@@ -84,14 +91,14 @@ func Parse(input string) (Parsed, error) {
 		if err := requireSessionID(cookies); err != nil {
 			return Parsed{}, err
 		}
-		return Parsed{Cookies: cookies, Format: "json"}, nil
+		return Parsed{Cookies: cookies, Format: FormatJSON}, nil
 	}
 
 	if !strings.Contains(trimmed, "=") {
 		if looksLikeSessionIDValue(trimmed) {
 			return Parsed{
 				Cookies: []Cookie{{Name: "Session_id", Value: trimmed, Domain: ".yandex.ru", Path: "/"}},
-				Format:  "session_id_value",
+				Format:  FormatSessionIDValue,
 			}, nil
 		}
 		return Parsed{}, ErrInvalidJSON
@@ -104,7 +111,7 @@ func Parse(input string) (Parsed, error) {
 	if err := requireSessionID(cookies); err != nil {
 		return Parsed{}, err
 	}
-	return Parsed{Cookies: cookies, Format: "cookie_header"}, nil
+	return Parsed{Cookies: cookies, Format: FormatCookieHeader}, nil
 }
 
 // parseJSONArray accepts the Cookie-Editor / EditThisCookie export shape:
