@@ -48,7 +48,7 @@ func newOpenAIWithBase(t *testing.T, baseURL string) *OpenAIProvider {
 	t.Helper()
 	cfg := openai.DefaultConfig("test-key")
 	cfg.BaseURL = baseURL
-	return &OpenAIProvider{client: openai.NewClientWithConfig(cfg)}
+	return newOpenAIProvider(openai.NewClientWithConfig(cfg))
 }
 
 // newOpenRouterWithBase mirrors newOpenAIWithBase for the OpenRouter provider.
@@ -56,7 +56,7 @@ func newOpenRouterWithBase(t *testing.T, baseURL string) *OpenRouterProvider {
 	t.Helper()
 	cfg := openai.DefaultConfig("test-key")
 	cfg.BaseURL = baseURL
-	return &OpenRouterProvider{client: openai.NewClientWithConfig(cfg)}
+	return newOpenRouterProvider(openai.NewClientWithConfig(cfg))
 }
 
 // TestOpenAI_SystemBlocksConcatenated asserts that SystemBlocks prepends a
