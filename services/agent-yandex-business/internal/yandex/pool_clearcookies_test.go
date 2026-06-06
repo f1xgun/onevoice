@@ -195,7 +195,7 @@ func TestEvictLoop_ClearsCookies(t *testing.T) {
 func TestClose_ClearsAllCookies(t *testing.T) {
 	pool := NewBrowserPool()
 
-	var mcs []*clearCookiesMockContext
+	mcs := make([]*clearCookiesMockContext, 0, 4)
 	for _, id := range []string{"biz-1", "biz-2", "biz-3", "biz-4"} {
 		mc := &clearCookiesMockContext{}
 		pool.contexts.Store(id, &pooledContext{cookies: "secret", ctx: mc})

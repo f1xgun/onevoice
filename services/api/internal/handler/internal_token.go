@@ -18,7 +18,7 @@ type TokenService interface {
 
 // Compile-time guard against signature drift between this handler's
 // TokenService and the concrete service.IntegrationService surface.
-var _ TokenService = (service.IntegrationService)(nil)
+var _ TokenService = service.IntegrationService(nil)
 
 // InternalTokenHandler handles internal token endpoints.
 type InternalTokenHandler struct {

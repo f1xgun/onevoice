@@ -224,7 +224,7 @@ func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID
 // agent caches invalidate the token. The publish is fail-open: a publish error
 // is logged + metered but never blocks the deletion (the cache TTL is the
 // backstop). actorID identifies the user who performed the deletion.
-func (s *integrationService) Delete(ctx context.Context, integrationID uuid.UUID, actorID uuid.UUID) error {
+func (s *integrationService) Delete(ctx context.Context, integrationID, actorID uuid.UUID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

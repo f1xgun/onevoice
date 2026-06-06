@@ -11,7 +11,7 @@ import (
 )
 
 // platformACL is the canonical CN→[]platforms map used by RequirePlatformACL
-// behaviour tests. Mirrors the D-02 example shape.
+// behavior tests. Mirrors the D-02 example shape.
 func platformACL() map[string][]string {
 	return map[string][]string{
 		"agent-telegram":        {"telegram"},
@@ -23,7 +23,7 @@ func platformACL() map[string][]string {
 	}
 }
 
-func runPlatformACL(t *testing.T, cn, platform string) (int, bool, string) {
+func runPlatformACL(t *testing.T, cn, platform string) (status int, ran bool, ident string) {
 	t.Helper()
 	called := false
 	var capturedIdentity string

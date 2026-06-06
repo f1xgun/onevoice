@@ -39,7 +39,7 @@ func (m *MockIntegrationService) GetByBusinessAndPlatform(ctx context.Context, b
 	return args.Get(0).(*domain.Integration), args.Error(1)
 }
 
-func (m *MockIntegrationService) Delete(ctx context.Context, integrationID uuid.UUID, actorID uuid.UUID) error {
+func (m *MockIntegrationService) Delete(ctx context.Context, integrationID, actorID uuid.UUID) error {
 	args := m.Called(ctx, integrationID, actorID)
 	return args.Error(0)
 }

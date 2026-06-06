@@ -17,11 +17,11 @@ var deniedKeys = map[string]struct{}{
 // trigger. Nested map[string]interface{} and []interface{} are walked
 // recursively so a deny-listed key buried in an array element is still caught.
 // On a hit it returns the original (un-lowercased) key.
-func violatesDenyList(args map[string]interface{}) (bool, string) {
+func violatesDenyList(args map[string]interface{}) (found bool, name string) {
 	return walkDeny(args)
 }
 
-func walkDeny(m map[string]interface{}) (bool, string) {
+func walkDeny(m map[string]interface{}) (found bool, name string) {
 	for k, v := range m {
 		if _, denied := deniedKeys[strings.ToLower(k)]; denied {
 			return true, k
@@ -33,7 +33,7 @@ func walkDeny(m map[string]interface{}) (bool, string) {
 	return false, ""
 }
 
-func walkValue(v interface{}) (bool, string) {
+func walkValue(v interface{}) (found bool, name string) {
 	switch t := v.(type) {
 	case map[string]interface{}:
 		return walkDeny(t)
