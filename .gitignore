@@ -75,5 +75,5 @@ rpa-screenshots/
 # Playwright artifacts
 .playwright-mcp/
 
-# Claude worktrees
-.claude/worktrees/
+# Claude Code tooling — GSD is installed globally in ~/.claude, no need to vendor per-project
+.claude/
