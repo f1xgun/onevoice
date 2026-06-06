@@ -45,7 +45,7 @@ func run() error {
 		HealthPort: agentbase.GetEnv("HEALTH_PORT", "8081"),
 		Exec:       handler.Handle,
 		OnNATSConn: func(nc *natslib.Conn) (func(), error) {
-			revokeSub, err := agentbase.NewRevokeSubscriber(nc, tc, "telegram")
+			revokeSub, err := agentbase.NewRevokeSubscriber(nc, tc, a2a.AgentTelegram)
 			if err != nil {
 				return nil, fmt.Errorf("revoke subscriber: %w", err)
 			}
