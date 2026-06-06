@@ -88,8 +88,14 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 	c.mu.RLock()
 	if entry, ok := c.cache[key]; ok {
 		if time.Since(entry.fetchedAt) < c.cacheTTL && !tokenExpiringSoon(entry.token) {
+			// Shallow-copy the cached struct so callers cannot mutate
+			// shared cache state (e.g. by zeroing AccessToken for hygiene).
+			// Pointer / map fields on TokenResponse still alias the
+			// cached entry; the contract documents read-only access to
+			// those.
+			tk := *entry.token
 			c.mu.RUnlock()
-			return entry.token, nil
+			return &tk, nil
 		}
 	}
 	c.mu.RUnlock()
@@ -137,8 +143,13 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 		return nil, fmt.Errorf("tokenclient: decode response: %w", err)
 	}
 
+	// Store an independent copy in the cache so a caller mutating the
+	// returned pointer cannot corrupt the cached entry. The shared-cache
+	// read path also shallow-copies on return; together this isolates
+	// caller state from cache state across every code path.
+	cached := token
 	c.mu.Lock()
-	c.cache[key] = cacheEntry{token: &token, fetchedAt: time.Now()}
+	c.cache[key] = cacheEntry{token: &cached, fetchedAt: time.Now()}
 	c.mu.Unlock()
 
 	return &token, nil

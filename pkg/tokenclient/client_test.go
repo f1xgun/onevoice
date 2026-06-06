@@ -73,6 +73,28 @@ func TestGetToken_CachesResult(t *testing.T) {
 	assert.Equal(t, int32(1), callCount.Load(), "should only call API once due to caching")
 }
 
+func TestGetToken_CallerMutationDoesNotCorruptCache(t *testing.T) {
+	var callCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		require.NoError(t, json.NewEncoder(w).Encode(&TokenResponse{AccessToken: "secret"}))
+	}))
+	defer srv.Close()
+
+	client, err := New(srv.URL, nil)
+	require.NoError(t, err)
+
+	first, err := client.GetToken(context.Background(), "b", "vk", "g")
+	require.NoError(t, err)
+	first.AccessToken = "tampered"
+
+	second, err := client.GetToken(context.Background(), "b", "vk", "g")
+	require.NoError(t, err)
+	assert.Equal(t, "secret", second.AccessToken, "cache must not reflect caller mutation of a prior return value")
+	assert.Equal(t, int32(1), callCount.Load(), "second call must still be cache-served")
+}
+
 func TestGetToken_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
