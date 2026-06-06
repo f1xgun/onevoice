@@ -78,12 +78,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	log.Info("mtls", "enabled", mtls.IsEnabled())
 
-	// Wire pkg/billingclient against the api service's mTLS internal :8443
-	// listener. Passing nil http.Client makes billingclient's default
-	// transport honor ONEVOICE_MTLS_* env (same shape as tokenclient) so
-	// there is no per-service drift. WithBilling threads it through to
-	// llm.Router.logBilling — every successful Chat() call with a non-Nil
-	// BusinessID persists a usage_logs row.
 	billingHTTP, err := billingclient.New(cfg.APIInternalURL, nil)
 	if err != nil {
 		return fmt.Errorf("billingclient init: %w", err)

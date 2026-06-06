@@ -501,7 +501,6 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	// 2. Build pkg/billingclient pointed at the httptest server.
 	bc, err := billingclient.New(srv.URL, nil)
 	require.NoError(t, err)
 
