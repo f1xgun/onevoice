@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -15,11 +16,21 @@ type Config struct {
 }
 
 // NewFromConfig creates a structured JSON logger from explicit configuration.
+// The chain is ContextHandler -> RedactHandler -> JSONHandler. The redaction
+// deny-list is the default 13 keys plus any entries in LOG_REDACT_EXTRA_KEYS,
+// read once at construction time (no hot reload).
 func NewFromConfig(cfg Config) *slog.Logger {
-	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	return newFromConfigWithWriter(cfg, os.Stdout)
+}
+
+// newFromConfigWithWriter is the test-friendly seam: it builds the exact same
+// handler chain as NewFromConfig but writes to the supplied io.Writer.
+func newFromConfigWithWriter(cfg Config, w io.Writer) *slog.Logger {
+	jsonHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{
 		Level: cfg.Level,
 	})
-	ctxHandler := NewContextHandler(jsonHandler)
+	redactHandler := NewRedactHandler(jsonHandler, redactExtraKeysFromEnv())
+	ctxHandler := NewContextHandler(redactHandler)
 	return slog.New(ctxHandler).With(
 		slog.String("service", cfg.Service),
 		slog.String("env", cfg.Env),
