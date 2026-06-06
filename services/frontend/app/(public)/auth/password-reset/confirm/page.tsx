@@ -52,8 +52,6 @@ export default function PasswordResetConfirmPage() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') ?? '';
 
-  // If the link arrived with no token at all, fall straight into the
-  // error state — there's nothing to reveal/consume.
   const [state, setState] = useState<PageState>(token ? 'reveal' : 'token_error');
   const [errorCode, setErrorCode] = useState<string | undefined>(
     token ? undefined : 'reset_token_invalid'

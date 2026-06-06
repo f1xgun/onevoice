@@ -121,7 +121,6 @@ function interpolate(template: string, params?: Record<string, unknown>): string
       const exact = opts[`=${num}`];
       const cat = ruPluralCategory(num);
       const chosen = exact ?? opts[cat] ?? opts.other ?? '';
-      // `#` = the count itself; remaining `{name}` slots resolve recursively.
       out += interpolate(chosen.replace(/#/g, String(num)), params);
     } else if (selectIdx !== -1) {
       const name = expr.slice(0, selectIdx).trim();
@@ -144,8 +143,6 @@ vi.mock('next-intl', () => {
     const t = (key: string, params?: Record<string, unknown>) =>
       interpolate(lookupTranslation(namespace, key), params);
     (t as unknown as { has: (k: string) => boolean }).has = () => true;
-    // `.raw` returns the raw JSON node (object/array/string) — needed for
-    // callers like lib/quick-actions.ts that read an array key.
     (t as unknown as { raw: (k: string) => unknown }).raw = (k: string) => lookupRaw(namespace, k);
     return t;
   };

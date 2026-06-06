@@ -13,10 +13,6 @@ import { loadLegalEntity } from '@/lib/legal/entity';
 export function Footer() {
   const t = useTranslations('footer');
   const entity = loadLegalEntity();
-  // SSR-stable: capture once per render; client and server agree because
-  // server snapshots the year at request time (Next.js renders the (app)
-  // layout per request). For SSR-static pages the year stays accurate
-  // across rebuilds (next build runs at deploy time).
   const year = new Date().getFullYear();
 
   return (

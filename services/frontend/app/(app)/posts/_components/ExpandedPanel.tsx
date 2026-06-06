@@ -18,9 +18,6 @@ import { PlatformResultCard } from './PlatformResultCard';
 export function ExpandedPanel({ post }: { post: Post }) {
   const tPosts = useTranslations('posts');
   const results = post.platformResults ? Object.entries(post.platformResults) : [];
-  // Aggregate failure: any platform-level error, or top-level status=error.
-  // The top-level fallback string comes from i18n (posts.errorFallback) so
-  // the locale switch retranslates without touching the pure helper.
   const firstError = results.find(([, r]) => r.error);
   const failureMessage =
     firstError?.[1].error ?? (topLevelErrorStatus(post) ? tPosts('errorFallback') : null);

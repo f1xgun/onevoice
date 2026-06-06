@@ -53,9 +53,6 @@ export function EmailChangeBeforeVerifyModal({ open, onOpenChange }: Props) {
         toast({ description: t('changeSuccess', { newEmail }) });
         onOpenChange(false);
         setNewEmail('');
-        // Soft refresh — the layout's next /auth/me roundtrip will pick
-        // up the new email + reset the deadline. Force a reload so
-        // the banner re-renders against the updated user object.
         if (typeof window !== 'undefined') window.location.reload();
         return;
       }

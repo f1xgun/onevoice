@@ -77,11 +77,6 @@ export function NoConnection({
     }
   }, [onRetry]);
 
-  // useState lazy-init so the timestamp is computed once on mount and
-  // doesn't change between SSR and client hydration. Server renders an
-  // empty string; the effect below fills it in. The effect re-runs when
-  // the locale flips so the rendered clock follows the language switch
-  // without a remount.
   const [now, setNow] = React.useState<string>(timestamp ?? '');
   React.useEffect(() => {
     if (!timestamp) setNow(formatTime(new Date(), locale));

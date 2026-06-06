@@ -49,14 +49,10 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const canEdit = usePermission('business.update').allowed;
 
-  // Rebuild on locale-driven translator changes so the dropdown items
-  // re-render with the active language's copy (B1).
   const CATEGORIES = useMemo(
     () => CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) })),
     [tCategories]
   );
-  // Same idea for the Zod schema — validation messages must follow the
-  // active locale (B1).
   const businessSchema = useMemo(() => createBusinessSchema(tValidation), [tValidation]);
 
   const {

@@ -50,9 +50,6 @@ export function useRemoveMember(businessId: string | null): UseMutationResult<vo
   return useMutation<void, Error, string>({
     mutationFn: (userId) => removeMember(businessId as string, userId),
     onSuccess: () => {
-      // Invalidate per-business members list AND the user's overall
-      // business list — self-removal (or removal of the last admin) can
-      // change which businesses the current user can access.
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.MEMBERS(businessId) });
       void qc.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
     },

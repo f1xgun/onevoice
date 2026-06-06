@@ -41,15 +41,9 @@ export function useInvitationPreview(
   enabled: boolean
 ): UseQueryResult<InvitationPreview> {
   return useQuery<InvitationPreview>({
-    // Distinct from the per-business INVITATIONS key — this is a public,
-    // token-scoped preview that can run before the user has any business
-    // selected (or even before login, after which the page reloads).
     queryKey: ['invitations', token, 'preview'] as const,
     queryFn: () => previewInvitation(token),
     enabled,
-    // 410/409 are stable terminal states; retrying would just surface
-    // noise to the operator and amplify load on the rate-limited preview
-    // endpoint.
     retry: false,
   });
 }

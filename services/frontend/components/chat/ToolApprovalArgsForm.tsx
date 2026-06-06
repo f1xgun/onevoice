@@ -103,19 +103,12 @@ export const ToolApprovalArgsForm = memo(function ToolApprovalArgsForm({
     isEditable: editableSet.has(key),
   }));
 
-  // Stable ordering: editable rows first (in the order declared by
-  // `editableFields` so the registry-declared priority is honoured), then
-  // every locked row in insertion order. Operators scan from the actionable
-  // section into the locked context block.
   const editableRows = editableFields
     .filter((k) => k in args)
     .map((k) => rows.find((r) => r.key === k))
     .filter((r): r is FieldRow => r !== undefined);
   const lockedRows = rows.filter((r) => !editableSet.has(r.key));
 
-  // When the operator has not picked Edit yet, the whole form renders as a
-  // read-only context list with no section split — there is nothing to act
-  // on, so a single uniform list is easier to scan.
   if (!editable) {
     return (
       <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-3">
@@ -290,18 +283,11 @@ function EditableNumberField({
   editableFields,
   onEdit,
 }: NumberFieldProps) {
-  // Lock the input to the same numeric domain (integer vs. decimal) the
-  // server proposed. If the persisted value isn't a finite number we still
-  // allow decimals — the gate will reject non-scalar / non-finite anyway.
   const integerOnly =
     typeof persistedValue === 'number' && Number.isFinite(persistedValue)
       ? Number.isInteger(persistedValue)
       : false;
 
-  // Local mirror of the raw text the user is typing. Decoupled from the
-  // committed value so an in-progress edit doesn't get clobbered by a
-  // controlled re-render, and so clearing the field stays visually empty
-  // instead of silently committing 0.
   const [raw, setRaw] = useState<string>(() => (Number.isFinite(value) ? String(value) : ''));
 
   return (
@@ -319,9 +305,6 @@ function EditableNumberField({
         onChange={(e) => {
           const next = e.target.value;
           setRaw(next);
-          // Empty input stays visually empty and is NOT committed — that
-          // way the operator can blank a field while typing a replacement
-          // without sneaking a silent zero into edited_args.
           if (next === '' || next === '-') return;
           const parsed = Number(next);
           if (!Number.isFinite(parsed)) return;
@@ -410,9 +393,6 @@ function ReadOnlyValue({ value, t, depth = 0 }: ReadOnlyValueProps): ReactNode {
   if (typeof value === 'string') return value === '' ? '—' : value;
   if (typeof value === 'number') return String(value);
 
-  // Anything deeper than the budget falls back to a compact JSON line — this
-  // is the only place JSON survives in the UI, and only for pathologically
-  // nested locked-context payloads.
   if (depth >= READ_ONLY_MAX_DEPTH) {
     return <code className="text-xs text-ink-mid">{safeStringify(value)}</code>;
   }
@@ -459,10 +439,6 @@ function safeStringify(value: unknown): string {
 }
 
 function resolveLabel(t: Translator, key: string): string {
-  // next-intl v4 exposes `t.has()` for safe key probing without throwing on
-  // missing in strict mode. The test mock returns true unconditionally;
-  // production behaviour matches when the message file actually contains
-  // the key.
   if (t.has(`fields.${key}`)) return t(`fields.${key}`);
   return t('fieldFallback', { key });
 }
@@ -473,8 +449,6 @@ function commitEdit(
   editableFields: string[],
   onEdit: (k: string, v: string | number | boolean) => void
 ) {
-  // Keep the safety contract (root-only + scalar-only + whitelist) intact at
-  // the input boundary even if future props widen to include nested forms.
   const accepted = evaluateEditGate(
     {
       value,

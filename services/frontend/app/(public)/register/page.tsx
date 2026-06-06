@@ -35,12 +35,7 @@ export default function RegisterPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const tReg = useTranslations('auth.register');
   const tValidation = useTranslations('validation');
-  // the consent_required toast lives in the new
-  // 'register.errors' namespace ("Мы обновили документы — пожалуйста,
-  // перезагрузите страницу и подтвердите новые версии согласий.").
   const tRegErrors = useTranslations('register.errors');
-  // Rebuild the schema whenever the validation translator identity changes
-  // so a runtime locale switch swaps validation copy with the new locale's.
   const registerSchema = useMemo(() => createRegisterSchema(tValidation), [tValidation]);
 
   const {
@@ -50,19 +45,11 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting, isValid },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    // submit button must stay disabled until BOTH
-    // checkboxes are ticked. mode:'onChange' so isValid reflects the
-    // current checkbox state in real time rather than only after a
-    // submit attempt.
     mode: 'onChange',
   });
 
   const onSubmit = async (data: RegisterInput) => {
     try {
-      // registration POST body carries the current
-      // policy versions from lib/legal/versions.ts. Backend cross-checks
-      // each slug against pkg/legalconfig.CurrentVersion; on drift it
-      // returns 400 consent_required.
       const res = await api.post(API_PATHS.AUTH.REGISTER, {
         name: data.name,
         email: data.email,
@@ -74,16 +61,6 @@ export default function RegisterPage() {
         },
       });
       setAuth(res.data.user, res.data.accessToken);
-      // review : drop ALL session-scoped React Query
-      // caches before the next render so a fresh actor never observes a prior
-      // actor's permissions array. removeQueries is required (not just
-      // invalidateQueries): invalidate marks data stale but keeps the
-      // cached value, so a PermissionsCacheGuard miss window can briefly
-      // surface the previous user's perms. BUSINESS_LIST_QUERY_KEY is
-      // ['businesses'] (verified) — partial-prefix sweep also drops nested
-      // ['businesses', bizId, 'permissions' | 'roles' | 'members' | …].
-      // PERMISSIONS_CATALOG is a separate top-level key — remove it
-      // explicitly so a different-deploy catalog can re-fetch.
       queryClient.removeQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
       queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
       router.push('/chat');
@@ -92,10 +69,6 @@ export default function RegisterPage() {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data
         ?.message;
-      // 400 consent_required → toast prompting reload.
-      // Server saw a stale version string; the user's lib/legal/versions.ts
-      // is older than the build deployed mid-session. Reload re-fetches
-      // the latest version constants from the bundle.
       if (status === HTTP_STATUS.BAD_REQUEST && code === 'consent_required') {
         toast.error(tRegErrors('consentRequired'));
         return;

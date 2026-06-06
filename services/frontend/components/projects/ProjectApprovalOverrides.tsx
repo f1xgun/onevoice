@@ -83,9 +83,6 @@ function ToolRow({
   const autoId = `po-auto-${tool.name}`;
   const manualId = `po-manual-${tool.name}`;
   const inheritId = `po-inherit-${tool.name}`;
-  // Backend default for an unset key is effectively "manual" (no explicit
-  // entry ⇒ manual-floor tools require approval). Routed through i18n via
-  // projects.approvalOverrides.businessDefault.<auto|manual>.
   const businessDefaultLabel = tOver(
     `businessDefault.${businessDefault === 'auto' ? 'auto' : 'manual'}`
   );
@@ -143,9 +140,6 @@ export function ProjectApprovalOverrides({
 }: ProjectApprovalOverridesProps) {
   const tOverMain = useTranslations('projects.approvalOverrides');
   const platformFullLabels = usePlatformFullLabels();
-  // Only manual-floor tools get a 3-way toggle. Forbidden tools can never
-  // be enabled; auto-floor tools bypass HITL — neither is
-  // meaningful here.
   const manualTools = tools.filter((t) => t.floor === 'manual');
   const buckets = groupByPlatform(manualTools);
   const platforms = TOOL_PLATFORM_ORDER.filter((p) => buckets[p].length > 0);

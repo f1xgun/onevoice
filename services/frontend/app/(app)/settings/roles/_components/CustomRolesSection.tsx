@@ -21,8 +21,6 @@ export interface CustomRolesSectionProps {
 export function CustomRolesSection({ roles, businessId, allRoles }: CustomRolesSectionProps) {
   const t = useTranslations('roles.list');
 
-  // 'ru' locale comparison so Cyrillic names sort correctly when mixed
-  // with Latin (e.g. "Аналитик" vs "Marketing").
   const sorted = [...roles].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
   return (
@@ -54,7 +52,6 @@ export function CustomRolesSection({ roles, businessId, allRoles }: CustomRolesS
           className="divide-y divide-line rounded-md border border-line bg-paper-raised"
         >
           {sorted.map((role) => (
-            // Whole-row anchor → one tab-stop / one click target.
             <li key={role.id} className="relative">
               <Link
                 href={`/settings/roles/${role.id}/edit`}

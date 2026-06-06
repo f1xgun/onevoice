@@ -33,9 +33,6 @@ export function WhitelistWarningBanner({ integrationId, businessId, platform }: 
   const { data: projects } = useProjectsQuery();
   const { data: tools, isLoading: toolsLoading, error: toolsError } = useTools();
 
-  // Degrade silently when the registry is still loading or errored —
-  // UAT passed with the banner effectively optional, so "no banner" is an
-  // acceptable fallback rather than a blocking error state.
   if (dismissed || !projects) return null;
   if (toolsLoading || toolsError || !tools) return null;
 
@@ -57,9 +54,7 @@ export function WhitelistWarningBanner({ integrationId, businessId, platform }: 
   function onDismiss() {
     try {
       window.localStorage.setItem(dismissKey, '1');
-    } catch {
-      /* ignore quota errors */
-    }
+    } catch {}
     setDismissed(true);
   }
 

@@ -123,10 +123,6 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
     deleteMutation.mutate(conversation.id, {
       onSuccess: () => {
         setConfirmDeleteOpen(false);
-        // If the user is currently viewing the chat we just deleted, redirect
-        // off the now-404 URL. Triggered for ANY entry point (sidebar row +
-        // header menu) so deleting from the sidebar while the chat is open
-        // doesn't leave the user staring at a broken /chat/<id> page.
         if (pathname === `/chat/${conversation.id}`) {
           router.push('/chat');
         }

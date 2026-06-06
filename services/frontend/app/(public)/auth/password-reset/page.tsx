@@ -34,8 +34,6 @@ export default function PasswordResetRequestPage() {
   const t = useTranslations('auth.passwordReset.request');
   const [state, setState] = useState<FormState>('idle');
 
-  // Schema is rebuilt with the translator identity so a locale swap
-  // re-resolves the field-error copy. Matches the LoginPage pattern.
   const schema = useMemo(
     () =>
       z.object({
@@ -61,9 +59,6 @@ export default function PasswordResetRequestPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: values.email }),
       });
-      // Backend always returns 204 on success. Any other status is a
-      // network/proxy-level failure — surface the generic network error
-      // copy. The no-enumeration contract is intact either way.
       if (res.status !== HTTP_NO_CONTENT) {
         setState('error');
         return;
@@ -129,9 +124,6 @@ export default function PasswordResetRequestPage() {
 }
 
 function RequestPageEditorial() {
-  // Reuses the auth.login.illustration namespace as the calm filler
-  // visual — doesn't ship its own editorial copy block; the
-  // existing login illustration is the lowest-risk placeholder.
   const t = useTranslations('auth.login.illustration');
   return (
     <>

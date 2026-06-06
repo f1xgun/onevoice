@@ -71,9 +71,7 @@ export async function postReconsent(policies: ConsentPolicy[]): Promise<void> {
   let body: ConsentError = {};
   try {
     body = (await res.json()) as ConsentError;
-  } catch {
-    // body not JSON — fall through with empty.
-  }
+  } catch {}
   body.status = res.status;
   throw body;
 }
@@ -99,9 +97,7 @@ export async function withdrawPDN(): Promise<void> {
   let body: ConsentError = {};
   try {
     body = (await res.json()) as ConsentError;
-  } catch {
-    // ignore
-  }
+  } catch {}
   body.status = res.status;
   throw body;
 }

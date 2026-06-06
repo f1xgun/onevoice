@@ -120,8 +120,6 @@ export function InviteModal({
     onOpenChange(next);
   };
 
-  // Capture the translator + url/state.kind narrow for the effect closure;
-  // depending on `tInviteCopy` directly would re-run on every parent rerender.
   const url = state.kind === 'copy' ? state.url : null;
   useEffect(() => {
     if (!url) return;
@@ -131,7 +129,6 @@ export function InviteModal({
         await navigator.clipboard.writeText(url);
         if (!cancelled) toast.success(tInviteCopy('toastSuccess'));
       } catch {
-        // Clipboard may reject without a user gesture; manual button still works.
         if (!cancelled) toast.info(tInviteCopy('autoCopyFallback'));
       }
     })();

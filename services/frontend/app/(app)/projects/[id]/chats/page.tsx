@@ -34,9 +34,6 @@ export default function ProjectChatsPage() {
   const createConversation = useCreateConversation();
   const canCreate = usePermission('content.create').allowed;
 
-  // Project-scoped slice. Pinned first, then most-recent-activity desc.
-  // `lastMessageAt` is nullable on freshly-created chats (no messages yet);
-  // fall back to updatedAt → createdAt so the order stays stable.
   const chats = useMemo<Conversation[]>(() => {
     const list = (conversations ?? []).filter((c) => c.projectId === id);
     const recencyKey = (c: Conversation) => c.lastMessageAt ?? c.updatedAt ?? c.createdAt;

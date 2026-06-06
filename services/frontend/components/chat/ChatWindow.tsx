@@ -44,10 +44,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
   const canSend = usePermission('content.create').allowed;
 
-  // Invariant 9: the composer is disabled whenever a batch is awaiting
-  // the user's decision OR while a message is streaming. Both conditions
-  // must flow through a single flag so the Input and Send Button stay
-  // in sync.
   const composerDisabled = isStreaming || pendingApproval !== null || !canSend;
 
   const { data: conversation } = useQuery<Conversation>({
@@ -75,16 +71,11 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
   const showEmptyState = messages.length === 0 && !isLoading;
 
-  // Detect an integration_token_invalid signal on the NEWEST assistant
-  // turn's tool calls. Older turns with stale failures do NOT trigger the
-  // banner — only the most recent assistant turn drives the surface so a
-  // successful reconnect immediately clears the CTA.
   const tokenInvalidCall = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (m.role !== 'assistant') continue;
       if (!m.toolCalls) {
-        // Newest assistant turn but no tool calls — banner absent.
         return null;
       }
       const hit = m.toolCalls.find((tc) => tc.code === 'integration_token_invalid');
@@ -153,9 +144,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       {/* Messages — paper-well backdrop matches mock-ai-chat.jsx (line 146). */}
       <div className="flex-1 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6">
         {isLoading ? (
-          // Static AI conversation skeleton per mock-states.jsx loading
-          // section — no spinner, paper-sunken bubble shapes that mirror
-          // the real message layout.
           <SkeletonChat className="bg-transparent p-0" />
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
@@ -215,9 +203,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
             placeholder={tChat('messagePlaceholder')}
             disabled={composerDisabled}
-            // Inner Input loses its own border/focus ring — the outer
-            // shell now owns the focused state. Background goes to paper
-            // so the ink-on-paper text reads on the sunken surround.
             className="flex-1 border-0 bg-paper text-ink shadow-none focus:border-0 focus:ring-0"
           />
           {/* TODO(design): slash-commands chip rail (`/ Команды`) per

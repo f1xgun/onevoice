@@ -68,8 +68,6 @@ export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
   const tPlatforms = useTranslations('platforms');
-  // Backend no longer ships per-platform descriptions; copy lives under
-  // platforms.description.<id> in messages/*.json.
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
@@ -79,15 +77,10 @@ export default function IntegrationsPage() {
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
 
-  // Platforms come from GET /api/v1/platforms (backed by pkg/domain/platform.go)
-  // — single source of truth for what we expose. status="oauth_not_configured"
-  // entries are hidden so we never advertise a flow that would dead-end at
-  // missing-creds. coming_soon entries render as the marketing teaser cards.
   const { platforms } = usePlatforms();
   const activePlatforms = platforms.filter((p) => p.status === 'active');
   const comingSoonPlatforms = platforms.filter((p) => p.status === 'coming_soon');
 
-  // Handle OAuth callback results
   useEffect(() => {
     const connected = searchParams.get('connected');
     const error = searchParams.get('error');
@@ -116,10 +109,6 @@ export default function IntegrationsPage() {
     }
 
     if (error) {
-      // Server emits snake_case slugs; map to camelCase keys under
-      // integrations.oauthErrors. Unknown slugs render the templated
-      // fallback ("Не получилось: <slug>") so the user still gets a
-      // hint while we add the missing translation.
       const oauthErrorKeyMap: Record<string, string> = {
         missing_params: 'missingParams',
         invalid_state: 'invalidState',
@@ -157,8 +146,6 @@ export default function IntegrationsPage() {
     enabled: !!activeBusinessId,
   });
 
-  // Detect newly-registered integrations to show the post-connect banner
-  // (whitelist heads-up).
   useEffect(() => {
     const currentIds = new Set(integrations.map((i) => i.id));
     const prev = prevIntegrationIdsRef.current;
@@ -242,12 +229,8 @@ export default function IntegrationsPage() {
 
         <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
         {integrationsLoading ? (
-          // Static paper-sunken skeletons per Linen loading rule (no shimmer).
           <SkeletonChannels count={3} />
         ) : integrations.length === 0 && canConnect ? (
-          // First-run state per mock-states.jsx "Каналы не подключены" — single
-          // ochre-emphasis CTA scrolls to the platform list below so the user
-          // can pick where to start.
           <EmptyChannels
             onConnect={() => {
               const target = document.getElementById('integrations-platform-grid');
@@ -263,11 +246,6 @@ export default function IntegrationsPage() {
         >
           {activePlatforms.map((p) => {
             const platformIntegrations = getIntegrationsForPlatform(p.id);
-            // google_business is in Preview until the missing
-            // GBP tool routes land (currently only get_reviews + reply_review are
-            // implemented in services/agent-google-business/internal/agent/handler.go).
-            // Re-promote by removing the isPreview prop once the agent routes
-            // info/posts/media/metrics.
             return (
               <PlatformCard
                 key={p.id}

@@ -58,7 +58,6 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
   const [selectedPermalink, setSelectedPermalink] = useState<string>('');
   const probeAbortRef = useRef<AbortController | null>(null);
 
-  // Debounced probe as the user pastes / types (only on the paste step).
   useEffect(() => {
     if (!open || step !== 'paste') return;
     const trimmed = value.trim();
@@ -110,7 +109,6 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     onClose();
   }
 
-  // Step 1 → 2: fetch companies via the agent's Playwright RPA.
   async function handleSearchCompanies(e: React.FormEvent) {
     e.preventDefault();
     if (!probe?.ok) return;
@@ -132,7 +130,6 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       setCompanies(list);
       setSelectedPermalink(list[0].permalink);
       if (list.length === 1) {
-        // Single org — skip the picker entirely.
         await connectWith(list[0]);
         return;
       }
@@ -146,7 +143,6 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     }
   }
 
-  // Step 2 → 3: send the final connect with the chosen permalink + name.
   async function connectWith(company: CompanyEntry) {
     setStep('connecting');
     try {

@@ -62,8 +62,6 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
     );
   }
 
-  // "Без проекта" disabled when the chat is already unassigned; other projects
-  // disabled when they equal currentProjectId.
   const unassignedDisabled = currentProjectId == null;
   const otherProjects = sortedProjects;
   const hasOtherDestinations =

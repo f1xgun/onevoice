@@ -63,15 +63,10 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
   const router = useRouter();
   const businessId = useBusinessStore((s) => s.activeBusinessId);
 
-  // Roles list is cached by the list page; if the user lands here cold the
-  // hook fires its own fetch. Both create (clone source) and edit modes
-  // read the source role from the same cache — no double-fetch.
   const { data: rolesList } = useRoles(businessId);
   const sourceId = mode === 'edit' ? roleId : (cloneFromId ?? undefined);
   const sourceRole = sourceId ? rolesList?.find((r) => r.id === sourceId) : undefined;
 
-  // Actor's effective permissions in the active business. Same query key as
-  // usePermission so the cache is shared.
   const { data: actorPermsArray } = useQuery({
     queryKey: QUERY_KEYS.PERMISSIONS(businessId),
     queryFn: () => getMyPermissions(businessId as string),
@@ -82,10 +77,6 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
     [actorPermsArray]
   );
 
-  // Compute defaultValues based on mode + source. Re-computes when the source
-  // role hydrates after a cache miss; the effect below resets the form so RHF
-  // picks up the new defaults without losing user edits in the empty-create
-  // branch (where sourceRole is undefined forever).
   const defaultValues = useMemo<RoleEditorFormValues>(() => {
     if (mode === 'create' && cloneFromId && sourceRole) {
       return {
@@ -109,16 +100,10 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
     defaultValues,
   });
 
-  // Re-hydrate when the source role resolves after the initial render
-  // (cache miss → fetch). Empty-create has no sourceRole; defaultValues
-  // already covers that branch.
   const sourceRoleId = sourceRole?.id;
   useEffect(() => {
     if (!sourceRoleId) return;
     form.reset(defaultValues);
-    // We intentionally key on sourceRoleId (not defaultValues / form) — once
-    // the source role is in the cache we reset exactly once, then leave the
-    // user's edits alone.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceRoleId]);
 
@@ -155,9 +140,6 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
 
   const title = mode === 'create' ? t('newTitle') : t('editTitle');
   const nameError = form.formState.errors.name;
-  // Map zod codes to localized messages. Only `name_required` is emitted
-  // by the schema today — the default branch keeps the surface honest if
-  // a future revision adds a new code without updating this map.
   const nameErrorMessage =
     nameError?.message === 'name_required' ? t('nameRequired') : (nameError?.message ?? null);
 

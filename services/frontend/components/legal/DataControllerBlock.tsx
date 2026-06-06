@@ -18,9 +18,6 @@ export function DataControllerBlock() {
   const t = useTranslations('legal.shared');
   const entity = loadLegalEntity();
 
-  // Dev-only warning when env vars are still placeholders. Kept
-  // in an effect so SSR output is identical to client-rendered output;
-  // the warning fires once per page mount in the browser console.
   useEffect(() => {
     if (isPlaceholder(entity)) {
       // eslint-disable-next-line no-console

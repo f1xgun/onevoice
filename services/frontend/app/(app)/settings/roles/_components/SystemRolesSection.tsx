@@ -16,9 +16,6 @@ export interface SystemRolesSectionProps {
 export function SystemRolesSection({ roles, businessId }: SystemRolesSectionProps) {
   const t = useTranslations('roles.list');
 
-  // Sort by seniority. Roles outside SYSTEM_ROLE_ORDER (defensive) get pushed
-  // to the end so the UI never blows up if a new system role ships before
-  // the constant is updated.
   const sorted = [...roles].sort((a, b) => {
     const ai = SYSTEM_ROLE_ORDER.indexOf(a.name as (typeof SYSTEM_ROLE_ORDER)[number]);
     const bi = SYSTEM_ROLE_ORDER.indexOf(b.name as (typeof SYSTEM_ROLE_ORDER)[number]);
@@ -27,9 +24,6 @@ export function SystemRolesSection({ roles, businessId }: SystemRolesSectionProp
     );
   });
 
-  // Owner is the only role guaranteed to hold every permission; showing
-  // "12 прав" for owner would clutter what is conceptually "everything".
-  // The localized "все права" badge replaces the count.
   const isOwner = (r: Role) => r.name === 'owner';
 
   return (

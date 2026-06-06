@@ -46,13 +46,11 @@ export function DeletionGraceBanner() {
     try {
       await restoreAccount();
       toast({ description: t('restoreSuccessToast') });
-      // Reload so /auth/me re-fetches and the banner unmounts.
       window.location.reload();
     } catch (e) {
       const err = e as DeletionAccountError;
       if (err.code === 'deletion_too_old' || err.status === HTTP_GONE) {
         toast({ description: t('errors.tooOld'), variant: 'destructive' });
-        // Session is effectively dead — bounce to login.
         window.location.href = '/login';
         return;
       }

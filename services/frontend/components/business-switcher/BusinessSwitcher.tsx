@@ -32,9 +32,6 @@ export function BusinessSwitcher() {
   const tSwitcher = useTranslations('team.switcher');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const setActive = useBusinessStore((s) => s.setActive);
-  // `useBusinessList` ultimately returns `data ?? null` when the API responds
-  // with `null` (some test harnesses use this shape for "no data yet"). The
-  // destructuring default only kicks in for `undefined`, so coerce explicitly.
   const query = useBusinessList();
   const businesses = query.data ?? [];
   const isLoading = query.isLoading;
@@ -51,8 +48,6 @@ export function BusinessSwitcher() {
     setOpen(false);
   }
 
-  // Clear the polite live region after a beat so identical re-selection
-  // still triggers a fresh announcement.
   useEffect(() => {
     if (!announceName) return;
     const t = setTimeout(() => setAnnounceName(null), ANNOUNCE_RESET_MS);

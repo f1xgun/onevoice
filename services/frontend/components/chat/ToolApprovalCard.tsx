@@ -112,15 +112,8 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
   const tCard = useTranslations('chat.toolApproval.card');
   const [drafts, dispatch] = useReducer(draftReducer, batch, initialDrafts);
   const [submitting, setSubmitting] = useState(false);
-  // Synchronous re-entry guard. `submitting` is React state and only flips
-  // `disabled` after a re-render — between the first click and that render,
-  // a fast second click can still invoke handleSubmit. The ref blocks that
-  // window deterministically.
   const submittingRef = useRef(false);
 
-  // Invariant 12: a new batchId arriving mid-render fully resets drafts —
-  // keep the `useEffect` dependency list narrow (batchId only) so re-renders
-  // for unrelated state changes do NOT wipe in-progress decisions.
   useEffect(() => {
     dispatch({ type: 'reset', drafts: initialDrafts(batch) });
   }, [batch.batchId, batch]);
@@ -135,25 +128,15 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
         type: 'highlightUndecided',
         callIds: undecided.map((d) => d.callId),
       });
-      // Invariant 7: block the fetch — DO NOT invoke onSubmit when any
-      // call is undecided; the user must pick for every row first.
       return;
     }
 
-    // Invariants 2, 3, 4: atomic submit; edited_args contains only the
-    // user's top-level scalar changes (never the server-pinned
-    // `tool_name`); no extra keys are ever introduced here.
     const decisions: ApprovalDecision[] = drafts.map((d) => {
       const decision: ApprovalDecision = {
         id: d.callId,
         action: d.decision as ApprovalAction,
       };
       if (d.decision === 'edit' && Object.keys(d.editedArgs).length > 0) {
-        // Explicitly strip the server-pinned toolName key even if the
-        // reducer were ever mutated to allow it — defense-in-depth with
-        // the boundary filter. The forbidden key literal lives
-        // in `FORBIDDEN_EDIT_KEYS` so the source file grep-matches clean
-        // (no `tool_name` string appears anywhere in write positions).
         const filtered: Record<string, string | number | boolean> = {};
         for (const [k, v] of Object.entries(d.editedArgs)) {
           if (FORBIDDEN_EDIT_KEYS.has(k)) continue;
@@ -163,7 +146,6 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
           decision.edited_args = filtered;
         }
       } else if (d.decision === 'reject' && d.rejectReason.length > 0) {
-        // Reducer already sliced to 500; this is a read-only pass-through.
         decision.reject_reason = d.rejectReason;
       }
       return decision;
@@ -174,9 +156,6 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
     try {
       await onSubmit(decisions);
     } finally {
-      // Parent clears `pendingApproval` on success → the card unmounts
-      // and this state is GC'd. On error the card stays open; we
-      // re-enable Submit so the user can retry.
       submittingRef.current = false;
       setSubmitting(false);
     }
@@ -201,10 +180,6 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
         {batch.calls.map((call) => {
           const draft = draftByCallId.get(call.callId);
           if (!draft) return null;
-          // Project the card-level draft into the narrow shape the entry
-          // expects. `amberHighlighted` is passed as a separate prop so the
-          // entry can apply its ring class without caring about reducer
-          // internals.
           const entryDraft: AccordionEntryDraft = {
             decision: draft.decision,
             editedArgs: draft.editedArgs,
@@ -237,20 +212,8 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
               <span className="inline-flex">
                 <Button
                   onClick={handleSubmit}
-                  // Real `disabled` only while the resolve is in flight —
-                  // otherwise we keep the button clickable so the premature
-                  // Submit codepath (Invariant 7: amber highlight on
-                  // undecided rows) can run. `aria-disabled="true"` keeps
-                  // screen-reader + @testing-library `toBeDisabled` semantics
-                  // honest for the "undecided" state.
                   disabled={submitting}
                   aria-disabled={!allDecided || submitting}
-                  // Only describe the button while it is gated on
-                  // an undecided row. Once allDecided flips, the helper span
-                  // unmounts (see below) and dropping the attribute keeps SR
-                  // output clean — the SR reads only the button label, not a
-                  // stale "Выберите действие для каждой задачи" hint that
-                  // contradicts an enabled button.
                   aria-describedby={!allDecided ? 'approval-card-submit-helper' : undefined}
                   className={!allDecided ? 'opacity-50' : undefined}
                 >

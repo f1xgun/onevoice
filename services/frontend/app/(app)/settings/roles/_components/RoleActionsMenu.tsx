@@ -44,8 +44,6 @@ export function RoleActionsMenu({ role, businessId, allRoles = [] }: RoleActions
             variant="ghost"
             size="icon"
             aria-label={t('menuAria', { name: role.name })}
-            // Stop propagation so the parent row-link (custom roles) doesn't
-            // navigate when the trigger is clicked.
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal className="h-4 w-4" />
@@ -66,7 +64,6 @@ export function RoleActionsMenu({ role, businessId, allRoles = [] }: RoleActions
           {canDelete && (
             <DropdownMenuItem
               onSelect={(e) => {
-                // Prevent default close-then-open dance — we control the dialog state.
                 e.preventDefault();
                 setDeleteOpen(true);
               }}

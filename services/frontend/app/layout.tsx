@@ -35,10 +35,6 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  // next-intl resolves both the locale and message bundle from
-  // lib/i18n/request.ts. RootLayout has to be async so the bundle is
-  // available before any client component (Providers below) tries to
-  // call useTranslations.
   const locale = await getLocale();
   const messages = await getMessages();
 

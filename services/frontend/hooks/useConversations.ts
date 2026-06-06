@@ -21,13 +21,6 @@ export function useConversationsQuery() {
     queryKey: conversationsQueryKey(activeBusinessId),
     queryFn: () => conversationsApi.listConversations(activeBusinessId!),
     enabled: !!activeBusinessId,
-    // The auto-titler is fire-and-forget on the server:
-    // POST /conversations/:id/regenerate-title returns 200 immediately and
-    // a goroutine writes the title 3-8 s later. Same for the implicit
-    // auto-title that fires after the first user message. Poll while ANY
-    // chat sits in `auto_pending` so the new title shows up without the
-    // user having to refresh. Polling auto-stops once every chat resolves
-    // to `auto` or `manual`.
     refetchInterval: (query) => {
       const data = query.state.data;
       if (data && data.some((c) => c.titleStatus === 'auto_pending')) {
@@ -45,8 +38,6 @@ export function useCreateConversation() {
     mutationFn: (input) => conversationsApi.createConversation(activeBusinessId!, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
-      // New chat bumps the per-project count rendered next to the project
-      // row in the sidebar (projectsQueryKey).
       void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
     },
   });
@@ -64,8 +55,6 @@ export function useMoveConversation() {
       conversationsApi.moveConversation(activeBusinessId!, id, projectId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
-      // Sidebar project rows show a per-project chat count. Move shifts the
-      // count on BOTH source and destination — invalidate the whole prefix.
       void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
     },
   });
@@ -132,7 +121,6 @@ export function useDeleteConversation() {
     mutationFn: (id) => conversationsApi.deleteConversation(activeBusinessId!, id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
-      // Per-project chat count. Invalidate the whole businesses/id/projects prefix.
       void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
     },
   });
