@@ -81,6 +81,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
 	wire.StartRetentionSweep(ctx, handles.PG, repos.AuditLog)
+	wire.StartIntegrationsPurge(ctx, handles.PG, repos.Integration)
 
 	emailSender := wire.BuildEmailSender(log, cfg)
 	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
