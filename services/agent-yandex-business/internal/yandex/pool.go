@@ -48,6 +48,18 @@ func (pc *pooledContext) touch() {
 	pc.lastUsed.Store(time.Now().UnixMilli())
 }
 
+// closePooledContext clears the context's cookies before closing it and zeroes
+// the cached cookie string, so no Yandex Session_id lingers in the Chromium
+// profile state or the pool struct after eviction.
+func closePooledContext(pc *pooledContext) {
+	if pc == nil {
+		return
+	}
+	_ = pc.ctx.ClearCookies()
+	_ = pc.ctx.Close()
+	pc.cookies = ""
+}
+
 // BrowserPool manages a shared Chromium instance with per-business browser contexts.
 type BrowserPool struct {
 	pw        *playwright.Playwright
@@ -182,7 +194,7 @@ func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookie
 		}
 	}
 
-	pc := &pooledContext{ctx: bCtx, cookies: cookiesJSON}
+	pc := &pooledContext{ctx: bCtx, cookies: ""}
 	pc.touch()
 
 	actual, loaded := p.contexts.LoadOrStore(businessID, pc)
@@ -226,7 +238,7 @@ func (p *BrowserPool) evictLRUUnlessBusy() bool {
 	p.contexts.Delete(victim.key)
 	metrics.BrowserPoolEvictions.WithLabelValues("lru").Inc()
 	metrics.BrowserPoolContexts.Dec()
-	go func() { _ = victim.pc.ctx.Close() }()
+	go func() { closePooledContext(victim.pc) }()
 	return true
 }
 
@@ -304,7 +316,7 @@ func (p *BrowserPool) EvictContext(businessID string) {
 	if val, ok := p.contexts.LoadAndDelete(businessID); ok {
 		pc := val.(*pooledContext)
 		metrics.BrowserPoolContexts.Dec()
-		_ = pc.ctx.Close()
+		closePooledContext(pc)
 	}
 }
 
@@ -324,7 +336,7 @@ func (p *BrowserPool) evictLoop() {
 					p.contexts.Delete(key)
 					metrics.BrowserPoolEvictions.WithLabelValues("idle").Inc()
 					metrics.BrowserPoolContexts.Dec()
-					_ = pc.ctx.Close()
+					closePooledContext(pc)
 				}
 				return true
 			})
@@ -342,7 +354,7 @@ func (p *BrowserPool) Close() {
 	close(p.stopEvict)
 	p.contexts.Range(func(key, value any) bool {
 		pc := value.(*pooledContext)
-		_ = pc.ctx.Close()
+		closePooledContext(pc)
 		p.contexts.Delete(key)
 		return true
 	})
