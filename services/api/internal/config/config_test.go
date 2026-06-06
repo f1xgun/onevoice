@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,18 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 )
 
+// setValidLegal sets every LEGAL_* env var to a non-placeholder value that
+// passes validateLegalProduction. Tests that gate on APP_ENV=production
+// must call this so the legal validator does not trip on unrelated
+// missing fields.
+func setValidLegal(t *testing.T) {
+	t.Helper()
+	t.Setenv("LEGAL_ENTITY_NAME", "ООО Реальная компания")
+	t.Setenv("LEGAL_INN", "7707083893") // public Sberbank INN, passes FNS checksum
+	t.Setenv("LEGAL_ADDRESS", "123456 Москва ул. Пушкина д. 1 оф. 42")
+	t.Setenv("LEGAL_EMAIL_PDN", "dpo@example.com")
+}
+
 // minTestEnv configures the env vars required by Config.Load()'s existing
 // fail-fast validation (JWT_SECRET ≥32 chars, ENCRYPTION_KEY exactly 32
 // bytes). Each test must call this so the validators pass and we
@@ -18,7 +31,11 @@ import (
 func minTestEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-chars")
-	t.Setenv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef") // exactly 32 bytes
+	// Strong 32-byte random-style key chosen to clear the SEC-11 boot
+	// validator (deny-list / repeat-pattern / Shannon entropy >= 3.5 /
+	// zxcvbn score >= 3). Mirrors the recommended `openssl rand -base64 24`
+	// shape used in production.
+	t.Setenv("ENCRYPTION_KEY", "uW4qX9pTzN3vM8yJ7sR2bL5kH1gD0fA6")
 }
 
 func TestLoad_TitlerModel_Fallback(t *testing.T) {
@@ -381,4 +398,77 @@ func TestConfig_PG_MinConnsNegative_FailsLoud(t *testing.T) {
 	_, err := config.Load()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "PG_MIN_CONNS")
+}
+
+func TestLoad_RejectDefaultEncryptionKey(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-chars")
+	t.Setenv("ENCRYPTION_KEY", "12345678901234567890123456789012")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "deny-list")
+}
+
+func TestLoad_RejectLowEntropyKey(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-chars")
+	t.Setenv("ENCRYPTION_KEY", strings.Repeat("a", 32))
+	_, err := config.Load()
+	require.Error(t, err)
+	msg := err.Error()
+	assert.True(t,
+		strings.Contains(msg, "entropy") || strings.Contains(msg, "repeated"),
+		"expected entropy or repeated mention, got %q", msg)
+}
+
+func TestLoad_AcceptStrongKey(t *testing.T) {
+	minTestEnv(t)
+	_, err := config.Load()
+	require.NoError(t, err)
+}
+
+func TestLoad_RejectMissingLegalINN_Prod(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("APP_ENV", "production")
+	setValidLegal(t)
+	t.Setenv("LEGAL_INN", "")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "LEGAL_INN")
+}
+
+func TestLoad_RejectPlaceholderEntityName_Prod(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("APP_ENV", "production")
+	setValidLegal(t)
+	t.Setenv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "LEGAL_ENTITY_NAME")
+}
+
+func TestLoad_RejectInvalidINNChecksum_Prod(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("APP_ENV", "production")
+	setValidLegal(t)
+	t.Setenv("LEGAL_INN", "1234567890")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checksum")
+}
+
+func TestLoad_AcceptValidLegal_Prod(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("APP_ENV", "production")
+	setValidLegal(t)
+	_, err := config.Load()
+	require.NoError(t, err)
+}
+
+func TestLoad_AllowPlaceholders_Dev(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]")
+	// LEGAL_INN / ADDRESS / EMAIL left empty — dev path tolerates these.
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "[Юридическое лицо — будет обновлено]", cfg.LegalEntityName)
 }

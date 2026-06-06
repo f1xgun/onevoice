@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"strconv"
@@ -248,11 +249,13 @@ func Load() (*Config, error) {
 		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
 		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
 
-		// placeholder defaults so the API boots without operator config
-		LegalEntityName: getEnv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]"),
+		// No placeholder defaults: production boot is gated by
+		// validateLegalProduction; non-production accepts empty strings
+		// with a slog.Warn so dev / CI still boot without operator config.
+		LegalEntityName: os.Getenv("LEGAL_ENTITY_NAME"),
 		LegalINN:        os.Getenv("LEGAL_INN"),
 		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),
-		LegalEmailPDN:   getEnv("LEGAL_EMAIL_PDN", "—"),
+		LegalEmailPDN:   os.Getenv("LEGAL_EMAIL_PDN"),
 
 		HealthCheckTimeout: getEnvDuration("HEALTH_CHECK_TIMEOUT", 2*time.Second),
 	}
@@ -407,6 +410,17 @@ func Load() (*Config, error) {
 	}
 	if len(cfg.EncryptionKey) != crypto.AES256KeyLen {
 		return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly %d bytes", crypto.AES256KeyLen)
+	}
+	if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
+		return nil, fmt.Errorf("ENCRYPTION_KEY validation failed: %w (generate a new key with: openssl rand -base64 24)", err)
+	}
+
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {
+		if err := validateLegalProduction(cfg); err != nil {
+			return nil, fmt.Errorf("LEGAL_* validation failed in production: %w", err)
+		}
+	} else if err := validateLegalProduction(cfg); err != nil {
+		slog.Warn("LEGAL_* placeholders present (allowed in non-production)", "issue", err.Error())
 	}
 
 	return cfg, nil
