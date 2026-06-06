@@ -23,11 +23,6 @@ import { VerificationBanner } from '@/components/auth/VerificationBanner';
 // deletion-grace state visually wins when both could fire (the user
 // can be both unverified AND mid-grace).
 import { DeletionGraceBanner } from '@/components/account/DeletionGraceBanner';
-// site-wide Footer mounted at the bottom of
-// BOTH desktop and mobile <main> branches (verification GAP
-// taught us: forget the mobile branch and the banner / footer never
-// renders on phones).
-import { Footer } from '@/components/layout/Footer';
 // forced re-consent modal — z-50 portal that
 // renders OUTSIDE <main> when the user has stale policy versions and
 // is past the email-verification gate. Mutually exclusive with
@@ -188,7 +183,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   <DeletionGraceBanner />
                   <VerificationBanner />
                   <div className="flex-1">{children}</div>
-                  <Footer />
                 </main>
               </Panel>
             </PanelGroup>
@@ -208,7 +202,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <DeletionGraceBanner />
               <VerificationBanner />
               <div className="flex-1">{children}</div>
-              <Footer />
             </main>
           </div>
         )}
