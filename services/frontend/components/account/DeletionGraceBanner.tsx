@@ -23,6 +23,7 @@ import { useAuthStore } from '@/lib/auth';
 import { restoreAccount, type DeletionAccountError } from '@/lib/api/account';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { localeToIntlTag } from '@/lib/i18n/locales';
 import { cn } from '@/lib/utils';
 
 const HTTP_GONE = 410;
@@ -36,7 +37,7 @@ export function DeletionGraceBanner() {
   if (!user || !user.accountDeletion) return null;
 
   const deletionDate = new Date(user.accountDeletion.scheduledDeletionAt);
-  const dateLabel = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'ru-RU', {
+  const dateLabel = new Intl.DateTimeFormat(localeToIntlTag(locale), {
     day: 'numeric',
     month: 'long',
   }).format(deletionDate);

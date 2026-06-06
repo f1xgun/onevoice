@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
-import type { Locale } from '@/lib/i18n/locales';
+import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
@@ -140,21 +140,13 @@ function ReviewSkeleton() {
   );
 }
 
-// BCP-47 locale tag for Intl.DateTimeFormat. We map the in-app `Locale`
-// values to the canonical regional tags (`ru-RU`, `en-US`) so the
-// month-abbreviation form matches what the rest of the dashboard renders.
-const INTL_LOCALE_TAG: Record<Locale, string> = {
-  ru: 'ru-RU',
-  en: 'en-US',
-};
-
 // Format YYYY-MM-DD-ish ISO into "23 апр" / "Apr 23" style for the
 // timestamp slot. The locale comes from the consumer so a language
 // switch reformats existing rows without a remount.
 function formatReviewDate(iso: string, locale: Locale): string {
   try {
     const d = new Date(iso);
-    return new Intl.DateTimeFormat(INTL_LOCALE_TAG[locale], {
+    return new Intl.DateTimeFormat(localeToIntlTag(locale), {
       day: 'numeric',
       month: 'short',
     }).format(d);
