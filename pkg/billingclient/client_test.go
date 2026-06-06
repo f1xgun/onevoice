@@ -82,7 +82,6 @@ func counterValue(reason string) float64 {
 	return testutil.ToFloat64(metrics.BillingPostFailures.WithLabelValues(reason))
 }
 
-// Test 1: 204 No Content → success; full request shape inspected.
 func TestLogUsage_Success_204(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -115,7 +114,6 @@ func TestLogUsage_Success_204(t *testing.T) {
 	assert.Equal(t, log.ProviderCostUSD, gotPtr.ProviderCostUSD)
 }
 
-// Test 2: 200 OK → success (parity with 204).
 func TestLogUsage_Success_200(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -130,7 +128,6 @@ func TestLogUsage_Success_200(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Test 3: 400 Bad Request → ErrInvalidPayload; counter reason="invalid_payload" +1.
 func TestLogUsage_BadRequest_IsInvalidPayload(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -149,7 +146,6 @@ func TestLogUsage_BadRequest_IsInvalidPayload(t *testing.T) {
 	assert.Equal(t, before+1, counterValue("invalid_payload"))
 }
 
-// Test 4: 503 Service Unavailable → ErrTransient; counter reason="transient" +1.
 func TestLogUsage_ServerError_IsTransient(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -172,7 +168,6 @@ func TestLogUsage_ServerError_IsTransient(t *testing.T) {
 	}
 }
 
-// Test 5: connection refused → ErrTransient; counter reason="transient" +1.
 func TestLogUsage_NetworkError_IsTransient(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -191,7 +186,6 @@ func TestLogUsage_NetworkError_IsTransient(t *testing.T) {
 	assert.Equal(t, before+1, counterValue("transient"))
 }
 
-// Test 6: nil log → ErrInvalidPayload BEFORE any HTTP call; counter reason="invalid_payload" +1.
 func TestLogUsage_NilLog_IsInvalidPayload(t *testing.T) {
 	disableMTLSEnv(t)
 
@@ -212,7 +206,6 @@ func TestLogUsage_NilLog_IsInvalidPayload(t *testing.T) {
 	assert.Equal(t, before+1, counterValue("invalid_payload"))
 }
 
-// Test 7: log.BusinessID == uuid.Nil → ErrInvalidPayload BEFORE any HTTP call.
 func TestLogUsage_NilBusinessID_IsInvalidPayload(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -235,8 +228,6 @@ func TestLogUsage_NilBusinessID_IsInvalidPayload(t *testing.T) {
 	assert.Equal(t, before+1, counterValue("invalid_payload"))
 }
 
-// Test 8: canceled context before Do() → error chained with context.Canceled;
-// counter reason="transient" +1 (network-class failure).
 func TestLogUsage_ContextCancelled(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -260,7 +251,6 @@ func TestLogUsage_ContextCancelled(t *testing.T) {
 	assert.Equal(t, before+1, counterValue("transient"))
 }
 
-// Test 9: 418 Teapot → no sentinel chained; counter reason="unexpected_status" +1.
 func TestLogUsage_UnexpectedStatus_NoSentinel(t *testing.T) {
 	disableMTLSEnv(t)
 	log := sampleLog(t)
@@ -280,7 +270,6 @@ func TestLogUsage_UnexpectedStatus_NoSentinel(t *testing.T) {
 	assert.Equal(t, before+1, counterValue("unexpected_status"))
 }
 
-// Test 10: New(url, nil) → default http.Client has Timeout = 10s.
 func TestNew_NilHTTPClient_DefaultTimeout(t *testing.T) {
 	disableMTLSEnv(t)
 	c := mustNewTestClient(t, "http://example.invalid", nil)
@@ -420,8 +409,6 @@ func TestGetDailySpend_UnexpectedStatus_NoSentinel(t *testing.T) {
 	assert.False(t, errors.Is(err, ErrInvalidPayload))
 }
 
-// Test 11: ONEVOICE_MTLS_ENABLED=true + ephemeral CA wired → successful POST
-// over mTLS. Mirrors tokenclient's TestGetToken_mTLS_Success.
 func TestLogUsage_mTLS_WhenEnabled(t *testing.T) {
 	h := newMTLSHarness(t)
 	t.Setenv(mtls.EnvEnabled, "true")
@@ -440,7 +427,7 @@ func TestLogUsage_mTLS_WhenEnabled(t *testing.T) {
 	srv.StartTLS()
 	defer srv.Close()
 
-	client := mustNewTestClient(t, srv.URL, nil) // nil → default client picks up ONEVOICE_MTLS_* env
+	client := mustNewTestClient(t, srv.URL, nil)
 	err := client.LogUsage(context.Background(), sampleLog(t))
 	require.NoError(t, err)
 	assert.True(t, hit.Load(), "mTLS handshake should succeed and request should reach handler")

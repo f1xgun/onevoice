@@ -316,7 +316,7 @@ func TestGetToken_mTLS_Success(t *testing.T) {
 	srv.StartTLS()
 	defer srv.Close()
 
-	client, err := New(srv.URL, nil) // nil → default client picks up ONEVOICE_MTLS_* env
+	client, err := New(srv.URL, nil)
 	require.NoError(t, err)
 	got, err := client.GetToken(context.Background(), "b", "vk", "g")
 	require.NoError(t, err)
@@ -376,7 +376,6 @@ func TestGetToken_mTLS_PlainHTTPRejected(t *testing.T) {
 
 	plainURL := "http://" + strings.TrimPrefix(srv.URL, "https://")
 
-	// Use a short timeout so the test doesn't hang on a hopeless connection.
 	client, err := New(plainURL, &http.Client{Timeout: 2 * time.Second})
 	require.NoError(t, err)
 	tok, err := client.GetToken(context.Background(), "b", "vk", "g")
@@ -432,7 +431,7 @@ func TestNew_FailClosedOnMissingCertFiles(t *testing.T) {
 // pointing at a directory instead of a file must return an error.
 func TestNew_FailClosedOnUnreadableCA(t *testing.T) {
 	h := mtlsTestHarness(t)
-	dir := t.TempDir() // directory in place of CA file
+	dir := t.TempDir()
 	t.Setenv(mtls.EnvEnabled, "true")
 	t.Setenv(mtls.EnvCAPath, dir)
 	t.Setenv(mtls.EnvCertPath, h.clientCertPath)

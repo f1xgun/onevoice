@@ -121,7 +121,6 @@ func TestRedactHandler_FormatExact(t *testing.T) {
 	if got, want := m["password"], "[REDACTED:0]"; got != want {
 		t.Fatalf("password (empty): got %v, want %s\nraw: %s", got, want, buf.String())
 	}
-	// Also: REDACTED:6 must be exact for "abcdef"
 	if got, want := m["token"], "[REDACTED:6]"; got != want {
 		t.Fatalf("token: got %v, want %s\nraw: %s", got, want, buf.String())
 	}

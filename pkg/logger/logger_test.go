@@ -187,9 +187,6 @@ func TestNewFromConfig_ChainShapeReflect(t *testing.T) {
 	l, _ := newTestLogger(Config{Service: "x", Env: "test", Version: "v", Level: slog.LevelInfo})
 
 	top := l.Handler()
-	// slog.New(...).With(...) returns a logger whose handler is the result of
-	// the outermost WithAttrs call. WithAttrs on ContextHandler returns a new
-	// *ContextHandler whose inner is the result of RedactHandler.WithAttrs.
 	ctx, ok := top.(*ContextHandler)
 	if !ok {
 		t.Fatalf("outer handler: got %T, want *ContextHandler", top)
