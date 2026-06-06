@@ -1,12 +1,16 @@
 package natsexec_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -271,4 +275,114 @@ func TestExecute_EmptyCorrelationID(t *testing.T) {
 	var toolReq a2a.ToolRequest
 	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
 	assert.Empty(t, toolReq.RequestID)
+}
+
+// recordingRequester counts how many times Request is invoked so deny-list
+// tests can assert that a rejected publish never reaches the transport.
+type recordingRequester struct {
+	calls int
+}
+
+func (r *recordingRequester) Request(_ context.Context, _ string, _ []byte) ([]byte, error) {
+	r.calls++
+	out, _ := json.Marshal(&a2a.ToolResponse{TaskID: "rec", Success: true, Result: map[string]interface{}{}})
+	return out, nil
+}
+
+func natsPublishRejectedCount(t *testing.T, reason string) float64 {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	for _, mf := range families {
+		if mf.GetName() != "nats_publish_rejected_total" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if sampleHasLabel(m, "reason", reason) {
+				return m.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
+}
+
+func sampleHasLabel(m *dto.Metric, name, value string) bool {
+	for _, lp := range m.GetLabel() {
+		if lp.GetName() == name {
+			return lp.GetValue() == value
+		}
+	}
+	return false
+}
+
+func TestDispatch_DenyListBlocksPublish(t *testing.T) {
+	rec := &recordingRequester{}
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, rec)
+
+	_, err := exec.Execute(context.Background(), map[string]interface{}{
+		"text":    "hello",
+		"cookies": "secret",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "deny-list")
+	assert.Contains(t, err.Error(), "cookies")
+	assert.Equal(t, 0, rec.calls, "rejected publish must not reach the requester")
+}
+
+func TestDispatch_DenyListBlocksPublish_IncrementsMetric(t *testing.T) {
+	rec := &recordingRequester{}
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, rec)
+
+	before := natsPublishRejectedCount(t, "denylist_key")
+	_, err := exec.Execute(context.Background(), map[string]interface{}{"session_id": "x"})
+	require.Error(t, err)
+	after := natsPublishRejectedCount(t, "denylist_key")
+
+	assert.InDelta(t, before+1, after, 0.0001)
+}
+
+func TestDispatch_DenyListRecursive(t *testing.T) {
+	rec := &recordingRequester{}
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, rec)
+
+	_, err := exec.Execute(context.Background(), map[string]interface{}{
+		"user": map[string]interface{}{
+			"profile": map[string]interface{}{"token": "abc"},
+		},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "token")
+	assert.Equal(t, 0, rec.calls)
+}
+
+func TestDispatch_DenyListLogsDeniedKey(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError})))
+	defer slog.SetDefault(prev)
+
+	rec := &recordingRequester{}
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, rec)
+
+	_, err := exec.Execute(context.Background(), map[string]interface{}{"password": "x"})
+	require.Error(t, err)
+
+	logged := buf.String()
+	assert.Contains(t, logged, "denied_key")
+	assert.Contains(t, logged, "password")
+}
+
+func TestDispatch_AllowsCleanArgs(t *testing.T) {
+	rec := &recordingRequester{}
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, rec)
+
+	_, err := exec.Execute(context.Background(), map[string]interface{}{
+		"text":        "hello",
+		"auth_method": "oauth2",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, rec.calls, "clean args must reach the requester unchanged")
 }
