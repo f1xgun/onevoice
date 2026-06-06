@@ -106,13 +106,8 @@ const (
 // See docs/api/handlers/audit-log.md.
 func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	bc, ok := authz.BusinessContextFromCtx(ctx)
+	bc, ok := requireBusiness(w, r, "", authz.PermAuditRead)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(ctx, authz.PermAuditRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
