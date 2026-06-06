@@ -16,6 +16,12 @@ type pgxPool interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// scanner is the Scan-only subset shared by pgx.Row (QueryRow path) and
+// pgx.CollectableRow (CollectRows path), letting one scanX helper serve both.
+type scanner interface {
+	Scan(dest ...any) error
+}
+
 func newStatementBuilder() squirrel.StatementBuilderType {
 	return squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 }

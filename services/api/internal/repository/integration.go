@@ -26,6 +26,37 @@ func NewIntegrationRepository(pool pgxPool) domain.IntegrationRepository {
 	}
 }
 
+// integrationColumns is the canonical column order shared by every
+// integrations SELECT so scanIntegration stays in lockstep with the query.
+var integrationColumns = []string{
+	"id", "business_id", "platform", "status",
+	"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
+	"external_id", "metadata", "token_expires_at", "user_token_expires_at",
+	"created_at", "updated_at",
+}
+
+// scanIntegration maps one integrations row into a domain.Integration. Shared
+// by the QueryRow Get paths and the CollectRows List paths.
+func scanIntegration(row scanner) (domain.Integration, error) {
+	var integration domain.Integration
+	err := row.Scan(
+		&integration.ID,
+		&integration.BusinessID,
+		&integration.Platform,
+		&integration.Status,
+		&integration.EncryptedAccessToken,
+		&integration.EncryptedRefreshToken,
+		&integration.EncryptedUserToken,
+		&integration.ExternalID,
+		&integration.Metadata,
+		&integration.TokenExpiresAt,
+		&integration.UserTokenExpiresAt,
+		&integration.CreatedAt,
+		&integration.UpdatedAt,
+	)
+	return integration, err
+}
+
 func (r *integrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
 	if integration.ID == uuid.Nil {
 		integration.ID = uuid.New()
@@ -56,7 +87,7 @@ func (r *integrationRepository) Create(ctx context.Context, integration *domain.
 
 func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
 	sql, args, err := r.sb.
-		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
+		Select(integrationColumns...).
 		From("integrations").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -64,22 +95,7 @@ func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
-	var integration domain.Integration
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&integration.ID,
-		&integration.BusinessID,
-		&integration.Platform,
-		&integration.Status,
-		&integration.EncryptedAccessToken,
-		&integration.EncryptedRefreshToken,
-		&integration.EncryptedUserToken,
-		&integration.ExternalID,
-		&integration.Metadata,
-		&integration.TokenExpiresAt,
-		&integration.UserTokenExpiresAt,
-		&integration.CreatedAt,
-		&integration.UpdatedAt,
-	)
+	integration, err := scanIntegration(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrIntegrationNotFound
@@ -92,7 +108,7 @@ func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 
 func (r *integrationRepository) GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error) {
 	sql, args, err := r.sb.
-		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
+		Select(integrationColumns...).
 		From("integrations").
 		Where(squirrel.Eq{
 			"business_id": businessID,
@@ -103,22 +119,7 @@ func (r *integrationRepository) GetByBusinessAndPlatform(ctx context.Context, bu
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
-	var integration domain.Integration
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&integration.ID,
-		&integration.BusinessID,
-		&integration.Platform,
-		&integration.Status,
-		&integration.EncryptedAccessToken,
-		&integration.EncryptedRefreshToken,
-		&integration.EncryptedUserToken,
-		&integration.ExternalID,
-		&integration.Metadata,
-		&integration.TokenExpiresAt,
-		&integration.UserTokenExpiresAt,
-		&integration.CreatedAt,
-		&integration.UpdatedAt,
-	)
+	integration, err := scanIntegration(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrIntegrationNotFound
@@ -131,7 +132,7 @@ func (r *integrationRepository) GetByBusinessAndPlatform(ctx context.Context, bu
 
 func (r *integrationRepository) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
 	sql, args, err := r.sb.
-		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
+		Select(integrationColumns...).
 		From("integrations").
 		Where(squirrel.Eq{"business_id": businessID}).
 		ToSql()
@@ -143,37 +144,10 @@ func (r *integrationRepository) ListByBusinessID(ctx context.Context, businessID
 	if err != nil {
 		return nil, fmt.Errorf("query integrations: %w", err)
 	}
-	defer rows.Close()
 
-	integrations := make([]domain.Integration, 0)
-	for rows.Next() {
-		var integration domain.Integration
-		err := rows.Scan(
-			&integration.ID,
-			&integration.BusinessID,
-			&integration.Platform,
-			&integration.Status,
-			&integration.EncryptedAccessToken,
-			&integration.EncryptedRefreshToken,
-			&integration.EncryptedUserToken,
-			&integration.ExternalID,
-			&integration.Metadata,
-			&integration.TokenExpiresAt,
-			&integration.UserTokenExpiresAt,
-			&integration.CreatedAt,
-			&integration.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("scan integration: %w", err)
-		}
-		integrations = append(integrations, integration)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows: %w", err)
-	}
-
-	return integrations, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Integration, error) {
+		return scanIntegration(row)
+	})
 }
 
 func (r *integrationRepository) Update(ctx context.Context, integration *domain.Integration) error {
@@ -231,7 +205,7 @@ func (r *integrationRepository) Delete(ctx context.Context, id uuid.UUID) error 
 
 func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {
 	sql, args, err := r.sb.
-		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
+		Select(integrationColumns...).
 		From("integrations").
 		Where(squirrel.Eq{"business_id": businessID, "platform": platform}).
 		ToSql()
@@ -243,28 +217,15 @@ func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, b
 	if err != nil {
 		return nil, fmt.Errorf("query integrations: %w", err)
 	}
-	defer rows.Close()
 
-	integrations := make([]domain.Integration, 0)
-	for rows.Next() {
-		var integration domain.Integration
-		err := rows.Scan(
-			&integration.ID, &integration.BusinessID, &integration.Platform, &integration.Status,
-			&integration.EncryptedAccessToken, &integration.EncryptedRefreshToken, &integration.EncryptedUserToken,
-			&integration.ExternalID, &integration.Metadata, &integration.TokenExpiresAt, &integration.UserTokenExpiresAt,
-			&integration.CreatedAt, &integration.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("scan integration: %w", err)
-		}
-		integrations = append(integrations, integration)
-	}
-	return integrations, rows.Err()
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Integration, error) {
+		return scanIntegration(row)
+	})
 }
 
 func (r *integrationRepository) ListAllActiveByPlatforms(ctx context.Context, platforms []string) ([]domain.Integration, error) {
 	sql, args, err := r.sb.
-		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
+		Select(integrationColumns...).
 		From("integrations").
 		Where(ActiveIntegrationStatusEq()).
 		Where(squirrel.Eq{"platform": platforms}).
@@ -277,42 +238,15 @@ func (r *integrationRepository) ListAllActiveByPlatforms(ctx context.Context, pl
 	if err != nil {
 		return nil, fmt.Errorf("query integrations: %w", err)
 	}
-	defer rows.Close()
 
-	integrations := make([]domain.Integration, 0)
-	for rows.Next() {
-		var integration domain.Integration
-		err := rows.Scan(
-			&integration.ID,
-			&integration.BusinessID,
-			&integration.Platform,
-			&integration.Status,
-			&integration.EncryptedAccessToken,
-			&integration.EncryptedRefreshToken,
-			&integration.EncryptedUserToken,
-			&integration.ExternalID,
-			&integration.Metadata,
-			&integration.TokenExpiresAt,
-			&integration.UserTokenExpiresAt,
-			&integration.CreatedAt,
-			&integration.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("scan integration: %w", err)
-		}
-		integrations = append(integrations, integration)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows: %w", err)
-	}
-
-	return integrations, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Integration, error) {
+		return scanIntegration(row)
+	})
 }
 
 func (r *integrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error) {
 	sql, args, err := r.sb.
-		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
+		Select(integrationColumns...).
 		From("integrations").
 		Where(squirrel.Eq{"business_id": businessID, "platform": platform, "external_id": externalID}).
 		ToSql()
@@ -320,13 +254,7 @@ func (r *integrationRepository) GetByBusinessPlatformExternal(ctx context.Contex
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
-	var integration domain.Integration
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&integration.ID, &integration.BusinessID, &integration.Platform, &integration.Status,
-		&integration.EncryptedAccessToken, &integration.EncryptedRefreshToken, &integration.EncryptedUserToken,
-		&integration.ExternalID, &integration.Metadata, &integration.TokenExpiresAt, &integration.UserTokenExpiresAt,
-		&integration.CreatedAt, &integration.UpdatedAt,
-	)
+	integration, err := scanIntegration(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrIntegrationNotFound

@@ -28,6 +28,42 @@ func NewRoleRepository(pool pgxPool) domain.RoleRepository {
 	return &roleRepository{pool: pool, sb: newStatementBuilder()}
 }
 
+// scanRole maps one roles row into a domain.Role, unmarshaling the permissions
+// JSONB column into []string. Shared by the QueryRow Get paths and the
+// CollectRows List paths.
+func scanRole(row scanner) (domain.Role, error) {
+	var role domain.Role
+	var permsJSON []byte
+	if err := row.Scan(
+		&role.ID, &role.BusinessID, &role.Name, &role.Description, &permsJSON, &role.IsSystem,
+		&role.CreatedAt, &role.UpdatedAt, &role.CreatedBy, &role.UpdatedBy,
+	); err != nil {
+		return domain.Role{}, err
+	}
+	if err := json.Unmarshal(permsJSON, &role.Permissions); err != nil {
+		return domain.Role{}, fmt.Errorf("unmarshal role permissions: %w", err)
+	}
+	return role, nil
+}
+
+// scanRoleWithCount maps one role-with-member-count row (the COUNT-augmented
+// LEFT JOIN in ListByBusinessWithCounts) into a domain.RoleWithMemberCount.
+func scanRoleWithCount(row scanner) (domain.RoleWithMemberCount, error) {
+	var rwc domain.RoleWithMemberCount
+	var permsJSON []byte
+	if err := row.Scan(
+		&rwc.ID, &rwc.BusinessID, &rwc.Name, &rwc.Description, &permsJSON, &rwc.IsSystem,
+		&rwc.CreatedAt, &rwc.UpdatedAt, &rwc.CreatedBy, &rwc.UpdatedBy,
+		&rwc.MemberCount,
+	); err != nil {
+		return domain.RoleWithMemberCount{}, err
+	}
+	if err := json.Unmarshal(permsJSON, &rwc.Permissions); err != nil {
+		return domain.RoleWithMemberCount{}, fmt.Errorf("unmarshal role permissions: %w", err)
+	}
+	return rwc, nil
+}
+
 // GetByID fetches a single role by ID. Returns domain.ErrRoleNotFound on no rows.
 // The permissions JSONB column is unmarshaled into []string.
 func (r *roleRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Role, error) {
@@ -42,20 +78,12 @@ func (r *roleRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Rol
 	if err != nil {
 		return nil, fmt.Errorf("build select role: %w", err)
 	}
-	var role domain.Role
-	var permsJSON []byte
-	scanErr := r.pool.QueryRow(ctx, sql, args...).Scan(
-		&role.ID, &role.BusinessID, &role.Name, &role.Description, &permsJSON, &role.IsSystem,
-		&role.CreatedAt, &role.UpdatedAt, &role.CreatedBy, &role.UpdatedBy,
-	)
+	role, scanErr := scanRole(r.pool.QueryRow(ctx, sql, args...))
 	if scanErr != nil {
 		if errors.Is(scanErr, pgx.ErrNoRows) {
 			return nil, domain.ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("query role: %w", scanErr)
-	}
-	if err := json.Unmarshal(permsJSON, &role.Permissions); err != nil {
-		return nil, fmt.Errorf("unmarshal role permissions: %w", err)
 	}
 	return &role, nil
 }
@@ -80,26 +108,9 @@ func (r *roleRepository) ListByBusiness(ctx context.Context, businessID uuid.UUI
 	if err != nil {
 		return nil, fmt.Errorf("query roles: %w", err)
 	}
-	defer rows.Close()
-	var out []domain.Role
-	for rows.Next() {
-		var role domain.Role
-		var permsJSON []byte
-		if err := rows.Scan(
-			&role.ID, &role.BusinessID, &role.Name, &role.Description, &permsJSON, &role.IsSystem,
-			&role.CreatedAt, &role.UpdatedAt, &role.CreatedBy, &role.UpdatedBy,
-		); err != nil {
-			return nil, fmt.Errorf("scan role: %w", err)
-		}
-		if err := json.Unmarshal(permsJSON, &role.Permissions); err != nil {
-			return nil, fmt.Errorf("unmarshal role permissions: %w", err)
-		}
-		out = append(out, role)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate roles: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Role, error) {
+		return scanRole(row)
+	})
 }
 
 // ListSystem returns the four seeded system roles (business_id IS NULL),
@@ -122,26 +133,9 @@ func (r *roleRepository) ListSystem(ctx context.Context) ([]domain.Role, error) 
 	if err != nil {
 		return nil, fmt.Errorf("query system roles: %w", err)
 	}
-	defer rows.Close()
-	var out []domain.Role
-	for rows.Next() {
-		var role domain.Role
-		var permsJSON []byte
-		if err := rows.Scan(
-			&role.ID, &role.BusinessID, &role.Name, &role.Description, &permsJSON, &role.IsSystem,
-			&role.CreatedAt, &role.UpdatedAt, &role.CreatedBy, &role.UpdatedBy,
-		); err != nil {
-			return nil, fmt.Errorf("scan system role: %w", err)
-		}
-		if err := json.Unmarshal(permsJSON, &role.Permissions); err != nil {
-			return nil, fmt.Errorf("unmarshal system role permissions: %w", err)
-		}
-		out = append(out, role)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate system roles: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Role, error) {
+		return scanRole(row)
+	})
 }
 
 // ListByBusinessWithCounts LEFT JOINs business_members filtered on
@@ -169,27 +163,9 @@ func (r *roleRepository) ListByBusinessWithCounts(ctx context.Context, businessI
 	if err != nil {
 		return nil, fmt.Errorf("query roles with counts: %w", err)
 	}
-	defer rows.Close()
-	var out []domain.RoleWithMemberCount
-	for rows.Next() {
-		var rwc domain.RoleWithMemberCount
-		var permsJSON []byte
-		if err := rows.Scan(
-			&rwc.ID, &rwc.BusinessID, &rwc.Name, &rwc.Description, &permsJSON, &rwc.IsSystem,
-			&rwc.CreatedAt, &rwc.UpdatedAt, &rwc.CreatedBy, &rwc.UpdatedBy,
-			&rwc.MemberCount,
-		); err != nil {
-			return nil, fmt.Errorf("scan role-with-count: %w", err)
-		}
-		if err := json.Unmarshal(permsJSON, &rwc.Permissions); err != nil {
-			return nil, fmt.Errorf("unmarshal role permissions: %w", err)
-		}
-		out = append(out, rwc)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate roles with counts: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.RoleWithMemberCount, error) {
+		return scanRoleWithCount(row)
+	})
 }
 
 // Create inserts a custom role (is_system always false). On UNIQUE conflict
@@ -514,20 +490,12 @@ func (r *roleRepository) GetByMemberInBusiness(ctx context.Context, businessID, 
 	if err != nil {
 		return nil, fmt.Errorf("build select role by member: %w", err)
 	}
-	var role domain.Role
-	var permsJSON []byte
-	scanErr := r.pool.QueryRow(ctx, sqlStr, args...).Scan(
-		&role.ID, &role.BusinessID, &role.Name, &role.Description, &permsJSON, &role.IsSystem,
-		&role.CreatedAt, &role.UpdatedAt, &role.CreatedBy, &role.UpdatedBy,
-	)
+	role, scanErr := scanRole(r.pool.QueryRow(ctx, sqlStr, args...))
 	if scanErr != nil {
 		if errors.Is(scanErr, pgx.ErrNoRows) {
 			return nil, domain.ErrMembershipNotFound
 		}
 		return nil, fmt.Errorf("query role by member: %w", scanErr)
-	}
-	if err := json.Unmarshal(permsJSON, &role.Permissions); err != nil {
-		return nil, fmt.Errorf("unmarshal role permissions: %w", err)
 	}
 	return &role, nil
 }

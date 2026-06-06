@@ -15,6 +15,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -122,23 +123,15 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 	if err != nil {
 		return nil, fmt.Errorf("query audit_log list: %w", err)
 	}
-	defer rows.Close()
 
-	var out []domain.AuditLog
-	for rows.Next() {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.AuditLog, error) {
 		var l domain.AuditLog
-		if err := rows.Scan(
+		err := row.Scan(
 			&l.ID, &l.BusinessID, &l.UserID,
 			&l.Action, &l.Resource, &l.Details, &l.UserEmailAtEvent, &l.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan audit_log row: %w", err)
-		}
-		out = append(out, l)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate audit_log rows: %w", err)
-	}
-	return out, nil
+		)
+		return l, err
+	})
 }
 
 // AuditLogRow is the JOIN-enriched repository-package row returned by
@@ -206,25 +199,17 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 	if err != nil {
 		return nil, fmt.Errorf("query audit_log list-with-actors: %w", err)
 	}
-	defer rows.Close()
 
-	var out []AuditLogRow
-	for rows.Next() {
-		var row AuditLogRow
-		if err := rows.Scan(
-			&row.ID, &row.BusinessID, &row.UserID,
-			&row.Action, &row.Resource, &row.Details,
-			&row.UserEmailAtEvent, &row.CreatedAt,
-			&row.ActorEmail, &row.ActorDisplayName,
-		); err != nil {
-			return nil, fmt.Errorf("scan audit_log-with-actors row: %w", err)
-		}
-		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate audit_log-with-actors rows: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (AuditLogRow, error) {
+		var out AuditLogRow
+		err := row.Scan(
+			&out.ID, &out.BusinessID, &out.UserID,
+			&out.Action, &out.Resource, &out.Details,
+			&out.UserEmailAtEvent, &out.CreatedAt,
+			&out.ActorEmail, &out.ActorDisplayName,
+		)
+		return out, err
+	})
 }
 
 // DeleteOlderThan removes every audit_logs row older than cutoff and returns

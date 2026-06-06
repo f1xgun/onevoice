@@ -42,6 +42,18 @@ func NewInvitationRepository(pool pgxPool) domain.InvitationRepository {
 	return &invitationRepository{pool: pool, sb: newStatementBuilder()}
 }
 
+// scanInvitation maps one invitations row into a domain.Invitation. Shared by
+// the QueryRow GetByTokenHash path and the CollectRows ListPendingByBusiness
+// path.
+func scanInvitation(row scanner) (domain.Invitation, error) {
+	var inv domain.Invitation
+	err := row.Scan(
+		&inv.ID, &inv.BusinessID, &inv.RoleID, &inv.TokenHash, &inv.ExpiresAt,
+		&inv.AcceptedAt, &inv.AcceptedBy, &inv.RevokedAt, &inv.CreatedBy, &inv.CreatedAt,
+	)
+	return inv, err
+}
+
 // Create — pool-based INSERT. Used in non-tx callers (none today; provided
 // for interface completeness). The handler uses CreateInTx for the cap
 // invariant.
@@ -123,11 +135,7 @@ func (r *invitationRepository) GetByTokenHash(ctx context.Context, tokenHash str
 	if err != nil {
 		return nil, fmt.Errorf("build select invitation by hash: %w", err)
 	}
-	var inv domain.Invitation
-	scanErr := r.pool.QueryRow(ctx, sql, args...).Scan(
-		&inv.ID, &inv.BusinessID, &inv.RoleID, &inv.TokenHash, &inv.ExpiresAt,
-		&inv.AcceptedAt, &inv.AcceptedBy, &inv.RevokedAt, &inv.CreatedBy, &inv.CreatedAt,
-	)
+	inv, scanErr := scanInvitation(r.pool.QueryRow(ctx, sql, args...))
 	if scanErr != nil {
 		if errors.Is(scanErr, pgx.ErrNoRows) {
 			return nil, domain.ErrInvitationNotFound
@@ -161,22 +169,9 @@ func (r *invitationRepository) ListPendingByBusiness(ctx context.Context, busine
 	if err != nil {
 		return nil, fmt.Errorf("query pending invitations: %w", err)
 	}
-	defer rows.Close()
-	var out []domain.Invitation
-	for rows.Next() {
-		var inv domain.Invitation
-		if err := rows.Scan(
-			&inv.ID, &inv.BusinessID, &inv.RoleID, &inv.TokenHash, &inv.ExpiresAt,
-			&inv.AcceptedAt, &inv.AcceptedBy, &inv.RevokedAt, &inv.CreatedBy, &inv.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan invitation: %w", err)
-		}
-		out = append(out, inv)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate invitations: %w", err)
-	}
-	return out, nil
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Invitation, error) {
+		return scanInvitation(row)
+	})
 }
 
 // CountPendingByBusiness — pool-based count. Used for read-only "you have X
