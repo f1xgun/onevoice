@@ -64,7 +64,7 @@
       "triggerAria": "{name}, switch organization",
       "kicker": "organizations",
       "empty": "no organizations",
-      "create": "+ Create organization",
+      "create": "Create organization",
       "selectedAnnounce": "Active organization: {name}"
     },
     "roles": {
