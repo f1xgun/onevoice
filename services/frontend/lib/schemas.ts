@@ -75,7 +75,11 @@ export function createBusinessSchema(t: ValidationTranslator) {
       .regex(/^\+?[0-9]{7,15}$/, t('phone'))
       .optional()
       .or(z.literal('')),
-    website: z.string().url(t('url')).optional().or(z.literal('')),
+    // The API returns `website` as `null` when unset (domain.Business.Website
+    // is a *string). Accept null here so loading an existing profile with no
+    // website doesn't fail validation on save — same pattern as the other
+    // API-nullable fields in this file.
+    website: z.string().url(t('url')).optional().or(z.literal('')).nullable(),
     description: z.string().max(BUSINESS_DESCRIPTION_MAX_LEN).optional(),
     address: z.string().max(BUSINESS_ADDRESS_MAX_LEN).optional(),
   });
