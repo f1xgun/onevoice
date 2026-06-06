@@ -3,10 +3,26 @@ package yandex
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
 )
+
+// yandexStarsTenthsScale: Yandex encodes the rating as a BEM modifier on
+// `StarsRating_value_N` where N is a tenths value (0..10) — 10 = 5★. Even
+// values divide cleanly by this scale into 1–5 integers; odd values are
+// half-stars and pass through as the raw tenths string so the LLM still has
+// signal. yandexStarsMaxTenths bounds the valid range.
+const (
+	yandexStarsTenthsScale = 2
+	yandexStarsMaxTenths   = 10
+)
+
+// yandexBEMStarsValueRe captures the numeric rating embedded in Yandex's
+// StarsRating BEM class — e.g. `StarsRating_value_10` for 5★ (tenths scale).
+var yandexBEMStarsValueRe = regexp.MustCompile(`StarsRating_value_(\d+)`)
 
 // GetReviews scrapes reviews from Yandex.Business reviews page.
 func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[string]interface{}, error) {
@@ -38,6 +54,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 		humanDelay()
 
 		containerSelectors := []string{
+			".ReviewsPage-ReviewsList",
 			"[data-testid='reviews-list']",
 			".reviews-list",
 			"[class*='ReviewsList']",
@@ -107,6 +124,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 // scrapeReviewCards extracts review data from visible review card elements.
 func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interface{}, error) { //nolint:unparam // error return reserved for future DOM validation errors
 	cardSelectors := []string{
+		".Review",
 		"[data-testid='review-card']",
 		".review-card",
 		"[class*='ReviewCard']",
@@ -142,6 +160,7 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		review["rating"] = extractRating(card)
 
 		authorSelectors := []string{
+			".Review-UserName",
 			"[data-testid='review-author']",
 			".review-author",
 			"[class*='Author']",
@@ -150,6 +169,7 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		review["author"] = extractText(card, authorSelectors, "Unknown")
 
 		textSelectors := []string{
+			".Review-Text",
 			"[data-testid='review-text']",
 			".review-text",
 			"[class*='ReviewText']",
@@ -158,6 +178,7 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		review["text"] = extractText(card, textSelectors, "")
 
 		dateSelectors := []string{
+			".Review-Date",
 			"[data-testid='review-date']",
 			".review-date",
 			"[class*='Date']",
@@ -182,9 +203,14 @@ func extractText(parent playwright.Locator, selectors []string, fallback string)
 	return fallback
 }
 
-// extractRating extracts the rating number from a review card.
+// extractRating extracts the 1–5 star rating from a review card. Yandex.Business
+// encodes the value as a BEM modifier on .StarsRating (e.g.
+// `StarsRating_value_10` for 5★ on a tenths scale), so we read the class
+// attribute and divide by 2. Falls back to data-rating / aria-label / text for
+// any DOM that pre-dates the BEM stars markup.
 func extractRating(card playwright.Locator) interface{} {
 	ratingSelectors := []string{
+		"[class*='StarsRating']",
 		"[data-testid='review-rating']",
 		"[class*='Rating']",
 		"[class*='rating']",
@@ -192,6 +218,11 @@ func extractRating(card playwright.Locator) interface{} {
 	}
 	for _, sel := range ratingSelectors {
 		loc := card.Locator(sel).First()
+		if class, err := loc.GetAttribute("class"); err == nil && class != "" {
+			if m := yandexBEMStarsValueRe.FindStringSubmatch(class); m != nil {
+				return parseYandexStarsTenths(m[1])
+			}
+		}
 		if val, err := loc.GetAttribute("data-rating"); err == nil && val != "" {
 			return val
 		}
@@ -203,4 +234,20 @@ func extractRating(card playwright.Locator) interface{} {
 		}
 	}
 	return nil
+}
+
+// parseYandexStarsTenths converts the tenths-of-a-star value encoded in
+// `StarsRating_value_N` (range 0..10) to a 1–5 star integer when even, or
+// returns the raw tenths string when half-stars are present (e.g. "9" → "4.5")
+// or the value is out of range. The LLM gets either a clean star integer or a
+// pass-through it can still reason about.
+func parseYandexStarsTenths(tenths string) interface{} {
+	n, err := strconv.Atoi(tenths)
+	if err != nil || n < 0 || n > yandexStarsMaxTenths {
+		return tenths
+	}
+	if n%yandexStarsTenthsScale == 0 {
+		return n / yandexStarsTenthsScale
+	}
+	return tenths
 }

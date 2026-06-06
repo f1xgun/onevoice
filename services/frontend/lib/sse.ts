@@ -88,6 +88,22 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
     return { ...msg, toolCalls: [...calls, synthesized] };
   }
 
+  if (type === 'error') {
+    // Mirrors the server-side `api.chat.stream_error_wrapper` template
+    // (pkg/i18n/catalog_*.go) so the inline live render matches what the user
+    // sees after a chat reload. Without this case the orchestrator's
+    // {type:'error', content:'...'} frame is silently dropped on the live
+    // stream while the persisted copy still surfaces on reload — exactly the
+    // "error visible only after refresh" symptom.
+    const raw = (event.content as string | undefined) ?? '';
+    if (!raw) return { ...msg, status: 'done' };
+    return {
+      ...msg,
+      content: msg.content + (msg.content ? '\n\n' : '') + `[Error: ${raw}]`,
+      status: 'done',
+    };
+  }
+
   if (type === 'done') {
     return { ...msg, status: 'done' };
   }
