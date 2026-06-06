@@ -317,13 +317,18 @@ services:
       REDIS_URL: redis://redis:6379/0
       # BrowserPool tuning (Phase 26 LRU eviction). Empty = defaults from code.
       BROWSER_POOL_MAX_CONTEXTS: ${BROWSER_POOL_MAX_CONTEXTS:-}
+      # Screenshot capture mode for diagnostics. Default `off` — never
+      # persist Yandex.Business DOM (PII) on host disk. Operators may
+      # opt in to `tmpfs` (ephemeral, 1h TTL on /dev/shm) for staging
+      # triage, or `full` for dev. See services/agent-yandex-business
+      # /internal/yandex/browser.go for the enum.
+      SCREENSHOT_MODE: ${SCREENSHOT_MODE:-off}
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-yandex-business.crt
       ONEVOICE_MTLS_KEY_PATH: /etc/onevoice/mtls/agent-yandex-business.key
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
-      - ./rpa-screenshots:/tmp:rw
     depends_on:
       nats:
         condition: service_healthy
