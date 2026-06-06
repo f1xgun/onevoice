@@ -2,19 +2,16 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
@@ -104,37 +101,17 @@ func domainReviewToOpenAPI(r domain.Review) openapi.Review {
 
 // ListReviews handles GET /api/v1/reviews
 func (h *ReviewHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ListReviews", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ListReviews: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
+	limit, offset := parseLimitOffset(r, DefaultReviewLimit, MaxReviewLimit)
 	filter := domain.ReviewFilter{
 		Platform:    r.URL.Query().Get("platform"),
 		ReplyStatus: r.URL.Query().Get("reply_status"),
-		Limit:       DefaultReviewLimit,
-		Offset:      0,
-	}
-
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			filter.Limit = parsedLimit
-			if filter.Limit > MaxReviewLimit {
-				filter.Limit = MaxReviewLimit
-			}
-		}
-	}
-
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
-			filter.Offset = parsedOffset
-		}
+		Limit:       limit,
+		Offset:      offset,
 	}
 
 	reviews, total, err := h.reviewService.List(r.Context(), bc.BusinessID, filter)
@@ -161,14 +138,8 @@ func (h *ReviewHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
 
 // GetReview handles GET /api/v1/reviews/{id}
 func (h *ReviewHandler) GetReview(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "GetReview", authz.PermContentRead)
 	if !ok {
-		slog.ErrorContext(r.Context(), "GetReview: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -194,27 +165,15 @@ func (h *ReviewHandler) GetReview(w http.ResponseWriter, r *http.Request) {
 
 // ReplyToReview handles PUT /api/v1/reviews/{id}/reply
 func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "ReplyToReview", authz.PermContentUpdate)
 	if !ok {
-		slog.ErrorContext(r.Context(), "ReplyToReview: no BusinessContext in ctx — middleware misconfiguration")
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermContentUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	id := chi.URLParam(r, "id")
 
-	var req openapi.ReplyToReviewRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.ReplyToReviewRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
@@ -243,9 +202,8 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 // 60s gateway timeout combined with the syncer's own per-platform 60s
 // per-NATS-request budget.
 func (h *ReviewHandler) RefreshReviews(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 

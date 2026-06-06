@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -91,13 +90,8 @@ const maxPermissionsPerRole = 100
 // List handles GET /api/v1/businesses/{id}/roles (PermRolesRead).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesRead)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesRead) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -123,13 +117,8 @@ func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
 // Note: `?clone_from=` is intentionally ignored server-side — the frontend
 // pre-fills permissions on the client and POSTs the result here.
 func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesCreate)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesCreate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -207,13 +196,8 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update handles PATCH /api/v1/businesses/{id}/roles/{roleId} (PermRolesUpdate).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesUpdate)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesUpdate) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	roleID, ok := parseRoleIDParam(w, r)
@@ -306,13 +290,8 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE /api/v1/businesses/{id}/roles/{roleId}?reassign_to=<uuid> (PermRolesDelete).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermRolesDelete)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermRolesDelete) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	roleID, ok := parseRoleIDParam(w, r)
@@ -448,9 +427,8 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // route already rejects non-members (404) and suspended members (403); any
 // active member can read their own permissions.
 func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := businessContext(w, r, "")
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 	perms := make([]string, len(bc.Permissions))
@@ -462,13 +440,7 @@ func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 
 // parseRoleIDParam extracts {roleId}; writes 400 invalid_role_id on failure.
 func parseRoleIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, "roleId")
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_role_id")
-		return uuid.Nil, false
-	}
-	return id, true
+	return parseUUIDParam(w, r, "roleId", "invalid_role_id")
 }
 
 // typedPermsToStrings converts []authz.Permission back to []string for persistence.

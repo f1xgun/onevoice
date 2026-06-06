@@ -11,7 +11,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -66,23 +65,17 @@ const pendingDeletionCode = openapi.PendingDeletionResponseCode("account_pending
 // Delete handles DELETE /api/v1/users/me. See <api_contract> in the
 // plan for the canonical response shapes (204 / 401 / 409 / 423).
 func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
-	var req openapi.DeleteAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, r, err)
+	req, ok := decodeAndValidate[openapi.DeleteAccountRequest](w, r, "invalid request body")
+	if !ok {
 		return
 	}
 
-	err = h.service.RequestDeletion(r.Context(), userID, req.Password, middleware.ClientIP(r), r.UserAgent(), "")
+	err := h.service.RequestDeletion(r.Context(), userID, req.Password, middleware.ClientIP(r), r.UserAgent(), "")
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -137,9 +130,8 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // from a hostile origin. Origin is set by browsers on every
 // fetch/XHR POST and cannot be forged by JS in the victim's session.
 func (h *UserDeletionHandler) Restore(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -148,7 +140,7 @@ func (h *UserDeletionHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.CancelDeletion(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
+	err := h.service.CancelDeletion(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return

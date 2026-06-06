@@ -23,7 +23,6 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -142,13 +141,7 @@ func domainInvitationToPreview(inv *domain.Invitation, businessName, roleName st
 
 // parseInvitationIDParam extracts {inviteId} from chi URL params; writes 400 on failure.
 func parseInvitationIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, "inviteId")
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_invite_id")
-		return uuid.Nil, false
-	}
-	return id, true
+	return parseUUIDParam(w, r, "inviteId", "invalid_invite_id")
 }
 
 // computeTokenHash hashes the raw token with hex(sha256) to match the
@@ -162,13 +155,8 @@ func computeTokenHash(raw string) string {
 // Create handles POST /api/v1/businesses/{id}/invitations.
 // See docs/api/handlers/invitations.md.
 func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersInvite) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -275,13 +263,8 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 // ListPending handles GET /api/v1/businesses/{id}/invitations.
 // See docs/api/handlers/invitations.md.
 func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersInvite) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -312,13 +295,8 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 // Revoke handles DELETE /api/v1/businesses/{id}/invitations/{inviteId}.
 // See docs/api/handlers/invitations.md.
 func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
-	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
-		return
-	}
-	if !authz.Can(r.Context(), authz.PermMembersInvite) {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	invID, ok := parseInvitationIDParam(w, r)
@@ -392,9 +370,8 @@ func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 // Accept handles POST /api/v1/invitations/{token}/accept — auth-required, NOT business-scoped.
 // See docs/api/handlers/invitations.md for the race-safe accept order.
 func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
