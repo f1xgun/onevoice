@@ -331,14 +331,14 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 	if externalID != "" {
 		integration, err = s.repo.GetByBusinessPlatformExternal(ctx, businessID, platform, externalID)
 		if err != nil && !errors.Is(err, domain.ErrIntegrationNotFound) {
-			return nil, err
+			return nil, fmt.Errorf("get integration by external id: %w", err)
 		}
 	}
 
 	if integration == nil {
 		integrations, listErr := s.repo.ListByBusinessAndPlatform(ctx, businessID, platform)
 		if listErr != nil {
-			return nil, listErr
+			return nil, fmt.Errorf("list integrations: %w", listErr)
 		}
 		for i := range integrations {
 			if integrations[i].Status == domain.IntegrationStatusActive {
