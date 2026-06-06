@@ -75,6 +75,8 @@ type nopAuditLogger struct{}
 
 func (nopAuditLogger) Log(_ context.Context, _ audit.Entry) {}
 
+func (nopAuditLogger) LogSync(_ context.Context, _ audit.Entry) error { return nil }
+
 // currentVersionV1 returns ("v1.0", "") for all three slugs.
 func currentVersionV1(slug legalconfig.PolicySlug) (version, sha256 string) {
 	switch slug {

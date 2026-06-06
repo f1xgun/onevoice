@@ -367,14 +367,22 @@ func LogUserSelfDeletedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, orig
 // ---- integration builders -----------------------------------------------
 
 // LogIntegrationConnected records a new integration. Details carry only
-// platform + external_id — never token material.
-func LogIntegrationConnected(ctx context.Context, l Logger, businessID, actorID, integrationID uuid.UUID, platform, externalID string) {
+// platform + external_id plus forensic provenance (actorIP, userAgent,
+// parsedFormat) — never token material.
+func LogIntegrationConnected(ctx context.Context, l Logger, businessID, actorID, integrationID uuid.UUID, platform, externalID, actorIP, userAgent, parsedFormat string) {
 	l.Log(ctx, Entry{
 		Action:     ActionIntegrationConnected,
 		Resource:   "integration",
 		BusinessID: &businessID,
 		UserID:     &actorID,
-		Details:    mustMarshal(IntegrationConnectedDetails{IntegrationID: integrationID, Platform: platform, ExternalID: externalID}),
+		Details: mustMarshal(IntegrationConnectedDetails{
+			IntegrationID: integrationID,
+			Platform:      platform,
+			ExternalID:    externalID,
+			ActorIP:       actorIP,
+			UserAgent:     userAgent,
+			ParsedFormat:  parsedFormat,
+		}),
 	})
 }
 
@@ -398,6 +406,43 @@ func LogIntegrationTokenRotated(ctx context.Context, l Logger, businessID, integ
 		Resource:   "integration",
 		BusinessID: &businessID,
 		Details:    mustMarshal(IntegrationTokenRotatedDetails{IntegrationID: integrationID, Platform: platform}),
+	})
+}
+
+// LogTokenDecryptedSync records a single token decryption synchronously and
+// fail-closed: the returned error (wrapping the repository Insert error) MUST
+// abort the caller so a token is never released without a forensic row.
+func LogTokenDecryptedSync(ctx context.Context, l Logger, businessID, integrationID uuid.UUID, platform, callerService, correlationID, reason string) error {
+	if err := l.LogSync(ctx, Entry{
+		Action:     ActionIntegrationTokenDecrypted,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		Details: mustMarshal(TokenDecryptedDetails{
+			IntegrationID: integrationID,
+			Platform:      platform,
+			CallerService: callerService,
+			CorrelationID: correlationID,
+			Reason:        reason,
+		}),
+	}); err != nil {
+		return fmt.Errorf("audit token_decrypted: %w", err)
+	}
+	return nil
+}
+
+// LogIntegrationDeleted records a soft-delete snapshot fire-and-forget. The
+// details survive even after the integration row is hard-purged.
+func LogIntegrationDeleted(ctx context.Context, l Logger, businessID, actorID, integrationID uuid.UUID, platform, externalID string) {
+	l.Log(ctx, Entry{
+		Action:     ActionIntegrationDeleted,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		UserID:     &actorID,
+		Details: mustMarshal(IntegrationDeletedDetails{
+			IntegrationID: integrationID,
+			Platform:      platform,
+			ExternalID:    externalID,
+		}),
 	})
 }
 

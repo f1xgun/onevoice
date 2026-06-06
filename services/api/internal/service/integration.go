@@ -267,7 +267,7 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
-	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID)
+	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID, "", "", "")
 
 	return integration, nil
 }
