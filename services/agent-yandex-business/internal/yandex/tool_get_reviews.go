@@ -4,9 +4,20 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
+)
+
+// yandexStarsTenthsScale: Yandex encodes the rating as a BEM modifier on
+// `StarsRating_value_N` where N is a tenths value (0..10) — 10 = 5★. Even
+// values divide cleanly by this scale into 1–5 integers; odd values are
+// half-stars and pass through as the raw tenths string so the LLM still has
+// signal. yandexStarsMaxTenths bounds the valid range.
+const (
+	yandexStarsTenthsScale = 2
+	yandexStarsMaxTenths   = 10
 )
 
 // yandexBEMStarsValueRe captures the numeric rating embedded in Yandex's
@@ -226,23 +237,17 @@ func extractRating(card playwright.Locator) interface{} {
 }
 
 // parseYandexStarsTenths converts the tenths-of-a-star value encoded in
-// `StarsRating_value_N` (range 0..10) to a 1–5 star integer when even, or to
-// the raw tenths string when half-stars are present (e.g. "9" → "4.5"). Unknown
-// inputs fall through as the raw captured string so the LLM still sees signal.
+// `StarsRating_value_N` (range 0..10) to a 1–5 star integer when even, or
+// returns the raw tenths string when half-stars are present (e.g. "9" → "4.5")
+// or the value is out of range. The LLM gets either a clean star integer or a
+// pass-through it can still reason about.
 func parseYandexStarsTenths(tenths string) interface{} {
-	switch tenths {
-	case "10":
-		return 5
-	case "8":
-		return 4
-	case "6":
-		return 3
-	case "4":
-		return 2
-	case "2":
-		return 1
-	case "0":
-		return 0
+	n, err := strconv.Atoi(tenths)
+	if err != nil || n < 0 || n > yandexStarsMaxTenths {
+		return tenths
+	}
+	if n%yandexStarsTenthsScale == 0 {
+		return n / yandexStarsTenthsScale
 	}
 	return tenths
 }
