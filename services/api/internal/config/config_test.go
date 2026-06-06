@@ -18,7 +18,7 @@ import (
 func setValidLegal(t *testing.T) {
 	t.Helper()
 	t.Setenv("LEGAL_ENTITY_NAME", "ООО Реальная компания")
-	t.Setenv("LEGAL_INN", "7707083893") // public Sberbank INN, passes FNS checksum
+	t.Setenv("LEGAL_INN", "7707083893")
 	t.Setenv("LEGAL_ADDRESS", "123456 Москва ул. Пушкина д. 1 оф. 42")
 	t.Setenv("LEGAL_EMAIL_PDN", "dpo@example.com")
 }
@@ -31,10 +31,6 @@ func setValidLegal(t *testing.T) {
 func minTestEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("JWT_SECRET", "Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8")
-	// Strong 32-byte random-style key chosen to clear the SEC-11 boot
-	// validator (deny-list / repeat-pattern / Shannon entropy >= 3.5 /
-	// zxcvbn score >= 3). Mirrors the recommended `openssl rand -base64 24`
-	// shape used in production.
 	t.Setenv("ENCRYPTION_KEY", "uW4qX9pTzN3vM8yJ7sR2bL5kH1gD0fA6")
 }
 
@@ -458,7 +454,6 @@ func TestLoad_AllowPlaceholders_Dev(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]")
-	// LEGAL_INN / ADDRESS / EMAIL left empty — dev path tolerates these.
 	cfg, err := config.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "[Юридическое лицо — будет обновлено]", cfg.LegalEntityName)

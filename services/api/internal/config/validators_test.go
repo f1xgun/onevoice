@@ -113,13 +113,7 @@ func TestValidateEncryptionKey_DictionaryWeak(t *testing.T) {
 }
 
 func TestValidateEncryptionKey_StrongKey(t *testing.T) {
-	// Base64 of 24 random bytes — uniform distribution + 32 chars. The
-	// literal here is the example given in the plan's must_haves.truth.
 	if err := validateEncryptionKey("ZmFrZSByYW5kb20gMzIgYnl0ZSBzdHJpbmcga2V5c2FtcA=="); err == nil {
-		// 47 chars — but encryption-key length check happens BEFORE
-		// validateEncryptionKey is called by Load. Here we want the
-		// validator alone to accept it because each gate (deny / repeat
-		// / entropy / dictionary) clears.
 		return
 	} else {
 		t.Fatalf("expected strong base64 random key to pass, got %v", err)
@@ -127,9 +121,6 @@ func TestValidateEncryptionKey_StrongKey(t *testing.T) {
 }
 
 func TestValidateEncryptionKey_StrongMixed32(t *testing.T) {
-	// 32-byte high-entropy mix that mirrors the suggested production-style
-	// output of `openssl rand -base64 24` (24 random bytes → 32 base64
-	// chars). Must clear every gate.
 	if err := validateEncryptionKey("uW4qX9pTzN3vM8yJ7sR2bL5kH1gD0fA6"); err != nil {
 		t.Fatalf("expected strong 32-char key to pass, got %v", err)
 	}
@@ -142,8 +133,6 @@ func TestValidateEncryptionKey_Empty(t *testing.T) {
 }
 
 func TestShannonEntropy_DigitString(t *testing.T) {
-	// "12345678901234567890123456789012" — 10 unique digits in a 32-byte
-	// string. Expected entropy ~ log2(10) = 3.32 bits/byte.
 	got := shannonEntropy([]byte("12345678901234567890123456789012"))
 	if got < 3.30 || got > 3.35 {
 		t.Fatalf("expected entropy in [3.30, 3.35], got %.4f", got)
@@ -160,7 +149,6 @@ func TestShannonEntropy_EmptyZero(t *testing.T) {
 }
 
 func TestValidateINN_Sberbank10(t *testing.T) {
-	// Public Sberbank INN — well-known fixture for ФНС checksum.
 	if err := validateINN("7707083893"); err != nil {
 		t.Fatalf("expected Sberbank INN to validate, got %v", err)
 	}
@@ -182,7 +170,6 @@ func TestValidateINN_WrongLength(t *testing.T) {
 }
 
 func TestValidateINN_Valid12(t *testing.T) {
-	// Public 12-digit example — passes both checksum stages.
 	if err := validateINN("500100732259"); err != nil {
 		t.Fatalf("expected 500100732259 to validate, got %v", err)
 	}

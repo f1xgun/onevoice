@@ -249,9 +249,6 @@ func Load() (*Config, error) {
 		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
 		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
 
-		// No placeholder defaults: production boot is gated by
-		// validateLegalProduction; non-production accepts empty strings
-		// with a slog.Warn so dev / CI still boot without operator config.
 		LegalEntityName: os.Getenv("LEGAL_ENTITY_NAME"),
 		LegalINN:        os.Getenv("LEGAL_INN"),
 		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),
