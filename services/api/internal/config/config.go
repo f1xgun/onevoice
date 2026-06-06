@@ -426,9 +426,10 @@ func Load() (*Config, error) {
 }
 
 // parseInternalACL reads ONEVOICE_INTERNAL_ACL_JSON and decodes the declarative
-// CN→[]platforms map gating /internal/v1/tokens. The variable is required:
-// an empty value or unparsable JSON aborts boot so a misconfigured deploy fails
-// loud rather than running the internal token endpoint without a platform gate.
+// CN→[]platforms map gating /internal/v1/tokens. The variable is required: an
+// empty value, unparsable JSON, or an empty object aborts boot so a misconfigured
+// deploy fails loud rather than running the internal token endpoint without a
+// usable platform gate (an empty map rejects every CN).
 func parseInternalACL() (map[string][]string, error) {
 	raw := os.Getenv("ONEVOICE_INTERNAL_ACL_JSON")
 	if raw == "" {
@@ -437,6 +438,9 @@ func parseInternalACL() (map[string][]string, error) {
 	var acl map[string][]string
 	if err := json.Unmarshal([]byte(raw), &acl); err != nil {
 		return nil, fmt.Errorf("ONEVOICE_INTERNAL_ACL_JSON invalid: %w", err)
+	}
+	if len(acl) == 0 {
+		return nil, fmt.Errorf("ONEVOICE_INTERNAL_ACL_JSON must contain at least one CN→platforms entry")
 	}
 	return acl, nil
 }

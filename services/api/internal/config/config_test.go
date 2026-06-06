@@ -497,3 +497,12 @@ func TestConfigInternalACL_InvalidJSONFailsLoud(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ONEVOICE_INTERNAL_ACL_JSON")
 }
+
+func TestConfigInternalACL_EmptyObjectFailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", "{}")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ONEVOICE_INTERNAL_ACL_JSON")
+	assert.Contains(t, err.Error(), "at least one")
+}
