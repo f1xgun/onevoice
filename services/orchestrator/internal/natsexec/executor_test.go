@@ -325,8 +325,8 @@ func TestDispatch_DenyListBlocksPublish(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "deny-list")
-	assert.Contains(t, err.Error(), "cookies")
+	assert.Contains(t, err.Error(), "rejected by security policy")
+	assert.NotContains(t, err.Error(), "cookies", "caller-facing error must not echo the denied arg name")
 	assert.Equal(t, 0, rec.calls, "rejected publish must not reach the requester")
 }
 
@@ -353,14 +353,14 @@ func TestDispatch_DenyListRecursive(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "token")
+	assert.Contains(t, err.Error(), "rejected by security policy")
 	assert.Equal(t, 0, rec.calls)
 }
 
 func TestDispatch_DenyListLogsDeniedKey(t *testing.T) {
 	var buf bytes.Buffer
 	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError})))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	defer slog.SetDefault(prev)
 
 	rec := &recordingRequester{}

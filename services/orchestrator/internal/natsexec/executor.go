@@ -72,12 +72,12 @@ func (e *NATSExecutor) ExecuteWithApproval(ctx context.Context, args map[string]
 func (e *NATSExecutor) dispatch(ctx context.Context, req a2a.ToolRequest) (interface{}, error) {
 	if hit, key := violatesDenyList(req.Args); hit {
 		metrics.IncNATSPublishRejected("denylist_key")
-		slog.ErrorContext(ctx, "natsexec: deny-list key in tool args — refused publish",
+		slog.WarnContext(ctx, "natsexec: deny-list key in tool args — refused publish",
 			"tool", e.toolName,
 			"agent", e.agentID,
 			"denied_key", key,
 		)
-		return nil, fmt.Errorf("natsexec: argument %q is in deny-list — refused", key)
+		return nil, fmt.Errorf("natsexec: tool argument rejected by security policy")
 	}
 
 	data, err := json.Marshal(req)
