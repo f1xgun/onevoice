@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { useBusinessStore } from '@/lib/stores/business';
+import { useMapEmailVerificationError } from '@/lib/resolveErrorMap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -18,6 +19,7 @@ interface Props {
 export function TelegramConnectModal({ open, onClose }: Props) {
   const tIntegrations = useTranslations('integrations');
   const tCommon = useTranslations('common');
+  const mapVerifyError = useMapEmailVerificationError();
   const [step, setStep] = useState(1);
   const [channelId, setChannelId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,8 +36,8 @@ export function TelegramConnectModal({ open, onClose }: Props) {
       });
       toast.success(tIntegrations('telegramConnected'));
       handleClose();
-    } catch {
-      toast.error(tIntegrations('telegramConnectFail'));
+    } catch (err: unknown) {
+      toast.error(mapVerifyError(err) ?? tIntegrations('telegramConnectFail'));
     } finally {
       setLoading(false);
     }

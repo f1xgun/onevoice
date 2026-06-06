@@ -16,6 +16,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { useMapEmailVerificationError } from '@/lib/resolveErrorMap';
 
 interface GoogleLocation {
   name: string;
@@ -39,6 +40,7 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const mapVerifyError = useMapEmailVerificationError();
 
   const {
     data: locations = [],
@@ -66,8 +68,8 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       onClose();
     },
-    onError: () => {
-      toast.error(tGoogle('connectFailed'));
+    onError: (err: unknown) => {
+      toast.error(mapVerifyError(err) ?? tGoogle('connectFailed'));
     },
   });
 

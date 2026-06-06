@@ -89,6 +89,37 @@ export function extractApiErrorCode(err: unknown): string | undefined {
   return extractStatusAndCode(err).code;
 }
 
+// ----- email-verification gate (cross-cutting 412) -------------------------
+
+const EMAIL_VERIFICATION_REQUIRED_CODE = 'email_verification_required';
+
+// The soft-restrict middleware (RequireVerifiedEmailDay0/Day7) returns 412
+// with a body shaped `{ code, verifiedDeadline }` — note the `code` field,
+// NOT the `error` field every other endpoint uses. extractApiErrorCode reads
+// `.error`, so it deliberately does not match this gate; detect it here.
+export function isEmailVerificationRequiredError(err: unknown): boolean {
+  const axiosErr = err as AxiosError<{ code?: string }> | undefined;
+  return (
+    axiosErr?.response?.status === HTTP_STATUS.PRECONDITION_FAILED &&
+    axiosErr.response.data?.code === EMAIL_VERIFICATION_REQUIRED_CODE
+  );
+}
+
+// Maps the 412 verification gate to its canonical localized toast string,
+// or null when `err` is something else so callers fall through to their own
+// context-specific failure copy. Mirrors the useMapXError mapper idiom; the
+// string lives under auth.verifyEmail.errors.required.
+export function createMapEmailVerificationError(
+  tVerifyErrors: TranslateFn
+): (err: unknown) => string | null {
+  return (err) => (isEmailVerificationRequiredError(err) ? tVerifyErrors('required') : null);
+}
+
+export function useMapEmailVerificationError(): (err: unknown) => string | null {
+  const t = useTranslations('auth.verifyEmail.errors') as TranslateFn;
+  return useMemo(() => createMapEmailVerificationError(t), [t]);
+}
+
 // ----- central error-code registry -----------------------------------------
 
 // A registry entry pairs an HTTP status + optional error code with the

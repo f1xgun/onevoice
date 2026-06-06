@@ -3,10 +3,12 @@ import type { AxiosError } from 'axios';
 import { createTranslator } from 'next-intl';
 import ruMessages from '@/messages/ru.json';
 import {
+  createMapEmailVerificationError,
   createMapInviteError,
   createMapMemberError,
   createMapRoleError,
   createResolveErrorMap,
+  isEmailVerificationRequiredError,
 } from '../resolveErrorMap';
 
 // We feed the request-scoped factories with the real `ru` bundle via
@@ -247,5 +249,55 @@ describe('mapRoleError', () => {
     expect(mapRoleError(new Error('network down'))).toBe(
       'Не удалось сохранить роль. Попробуйте ещё раз.'
     );
+  });
+});
+
+describe('email verification gate (412)', () => {
+  const mapVerify = createMapEmailVerificationError(
+    tFor('auth.verifyEmail.errors') as (key: string) => string
+  );
+
+  // The gate body shape is { code, verifiedDeadline } — `code`, NOT the
+  // `error` field the shared axiosErr() helper builds.
+  function gateErr(status: number, data?: Record<string, unknown>): AxiosError {
+    return {
+      isAxiosError: true,
+      response: { status, data: data ?? {}, statusText: '', headers: {}, config: {} as never },
+    } as unknown as AxiosError;
+  }
+
+  it('detects a 412 { code: email_verification_required }', () => {
+    expect(
+      isEmailVerificationRequiredError(
+        gateErr(412, {
+          code: 'email_verification_required',
+          verifiedDeadline: '2026-05-24T18:29:47Z',
+        })
+      )
+    ).toBe(true);
+  });
+
+  it('ignores a 412 without the verification code', () => {
+    expect(isEmailVerificationRequiredError(gateErr(412, { code: 'something_else' }))).toBe(false);
+    expect(isEmailVerificationRequiredError(gateErr(412, {}))).toBe(false);
+  });
+
+  it('ignores the verification code on a non-412 status', () => {
+    expect(
+      isEmailVerificationRequiredError(gateErr(403, { code: 'email_verification_required' }))
+    ).toBe(false);
+  });
+
+  it('ignores network / non-axios throws without throwing', () => {
+    expect(isEmailVerificationRequiredError(undefined)).toBe(false);
+    expect(isEmailVerificationRequiredError(new Error('network'))).toBe(false);
+  });
+
+  it('maps the gate to the canonical localized message, else null', () => {
+    expect(mapVerify(gateErr(412, { code: 'email_verification_required' }))).toBe(
+      'Подтвердите email, чтобы продолжить.'
+    );
+    expect(mapVerify(gateErr(500, { error: 'internal' }))).toBeNull();
+    expect(mapVerify(undefined)).toBeNull();
   });
 });
