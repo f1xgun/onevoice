@@ -179,6 +179,26 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 	return nil
 }
 
+// scanUser maps one users row into a domain.User in the canonical select
+// order shared by the Get paths and EnumerateUpcomingDeletions.
+func scanUser(row scanner) (domain.User, error) {
+	var user domain.User
+	err := row.Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.PreferredLocale,
+		&user.EmailVerified,
+		&user.EmailVerifiedAt,
+		&user.DeletedAt,
+		&user.DeletionRequestedAt,
+		&user.DeletionCanceledAt,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	return user, err
+}
+
 // GetByID returns the active user row matching id. Soft-deleted rows are
 // filtered out via `deleted_at IS NULL` and surface as ErrUserNotFound;
 // deletion-aware callers use GetByIDIncludingDeleted.
@@ -197,20 +217,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
-	var user domain.User
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.PreferredLocale,
-		&user.EmailVerified,
-		&user.EmailVerifiedAt,
-		&user.DeletedAt,
-		&user.DeletionRequestedAt,
-		&user.DeletionCanceledAt,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
+	user, err := scanUser(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrUserNotFound
@@ -238,20 +245,7 @@ func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UU
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
-	var user domain.User
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.PreferredLocale,
-		&user.EmailVerified,
-		&user.EmailVerifiedAt,
-		&user.DeletedAt,
-		&user.DeletionRequestedAt,
-		&user.DeletionCanceledAt,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
+	user, err := scanUser(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrUserNotFound
@@ -279,20 +273,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
-	var user domain.User
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.PreferredLocale,
-		&user.EmailVerified,
-		&user.EmailVerifiedAt,
-		&user.DeletedAt,
-		&user.DeletionRequestedAt,
-		&user.DeletionCanceledAt,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
+	user, err := scanUser(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrUserNotFound
@@ -489,19 +470,11 @@ func (r *userRepository) EnumeratePendingDeletionsInTx(ctx context.Context, tx p
 	if err != nil {
 		return nil, fmt.Errorf("enumerate pending deletions: %w", err)
 	}
-	defer rows.Close()
-	var ids []uuid.UUID
-	for rows.Next() {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (uuid.UUID, error) {
 		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("scan pending deletion: %w", err)
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("pending deletions rows: %w", err)
-	}
-	return ids, nil
+		err := row.Scan(&id)
+		return id, err
+	})
 }
 
 // EnumerateUpcomingDeletions returns users whose deletion_requested_at falls
@@ -524,24 +497,13 @@ func (r *userRepository) EnumerateUpcomingDeletions(ctx context.Context, fromTim
 	if err != nil {
 		return nil, fmt.Errorf("enumerate upcoming deletions: %w", err)
 	}
-	defer rows.Close()
-	var out []*domain.User
-	for rows.Next() {
-		var u domain.User
-		if err := rows.Scan(
-			&u.ID, &u.Email, &u.PasswordHash, &u.PreferredLocale,
-			&u.EmailVerified, &u.EmailVerifiedAt,
-			&u.DeletedAt, &u.DeletionRequestedAt, &u.DeletionCanceledAt,
-			&u.CreatedAt, &u.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan upcoming deletion: %w", err)
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (*domain.User, error) {
+		u, err := scanUser(row)
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, &u)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("upcoming deletions rows: %w", err)
-	}
-	return out, nil
+		return &u, nil
+	})
 }
 
 // HardDeleteInTx issues DELETE FROM users inside the caller-supplied tx.
