@@ -25,8 +25,9 @@ import (
 //     test runs without cert material), the identity becomes "system" and must
 //     still appear in the ACL map to proceed (fail-closed).
 //   - The CN must be present in acl, else 403 "service not authorized".
-//   - The platform query param must be permitted for that CN (exact match or a
-//     "*" wildcard entry), else 403 "platform not authorized for this service".
+//   - The platform query param must be present (empty → 403) so the ACL is the
+//     single authority on platform shape, and permitted for that CN (exact match
+//     or a "*" wildcard entry), else 403 "platform not authorized for this service".
 //
 // On allow, the resolved CN is stored on r.Context() under the same
 // ctxKeyServiceIdentity used by RequireServiceIdentity, so downstream handlers
@@ -61,6 +62,12 @@ func RequirePlatformACL(acl map[string][]string, log *slog.Logger) func(http.Han
 				return
 			}
 			platform := r.URL.Query().Get("platform")
+			if platform == "" {
+				log.WarnContext(r.Context(), "internal: missing platform query param",
+					"cn", cn, "path", r.URL.Path)
+				http.Error(w, "platform query parameter required", http.StatusForbidden)
+				return
+			}
 			permitted := false
 			for _, p := range allowed {
 				if p == "*" || p == platform {

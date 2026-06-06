@@ -106,6 +106,35 @@ func TestRequirePlatformACL_APIWildcard(t *testing.T) {
 	assert.Equal(t, "api", identity)
 }
 
+// TestRequirePlatformACL_EmptyPlatform_WildcardCN_Rejected: a wildcard CN with
+// NO platform query param is rejected up front (403) so the ACL is the single
+// authority on platform shape rather than deferring to the downstream handler.
+func TestRequirePlatformACL_EmptyPlatform_WildcardCN_Rejected(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+
+	called := false
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	})
+	mw := middleware.RequirePlatformACL(platformACL(), nil)(next)
+
+	req := newRequestWithPeerCert(http.MethodGet, "/internal/v1/tokens", "api")
+	rec := httptest.NewRecorder()
+	mw.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.False(t, called, "wildcard CN with no platform must be rejected before the allow loop")
+}
+
+// TestRequirePlatformACL_EmptyPlatform_ScopedCN_Rejected: a scoped CN with no
+// platform query param is likewise rejected with 403.
+func TestRequirePlatformACL_EmptyPlatform_ScopedCN_Rejected(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	code, called, _ := runPlatformACL(t, "agent-telegram", "")
+	assert.Equal(t, http.StatusForbidden, code)
+	assert.False(t, called, "scoped CN with no platform must be rejected")
+}
+
 // TestRequirePlatformACL_UnknownCN: CN not in the ACL map → 403.
 func TestRequirePlatformACL_UnknownCN(t *testing.T) {
 	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
