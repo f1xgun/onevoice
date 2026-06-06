@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/yandexcookies"
@@ -132,12 +133,15 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:  bc.BusinessID,
-		ActorID:     bc.UserID,
-		Platform:    a2a.AgentYandexBusiness,
-		ExternalID:  externalID,
-		AccessToken: parsed.JSON(),
-		Metadata:    metadata,
+		BusinessID:   bc.BusinessID,
+		ActorID:      bc.UserID,
+		Platform:     a2a.AgentYandexBusiness,
+		ExternalID:   externalID,
+		AccessToken:  parsed.JSON(),
+		Metadata:     metadata,
+		ActorIP:      middleware.ClientIP(r),
+		UserAgent:    r.Header.Get("User-Agent"),
+		ParsedFormat: parsed.Format,
 	})
 	if err != nil {
 		slog.Error("failed to connect Yandex.Business integration", "error", err)

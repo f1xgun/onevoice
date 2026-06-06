@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -102,6 +103,9 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 			"photo_url":      group.Photo50,
 			"input_method":   "paste",
 		},
+		ActorIP:      middleware.ClientIP(r),
+		UserAgent:    r.Header.Get("User-Agent"),
+		ParsedFormat: "access_token",
 	})
 	if err != nil {
 		slog.Error("failed to connect VK integration", "error", err)

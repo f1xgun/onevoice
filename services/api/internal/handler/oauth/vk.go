@@ -13,6 +13,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -309,13 +310,16 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		metadata["community_name"] = communityName
 	}
 	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:  stateData.BusinessID,
-		ActorID:     stateData.UserID,
-		Platform:    a2a.AgentVK,
-		ExternalID:  groupIDStr,
-		AccessToken: group.AccessToken,
-		UserToken:   userToken,
-		Metadata:    metadata,
+		BusinessID:   stateData.BusinessID,
+		ActorID:      stateData.UserID,
+		Platform:     a2a.AgentVK,
+		ExternalID:   groupIDStr,
+		AccessToken:  group.AccessToken,
+		UserToken:    userToken,
+		Metadata:     metadata,
+		ActorIP:      middleware.ClientIP(r),
+		UserAgent:    r.Header.Get("User-Agent"),
+		ParsedFormat: "oauth_code",
 	})
 	if err != nil {
 		slog.Error("failed to connect VK community integration", "error", err)
