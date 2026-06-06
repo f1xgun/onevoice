@@ -1,6 +1,14 @@
 package natsexec
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
+
+// ErrDenyListed is returned when a tool argument carries a deny-listed key. The
+// message is intentionally generic so the offending key name is not echoed back
+// to the caller/LLM.
+var ErrDenyListed = errors.New("natsexec: tool argument rejected by security policy")
 
 var deniedKeys = map[string]struct{}{
 	"cookies":       {},

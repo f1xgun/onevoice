@@ -325,7 +325,7 @@ func TestDispatch_DenyListBlocksPublish(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "rejected by security policy")
+	assert.ErrorIs(t, err, natsexec.ErrDenyListed)
 	assert.NotContains(t, err.Error(), "cookies", "caller-facing error must not echo the denied arg name")
 	assert.Equal(t, 0, rec.calls, "rejected publish must not reach the requester")
 }

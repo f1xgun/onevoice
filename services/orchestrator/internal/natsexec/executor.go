@@ -77,7 +77,7 @@ func (e *NATSExecutor) dispatch(ctx context.Context, req a2a.ToolRequest) (inter
 			"agent", e.agentID,
 			"denied_key", key,
 		)
-		return nil, fmt.Errorf("natsexec: tool argument rejected by security policy")
+		return nil, ErrDenyListed
 	}
 
 	data, err := json.Marshal(req)
