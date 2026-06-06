@@ -40,6 +40,30 @@ func TestValidateEncryptionKey_LowEntropyRepeated(t *testing.T) {
 	}
 }
 
+func TestValidateEncryptionKey_DenyListHexFixture(t *testing.T) {
+	if err := validateEncryptionKey("0123456789abcdef0123456789abcdef"); err == nil {
+		t.Fatal("expected error for popular hex fixture key, got nil")
+	}
+	if err := validateEncryptionKey("0123456789ABCDEF0123456789ABCDEF"); err == nil {
+		t.Fatal("expected error for uppercase hex fixture key, got nil")
+	}
+}
+
+func TestValidateEncryptionKey_DenyListDeadbeef(t *testing.T) {
+	if err := validateEncryptionKey("deadbeefdeadbeefdeadbeefdeadbeef"); err == nil {
+		t.Fatal("expected error for deadbeef fixture, got nil")
+	}
+	if err := validateEncryptionKey("DEADBEEFDEADBEEFDEADBEEFDEADBEEF"); err == nil {
+		t.Fatal("expected error for uppercase deadbeef fixture, got nil")
+	}
+}
+
+func TestValidateEncryptionKey_DenyListChangeMe(t *testing.T) {
+	if err := validateEncryptionKey("ChangeMeChangeMeChangeMeChangeMe"); err == nil {
+		t.Fatal("expected error for ChangeMe... fixture, got nil")
+	}
+}
+
 func TestValidateEncryptionKey_DictionaryWeak(t *testing.T) {
 	weak := "password" + strings.Repeat("0", 24)
 	err := validateEncryptionKey(weak)

@@ -19,6 +19,12 @@ var encryptionKeyDenyList = []string{
 	"00000000000000000000000000000000",
 	"ffffffffffffffffffffffffffffffff",
 	"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+	"0123456789abcdef0123456789abcdef",
+	"0123456789ABCDEF0123456789ABCDEF",
+	"deadbeefdeadbeefdeadbeefdeadbeef",
+	"DEADBEEFDEADBEEFDEADBEEFDEADBEEF",
+	"abcdefghijklmnopqrstuvwxyz012345",
+	"ChangeMeChangeMeChangeMeChangeMe",
 }
 
 // minRepeatedUnitRepetitions: if a 1-4 char unit covers the whole key with
