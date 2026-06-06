@@ -14,7 +14,7 @@ import (
 )
 
 // defaultCacheTTL is how long a fetched token is reused before a fresh lookup.
-// It doubles as the SEC-05 revoke backstop: when the NATS revoke fan-out is
+// It doubles as the revoke backstop: when the NATS revoke fan-out is
 // unavailable (broker down, late-joining pod), a deleted integration's token
 // can linger in an agent cache for at most this long.
 const defaultCacheTTL = 30 * time.Second
