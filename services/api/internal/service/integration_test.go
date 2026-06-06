@@ -329,45 +329,158 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 	})
 }
 
+type stubNATSPublisher struct {
+	published []publishedMsg
+	err       error
+}
+
+type publishedMsg struct {
+	subject string
+	data    []byte
+}
+
+func (s *stubNATSPublisher) Publish(subject string, data []byte) error {
+	s.published = append(s.published, publishedMsg{subject: subject, data: data})
+	return s.err
+}
+
+func deleteTestIntegration(id, businessID uuid.UUID, platform, externalID string) *domain.Integration {
+	return &domain.Integration{
+		ID:         id,
+		BusinessID: businessID,
+		Platform:   platform,
+		Status:     "active",
+		ExternalID: externalID,
+	}
+}
+
 func TestIntegrationService_Delete(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success soft-deletes and does not hard-delete", func(t *testing.T) {
 		integrationID := uuid.New()
-		var deletedID uuid.UUID
+		businessID := uuid.New()
+		var softDeletedID uuid.UUID
+		hardDeleted := false
 
 		repo := &mockIntegrationRepository{
-			deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-				deletedID = id
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+			softDeleteFunc: func(_ context.Context, id uuid.UUID) error {
+				softDeletedID = id
+				return nil
+			},
+			deleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				hardDeleted = true
 				return nil
 			},
 		}
 
 		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
-		err := svc.Delete(ctx, integrationID)
+		err := svc.Delete(ctx, integrationID, uuid.New())
 
 		require.NoError(t, err)
-		assert.Equal(t, integrationID, deletedID)
+		assert.Equal(t, integrationID, softDeletedID)
+		assert.False(t, hardDeleted, "Delete must soft-delete, never hard-delete")
 	})
 
-	t.Run("integration not found", func(t *testing.T) {
+	t.Run("GetByID failure aborts before soft-delete and publish", func(t *testing.T) {
+		softDeleteCalled := false
+		nats := &stubNATSPublisher{}
 		repo := &mockIntegrationRepository{
-			deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-				return domain.ErrIntegrationNotFound
+			getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Integration, error) {
+				return nil, domain.ErrIntegrationNotFound
+			},
+			softDeleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				softDeleteCalled = true
+				return nil
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
-		err := svc.Delete(ctx, uuid.New())
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		err := svc.Delete(ctx, uuid.New(), uuid.New())
 
 		assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+		assert.False(t, softDeleteCalled, "soft-delete must not run when GetByID fails")
+		assert.Empty(t, nats.published, "publish must not run when GetByID fails")
+	})
+
+	t.Run("emits integration.deleted audit with actorID after soft-delete", func(t *testing.T) {
+		integrationID := uuid.New()
+		businessID := uuid.New()
+		actorID := uuid.New()
+		rec := &recordingSyncLogger{}
+
+		repo := &mockIntegrationRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "vk", "grp-9"), nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, rec)
+		require.NoError(t, svc.Delete(ctx, integrationID, actorID))
+
+		require.Len(t, rec.asyncCalls, 1, "expected one integration.deleted audit entry")
+		entry := rec.asyncCalls[0]
+		assert.Equal(t, audit.ActionIntegrationDeleted, entry.Action)
+		require.NotNil(t, entry.BusinessID)
+		assert.Equal(t, businessID, *entry.BusinessID)
+		require.NotNil(t, entry.UserID)
+		assert.Equal(t, actorID, *entry.UserID)
+	})
+
+	t.Run("publishes revoke on integrations.revoked.<platform>.<businessID>", func(t *testing.T) {
+		integrationID := uuid.New()
+		businessID := uuid.New()
+		nats := &stubNATSPublisher{}
+
+		repo := &mockIntegrationRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		require.NoError(t, svc.Delete(ctx, integrationID, uuid.New()))
+
+		require.Len(t, nats.published, 1)
+		assert.Equal(t, "integrations.revoked.telegram."+businessID.String(), nats.published[0].subject)
+		assert.Equal(t, []byte("{}"), nats.published[0].data)
+	})
+
+	t.Run("publish failure is fail-open", func(t *testing.T) {
+		integrationID := uuid.New()
+		businessID := uuid.New()
+		nats := &stubNATSPublisher{err: errors.New("nats down")}
+		var softDeleted bool
+
+		repo := &mockIntegrationRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+			softDeleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				softDeleted = true
+				return nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		err := svc.Delete(ctx, integrationID, uuid.New())
+
+		require.NoError(t, err, "publish failure must not abort deletion (fail-open)")
+		assert.True(t, softDeleted, "soft-delete must have succeeded before the failed publish")
+		require.Len(t, nats.published, 1, "publish must have been attempted")
 	})
 
 	t.Run("error - nil integration id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
 		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
-		err := svc.Delete(ctx, uuid.Nil)
+		err := svc.Delete(ctx, uuid.Nil, uuid.New())
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "integration id is required")
@@ -380,25 +493,31 @@ func TestIntegrationService_Delete(t *testing.T) {
 		repo := &mockIntegrationRepository{}
 		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
-		err := svc.Delete(cancelledCtx, uuid.New())
+		err := svc.Delete(cancelledCtx, uuid.New(), uuid.New())
 
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
-	t.Run("error - repository error", func(t *testing.T) {
-		repoErr := errors.New("database error")
+	t.Run("error - soft-delete repository error aborts", func(t *testing.T) {
+		businessID := uuid.New()
+		nats := &stubNATSPublisher{}
 		repo := &mockIntegrationRepository{
-			deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-				return repoErr
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+				return deleteTestIntegration(id, businessID, "telegram", "chan-1"), nil
+			},
+			softDeleteFunc: func(_ context.Context, _ uuid.UUID) error {
+				return errors.New("database error")
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
-		err := svc.Delete(ctx, uuid.New())
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop()).(*integrationService)
+		svc.nats = nats
+		err := svc.Delete(ctx, uuid.New(), uuid.New())
 
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "delete integration")
+		assert.Contains(t, err.Error(), "soft-delete")
+		assert.Empty(t, nats.published, "publish must not run when soft-delete fails")
 	})
 }
 
@@ -989,11 +1108,14 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 
 type recordingSyncLogger struct {
 	syncCalls   []audit.Entry
+	asyncCalls  []audit.Entry
 	logSyncErr  error
 	logSyncSeen bool
 }
 
-func (r *recordingSyncLogger) Log(_ context.Context, _ audit.Entry) {}
+func (r *recordingSyncLogger) Log(_ context.Context, e audit.Entry) {
+	r.asyncCalls = append(r.asyncCalls, e)
+}
 
 func (r *recordingSyncLogger) LogSync(_ context.Context, e audit.Entry) error {
 	r.logSyncSeen = true

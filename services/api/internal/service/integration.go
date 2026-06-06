@@ -52,12 +52,18 @@ type TokenResponse struct {
 	UserTokenExpires *time.Time             `json:"user_token_expires_at,omitempty"`
 }
 
+// NATSPublisher is the narrow publish surface the integration service needs to
+// fan out a revoke on delete. *nats.Conn satisfies it directly.
+type NATSPublisher interface {
+	Publish(subject string, data []byte) error
+}
+
 // IntegrationService defines the interface for platform integration management.
 // See docs/services/integration.md.
 type IntegrationService interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
 	GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
-	Delete(ctx context.Context, integrationID uuid.UUID) error
+	Delete(ctx context.Context, integrationID uuid.UUID, actorID uuid.UUID) error
 
 	Connect(ctx context.Context, params ConnectParams) (*domain.Integration, error)
 	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*TokenResponse, error)
@@ -72,6 +78,7 @@ type integrationService struct {
 	refreshMu sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock
 	refresher TokenRefresher // nil for platforms that don't need refresh
 	audit     audit.Logger
+	nats      NATSPublisher // nil when NATS is unreachable — revoke publish is skipped (fail-open)
 }
 
 // Compile-time check that integrationService implements IntegrationService
@@ -89,6 +96,18 @@ func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryp
 		refresher: refresher,
 		audit:     auditLogger,
 	}
+}
+
+// WithNATSPublisher attaches the publisher used to fan out a revoke when an
+// integration is deleted, returning svc for chaining. When the publisher is
+// unset (or nil), or svc is not the concrete service, Delete skips the publish
+// and relies on the cache TTL backstop. Constructed separately from the
+// constructor so existing call sites that do not need fan-out are unaffected.
+func WithNATSPublisher(svc IntegrationService, p NATSPublisher) IntegrationService {
+	if s, ok := svc.(*integrationService); ok {
+		s.nats = p
+	}
+	return svc
 }
 
 // getRefreshMutex returns a per-integration mutex for serializing refresh calls.
@@ -197,8 +216,12 @@ func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID
 	return nil
 }
 
-// Delete removes an integration
-func (s *integrationService) Delete(ctx context.Context, integrationID uuid.UUID) error {
+// Delete soft-deletes an integration, emits an integration.deleted audit row,
+// and fans out a revoke on integrations.revoked.{platform}.{businessID} so live
+// agent caches invalidate the token. The publish is fail-open: a publish error
+// is logged + metered but never blocks the deletion (the cache TTL is the
+// backstop). actorID identifies the user who performed the deletion.
+func (s *integrationService) Delete(ctx context.Context, integrationID uuid.UUID, actorID uuid.UUID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -207,12 +230,30 @@ func (s *integrationService) Delete(ctx context.Context, integrationID uuid.UUID
 		return fmt.Errorf("integration id is required")
 	}
 
-	err := s.repo.Delete(ctx, integrationID)
+	integ, err := s.repo.GetByID(ctx, integrationID)
 	if err != nil {
 		if errors.Is(err, domain.ErrIntegrationNotFound) {
 			return err
 		}
-		return fmt.Errorf("delete integration: %w", err)
+		return fmt.Errorf("get integration: %w", err)
+	}
+
+	if err := s.repo.SoftDelete(ctx, integrationID); err != nil {
+		if errors.Is(err, domain.ErrIntegrationNotFound) {
+			return err
+		}
+		return fmt.Errorf("soft-delete: %w", err)
+	}
+
+	audit.LogIntegrationDeleted(ctx, s.audit, integ.BusinessID, actorID, integrationID, integ.Platform, integ.ExternalID)
+
+	if s.nats != nil {
+		subject := fmt.Sprintf("integrations.revoked.%s.%s", integ.Platform, integ.BusinessID.String())
+		if err := s.nats.Publish(subject, []byte("{}")); err != nil {
+			slog.WarnContext(ctx, "revoke publish failed; cache TTL backstop will handle",
+				"subject", subject, "error", err)
+			metrics.IncIntegrationsRevokePublishFailed()
+		}
 	}
 
 	return nil
