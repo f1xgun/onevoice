@@ -521,7 +521,8 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2. Build pkg/billingclient pointed at the httptest server.
-	bc := billingclient.New(srv.URL, nil)
+	bc, err := billingclient.New(srv.URL, nil)
+	require.NoError(t, err)
 
 	// 3. Build a router with fake provider + WithBilling. The fakeSelector
 	// returns a known entry so we control input/output cost.
@@ -600,7 +601,8 @@ func TestStepRun_BillingSkippedWhenBusinessIDNil(t *testing.T) {
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
-	bc := billingclient.New(srv.URL, nil)
+	bc, err := billingclient.New(srv.URL, nil)
+	require.NoError(t, err)
 	fakeProv := &e2eFakeProvider{resp: &llm.ChatResponse{
 		Content: "ok", FinishReason: "stop",
 		Usage: llm.TokenUsage{InputTokens: 100, OutputTokens: 50},

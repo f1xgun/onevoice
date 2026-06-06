@@ -44,7 +44,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to NATS (url=%s): %w", cfg.NATSUrl, err)
 	}
-	tc := tokenclient.New(cfg.APIInternalURL, nil)
+	tc, err := tokenclient.New(cfg.APIInternalURL, nil)
+	if err != nil {
+		return fmt.Errorf("tokenclient init: %w", err)
+	}
 	tokens := agentbase.NewTokenResolver(tc)
 	pool := yandex.NewBrowserPoolWithCap(cfg.BrowserPoolMaxContexts)
 	defer pool.Close()

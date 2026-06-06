@@ -87,7 +87,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// there is no per-service drift. WithBilling threads it through to
 	// llm.Router.logBilling — every successful Chat() call with a non-Nil
 	// BusinessID persists a usage_logs row.
-	billingHTTP := billingclient.New(cfg.APIInternalURL, nil)
+	billingHTTP, err := billingclient.New(cfg.APIInternalURL, nil)
+	if err != nil {
+		return fmt.Errorf("billingclient init: %w", err)
+	}
 	log.Info("billing client wired", "url", cfg.APIInternalURL)
 
 	// Rate limiter wiring. When REDIS_URL is unset (typical dev runs without

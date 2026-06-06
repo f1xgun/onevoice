@@ -45,7 +45,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to NATS (url=%s): %w", natsURL, err)
 	}
-	tc := tokenclient.New(apiURL, nil)
+	tc, err := tokenclient.New(apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("tokenclient init: %w", err)
+	}
 	tokens := agentbase.NewTokenResolver(tc)
 	serviceKey := os.Getenv("VK_SERVICE_KEY")
 	if serviceKey != "" {
