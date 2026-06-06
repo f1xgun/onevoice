@@ -109,9 +109,9 @@ type UserRegisteredDetails struct {
 	UserAgent string `json:"user_agent"`
 }
 
-// EmailVerifiedDetails — /. No old/new state; the
-// AuditLog.UserEmailAtEvent snapshot captures the address that was just
-// verified.
+// EmailVerifiedDetails records the forensic context of an email verification.
+// No old/new state; the AuditLog.UserEmailAtEvent snapshot captures the address
+// that was just verified.
 type EmailVerifiedDetails struct {
 	IP        string `json:"ip"`
 	UserAgent string `json:"user_agent"`
@@ -128,15 +128,11 @@ type EmailChangedBeforeVerifyDetails struct {
 	UserAgent string `json:"user_agent"`
 }
 
-// ConsentRecordedDetails —, extended in.
-//
-// wrote a single Purpose ("service_operation") per Register.
-// reuses the same action but writes a single audit row per
-// Register with the three new purposes packed into Purposes
-// ["tos","privacy","pdn"], plus the forensic fields. The single-
-// purpose `Purpose` field stays for backward compatibility with the
-// rows already on disk and for future single-slug
-// reconsent rows.
+// ConsentRecordedDetails records a consent capture. A single audit row is
+// written per Register with the purposes packed into Purposes
+// ["tos","privacy","pdn"], plus the forensic fields. The single-purpose
+// `Purpose` field stays for backward compatibility with the rows already on disk
+// and for future single-slug reconsent rows.
 type ConsentRecordedDetails struct {
 	Purpose       string   `json:"purpose,omitempty"`  // legacy single-purpose.
 	Purposes      []string `json:"purposes,omitempty"` // e.g. ["tos","privacy","pdn"].
@@ -146,16 +142,16 @@ type ConsentRecordedDetails struct {
 	UserAgent     string   `json:"user_agent,omitempty"`
 }
 
-// ConsentReconsentRequiredDetails —. Logged when the
-// /auth/me handler decides DiffAgainstCurrent returned at least one
-// stale policy and the frontend will show the modal.
+// ConsentReconsentRequiredDetails is logged when the /auth/me handler decides
+// DiffAgainstCurrent returned at least one stale policy and the frontend will
+// show the re-consent modal.
 type ConsentReconsentRequiredDetails struct {
 	Policies       []string `json:"policies"`        // slugs needing re-consent.
 	CurrentVersion string   `json:"current_version"` // the build's currentVersion at decision time.
 }
 
-// ConsentReconsentedDetails —. Logged inside the same
-// pgx.Tx as the UPSERTs when POST /auth/consents succeeds.
+// ConsentReconsentedDetails is logged inside the same pgx.Tx as the UPSERTs when
+// POST /auth/consents succeeds.
 type ConsentReconsentedDetails struct {
 	Purposes    []string `json:"purposes"`
 	FromVersion string   `json:"from_version,omitempty"`
@@ -164,18 +160,17 @@ type ConsentReconsentedDetails struct {
 	UserAgent   string   `json:"user_agent,omitempty"`
 }
 
-// ConsentWithdrawnDetails —. Logged inside the same
-// pgx.Tx as the user_consents.withdrawn_at UPDATE.
+// ConsentWithdrawnDetails is logged inside the same pgx.Tx as the
+// user_consents.withdrawn_at UPDATE.
 type ConsentWithdrawnDetails struct {
 	Purpose   string `json:"purpose"` // "pdn" (and bundles tos+privacy implicitly ).
 	IP        string `json:"ip,omitempty"`
 	UserAgent string `json:"user_agent,omitempty"`
 }
 
-// ConsentPolicyVersionBumpedDetails —. System event —
-// no UserID. Logged once per environment per bump (the operator pushes
-// new policy text, restarts the API; first /auth/me decides the bump
-// happened and emits this row).
+// ConsentPolicyVersionBumpedDetails is a system event (no UserID), logged once
+// per environment per bump: the operator pushes new policy text and restarts the
+// API; the first /auth/me decides the bump happened and emits this row.
 type ConsentPolicyVersionBumpedDetails struct {
 	Slug        string `json:"slug"`
 	FromVersion string `json:"from_version"`
@@ -185,26 +180,26 @@ type ConsentPolicyVersionBumpedDetails struct {
 
 // ---- account.* (deletion) -----------------------------------
 
-// DeletionRequestedDetails — /. BusinessesOrphaned
-// captures the list of business IDs that would be orphaned by the
-// deletion. v1.4 always emits [] because the handler returns 409 for
-// any sole-owner case (the user must transfer ownership first); v1.5
-// ownership-transfer may permit non-empty deletions.
+// DeletionRequestedDetails records an account-deletion request. BusinessesOrphaned
+// captures the list of business IDs that would be orphaned by the deletion. v1.4
+// always emits [] because the handler returns 409 for any sole-owner case (the
+// user must transfer ownership first); v1.5 ownership-transfer may permit
+// non-empty deletions.
 type DeletionRequestedDetails struct {
 	IP                 string      `json:"ip"`
 	UserAgent          string      `json:"user_agent"`
 	BusinessesOrphaned []uuid.UUID `json:"businesses_orphaned"`
 }
 
-// DeletionCanceledDetails — /.
+// DeletionCanceledDetails records the forensic context of a canceled account
+// deletion.
 type DeletionCanceledDetails struct {
 	IP        string `json:"ip"`
 	UserAgent string `json:"user_agent"`
 }
 
-// SoleOwnerBlockedDetails — / T-DEL-02. Records the IDs of
-// businesses the user is the sole OWNER of so support can see which
-// businesses blocked which deletion attempts.
+// SoleOwnerBlockedDetails records the IDs of businesses the user is the sole
+// OWNER of so support can see which businesses blocked which deletion attempts.
 type SoleOwnerBlockedDetails struct {
 	IP          string      `json:"ip"`
 	UserAgent   string      `json:"user_agent"`
@@ -234,8 +229,8 @@ type IntegrationDisconnectedDetails struct {
 	Platform      string    `json:"platform"`
 }
 
-// IntegrationTokenRotatedDetails — : NO token material. Just the
-// integration ID + platform so ops can correlate rotations with refreshes.
+// IntegrationTokenRotatedDetails carries NO token material — just the integration
+// ID + platform so ops can correlate rotations with refreshes.
 type IntegrationTokenRotatedDetails struct {
 	IntegrationID uuid.UUID `json:"integration_id"`
 	Platform      string    `json:"platform"`
