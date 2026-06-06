@@ -24,6 +24,16 @@ func TestIncIntegrationsRevokePublishFailed(t *testing.T) {
 	require.InDelta(t, before+1, after, 0.0001)
 }
 
+func TestIncIntegrationsRevokeDropped(t *testing.T) {
+	platforms := []string{"telegram", "vk", "yandex_business", "google_business"}
+	for _, p := range platforms {
+		before := testutil.ToFloat64(integrationsRevokeDroppedTotal.WithLabelValues(p))
+		IncIntegrationsRevokeDropped(p)
+		after := testutil.ToFloat64(integrationsRevokeDroppedTotal.WithLabelValues(p))
+		require.InDelta(t, before+1, after, 0.0001, "platform %s", p)
+	}
+}
+
 func TestIncNATSPublishRejected(t *testing.T) {
 	before := testutil.ToFloat64(natsPublishRejectedTotal.WithLabelValues("denylist_key"))
 	IncNATSPublishRejected("denylist_key")
@@ -72,6 +82,7 @@ func TestAddIntegrationsPurged_NonPositiveIsNoOp(t *testing.T) {
 func TestIntegrationCounters_NonNil(t *testing.T) {
 	require.NotNil(t, integrationsRevokedReceivedTotal)
 	require.NotNil(t, integrationsRevokePublishFailedTotal)
+	require.NotNil(t, integrationsRevokeDroppedTotal)
 	require.NotNil(t, natsPublishRejectedTotal)
 	require.NotNil(t, integrationTokenDecryptedTotal)
 	require.NotNil(t, integrationsPurgeRunsTotal)

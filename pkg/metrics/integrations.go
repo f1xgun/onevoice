@@ -28,6 +28,15 @@ var integrationsRevokePublishFailedTotal = promauto.NewCounter(prometheus.Counte
 	Help: "Failures publishing integrations.revoked.* on the API side. Fail-open path — TTL backstop handles the gap.",
 })
 
+// integrationsRevokeDroppedTotal counts revoke fan-out messages dropped by an
+// agent subscriber because the subject did not match the expected
+// integrations.revoked.<platform>.<businessID> shape. Labeled by platform only —
+// the raw subject is deliberately kept out of labels to bound cardinality.
+var integrationsRevokeDroppedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "integrations_revoke_dropped_total",
+	Help: "Revoke fan-out messages dropped by agent subscribers due to a malformed subject, labeled by platform.",
+}, []string{"platform"})
+
 // natsPublishRejectedTotal counts tool dispatches rejected before NATS
 // publish, labeled by reason. Cardinality bounded by the closed reason set.
 var natsPublishRejectedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -67,6 +76,12 @@ func IncIntegrationsRevokedReceived(platform string) {
 // counter.
 func IncIntegrationsRevokePublishFailed() {
 	integrationsRevokePublishFailedTotal.Inc()
+}
+
+// IncIntegrationsRevokeDropped increments the {platform} bucket of the
+// revoke-dropped counter.
+func IncIntegrationsRevokeDropped(platform string) {
+	integrationsRevokeDroppedTotal.WithLabelValues(platform).Inc()
 }
 
 // IncNATSPublishRejected increments the {reason} bucket of the

@@ -18,6 +18,7 @@ func TestHandleRevokeMessage_ValidSubject(t *testing.T) {
 		mu       sync.Mutex
 		invCalls []invalidateCall
 		metrics  []string
+		dropped  []string
 	)
 	inv := func(biz, platform, ext string) {
 		mu.Lock()
@@ -29,9 +30,14 @@ func TestHandleRevokeMessage_ValidSubject(t *testing.T) {
 		defer mu.Unlock()
 		metrics = append(metrics, platform)
 	}
+	drop := func(platform string) {
+		mu.Lock()
+		defer mu.Unlock()
+		dropped = append(dropped, platform)
+	}
 
 	msg := &natslib.Msg{Subject: "integrations.revoked.telegram.11111111-2222-3333-4444-555555555555"}
-	handleRevokeMessage(msg, "telegram", inv, rec)
+	handleRevokeMessage(msg, "telegram", inv, rec, drop)
 
 	if len(invCalls) != 1 {
 		t.Fatalf("expected 1 invalidate call, got %d", len(invCalls))
@@ -43,27 +49,41 @@ func TestHandleRevokeMessage_ValidSubject(t *testing.T) {
 	if len(metrics) != 1 || metrics[0] != "telegram" {
 		t.Fatalf("expected one metric record for telegram, got %v", metrics)
 	}
+	if len(dropped) != 0 {
+		t.Fatalf("expected no dropped record on a valid subject, got %v", dropped)
+	}
 }
 
 func TestHandleRevokeMessage_MalformedSubjectSkipped(t *testing.T) {
 	var invoked, recorded bool
+	var dropped []string
 	inv := func(_, _, _ string) { invoked = true }
 	rec := func(_ string) { recorded = true }
+	drop := func(platform string) { dropped = append(dropped, platform) }
 
-	for _, subj := range []string{
+	subjects := []string{
 		"integrations.revoked.telegram",
 		"integrations.revoked",
 		"integrations.revoked.telegram.biz.extra",
 		"",
-	} {
-		handleRevokeMessage(&natslib.Msg{Subject: subj}, "telegram", inv, rec)
+	}
+	for _, subj := range subjects {
+		handleRevokeMessage(&natslib.Msg{Subject: subj}, "telegram", inv, rec, drop)
 	}
 
 	if invoked {
 		t.Fatalf("expected no Invalidate call on malformed subjects")
 	}
 	if recorded {
-		t.Fatalf("expected no metric record on malformed subjects")
+		t.Fatalf("expected no received-metric record on malformed subjects")
+	}
+	if len(dropped) != len(subjects) {
+		t.Fatalf("expected %d dropped records, got %d (%v)", len(subjects), len(dropped), dropped)
+	}
+	for _, p := range dropped {
+		if p != "telegram" {
+			t.Fatalf("expected dropped record labeled telegram, got %q", p)
+		}
 	}
 }
 

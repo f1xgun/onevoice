@@ -2,6 +2,7 @@ package agentbase
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	natslib "github.com/nats-io/nats.go"
@@ -25,7 +26,7 @@ type RevokeSubscriber struct {
 func NewRevokeSubscriber(nc *natslib.Conn, tc *tokenclient.Client, platform string) (*RevokeSubscriber, error) {
 	subject := revokeSubject(platform)
 	sub, err := nc.Subscribe(subject, func(msg *natslib.Msg) {
-		handleRevokeMessage(msg, platform, tc.Invalidate, metrics.IncIntegrationsRevokedReceived)
+		handleRevokeMessage(msg, platform, tc.Invalidate, metrics.IncIntegrationsRevokedReceived, metrics.IncIntegrationsRevokeDropped)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("subscribe %s: %w", subject, err)
@@ -50,15 +51,15 @@ func handleRevokeMessage(
 	platform string,
 	invalidate func(businessID, platform, externalID string),
 	recordReceived func(platform string),
+	recordDropped func(platform string),
 ) {
 	parts := strings.Split(msg.Subject, ".")
-	if len(parts) != 4 {
+	if len(parts) != 4 || parts[3] == "" {
+		slog.Warn("revoke subscriber: dropping malformed subject", "subject", msg.Subject, "platform", platform)
+		recordDropped(platform)
 		return
 	}
 	businessID := parts[3]
-	if businessID == "" {
-		return
-	}
 	invalidate(businessID, platform, "")
 	recordReceived(platform)
 }
