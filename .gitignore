@@ -6,6 +6,7 @@ bin/
 tools/lint-rbac/lint-rbac
 tools/nourl/nourl
 tools/oapi-validate-tags/oapi-validate-tags
+services/api/rekey
 
 # OpenAPI build artifacts (preprocessed spec, regenerated each codegen run)
 docs/api/spec/.openapi.validate.yaml
