@@ -63,6 +63,11 @@ func (c *capturingLogger) Log(_ context.Context, e audit.Entry) {
 	c.entries = append(c.entries, e)
 }
 
+func (c *capturingLogger) LogSync(_ context.Context, e audit.Entry) error {
+	c.entries = append(c.entries, e)
+	return nil
+}
+
 func (c *capturingLogger) hasAction(action string) bool {
 	for _, e := range c.entries {
 		if e.Action == action {
