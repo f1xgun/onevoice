@@ -88,10 +88,10 @@ func (f *fakeRepo) GetByBusinessPlatformExternal(_ context.Context, _ uuid.UUID,
 func (f *fakeRepo) ListAllActiveByPlatforms(_ context.Context, _ []string) ([]domain.Integration, error) {
 	return nil, nil
 }
-func (f *fakeRepo) Update(_ context.Context, _ *domain.Integration) error           { return nil }
-func (f *fakeRepo) Delete(_ context.Context, _ uuid.UUID) error                     { return nil }
-func (f *fakeRepo) SoftDelete(_ context.Context, _ uuid.UUID) error                 { return nil }
-func (f *fakeRepo) DeleteOlderThan(_ context.Context, _ time.Time) (int64, error)   { return 0, nil }
+func (f *fakeRepo) Update(_ context.Context, _ *domain.Integration) error         { return nil }
+func (f *fakeRepo) Delete(_ context.Context, _ uuid.UUID) error                   { return nil }
+func (f *fakeRepo) SoftDelete(_ context.Context, _ uuid.UUID) error               { return nil }
+func (f *fakeRepo) DeleteOlderThan(_ context.Context, _ time.Time) (int64, error) { return 0, nil }
 func (f *fakeRepo) CountIntegrationsWithDifferentFingerprint(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }
@@ -240,9 +240,9 @@ func TestRekeyRow_UpdateFailure(t *testing.T) {
 // methods are not exercised by processBatch so they panic to catch misuse.
 type noopTx struct{}
 
-func (noopTx) Begin(_ context.Context) (pgx.Tx, error)                              { return noopTx{}, nil }
-func (noopTx) Commit(_ context.Context) error                                        { return nil }
-func (noopTx) Rollback(_ context.Context) error                                      { return nil }
+func (noopTx) Begin(_ context.Context) (pgx.Tx, error) { return noopTx{}, nil }
+func (noopTx) Commit(_ context.Context) error          { return nil }
+func (noopTx) Rollback(_ context.Context) error        { return nil }
 func (noopTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
 	panic("noopTx: CopyFrom not implemented")
 }

@@ -18,7 +18,7 @@ import (
 var (
 	rowsProcessed = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "rekey_rows_processed_total",
-		Help: "Count of rows processed by cmd/rekey, labelled by result.",
+		Help: "Count of rows processed by cmd/rekey, labeled by result.",
 	}, []string{"result"})
 
 	batchDuration = promauto.NewHistogram(prometheus.HistogramOpts{

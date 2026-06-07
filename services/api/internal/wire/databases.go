@@ -216,7 +216,7 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 
 	h.Envelope = crypto.NewEnvelope(kmsClient, legacyEnc, cfg.TokenEncryptionKMSKeyID, cfg.TokenEncryptionKMSVersionMap)
-	log.Info("kms client initialised", "key_id", cfg.TokenEncryptionKMSKeyID)
+	log.Info("kms client initialized", "key_id", cfg.TokenEncryptionKMSKeyID)
 
 	if cfg.NATSUrl != "" {
 		nc, natsErr := natslib.Connect(cfg.NATSUrl)
