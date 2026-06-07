@@ -53,6 +53,25 @@ type IntegrationRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	SoftDelete(ctx context.Context, id uuid.UUID) error
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+
+	// CountIntegrationsWithDifferentFingerprint returns the count of non-deleted
+	// integrations whose encryption_key_fingerprint is set and differs from
+	// currentFP. Used by the fingerprint boot-check to detect key-ID drift.
+	CountIntegrationsWithDifferentFingerprint(ctx context.Context, currentFP string) (int, error)
+
+	// SelectForRekey returns up to limit integration rows whose wrapped_dek IS
+	// NULL or key_version < targetVersion, locked FOR UPDATE SKIP LOCKED inside
+	// the caller's transaction.
+	SelectForRekey(ctx context.Context, tx pgx.Tx, targetVersion int16, limit int) ([]Integration, error)
+
+	// UpdateEnvelopeFieldsTx rewrites the four envelope columns
+	// (encrypted_access_token, encrypted_refresh_token, encrypted_user_token,
+	// wrapped_dek, key_version, encryption_key_fingerprint) inside tx.
+	UpdateEnvelopeFieldsTx(ctx context.Context, tx pgx.Tx, integ Integration) error
+
+	// CountRekeyRemaining returns the count of rows still needing rekey —
+	// (wrapped_dek IS NULL OR key_version < targetVersion) AND deleted_at IS NULL.
+	CountRekeyRemaining(ctx context.Context, targetVersion int16) (int, error)
 }
 
 // BusinessMembershipRepository persists the v2 RBAC membership graph.
