@@ -188,7 +188,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			&http.Client{Timeout: cfg.OrchestratorFetchTimeout},
 		)
 	}
-	s.Integration = service.NewIntegrationService(repos.Integration, h.Enc, refresher, s.AuditLogger)
+	s.Integration = service.NewIntegrationService(repos.Integration, h.Envelope, h.PG, refresher, s.AuditLogger)
 	if h.NATS != nil {
 		s.Integration = service.WithNATSPublisher(s.Integration, h.NATS)
 	}

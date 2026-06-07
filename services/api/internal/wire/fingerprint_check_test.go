@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -40,8 +41,12 @@ func (s *stubIntegrationRepo) ListByBusinessAndPlatform(_ context.Context, _ uui
 func (s *stubIntegrationRepo) GetByBusinessPlatformExternal(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
 	return nil, domain.ErrIntegrationNotFound
 }
-func (s *stubIntegrationRepo) Update(_ context.Context, _ *domain.Integration) error { return nil }
-func (s *stubIntegrationRepo) Delete(_ context.Context, _ uuid.UUID) error            { return nil }
+func (s *stubIntegrationRepo) Update(_ context.Context, _ *domain.Integration) error     { return nil }
+func (s *stubIntegrationRepo) Delete(_ context.Context, _ uuid.UUID) error               { return nil }
+func (s *stubIntegrationRepo) SoftDelete(_ context.Context, _ uuid.UUID) error           { return nil }
+func (s *stubIntegrationRepo) DeleteOlderThan(_ context.Context, _ time.Time) (int64, error) {
+	return 0, nil
+}
 func (s *stubIntegrationRepo) ListAllActiveByPlatforms(_ context.Context, _ []string) ([]domain.Integration, error) {
 	return nil, nil
 }

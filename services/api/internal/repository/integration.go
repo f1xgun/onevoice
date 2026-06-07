@@ -312,3 +312,98 @@ func (r *integrationRepository) GetByBusinessPlatformExternal(ctx context.Contex
 	}
 	return &integration, nil
 }
+
+func (r *integrationRepository) CountIntegrationsWithDifferentFingerprint(ctx context.Context, currentFP string) (int, error) {
+	const q = `SELECT count(*) FROM integrations
+	           WHERE encryption_key_fingerprint IS NOT NULL
+	             AND encryption_key_fingerprint <> $1
+	             AND deleted_at IS NULL`
+	var n int
+	if err := r.pool.QueryRow(ctx, q, currentFP).Scan(&n); err != nil {
+		return 0, fmt.Errorf("repo: count fingerprint mismatch: %w", err)
+	}
+	return n, nil
+}
+
+func (r *integrationRepository) SelectForRekey(ctx context.Context, tx pgx.Tx, targetVersion int16, limit int) ([]domain.Integration, error) {
+	const q = `
+		SELECT id, business_id, platform, external_id,
+		       encrypted_access_token, encrypted_refresh_token, encrypted_user_token,
+		       wrapped_dek, key_version, encryption_key_fingerprint
+		FROM integrations
+		WHERE (wrapped_dek IS NULL OR key_version < $1)
+		  AND deleted_at IS NULL
+		ORDER BY id
+		LIMIT $2
+		FOR UPDATE SKIP LOCKED`
+	rows, err := tx.Query(ctx, q, targetVersion, limit)
+	if err != nil {
+		return nil, fmt.Errorf("repo: select for rekey: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.Integration
+	for rows.Next() {
+		var i domain.Integration
+		var keyVersion *int16
+		var fp *string
+		if err := rows.Scan(
+			&i.ID, &i.BusinessID, &i.Platform, &i.ExternalID,
+			&i.EncryptedAccessToken, &i.EncryptedRefreshToken, &i.EncryptedUserToken,
+			&i.WrappedDEK, &keyVersion, &fp,
+		); err != nil {
+			return nil, fmt.Errorf("repo: scan for rekey: %w", err)
+		}
+		if keyVersion != nil {
+			i.KeyVersion = *keyVersion
+		}
+		if fp != nil {
+			i.EncryptionKeyFingerprint = *fp
+		}
+		out = append(out, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repo: rows err for rekey: %w", err)
+	}
+	return out, nil
+}
+
+func (r *integrationRepository) UpdateEnvelopeFieldsTx(ctx context.Context, tx pgx.Tx, i domain.Integration) error {
+	const q = `
+		UPDATE integrations
+		SET encrypted_access_token = $1,
+		    encrypted_refresh_token = $2,
+		    encrypted_user_token = $3,
+		    wrapped_dek = $4,
+		    key_version = $5,
+		    encryption_key_fingerprint = $6,
+		    updated_at = NOW()
+		WHERE id = $7`
+	ct, err := tx.Exec(ctx, q,
+		i.EncryptedAccessToken,
+		i.EncryptedRefreshToken,
+		i.EncryptedUserToken,
+		i.WrappedDEK,
+		i.KeyVersion,
+		i.EncryptionKeyFingerprint,
+		i.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("repo: update envelope: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("repo: update envelope: no rows affected for id=%s", i.ID)
+	}
+	return nil
+}
+
+func (r *integrationRepository) CountRekeyRemaining(ctx context.Context, targetVersion int16) (int, error) {
+	const q = `SELECT count(*) FROM integrations
+	           WHERE (wrapped_dek IS NULL OR key_version < $1)
+	             AND deleted_at IS NULL`
+	var n int
+	if err := r.pool.QueryRow(ctx, q, targetVersion).Scan(&n); err != nil {
+		return 0, fmt.Errorf("repo: count rekey remaining: %w", err)
+	}
+	return n, nil
+}
