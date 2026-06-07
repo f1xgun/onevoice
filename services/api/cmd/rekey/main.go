@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -21,6 +22,10 @@ import (
 const defaultConcurrency = 4
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	targetVersion := flag.Int("target-version", 0, "KMS key version to rekey all rows to (required, 1..32767)")
 	batch := flag.Int("batch", 100, "rows per transaction")
 	concurrency := flag.Int("concurrency", defaultConcurrency, "parallel batch workers")
@@ -29,7 +34,7 @@ func main() {
 
 	if *targetVersion < 1 || *targetVersion > 32767 {
 		fmt.Fprintf(os.Stderr, "rekey: --target-version must be in [1, 32767]\n")
-		os.Exit(2)
+		return 2
 	}
 
 	log := logger.New("rekey")
@@ -38,7 +43,7 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Error("config load", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -47,7 +52,7 @@ func main() {
 	handles, err := wire.BootstrapDatabases(ctx, log, cfg)
 	if err != nil {
 		log.Error("bootstrap", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer handles.Close()
 
@@ -56,8 +61,9 @@ func main() {
 		metricsPort = "9095"
 	}
 	metricsSrv := &http.Server{
-		Addr:    ":" + metricsPort,
-		Handler: promhttp.Handler(),
+		Addr:              ":" + metricsPort,
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
 		if serveErr := metricsSrv.ListenAndServe(); serveErr != nil && serveErr != http.ErrServerClosed {
@@ -68,24 +74,26 @@ func main() {
 
 	integrationRepo := repository.NewIntegrationRepository(handles.PG)
 
-	r := NewRekeyer(integrationRepo, handles.Envelope, handles.Enc, handles.PG, int16(*targetVersion), *batch, *concurrency, *dryRun, log)
+	tv := int16(*targetVersion) //nolint:gosec // bounds checked: [1, 32767] fits int16
+	r := NewRekeyer(integrationRepo, handles.Envelope, handles.Enc, handles.PG, tv, *batch, *concurrency, *dryRun, log)
 	if err := r.Run(ctx); err != nil {
 		log.Error("rekey run failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if *dryRun {
-		return
+		return 0
 	}
 
-	remaining, err := integrationRepo.CountRekeyRemaining(ctx, int16(*targetVersion))
+	remaining, err := integrationRepo.CountRekeyRemaining(ctx, tv)
 	if err != nil {
 		log.Error("count remaining", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	if remaining > 0 {
 		log.Error("rekey incomplete", "remaining", remaining)
-		os.Exit(1)
+		return 1
 	}
 	log.Info("rekey complete; 0 rows remaining")
+	return 0
 }

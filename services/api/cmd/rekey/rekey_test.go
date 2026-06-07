@@ -43,15 +43,16 @@ func (f *fakeRepo) UpdateEnvelopeFieldsTx(_ context.Context, _ pgx.Tx, integ dom
 		return f.updateFunc(integ)
 	}
 	for i, r := range f.rows {
-		if r.ID == integ.ID {
-			f.rows[i].EncryptedAccessToken = integ.EncryptedAccessToken
-			f.rows[i].EncryptedRefreshToken = integ.EncryptedRefreshToken
-			f.rows[i].EncryptedUserToken = integ.EncryptedUserToken
-			f.rows[i].WrappedDEK = integ.WrappedDEK
-			f.rows[i].KeyVersion = integ.KeyVersion
-			f.rows[i].EncryptionKeyFingerprint = integ.EncryptionKeyFingerprint
-			return nil
+		if r.ID != integ.ID {
+			continue
 		}
+		f.rows[i].EncryptedAccessToken = integ.EncryptedAccessToken
+		f.rows[i].EncryptedRefreshToken = integ.EncryptedRefreshToken
+		f.rows[i].EncryptedUserToken = integ.EncryptedUserToken
+		f.rows[i].WrappedDEK = integ.WrappedDEK
+		f.rows[i].KeyVersion = integ.KeyVersion
+		f.rows[i].EncryptionKeyFingerprint = integ.EncryptionKeyFingerprint
+		return nil
 	}
 	return errors.New("fakeRepo: row not found")
 }

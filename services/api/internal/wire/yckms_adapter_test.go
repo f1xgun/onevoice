@@ -14,20 +14,20 @@ import (
 // errKMS is a stub crypto.KMSEncrypter whose Encrypt always returns an error.
 type errKMS struct{ err error }
 
-func (e *errKMS) Encrypt(_ context.Context, _, _ []byte) ([]byte, string, error) {
+func (e *errKMS) Encrypt(_ context.Context, _, _ []byte) (ciphertext []byte, versionID string, err error) {
 	return nil, "", e.err
 }
-func (e *errKMS) Decrypt(_ context.Context, _, _ []byte) ([]byte, string, error) {
+func (e *errKMS) Decrypt(_ context.Context, _, _ []byte) (plaintext []byte, versionID string, err error) {
 	return nil, "", e.err
 }
 
 // okKMS is a stub crypto.KMSEncrypter whose Encrypt always succeeds.
 type okKMS struct{}
 
-func (o *okKMS) Encrypt(_ context.Context, plaintext, _ []byte) ([]byte, string, error) {
+func (o *okKMS) Encrypt(_ context.Context, plaintext, _ []byte) (ciphertext []byte, versionID string, err error) {
 	return plaintext, "1", nil
 }
-func (o *okKMS) Decrypt(_ context.Context, ciphertext, _ []byte) ([]byte, string, error) {
+func (o *okKMS) Decrypt(_ context.Context, ciphertext, _ []byte) (plaintext []byte, versionID string, err error) {
 	return ciphertext, "1", nil
 }
 

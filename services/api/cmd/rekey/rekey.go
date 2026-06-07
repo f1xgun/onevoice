@@ -217,19 +217,15 @@ func (r *Rekeyer) rekeyRow(ctx context.Context, tx pgx.Tx, row domain.Integratio
 		plaintexts = pts
 	}
 
-	// Defensive defer: wipes any slice that was not already eagerly zeroed
-	// (e.g. on an early-return error path below).
-	for i := range plaintexts {
-		i := i
-		defer crypto.Wipe(plaintexts[i])
-	}
+	defer func() {
+		for i := range plaintexts {
+			crypto.Wipe(plaintexts[i])
+		}
+	}()
 
 	ciphertexts, wrappedDEK, keyVersion, fingerprint, err := r.envelope.EncryptForRow(ctx, row.ID, row.Platform, plaintexts)
 	if err != nil {
 		return fmt.Errorf("rekey: re-encrypt id=%s: %w", row.ID, err)
-	}
-	for i := range plaintexts {
-		crypto.Wipe(plaintexts[i])
 	}
 
 	updated := domain.Integration{

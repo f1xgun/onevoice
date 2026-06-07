@@ -55,7 +55,7 @@ func NewKMSClient(ctx context.Context, saJSONBytes []byte, keyID, dualVersionsCS
 // Encrypt wraps plaintext using the KMS symmetric key. aad is passed as
 // AadContext to both the KMS layer and (separately) the AES-GCM layer in
 // pkg/crypto/envelope.go. Returns ciphertext, version ID string, and error.
-func (c *yckmsClient) Encrypt(ctx context.Context, plaintext, aad []byte) ([]byte, string, error) {
+func (c *yckmsClient) Encrypt(ctx context.Context, plaintext, aad []byte) (ciphertext []byte, versionID string, err error) {
 	resp, err := c.sdk.KMSCrypto().SymmetricCrypto().Encrypt(ctx, &kms.SymmetricEncryptRequest{
 		KeyId:      c.keyID,
 		Plaintext:  plaintext,
@@ -70,7 +70,7 @@ func (c *yckmsClient) Encrypt(ctx context.Context, plaintext, aad []byte) ([]byt
 // Decrypt unwraps ciphertext using the KMS symmetric key. The KMS server
 // selects the correct key version from the ciphertext header automatically —
 // no version routing is required at the SDK call site.
-func (c *yckmsClient) Decrypt(ctx context.Context, ciphertext, aad []byte) ([]byte, string, error) {
+func (c *yckmsClient) Decrypt(ctx context.Context, ciphertext, aad []byte) (plaintext []byte, versionID string, err error) {
 	resp, err := c.sdk.KMSCrypto().SymmetricCrypto().Decrypt(ctx, &kms.SymmetricDecryptRequest{
 		KeyId:      c.keyID,
 		Ciphertext: ciphertext,
