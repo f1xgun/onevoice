@@ -4,9 +4,12 @@ go 1.25.0
 
 replace github.com/f1xgun/onevoice/pkg => ../../pkg
 
+replace github.com/f1xgun/onevoice/pkg/audit => ../../pkg/audit
+
 require (
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/f1xgun/onevoice/pkg v0.0.0
+	github.com/f1xgun/onevoice/pkg/audit v0.0.0-00010101000000-000000000000
 	github.com/nats-io/nats.go v1.49.0
 	github.com/playwright-community/playwright-go v0.5001.0
 	github.com/prometheus/client_golang v1.23.2
