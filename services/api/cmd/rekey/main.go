@@ -74,7 +74,7 @@ func run() int {
 
 	integrationRepo := repository.NewIntegrationRepository(handles.PG)
 
-	tv := int16(*targetVersion) //nolint:gosec // bounds checked: [1, 32767] fits int16
+	tv := int16(*targetVersion)
 	r := NewRekeyer(integrationRepo, handles.Envelope, handles.Enc, handles.PG, tv, *batch, *concurrency, *dryRun, log)
 	if err := r.Run(ctx); err != nil {
 		log.Error("rekey run failed", "error", err)
