@@ -182,6 +182,20 @@ type Config struct {
 	PGMaxConnIdleTime       time.Duration
 	PGHealthCheckPeriod     time.Duration
 	PGMaxConnLifetimeJitter time.Duration
+
+	// TokenEncryptionKMSKeyID is the Yandex KMS symmetric key resource ID. Required.
+	TokenEncryptionKMSKeyID string
+	// YCServiceAccountKeyJSON holds the raw JSON content of the Yandex Cloud
+	// Service Account key file used to authenticate KMS API calls. Required.
+	YCServiceAccountKeyJSON string
+	// TokenEncryptionKMSDualDecryptCSV is an optional comma-separated list of
+	// KMS version ID strings to attempt on Decrypt (rolling key rotation). Max 5.
+	TokenEncryptionKMSDualDecryptCSV string
+	// TokenEncryptionKMSVersionMap maps KMS version ID strings (as returned by
+	// the Yandex KMS API) to the int16 values stored in the DB key_version
+	// column. Parsed from TOKEN_ENCRYPTION_KMS_VERSION_MAP env var using
+	// "versionA=1,versionB=2" format.
+	TokenEncryptionKMSVersionMap map[string]int16
 }
 
 // Load reads env vars and returns a validated *Config or a fail-loud error.
@@ -398,14 +412,59 @@ func Load() (*Config, error) {
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return nil, fmt.Errorf("JWT_SECRET validation failed: %w (generate a new secret with: openssl rand -base64 48)", err)
 	}
-	if cfg.EncryptionKey == "" {
-		return nil, fmt.Errorf("ENCRYPTION_KEY is required")
+	// ENCRYPTION_KEY is optional in new deployments that use KMS-only encryption.
+	// When set it must pass the same strength checks to prevent weak-key attacks.
+	if cfg.EncryptionKey != "" {
+		if len(cfg.EncryptionKey) != crypto.AES256KeyLen {
+			return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly %d bytes", crypto.AES256KeyLen)
+		}
+		if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
+			return nil, fmt.Errorf("ENCRYPTION_KEY validation failed: %w (generate a new key with: openssl rand -base64 24)", err)
+		}
 	}
-	if len(cfg.EncryptionKey) != crypto.AES256KeyLen {
-		return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly %d bytes", crypto.AES256KeyLen)
+
+	cfg.TokenEncryptionKMSKeyID = os.Getenv("TOKEN_ENCRYPTION_KMS_KEY_ID")
+	if cfg.TokenEncryptionKMSKeyID == "" {
+		return nil, fmt.Errorf("TOKEN_ENCRYPTION_KMS_KEY_ID is required")
 	}
-	if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
-		return nil, fmt.Errorf("ENCRYPTION_KEY validation failed: %w (generate a new key with: openssl rand -base64 24)", err)
+
+	cfg.YCServiceAccountKeyJSON = os.Getenv("YC_SA_JSON_CREDENTIALS")
+	if cfg.YCServiceAccountKeyJSON == "" {
+		return nil, fmt.Errorf("YC_SA_JSON_CREDENTIALS is required")
+	}
+
+	cfg.TokenEncryptionKMSDualDecryptCSV = os.Getenv("TOKEN_ENCRYPTION_KMS_DUAL_DECRYPT_VERSIONS")
+	if cfg.TokenEncryptionKMSDualDecryptCSV != "" {
+		parts := strings.Split(cfg.TokenEncryptionKMSDualDecryptCSV, ",")
+		var count int
+		for _, p := range parts {
+			if strings.TrimSpace(p) != "" {
+				count++
+			}
+		}
+		if count > 5 { //nolint:mnd // documented cap
+			return nil, fmt.Errorf("TOKEN_ENCRYPTION_KMS_DUAL_DECRYPT_VERSIONS: cap exceeded (%d > 5)", count)
+		}
+	}
+
+	cfg.TokenEncryptionKMSVersionMap = map[string]int16{}
+	if raw := os.Getenv("TOKEN_ENCRYPTION_KMS_VERSION_MAP"); raw != "" {
+		for _, entry := range strings.Split(raw, ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			parts := strings.SplitN(entry, "=", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("TOKEN_ENCRYPTION_KMS_VERSION_MAP: invalid entry %q (want versionID=int16)", entry)
+			}
+			versionID := strings.TrimSpace(parts[0])
+			n, parseErr := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 16)
+			if parseErr != nil {
+				return nil, fmt.Errorf("TOKEN_ENCRYPTION_KMS_VERSION_MAP: invalid int16 value for %q: %w", versionID, parseErr)
+			}
+			cfg.TokenEncryptionKMSVersionMap[versionID] = int16(n)
+		}
 	}
 
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {

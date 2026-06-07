@@ -33,12 +33,21 @@ const (
 
 // DBHandles aggregates the connections/primitives shared across repositories, services, and handlers.
 // See docs/api/wire-databases.md.
+//
+// Enc is the legacy flat-AES encryptor retained for rows not yet rekeyed
+// (WrappedDEK IS NULL). Envelope wraps both the KMS path (new rows) and the
+// legacy Enc fallback (old rows) — callers should use Envelope exclusively.
 type DBHandles struct {
 	PG    *pgxpool.Pool
 	Mongo *mongo.Database
 	Redis *goredis.Client
 	Enc   *crypto.Encryptor
 	NATS  *natslib.Conn // optional; nil when NATS unreachable
+
+	// Envelope encrypts/decrypts integration tokens via per-row DEK + KMS-wrapped master.
+	// The legacy Enc field is retained during the dual-read window — Envelope.DecryptToken
+	// falls through to it when WrappedDEK is NULL on a row.
+	Envelope *crypto.Envelope
 
 	PendingToolCallRepo domain.PendingToolCallRepository
 
@@ -175,12 +184,39 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	h.Redis = redisClient
 	log.Info("connected to redis")
 
-	enc, err := crypto.NewEncryptor([]byte(cfg.EncryptionKey))
-	if err != nil {
-		h.Close()
-		return nil, fmt.Errorf("wire: create encryptor: %w", err)
+	// Legacy flat-AES encryptor: optional when ENCRYPTION_KEY is empty (new
+	// deployments that only have KMS). Retained for dual-read window so old
+	// rows (WrappedDEK IS NULL) can still be decrypted via Envelope.DecryptToken.
+	var legacyEnc *crypto.Encryptor
+	if cfg.EncryptionKey != "" {
+		var encErr error
+		legacyEnc, encErr = crypto.NewEncryptor([]byte(cfg.EncryptionKey))
+		if encErr != nil {
+			h.Close()
+			return nil, fmt.Errorf("wire: legacy encryptor: %w", encErr)
+		}
 	}
-	h.Enc = enc
+	h.Enc = legacyEnc
+
+	// KMS client — required. Fails fast if SA credentials are invalid or the
+	// key ID doesn't exist so the API never starts without working encryption.
+	kmsClient, kmsErr := NewKMSClient(ctx, []byte(cfg.YCServiceAccountKeyJSON), cfg.TokenEncryptionKMSKeyID, cfg.TokenEncryptionKMSDualDecryptCSV)
+	if kmsErr != nil {
+		h.Close()
+		return nil, fmt.Errorf("wire: kms client: %w", kmsErr)
+	}
+
+	// Boot self-test: a single Encrypt call confirms SA binding is reachable
+	// before the API serves traffic.
+	testCtx, testCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer testCancel()
+	if err := kmsSelfTest(testCtx, kmsClient); err != nil {
+		h.Close()
+		return nil, err
+	}
+
+	h.Envelope = crypto.NewEnvelope(kmsClient, legacyEnc, cfg.TokenEncryptionKMSKeyID, cfg.TokenEncryptionKMSVersionMap)
+	log.Info("kms client initialized", "key_id", cfg.TokenEncryptionKMSKeyID)
 
 	if cfg.NATSUrl != "" {
 		nc, natsErr := natslib.Connect(cfg.NATSUrl)
@@ -192,6 +228,16 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 
 	return h, nil
+}
+
+// kmsSelfTest performs a single Encrypt call against the KMS client to
+// confirm the service account binding is reachable before the API begins
+// serving traffic. It returns a wrapped error on failure and nil on success.
+func kmsSelfTest(ctx context.Context, kms crypto.KMSEncrypter) error {
+	if _, _, err := kms.Encrypt(ctx, []byte("ovv-boot-canary"), nil); err != nil {
+		return fmt.Errorf("wire: kms self-test failed (check SA kms.keys.encrypterDecrypter binding): %w", err)
+	}
+	return nil
 }
 
 // runOrphanReconcile sweeps stale "preparing" pending_tool_calls batches after startup (crash recovery).

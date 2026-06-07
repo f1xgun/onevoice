@@ -40,5 +40,8 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /root/
 
 COPY --from=builder /app/bin/agent .
+COPY scripts/entrypoint-ulimit.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-CMD ["./agent"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["./agent-vk"]

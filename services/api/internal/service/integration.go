@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/pkg/oauthlock"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
@@ -89,8 +91,9 @@ type IntegrationService interface {
 
 type integrationService struct {
 	repo      domain.IntegrationRepository
-	enc       *crypto.Encryptor
-	refreshMu sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock
+	envelope  *crypto.Envelope
+	pool      oauthlock.LockExecutor
+	refreshMu sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock (legacy path fallback)
 	refresher TokenRefresher // nil for platforms that don't need refresh
 	audit     audit.Logger
 	nats      NATSPublisher // nil when NATS is unreachable — revoke publish is skipped (fail-open)
@@ -99,15 +102,20 @@ type integrationService struct {
 // Compile-time check that integrationService implements IntegrationService
 var _ IntegrationService = (*integrationService)(nil)
 
-// NewIntegrationService constructs the service; refresher/auditLogger may be nil (auto-defaulted to Nop).
+// NewIntegrationService constructs the service.
+// envelope wraps the KMS-backed per-row DEK encryption; it falls through to
+// the legacy Encryptor for rows not yet rekeyed (WrappedDEK IS NULL).
+// pool is the Postgres connection pool used for OAuth advisory locking.
+// refresher/auditLogger may be nil (auto-defaulted to Nop).
 // See docs/services/integration.md.
-func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryptor, refresher TokenRefresher, auditLogger audit.Logger) IntegrationService {
+func NewIntegrationService(repo domain.IntegrationRepository, envelope *crypto.Envelope, pool oauthlock.LockExecutor, refresher TokenRefresher, auditLogger audit.Logger) IntegrationService {
 	if auditLogger == nil {
 		auditLogger = audit.Nop()
 	}
 	return &integrationService{
 		repo:      repo,
-		enc:       enc,
+		envelope:  envelope,
+		pool:      pool,
 		refresher: refresher,
 		audit:     auditLogger,
 	}
@@ -125,7 +133,8 @@ func WithNATSPublisher(svc IntegrationService, p NATSPublisher) IntegrationServi
 	return svc
 }
 
-// getRefreshMutex returns a per-integration mutex for serializing refresh calls.
+// getRefreshMutex returns a per-integration mutex for serializing refresh calls
+// on the legacy (non-oauthlock) path.
 func (s *integrationService) getRefreshMutex(id uuid.UUID) *sync.Mutex {
 	val, _ := s.refreshMu.LoadOrStore(id, &sync.Mutex{})
 	return val.(*sync.Mutex)
@@ -274,7 +283,10 @@ func (s *integrationService) Delete(ctx context.Context, integrationID, actorID 
 	return nil
 }
 
-// Connect creates a new platform integration, encrypting tokens before storage
+// Connect creates a new platform integration, encrypting tokens via envelope
+// encryption (KMS-wrapped per-row DEK) before storage.
+// A UUID is allocated server-side before encryption so that the AAD binding
+// (integrationID + platform) matches the row's eventual primary key.
 func (s *integrationService) Connect(ctx context.Context, params ConnectParams) (*domain.Integration, error) {
 	if params.BusinessID == uuid.Nil {
 		return nil, fmt.Errorf("business id is required")
@@ -283,25 +295,28 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, fmt.Errorf("platform is required")
 	}
 
+	integrationID := uuid.New()
+
+	plaintexts := [][]byte{
+		[]byte(params.AccessToken),
+		[]byte(params.RefreshToken),
+		[]byte(params.UserToken),
+	}
+
+	ciphertexts, wrappedDEK, keyVersion, fingerprint, err := s.envelope.EncryptForRow(ctx, integrationID, params.Platform, plaintexts)
+	if err != nil {
+		return nil, fmt.Errorf("envelope encrypt: %w", err)
+	}
+
 	var encAccess, encRefresh, encUser []byte
-	var err error
 	if params.AccessToken != "" {
-		encAccess, err = s.enc.Encrypt([]byte(params.AccessToken))
-		if err != nil {
-			return nil, fmt.Errorf("encrypt access token: %w", err)
-		}
+		encAccess = ciphertexts[0]
 	}
 	if params.RefreshToken != "" {
-		encRefresh, err = s.enc.Encrypt([]byte(params.RefreshToken))
-		if err != nil {
-			return nil, fmt.Errorf("encrypt refresh token: %w", err)
-		}
+		encRefresh = ciphertexts[1]
 	}
 	if params.UserToken != "" {
-		encUser, err = s.enc.Encrypt([]byte(params.UserToken))
-		if err != nil {
-			return nil, fmt.Errorf("encrypt user token: %w", err)
-		}
+		encUser = ciphertexts[2]
 	}
 
 	metadata := params.Metadata
@@ -310,16 +325,20 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	}
 
 	integration := &domain.Integration{
-		BusinessID:            params.BusinessID,
-		Platform:              params.Platform,
-		Status:                domain.IntegrationStatusActive,
-		ExternalID:            params.ExternalID,
-		EncryptedAccessToken:  encAccess,
-		EncryptedRefreshToken: encRefresh,
-		EncryptedUserToken:    encUser,
-		Metadata:              metadata,
-		TokenExpiresAt:        params.ExpiresAt,
-		UserTokenExpiresAt:    params.UserTokenExpires,
+		ID:                       integrationID,
+		BusinessID:               params.BusinessID,
+		Platform:                 params.Platform,
+		Status:                   domain.IntegrationStatusActive,
+		ExternalID:               params.ExternalID,
+		EncryptedAccessToken:     encAccess,
+		EncryptedRefreshToken:    encRefresh,
+		EncryptedUserToken:       encUser,
+		WrappedDEK:               wrappedDEK,
+		KeyVersion:               keyVersion,
+		EncryptionKeyFingerprint: fingerprint,
+		Metadata:                 metadata,
+		TokenExpiresAt:           params.ExpiresAt,
+		UserTokenExpiresAt:       params.UserTokenExpires,
 	}
 
 	if err := s.repo.Create(ctx, integration); err != nil {
@@ -332,6 +351,8 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 }
 
 // GetDecryptedToken returns decrypted tokens, refreshing on expiry; empty externalID falls back to first-active.
+// Rows with a non-nil WrappedDEK are decrypted via the envelope path; rows with
+// nil WrappedDEK fall back to the legacy Encryptor inside the envelope.
 // A synchronous fail-closed audit row is emitted before the token is returned;
 // if the audit INSERT fails the token is never released. reason records the
 // caller's purpose for the forensic trail.
@@ -368,77 +389,150 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 			return nil, domain.ErrTokenExpired
 		}
 
-		mu := s.getRefreshMutex(integration.ID)
-		mu.Lock()
-		defer mu.Unlock()
+		if s.pool != nil {
+			lockErr := oauthlock.RefreshWithRetry(ctx, s.pool, integration.ID, integration.Platform, func(lockCtx context.Context, tx pgx.Tx) error {
+				fresh, rerr := s.repo.GetByID(lockCtx, integration.ID)
+				if rerr != nil {
+					return fmt.Errorf("re-read integration after lock: %w", rerr)
+				}
 
-		integration, err = s.repo.GetByID(ctx, integration.ID)
-		if err != nil {
-			return nil, fmt.Errorf("re-read integration after lock: %w", err)
-		}
+				if fresh.TokenExpiresAt == nil || !fresh.TokenExpiresAt.Before(time.Now()) {
+					integration = fresh
+					return nil
+				}
 
-		if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
-			refreshToken, err := s.enc.Decrypt(integration.EncryptedRefreshToken)
+				refreshPts, _, derr := s.envelope.DecryptToken(lockCtx, fresh.ID, fresh.Platform, fresh.EncryptedRefreshToken, fresh.WrappedDEK)
+				if derr != nil {
+					return fmt.Errorf("decrypt refresh token: %w", derr)
+				}
+				defer crypto.Wipe(refreshPts)
+
+				refreshHTTPCtx, refreshHTTPCancel := context.WithTimeout(lockCtx, 5*time.Second)
+				defer refreshHTTPCancel()
+
+				newAccess, newRefresh, expiresIn, refreshErr := s.refresher.RefreshToken(refreshHTTPCtx, string(refreshPts))
+				if refreshErr != nil {
+					slog.ErrorContext(lockCtx, "token refresh failed",
+						"integration_id", fresh.ID,
+						"platform", fresh.Platform,
+						"error", refreshErr,
+					)
+					return domain.ErrTokenExpired
+				}
+
+				pts := [][]byte{[]byte(newAccess), []byte(newRefresh)}
+				cts, wrapped, ver, fp, eerr := s.envelope.EncryptForRow(lockCtx, fresh.ID, fresh.Platform, pts)
+				if eerr != nil {
+					return fmt.Errorf("encrypt new tokens: %w", eerr)
+				}
+				fresh.EncryptedAccessToken = cts[0]
+				if newRefresh != "" {
+					fresh.EncryptedRefreshToken = cts[1]
+				}
+				fresh.WrappedDEK = wrapped
+				fresh.KeyVersion = ver
+				fresh.EncryptionKeyFingerprint = fp
+				expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
+				fresh.TokenExpiresAt = &expiresAt
+
+				if uerr := s.repo.Update(lockCtx, fresh); uerr != nil {
+					return fmt.Errorf("persist refreshed tokens: %w", uerr)
+				}
+				audit.LogIntegrationTokenRotated(lockCtx, s.audit, fresh.BusinessID, fresh.ID, fresh.Platform)
+
+				slog.InfoContext(lockCtx, "token refreshed successfully",
+					"integration_id", fresh.ID,
+					"platform", fresh.Platform,
+					"new_expiry", expiresAt.Format(time.RFC3339),
+				)
+				integration = fresh
+				return nil
+			})
+			if lockErr != nil {
+				if errors.Is(lockErr, oauthlock.ErrLockExhausted) {
+					return nil, fmt.Errorf("oauth refresh lock contention: %w", domain.ErrServiceUnavailable)
+				}
+				if errors.Is(lockErr, domain.ErrTokenExpired) {
+					return nil, domain.ErrTokenExpired
+				}
+				return nil, lockErr
+			}
+		} else {
+			mu := s.getRefreshMutex(integration.ID)
+			mu.Lock()
+			defer mu.Unlock()
+
+			integration, err = s.repo.GetByID(ctx, integration.ID)
 			if err != nil {
-				return nil, fmt.Errorf("decrypt refresh token: %w", err)
+				return nil, fmt.Errorf("re-read integration after lock: %w", err)
 			}
 
-			newAccess, newRefresh, expiresIn, err := s.refresher.RefreshToken(ctx, string(refreshToken))
-			if err != nil {
-				slog.ErrorContext(ctx, "token refresh failed",
+			if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
+				refreshPts, _, derr := s.envelope.DecryptToken(ctx, integration.ID, integration.Platform, integration.EncryptedRefreshToken, integration.WrappedDEK)
+				if derr != nil {
+					return nil, fmt.Errorf("decrypt refresh token: %w", derr)
+				}
+				defer crypto.Wipe(refreshPts)
+
+				newAccess, newRefresh, expiresIn, rfErr := s.refresher.RefreshToken(ctx, string(refreshPts))
+				if rfErr != nil {
+					slog.ErrorContext(ctx, "token refresh failed",
+						"integration_id", integration.ID,
+						"platform", integration.Platform,
+						"error", rfErr,
+					)
+					return nil, domain.ErrTokenExpired
+				}
+
+				pts := [][]byte{[]byte(newAccess), []byte(newRefresh)}
+				cts, wrapped, ver, fp, eerr := s.envelope.EncryptForRow(ctx, integration.ID, integration.Platform, pts)
+				if eerr != nil {
+					return nil, fmt.Errorf("encrypt new tokens: %w", eerr)
+				}
+				integration.EncryptedAccessToken = cts[0]
+				if newRefresh != "" {
+					integration.EncryptedRefreshToken = cts[1]
+				}
+				integration.WrappedDEK = wrapped
+				integration.KeyVersion = ver
+				integration.EncryptionKeyFingerprint = fp
+				expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
+				integration.TokenExpiresAt = &expiresAt
+
+				if uerr := s.repo.Update(ctx, integration); uerr != nil {
+					return nil, fmt.Errorf("persist refreshed tokens: %w", uerr)
+				}
+
+				audit.LogIntegrationTokenRotated(ctx, s.audit, integration.BusinessID, integration.ID, integration.Platform)
+
+				slog.InfoContext(ctx, "token refreshed successfully",
 					"integration_id", integration.ID,
 					"platform", integration.Platform,
-					"error", err,
+					"new_expiry", expiresAt.Format(time.RFC3339),
 				)
-				return nil, domain.ErrTokenExpired
 			}
-
-			encAccess, err := s.enc.Encrypt([]byte(newAccess))
-			if err != nil {
-				return nil, fmt.Errorf("encrypt refreshed access token: %w", err)
-			}
-			integration.EncryptedAccessToken = encAccess
-
-			if newRefresh != "" {
-				encRefresh, err := s.enc.Encrypt([]byte(newRefresh))
-				if err != nil {
-					return nil, fmt.Errorf("encrypt rotated refresh token: %w", err)
-				}
-				integration.EncryptedRefreshToken = encRefresh
-			}
-
-			expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
-			integration.TokenExpiresAt = &expiresAt
-
-			if err := s.repo.Update(ctx, integration); err != nil {
-				return nil, fmt.Errorf("persist refreshed tokens: %w", err)
-			}
-
-			audit.LogIntegrationTokenRotated(ctx, s.audit, integration.BusinessID, integration.ID, integration.Platform)
-
-			slog.InfoContext(ctx, "token refreshed successfully",
-				"integration_id", integration.ID,
-				"platform", integration.Platform,
-				"new_expiry", expiresAt.Format(time.RFC3339),
-			)
 		}
 	}
 
 	var accessToken string
+	var keyVersion int16
 	if len(integration.EncryptedAccessToken) > 0 {
-		decrypted, err := s.enc.Decrypt(integration.EncryptedAccessToken)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt access token: %w", err)
+		decrypted, kv, derr := s.envelope.DecryptToken(ctx, integration.ID, integration.Platform, integration.EncryptedAccessToken, integration.WrappedDEK)
+		if derr != nil {
+			return nil, fmt.Errorf("decrypt access token: %w", derr)
 		}
+		defer crypto.Wipe(decrypted)
 		accessToken = string(decrypted)
+		keyVersion = kv
 	}
 
 	var userToken string
 	if len(integration.EncryptedUserToken) > 0 {
-		decrypted, err := s.enc.Decrypt(integration.EncryptedUserToken)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt user token: %w", err)
+		decrypted, _, derr := s.envelope.DecryptToken(ctx, integration.ID, integration.Platform, integration.EncryptedUserToken, integration.WrappedDEK)
+		if derr != nil {
+			return nil, fmt.Errorf("decrypt user token: %w", derr)
 		}
+		defer crypto.Wipe(decrypted)
 		if integration.UserTokenExpiresAt == nil || integration.UserTokenExpiresAt.After(time.Now()) {
 			userToken = string(decrypted)
 		}
@@ -449,7 +543,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		caller = callerServiceInternal
 	}
 	correlationID := logger.CorrelationIDFromContext(ctx)
-	if err := audit.LogTokenDecryptedSync(ctx, s.audit, businessID, integration.ID, platform, caller, correlationID, reason); err != nil {
+	if err := audit.LogTokenDecryptedSync(ctx, s.audit, businessID, integration.ID, platform, caller, correlationID, reason, keyVersion); err != nil {
 		return nil, fmt.Errorf("audit token_decrypted: %w", err)
 	}
 	metrics.IncIntegrationTokenDecrypted(platform, caller)

@@ -76,6 +76,12 @@ type Integration struct {
 	UserTokenExpiresAt    *time.Time             `json:"-" db:"user_token_expires_at"`
 	CreatedAt             time.Time              `json:"createdAt" db:"created_at"`
 	UpdatedAt             time.Time              `json:"updatedAt" db:"updated_at"`
+	// WrappedDEK is the KMS-wrapped per-row DEK; nil for legacy rows not yet rekeyed.
+	WrappedDEK []byte `json:"-" db:"wrapped_dek"`
+	// KeyVersion is the int16 identifying the KMS key version that wrapped this row's DEK; 0 = legacy/unset.
+	KeyVersion int16 `json:"-" db:"key_version"`
+	// EncryptionKeyFingerprint is the SHA-256 hex of TOKEN_ENCRYPTION_KMS_KEY_ID at encrypt time; "" = legacy.
+	EncryptionKeyFingerprint string `json:"-" db:"encryption_key_fingerprint"`
 }
 
 type Subscription struct {

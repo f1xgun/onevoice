@@ -46,9 +46,11 @@ WORKDIR /root/
 
 # Copy binary from builder
 COPY --from=builder /app/bin/api .
+COPY scripts/entrypoint-ulimit.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Expose port
 EXPOSE 8080
 
-# Run
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["./api"]

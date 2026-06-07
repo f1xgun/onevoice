@@ -45,5 +45,6 @@ docker-compose.yml
 Dockerfile
 .dockerignore
 
-# Scripts
+# Scripts (entrypoint-ulimit.sh whitelisted — required by Dockerfile COPY)
 scripts/
+!scripts/entrypoint-ulimit.sh

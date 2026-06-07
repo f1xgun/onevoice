@@ -146,7 +146,7 @@ check-llm-defaults: ## Verify LLM_MODEL / TITLER_MODEL / DRAFT_REPLY_MODEL defau
 	@echo "Checking LLM default models..."
 	@bash scripts/check-llm-defaults.sh
 
-lint-all: lint lint-rbac lint-urls lint-frontend lint-migrations check-legal-versions-parity check-llm-defaults docs-check ## Run all linters (Go + RBAC drift + URL check + frontend + migration parity + legal version parity + LLM defaults + docs)
+lint-all: lint lint-rbac lint-urls lint-frontend lint-migrations check-legal-versions-parity check-llm-defaults docs-check lint-no-pprof ## Run all linters (Go + RBAC drift + URL check + frontend + migration parity + legal version parity + LLM defaults + docs)
 
 docs-check: ## Fail if docs reference tool names absent from Go code
 	@./scripts/check-doc-tool-drift.sh
@@ -335,3 +335,11 @@ oapi-check: ## Fail if generated types are out of date relative to the spec
 		fi; \
 		rm -f $$backup; \
 		echo "$(OAPI_OUT) is up to date with $(OAPI_SPEC)"
+
+.PHONY: lint-no-pprof docker-test-ulimit
+
+lint-no-pprof: ## Reject net/http/pprof imports in prod build (SEC-17 CI gate)
+	@! grep -rn 'net/http/pprof' services/ pkg/ --include='*.go' || (echo "pprof reintroduced — REJECT"; exit 1)
+
+docker-test-ulimit: ## Verify ulimit -c 0 is set inside the container (supply ULIMIT_IMAGE=<image>)
+	@docker run --rm $(ULIMIT_IMAGE) sh -c 'ulimit -c' | grep -qx '0' || (echo "ulimit -c should be 0 inside container"; exit 1)

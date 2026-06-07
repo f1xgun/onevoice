@@ -42,6 +42,7 @@ func populatedSamples() map[string]interface{} {
 		"ProjectCreatedDetails":          ProjectCreatedDetails{ProjectID: u, Name: "x"},
 		"ProjectUpdatedDetails":          ProjectUpdatedDetails{ProjectID: u},
 		"ProjectDeletedDetails":          ProjectDeletedDetails{ProjectID: u, Name: "x", DeletedConversations: 5},
+		"RPAScopeViolationDetails":       RPAScopeViolationDetails{Hostname: "evil.example.com", AttemptedURL: "https://evil.example.com/api", AllowedScope: "business.yandex.ru"},
 	}
 }
 
@@ -71,7 +72,7 @@ func TestNoSensitiveFields_inDetailsJSON(t *testing.T) {
 		require.Falsef(t, strings.Contains(strings.ToLower(s), "\"cookie\""),
 			"%s: 'cookie' key leaked: %s", name, s)
 	}
-	require.Len(t, samples, 23, "expected 23 Details structs total")
+	require.Len(t, samples, 24, "expected 24 Details structs total")
 }
 
 func TestTokenDecryptedDetails_RoundTrip(t *testing.T) {

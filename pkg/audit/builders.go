@@ -412,7 +412,9 @@ func LogIntegrationTokenRotated(ctx context.Context, l Logger, businessID, integ
 // LogTokenDecryptedSync records a single token decryption synchronously and
 // fail-closed: the returned error (wrapping the repository Insert error) MUST
 // abort the caller so a token is never released without a forensic row.
-func LogTokenDecryptedSync(ctx context.Context, l Logger, businessID, integrationID uuid.UUID, platform, callerService, correlationID, reason string) error {
+// keyVersion is the KMS key version active at decrypt time; 0 for legacy rows
+// that use the flat AES path (WrappedDEK IS NULL).
+func LogTokenDecryptedSync(ctx context.Context, l Logger, businessID, integrationID uuid.UUID, platform, callerService, correlationID, reason string, keyVersion int16) error {
 	if err := l.LogSync(ctx, Entry{
 		Action:     ActionIntegrationTokenDecrypted,
 		Resource:   "integration",
@@ -423,6 +425,7 @@ func LogTokenDecryptedSync(ctx context.Context, l Logger, businessID, integratio
 			CallerService: callerService,
 			CorrelationID: correlationID,
 			Reason:        reason,
+			KeyVersion:    keyVersion,
 		}),
 	}); err != nil {
 		return fmt.Errorf("audit token_decrypted: %w", err)
@@ -504,5 +507,22 @@ func LogProjectDeleted(ctx context.Context, l Logger, businessID, actorID, proje
 		BusinessID: &businessID,
 		UserID:     &actorID,
 		Details:    mustMarshal(ProjectDeletedDetails{ProjectID: projectID, Name: name, DeletedConversations: deletedConvs}),
+	})
+}
+
+// ---- rpa builders -------------------------------------------------------
+
+// LogRPAScopeViolation records a blocked navigation attempt from a Playwright
+// browser context. Fire-and-forget; observability-grade event.
+func LogRPAScopeViolation(ctx context.Context, l Logger, businessID uuid.UUID, hostname, attemptedURL string) {
+	l.Log(ctx, Entry{
+		Action:     ActionRPAScopeViolation,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		Details: mustMarshal(RPAScopeViolationDetails{
+			Hostname:     hostname,
+			AttemptedURL: attemptedURL,
+			AllowedScope: "business.yandex.ru",
+		}),
 	})
 }

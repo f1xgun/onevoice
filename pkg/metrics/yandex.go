@@ -33,3 +33,12 @@ var RPAStepDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Help:    "Yandex.Business RPA step duration in seconds.",
 	Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60},
 }, []string{"step", "result"})
+
+// RPAScopeViolationsTotal counts requests blocked by the RPA scope gate.
+// host is the blocked hostname. The label set is bounded by the explicit
+// deny-list plus the allow-list enforced in installScopeGate; cardinality
+// is low (O(10) distinct blocked hosts under normal operation).
+var RPAScopeViolationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "rpa_scope_violations_total",
+	Help: "Requests blocked by the Yandex.Business RPA scope gate, by hostname.",
+}, []string{"host"})
