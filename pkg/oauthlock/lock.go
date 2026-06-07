@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"github.com/google/uuid"
@@ -81,6 +81,7 @@ func RefreshWithRetryFn(
 	fn func(context.Context, pgx.Tx) error,
 	lockFn func(context.Context, LockExecutor, uuid.UUID, string, func(context.Context, pgx.Tx) error) error,
 ) error {
+	const jitterDivisor = 4
 	backoffs := []time.Duration{
 		100 * time.Millisecond,
 		300 * time.Millisecond,
@@ -100,7 +101,8 @@ func RefreshWithRetryFn(
 		if i == len(backoffs)-1 {
 			break
 		}
-		jitter := time.Duration(rand.Int63n(int64(wait) / 4))
+		jitter := time.Duration(rand.Int64N(int64(wait) / jitterDivisor)) //nolint:gosec // jitter is non-security; math/rand/v2 acceptable
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -118,5 +120,5 @@ func RefreshWithRetryFn(
 func lockKey(id uuid.UUID) int64 {
 	prefix := []byte("oauth:refresh:")
 	h := sha256.Sum256(append(prefix, id[:]...))
-	return int64(binary.LittleEndian.Uint64(h[:8]))
+	return int64(binary.LittleEndian.Uint64(h[:8])) //nolint:gosec // sha256→int64 is intentional bit reinterpretation for advisory lock id
 }

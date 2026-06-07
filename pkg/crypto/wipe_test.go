@@ -3,9 +3,10 @@ package crypto_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/crypto/kmsfake"
-	"github.com/stretchr/testify/assert"
 )
 
 // Compile-time assertion: FakeKMSEncrypter satisfies KMSEncrypter.

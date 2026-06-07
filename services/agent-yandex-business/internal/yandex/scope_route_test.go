@@ -38,7 +38,7 @@ func requirePlaywright(t *testing.T) *playwright.Playwright {
 	if err != nil {
 		t.Skipf("playwright.Run() failed (binaries unavailable): %v", err)
 	}
-	t.Cleanup(func() { pw.Stop() }) //nolint:errcheck
+	t.Cleanup(func() { pw.Stop() }) //nolint:errcheck // test cleanup; failure non-fatal
 	return pw
 }
 
@@ -50,7 +50,7 @@ func launchHeadless(t *testing.T, pw *playwright.Playwright) playwright.Browser 
 		Args:     []string{"--no-sandbox", "--disable-dev-shm-usage"},
 	})
 	require.NoError(t, err, "launch headless Chromium")
-	t.Cleanup(func() { browser.Close() }) //nolint:errcheck
+	t.Cleanup(func() { browser.Close() }) //nolint:errcheck // test cleanup; failure non-fatal
 	return browser
 }
 
@@ -94,7 +94,7 @@ func TestRouteGateBlockMail(t *testing.T) {
 
 	bCtx, err := browser.NewContext()
 	require.NoError(t, err)
-	t.Cleanup(func() { bCtx.Close() }) //nolint:errcheck
+	t.Cleanup(func() { bCtx.Close() }) //nolint:errcheck // test cleanup; failure non-fatal
 
 	logger := &capturingLogger{}
 	bizID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
@@ -106,7 +106,7 @@ func TestRouteGateBlockMail(t *testing.T) {
 
 	page, err := bCtx.NewPage()
 	require.NoError(t, err)
-	t.Cleanup(func() { page.Close() }) //nolint:errcheck
+	t.Cleanup(func() { page.Close() }) //nolint:errcheck // test cleanup; failure non-fatal
 
 	_, navErr := page.Goto("https://mail.yandex.ru/inbox", playwright.PageGotoOptions{
 		Timeout: playwright.Float(10000),
@@ -133,7 +133,7 @@ func TestRouteGateAllowBusiness(t *testing.T) {
 
 	bCtx, err := browser.NewContext()
 	require.NoError(t, err)
-	t.Cleanup(func() { bCtx.Close() }) //nolint:errcheck
+	t.Cleanup(func() { bCtx.Close() }) //nolint:errcheck // test cleanup; failure non-fatal
 
 	logger := &capturingLogger{}
 	bizID := uuid.New()
@@ -145,7 +145,7 @@ func TestRouteGateAllowBusiness(t *testing.T) {
 
 	page, err := bCtx.NewPage()
 	require.NoError(t, err)
-	t.Cleanup(func() { page.Close() }) //nolint:errcheck
+	t.Cleanup(func() { page.Close() }) //nolint:errcheck // test cleanup; failure non-fatal
 
 	_, _ = page.Goto("https://business.yandex.ru/health", playwright.PageGotoOptions{
 		Timeout: playwright.Float(10000),
@@ -167,7 +167,7 @@ func TestRouteGateBlocksUnknown(t *testing.T) {
 
 	bCtx, err := browser.NewContext()
 	require.NoError(t, err)
-	t.Cleanup(func() { bCtx.Close() }) //nolint:errcheck
+	t.Cleanup(func() { bCtx.Close() }) //nolint:errcheck // test cleanup; failure non-fatal
 
 	logger := &capturingLogger{}
 	bizID := uuid.New()
@@ -179,7 +179,7 @@ func TestRouteGateBlocksUnknown(t *testing.T) {
 
 	page, err := bCtx.NewPage()
 	require.NoError(t, err)
-	t.Cleanup(func() { page.Close() }) //nolint:errcheck
+	t.Cleanup(func() { page.Close() }) //nolint:errcheck // test cleanup; failure non-fatal
 
 	_, _ = page.Goto("https://example.com/", playwright.PageGotoOptions{
 		Timeout: playwright.Float(10000),

@@ -66,7 +66,7 @@ func envelopeAAD(integrationID uuid.UUID, platform string) []byte {
 
 // EncryptToken generates a fresh AES-256 DEK, wraps it via KMS with AAD bound
 // to (integrationID, platform), seals the plaintext with AES-GCM using the
-// same AAD, and returns all three artefacts. The DEK is Wiped before return.
+// same AAD, and returns all three artifacts. The DEK is Wiped before return.
 func (e *Envelope) EncryptToken(
 	ctx context.Context,
 	integrationID uuid.UUID,

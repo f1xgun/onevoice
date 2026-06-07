@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	pgx "github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -54,24 +54,24 @@ func TestMetricsCounterRegistered(t *testing.T) {
 // fakeRequest satisfies playwright.Request; only URL() is used by installScopeGate.
 type fakeRequest struct{ url string }
 
-func (r *fakeRequest) URL() string                                      { return r.url }
-func (r *fakeRequest) Method() string                                   { return "GET" }
-func (r *fakeRequest) Headers() map[string]string                       { return nil }
-func (r *fakeRequest) HeaderValue(string) (string, error)               { return "", nil }
-func (r *fakeRequest) AllHeaders() (map[string]string, error)           { return nil, nil }
-func (r *fakeRequest) HeadersArray() ([]playwright.NameValue, error)    { return nil, nil }
-func (r *fakeRequest) PostData() (string, error)                        { return "", nil }
-func (r *fakeRequest) PostDataBuffer() ([]byte, error)                  { return nil, nil }
-func (r *fakeRequest) PostDataJSON(interface{}) error                   { return nil }
-func (r *fakeRequest) ResourceType() string                             { return "" }
-func (r *fakeRequest) Frame() playwright.Frame                          { return nil }
-func (r *fakeRequest) IsNavigationRequest() bool                        { return false }
-func (r *fakeRequest) RedirectedFrom() playwright.Request               { return nil }
-func (r *fakeRequest) RedirectedTo() playwright.Request                 { return nil }
-func (r *fakeRequest) Failure() error                                   { return nil }
-func (r *fakeRequest) Response() (playwright.Response, error)           { return nil, nil }
-func (r *fakeRequest) Timing() *playwright.RequestTiming                { return nil }
-func (r *fakeRequest) Sizes() (*playwright.RequestSizesResult, error)   { return nil, nil }
+func (r *fakeRequest) URL() string                                    { return r.url }
+func (r *fakeRequest) Method() string                                 { return "GET" }
+func (r *fakeRequest) Headers() map[string]string                     { return nil }
+func (r *fakeRequest) HeaderValue(string) (string, error)             { return "", nil }
+func (r *fakeRequest) AllHeaders() (map[string]string, error)         { return nil, nil }
+func (r *fakeRequest) HeadersArray() ([]playwright.NameValue, error)  { return nil, nil }
+func (r *fakeRequest) PostData() (string, error)                      { return "", nil }
+func (r *fakeRequest) PostDataBuffer() ([]byte, error)                { return nil, nil }
+func (r *fakeRequest) PostDataJSON(interface{}) error                 { return nil }
+func (r *fakeRequest) ResourceType() string                           { return "" }
+func (r *fakeRequest) Frame() playwright.Frame                        { return nil }
+func (r *fakeRequest) IsNavigationRequest() bool                      { return false }
+func (r *fakeRequest) RedirectedFrom() playwright.Request             { return nil }
+func (r *fakeRequest) RedirectedTo() playwright.Request               { return nil }
+func (r *fakeRequest) Failure() error                                 { return nil }
+func (r *fakeRequest) Response() (playwright.Response, error)         { return nil, nil }
+func (r *fakeRequest) Timing() *playwright.RequestTiming              { return nil }
+func (r *fakeRequest) Sizes() (*playwright.RequestSizesResult, error) { return nil, nil }
 
 // fakeRoute satisfies playwright.Route and records terminal-action calls.
 type fakeRoute struct {
@@ -81,7 +81,10 @@ type fakeRoute struct {
 	reqURL    string
 }
 
-func (f *fakeRoute) Continue(...playwright.RouteContinueOptions) error { f.continued.Store(true); return nil }
+func (f *fakeRoute) Continue(...playwright.RouteContinueOptions) error {
+	f.continued.Store(true)
+	return nil
+}
 func (f *fakeRoute) Abort(code ...string) error {
 	f.aborted.Store(true)
 	if len(code) > 0 {
@@ -89,8 +92,8 @@ func (f *fakeRoute) Abort(code ...string) error {
 	}
 	return nil
 }
-func (f *fakeRoute) Fallback(...playwright.RouteFallbackOptions) error           { return nil }
-func (f *fakeRoute) Fulfill(...playwright.RouteFulfillOptions) error             { return nil }
+func (f *fakeRoute) Fallback(...playwright.RouteFallbackOptions) error { return nil }
+func (f *fakeRoute) Fulfill(...playwright.RouteFulfillOptions) error   { return nil }
 func (f *fakeRoute) Fetch(...playwright.RouteFetchOptions) (playwright.APIResponse, error) {
 	return nil, nil
 }
