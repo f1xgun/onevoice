@@ -37,5 +37,8 @@ COPY --from=builder /app/bin/pw-install /tmp/pw-install
 RUN /tmp/pw-install && rm /tmp/pw-install
 
 COPY --from=builder /app/bin/agent /agent
+COPY scripts/entrypoint-ulimit.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["/agent"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/agent"]
