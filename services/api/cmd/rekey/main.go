@@ -18,10 +18,12 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/wire"
 )
 
+const defaultConcurrency = 4
+
 func main() {
 	targetVersion := flag.Int("target-version", 0, "KMS key version to rekey all rows to (required, 1..32767)")
 	batch := flag.Int("batch", 100, "rows per transaction")
-	concurrency := flag.Int("concurrency", 4, "parallel batch workers")
+	concurrency := flag.Int("concurrency", defaultConcurrency, "parallel batch workers")
 	dryRun := flag.Bool("dry-run", false, "report count without writing")
 	flag.Parse()
 

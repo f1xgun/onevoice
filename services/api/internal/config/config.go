@@ -463,7 +463,7 @@ func Load() (*Config, error) {
 			if parseErr != nil {
 				return nil, fmt.Errorf("TOKEN_ENCRYPTION_KMS_VERSION_MAP: invalid int16 value for %q: %w", versionID, parseErr)
 			}
-			cfg.TokenEncryptionKMSVersionMap[versionID] = int16(n) //nolint:gosec // range validated by ParseInt bitSize=16
+			cfg.TokenEncryptionKMSVersionMap[versionID] = int16(n)
 		}
 	}
 

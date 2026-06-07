@@ -15,6 +15,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
+const remainingMetricsInterval = 5 * time.Second
+
 var (
 	rowsProcessed = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "rekey_rows_processed_total",
@@ -91,7 +93,7 @@ func (r *Rekeyer) Run(ctx context.Context) error {
 		return nil
 	}
 
-	remainingTicker := time.NewTicker(5 * time.Second)
+	remainingTicker := time.NewTicker(remainingMetricsInterval)
 	defer remainingTicker.Stop()
 	go func() {
 		for {

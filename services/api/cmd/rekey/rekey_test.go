@@ -106,13 +106,6 @@ func testEnvelope(t *testing.T) *crypto.Envelope {
 	return crypto.NewEnvelope(fake, nil, "test-key-id", map[string]int16{"1": 1})
 }
 
-func testEnvelopeV2(t *testing.T) *crypto.Envelope {
-	t.Helper()
-	fake := kmsfake.New()
-	fake.RotateToVersion(2)
-	return crypto.NewEnvelope(fake, nil, "test-key-id-v2", map[string]int16{"1": 1, "2": 2})
-}
-
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(nil, &slog.HandlerOptions{Level: slog.LevelError + 100}))
 }
