@@ -239,12 +239,15 @@ type IntegrationTokenRotatedDetails struct {
 
 // TokenDecryptedDetails records a single GetDecryptedToken invocation. NEVER
 // contains token material — only operational metadata for forensic correlation.
+// KeyVersion is the KMS key version that wrapped this row's DEK; 0 = legacy
+// row (wrapped_dek IS NULL — flat AES decrypt path, no KMS involved).
 type TokenDecryptedDetails struct {
 	IntegrationID uuid.UUID `json:"integration_id"`
 	Platform      string    `json:"platform"`
 	CallerService string    `json:"caller_service"`
 	CorrelationID string    `json:"correlation_id,omitempty"`
 	Reason        string    `json:"reason"`
+	KeyVersion    int16     `json:"key_version,omitempty"`
 }
 
 // IntegrationDeletedDetails captures the snapshot of an integration at
@@ -286,4 +289,15 @@ type ProjectDeletedDetails struct {
 	ProjectID            uuid.UUID `json:"project_id"`
 	Name                 string    `json:"name"`
 	DeletedConversations int       `json:"deleted_conversations"`
+}
+
+// ---- rpa ----------------------------------------------------------------
+
+// RPAScopeViolationDetails is emitted when a Playwright Route handler aborts
+// navigation to a host outside the agent's allowed scope. Fields are safe
+// (no cookie / session / token material).
+type RPAScopeViolationDetails struct {
+	Hostname     string `json:"hostname"`
+	AttemptedURL string `json:"attempted_url"`
+	AllowedScope string `json:"allowed_scope"`
 }

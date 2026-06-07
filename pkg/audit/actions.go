@@ -79,6 +79,11 @@ const (
 	ActionProjectDeleted = "project.deleted"
 )
 
+// rpa.* — Playwright RPA browser gate events.
+const (
+	ActionRPAScopeViolation = "rpa.scope_violation"
+)
+
 // ActionCategory returns the closed-set category for an action string.
 // Unknown prefixes return "other" to bound metric label cardinality.
 func ActionCategory(action string) string {
@@ -86,7 +91,7 @@ func ActionCategory(action string) string {
 		if action[i] == '.' {
 			cat := action[:i]
 			switch cat {
-			case "rbac", "auth", "integration", "business", "project", "account":
+			case "rbac", "auth", "integration", "business", "project", "account", "rpa":
 				return cat
 			default:
 				return "other"
