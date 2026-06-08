@@ -28,11 +28,18 @@ func NewIntegrationRepository(pool pgxPool) domain.IntegrationRepository {
 
 // integrationColumns is the canonical column order shared by every
 // integrations SELECT so scanIntegration stays in lockstep with the query.
+// wrapped_dek MUST be selected here — DecryptToken needs WrappedDEK from the
+// row, so a read path that omits it leaves WrappedDEK nil, silently falls back
+// to the legacy key, and fails to decrypt envelope-encrypted tokens.
+// key_version / encryption_key_fingerprint are intentionally NOT read here:
+// the decrypt path doesn't use them, and the rekey job reads them through its
+// own SelectForRekey query.
 var integrationColumns = []string{
 	"id", "business_id", "platform", "status",
 	"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 	"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 	"created_at", "updated_at",
+	"wrapped_dek",
 }
 
 // scanIntegration maps one integrations row into a domain.Integration. Shared
@@ -53,6 +60,7 @@ func scanIntegration(row scanner) (domain.Integration, error) {
 		&integration.UserTokenExpiresAt,
 		&integration.CreatedAt,
 		&integration.UpdatedAt,
+		&integration.WrappedDEK,
 	)
 	return integration, err
 }
@@ -67,8 +75,8 @@ func (r *integrationRepository) Create(ctx context.Context, integration *domain.
 
 	sql, args, err := r.sb.
 		Insert("integrations").
-		Columns("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
-		Values(integration.ID, integration.BusinessID, integration.Platform, integration.Status, integration.EncryptedAccessToken, integration.EncryptedRefreshToken, integration.EncryptedUserToken, integration.ExternalID, integration.Metadata, integration.TokenExpiresAt, integration.UserTokenExpiresAt, integration.CreatedAt, integration.UpdatedAt).
+		Columns("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at", "wrapped_dek", "key_version", "encryption_key_fingerprint").
+		Values(integration.ID, integration.BusinessID, integration.Platform, integration.Status, integration.EncryptedAccessToken, integration.EncryptedRefreshToken, integration.EncryptedUserToken, integration.ExternalID, integration.Metadata, integration.TokenExpiresAt, integration.UserTokenExpiresAt, integration.CreatedAt, integration.UpdatedAt, integration.WrappedDEK, integration.KeyVersion, integration.EncryptionKeyFingerprint).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -165,6 +173,9 @@ func (r *integrationRepository) Update(ctx context.Context, integration *domain.
 		Set("metadata", integration.Metadata).
 		Set("token_expires_at", integration.TokenExpiresAt).
 		Set("user_token_expires_at", integration.UserTokenExpiresAt).
+		Set("wrapped_dek", integration.WrappedDEK).
+		Set("key_version", integration.KeyVersion).
+		Set("encryption_key_fingerprint", integration.EncryptionKeyFingerprint).
 		Set("updated_at", integration.UpdatedAt).
 		Where(squirrel.Eq{"id": integration.ID}).
 		ToSql()

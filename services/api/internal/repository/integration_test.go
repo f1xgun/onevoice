@@ -43,15 +43,16 @@ func TestListByBusinessAndPlatform(t *testing.T) {
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
+		"wrapped_dek",
 	}).
 		AddRow(id1, businessID, platform, "active",
 			[]byte("tok1"), []byte(nil), []byte(nil),
 			extID1, map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now).
+			now, now, []byte("dek1")).
 		AddRow(id2, businessID, platform, "active",
 			[]byte("tok2"), []byte(nil), []byte(nil),
 			extID2, map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now)
+			now, now, []byte(nil))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -83,11 +84,12 @@ func TestGetByBusinessPlatformExternal_Found(t *testing.T) {
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
+		"wrapped_dek",
 	}).
 		AddRow(integrationID, businessID, platform, "active",
 			[]byte("tok"), []byte(nil), []byte(nil),
 			externalID, map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now)
+			now, now, []byte("dek"))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -100,6 +102,9 @@ func TestGetByBusinessPlatformExternal_Found(t *testing.T) {
 	assert.Equal(t, businessID, result.BusinessID)
 	assert.Equal(t, platform, result.Platform)
 	assert.Equal(t, externalID, result.ExternalID)
+	// WrappedDEK must round-trip out of the read path — otherwise DecryptToken
+	// gets a nil DEK and falls back to the legacy key, failing to decrypt.
+	assert.Equal(t, []byte("dek"), result.WrappedDEK)
 
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
@@ -218,11 +223,12 @@ func TestIntegrationRepo_ListByBusinessID_ExcludesSoftDeleted(t *testing.T) {
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
+		"wrapped_dek",
 	}).
 		AddRow(id1, businessID, "vk", "active",
 			[]byte("tok"), []byte(nil), []byte(nil),
 			"vk_111", map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now)
+			now, now, []byte(nil))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND business_id = \$1`).
 		WithArgs(pgxmock.AnyArg()).
@@ -249,11 +255,12 @@ func TestIntegrationRepo_ListAllActiveByPlatforms_ExcludesSoftDeleted(t *testing
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
+		"wrapped_dek",
 	}).
 		AddRow(id1, businessID, "telegram", "active",
 			[]byte("tok"), []byte(nil), []byte(nil),
 			"tg_999", map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now)
+			now, now, []byte(nil))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND status = \$1 AND platform IN`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -264,5 +271,73 @@ func TestIntegrationRepo_ListAllActiveByPlatforms_ExcludesSoftDeleted(t *testing
 	assert.Len(t, result, 1)
 	assert.Equal(t, id1, result[0].ID)
 
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_Create_PersistsEnvelopeColumns guards the Phase 30
+// regression where Create dropped wrapped_dek/key_version/
+// encryption_key_fingerprint, leaving every new integration's token
+// unrecoverable (encrypted under an envelope DEK the row never stored).
+func TestIntegrationRepo_Create_PersistsEnvelopeColumns(t *testing.T) {
+	ctx := context.Background()
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	integration := &domain.Integration{
+		ID:                       uuid.New(),
+		BusinessID:               uuid.New(),
+		Platform:                 "telegram",
+		Status:                   "active",
+		EncryptedAccessToken:     []byte("ct"),
+		ExternalID:               "tg_1",
+		Metadata:                 map[string]interface{}{},
+		WrappedDEK:               []byte("wrapped-dek"),
+		KeyVersion:               7,
+		EncryptionKeyFingerprint: "fp-xyz",
+	}
+
+	mockPool.ExpectExec(`INSERT INTO integrations.*wrapped_dek.*key_version.*encryption_key_fingerprint`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+			[]byte("wrapped-dek"), int16(7), "fp-xyz",
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	err := repo.Create(ctx, integration)
+	require.NoError(t, err)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_Update_PersistsEnvelopeColumns guards the matching gap
+// on the token-refresh path: Update must re-persist the freshly wrapped DEK,
+// otherwise a rotation re-orphans the token on the very next read.
+func TestIntegrationRepo_Update_PersistsEnvelopeColumns(t *testing.T) {
+	ctx := context.Background()
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	integration := &domain.Integration{
+		ID:                       uuid.New(),
+		Status:                   "active",
+		EncryptedAccessToken:     []byte("ct"),
+		ExternalID:               "tg_1",
+		Metadata:                 map[string]interface{}{},
+		WrappedDEK:               []byte("new-dek"),
+		KeyVersion:               9,
+		EncryptionKeyFingerprint: "fp-new",
+	}
+
+	mockPool.ExpectExec(`UPDATE integrations SET.*wrapped_dek.*key_version.*encryption_key_fingerprint`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			[]byte("new-dek"), int16(9), "fp-new",
+			pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err := repo.Update(ctx, integration)
+	require.NoError(t, err)
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
