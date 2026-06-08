@@ -2,6 +2,7 @@ package wire
 
 import (
 	"log/slog"
+	"time"
 
 	natslib "github.com/nats-io/nats.go"
 
@@ -11,25 +12,47 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
-// Tools constructs the live tool registry, dials NATS, and registers every
-// MVP platform tool. NATS unreachable is non-fatal: the registry is returned
-// with no platform tools registered (so the orchestrator boots and serves
-// `/health/ready`), and the returned *natslib.Conn is nil — cmd/main.go
-// branches on nil to skip the NATS health check and the deferred Drain().
+// natsReconnectWait is the backoff between NATS reconnect attempts.
+const natsReconnectWait = 2 * time.Second
+
+// Tools constructs the live tool registry, dials NATS, and registers every MVP
+// platform tool. The dial uses RetryOnFailedConnect + infinite reconnect, so a
+// NATS that is down at boot is non-fatal: Connect returns a live conn already
+// in the reconnecting state and the platform tools are registered regardless.
+// Registration only builds tool specs + executors (it needs no live
+// connection), and the executors hold the auto-reconnecting conn — so tool
+// calls start succeeding as soon as NATS becomes reachable, with no
+// orchestrator restart. This replaces the prior behavior where a boot-time
+// NATS outage left the registry permanently empty.
 //
 // No ctx parameter: the v1 nats.go API does not accept a context for dial,
-// so threading one through would be ceremonial. Re-add when the dial path
-// becomes context-aware.
+// so threading one through would be ceremonial.
 func Tools(log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natslib.Conn, error) {
 	reg := toolregistry.NewRegistry()
 
-	nc, err := natslib.Connect(cfg.NATSUrl)
+	nc, err := natslib.Connect(cfg.NATSUrl,
+		natslib.RetryOnFailedConnect(true),
+		natslib.MaxReconnects(-1),
+		natslib.ReconnectWait(natsReconnectWait),
+		natslib.DisconnectErrHandler(func(_ *natslib.Conn, e error) {
+			log.Warn("NATS disconnected", "error", e)
+		}),
+		natslib.ReconnectHandler(func(c *natslib.Conn) {
+			log.Info("NATS reconnected", "url", c.ConnectedUrl())
+		}),
+	)
 	if err != nil {
-		log.Warn("NATS unavailable — tools will return stubs", "url", cfg.NATSUrl, "error", err)
+		// With RetryOnFailedConnect a failed initial dial surfaces as a
+		// reconnecting conn, not an error — so an error here means an
+		// options/URL problem. Degrade to an empty registry + nil conn
+		// (cmd/main.go skips the NATS health check and Drain on nil) so the
+		// process still serves /health instead of crash-looping.
+		log.Warn("NATS connect failed", "url", cfg.NATSUrl, "error", err)
 		return reg, nil, nil
 	}
-	log.Info("connected to NATS", "url", cfg.NATSUrl)
+
 	RegisterPlatformTools(reg, nc)
+	log.Info("registered platform tools", "nats_url", cfg.NATSUrl)
 	return reg, nc, nil
 }
 

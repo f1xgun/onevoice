@@ -22,6 +22,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/netdial"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -90,7 +91,13 @@ func NewConnectHandler(
 		panic("connect.NewConnectHandler: businessService cannot be nil")
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 10 * time.Second}
+		// Pin IPv4: api.telegram.org publishes AAAA records and Yandex Cloud
+		// VMs have no IPv6 route, so a dual-stack dial can hang on the dead v6
+		// address until timeout.
+		httpClient = &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: &http.Transport{DialContext: netdial.TCP4DialContext},
+		}
 	}
 	return &ConnectHandler{
 		integrationService: integrationService,
