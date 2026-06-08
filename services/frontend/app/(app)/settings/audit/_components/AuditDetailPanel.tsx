@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import type { AuditLogDTO } from '../_lib/types';
 import { actionToI18nKey } from '../_lib/actionLabels';
+import { isKnownResource } from '../_lib/resourceLabels';
 import {
   Sheet,
   SheetContent,
@@ -40,6 +41,7 @@ export function AuditDetailPanel({ item, onClose }: Props) {
   const tPanel = useTranslations('audit.panel');
   const tFilters = useTranslations('audit.filters');
   const tActions = useTranslations();
+  const tResources = useTranslations('audit.resources');
 
   if (!item) return null;
 
@@ -64,7 +66,9 @@ export function AuditDetailPanel({ item, onClose }: Props) {
           </div>
           <div>
             <div className="text-ink-soft">{tPanel('resource')}</div>
-            <div className="text-ink">{item.resource}</div>
+            <div className="text-ink">
+              {isKnownResource(item.resource) ? tResources(item.resource) : item.resource}
+            </div>
           </div>
           <div>
             <div className="mb-1 text-ink-soft">{tPanel('rawDetails')}</div>

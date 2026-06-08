@@ -61,3 +61,22 @@ export const AUDIT_ACTIONS = [
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+// AUDIT_RESOURCES MUST stay in sync with the Resource values emitted by
+// pkg/audit/builders.go. Each entry has a human label under
+// `audit.resources.<key>` in messages/ru.json / en.json; resourceLabel()
+// falls back to the raw string for any resource not in this tuple, so an
+// unmapped backend resource degrades to its technical name rather than
+// throwing a missing-message error.
+export const AUDIT_RESOURCES = [
+  'role',
+  'member',
+  'invitation',
+  'user',
+  'integration',
+  'business',
+  'project',
+  'policy',
+] as const;
+
+export type AuditResource = (typeof AUDIT_RESOURCES)[number];

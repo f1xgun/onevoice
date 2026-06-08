@@ -92,12 +92,65 @@ describe('AuditPage', () => {
     const row = await screen.findByTestId('audit-row-a-1');
     expect(row).toBeInTheDocument();
     expect(row).toHaveTextContent('alice@example.com');
+    expect(row).toHaveTextContent('Роль');
+    expect(row).not.toHaveTextContent('role');
     await userEvent.setup().click(row);
     await waitFor(() => {
       expect(screen.getByTestId('panel-actor')).toBeInTheDocument();
     });
     expect(screen.getByTestId('panel-actor')).toHaveTextContent('alice@example.com');
     expect(screen.getByTestId('panel-raw-json')).toHaveTextContent('target_user_id');
+  });
+
+  it('prefers the actor display name over the email when present', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'n-1',
+            action: 'rbac.role_granted',
+            action_category: 'rbac',
+            resource: 'role',
+            business_id: 'biz-1',
+            actor_id: 'u-1',
+            actor_email: 'alice@example.com',
+            actor_display_name: 'Алиса Лидделл',
+            details: {},
+            created_at: new Date().toISOString(),
+          },
+        ],
+        next_cursor: null,
+      },
+    });
+    renderPage();
+    const row = await screen.findByTestId('audit-row-n-1');
+    expect(row).toHaveTextContent('Алиса Лидделл');
+    expect(row).not.toHaveTextContent('alice@example.com');
+  });
+
+  it('falls back to the raw resource string for an unmapped resource', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 'u-9',
+            action: 'auth.login_failed',
+            action_category: 'auth',
+            resource: 'mystery_widget',
+            business_id: null,
+            actor_id: null,
+            actor_email: null,
+            actor_display_name: null,
+            details: { attempted_email: 'x@y.z' },
+            created_at: new Date().toISOString(),
+          },
+        ],
+        next_cursor: null,
+      },
+    });
+    renderPage();
+    const row = await screen.findByTestId('audit-row-u-9');
+    expect(row).toHaveTextContent('mystery_widget');
   });
 
   it('renders failed-login actor as "Неизвестен ({email})"', async () => {

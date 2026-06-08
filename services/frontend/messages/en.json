@@ -1649,6 +1649,16 @@
       "resource": "Object",
       "rawDetails": "Details (JSON)"
     },
+    "resources": {
+      "role": "Role",
+      "member": "Member",
+      "invitation": "Invitation",
+      "user": "User",
+      "integration": "Integration",
+      "business": "Organization",
+      "project": "Project",
+      "policy": "Policy"
+    },
     "errors": {
       "loadFailed": "Couldn't load the log. Please try again later.",
       "forbidden": "Your role doesn't have access to the activity log."
