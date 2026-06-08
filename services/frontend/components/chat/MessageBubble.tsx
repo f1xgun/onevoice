@@ -18,6 +18,7 @@
 import Markdown from 'react-markdown';
 import { useTranslations } from 'next-intl';
 import { ToolCallsBlock } from './ToolCallsBlock';
+import { TypingIndicator } from './TypingIndicator';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import type { Message } from '@/types/chat';
 
@@ -26,8 +27,14 @@ export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
   const hasContent = !!message.content;
   const hasToolCalls = (message.toolCalls?.length ?? 0) > 0;
-  const isStreamingEmpty = message.status === 'streaming' && !hasContent;
+  const isStreaming = message.status === 'streaming';
+  const isStreamingEmpty = isStreaming && !hasContent;
   const isDoneEmpty = message.status === 'done' && !hasContent;
+  // Once tokens or a tool call have rendered, the empty-bubble dots are gone —
+  // so without this footer the indicator would vanish during the wait for the
+  // next LLM iteration and the operator can't tell OneVoice is still working.
+  // Gated on hasContent so it never double-renders alongside the dots.
+  const showWorkingFooter = isStreaming && hasContent;
 
   if (isUser) {
     return (
@@ -50,17 +57,7 @@ export function MessageBubble({ message }: { message: Message }) {
         {!isDoneEmpty && (
           <div className="rounded-md border border-line bg-paper-raised px-4 py-3 text-sm leading-relaxed text-ink shadow-ov-1">
             {isStreamingEmpty ? (
-              <span
-                className="flex items-center gap-2 text-ink-mid"
-                aria-label={tWindow('typingAria')}
-              >
-                <span className="flex gap-1" aria-hidden="true">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:0ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:150ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:300ms]" />
-                </span>
-                <span className="text-xs">{tWindow('typingAria')}</span>
-              </span>
+              <TypingIndicator label={tWindow('typingAria')} />
             ) : (
               <div className="prose prose-sm max-w-none prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0.5">
                 <Markdown>{message.content}</Markdown>
@@ -69,6 +66,9 @@ export function MessageBubble({ message }: { message: Message }) {
           </div>
         )}
         {hasToolCalls && <ToolCallsBlock toolCalls={message.toolCalls!} />}
+        {showWorkingFooter && (
+          <TypingIndicator label={tWindow('typingAria')} className="mt-2 pl-1" />
+        )}
       </div>
     </div>
   );
