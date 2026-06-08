@@ -23,16 +23,47 @@ type TokenInfo = agentbase.TokenInfo
 // remain byte-identical (import-path-only test changes).
 type TokenFetcher = agentbase.TokenResolver
 
-// Sender abstracts Telegram message sending for testability.
+// Sender abstracts Telegram message sending for testability. The chat target is
+// a string because Telegram's chat_id accepts either a numeric ID or a public
+// @channelusername — bot.go picks the right tgbotapi constructor per form.
 type Sender interface {
-	SendMessage(chatID int64, text string) error
-	SendPhoto(chatID int64, photoURL, caption string) error
-	SendReply(chatID int64, messageID int, text string) error
+	SendMessage(chat, text string) error
+	SendPhoto(chat, photoURL, caption string) error
+	SendReply(chat string, messageID int, text string) error
 	GetReviews(limit int) ([]map[string]interface{}, error)
 }
 
 // SenderFactory creates a Sender from a bot token.
 type SenderFactory func(botToken string) (Sender, error)
+
+// resolveChatTarget chooses the Telegram chat_id for a send. Telegram accepts
+// either a numeric ID (private chats/channels) or a public @channelusername, so
+// both forms are valid as-is. The LLM-supplied value wins when it is well-formed;
+// otherwise (empty, a business name, or any non-id hallucination) we fall back to
+// the integration's resolved external_id — the connect flow stored it in the same
+// numeric-or-@username form. Errors with channel_not_found only when neither is
+// usable. See AGENTS.md §"Channel ID Resolution Pattern".
+func resolveChatTarget(supplied, resolved string) (string, error) {
+	if isValidChatTarget(supplied) {
+		return supplied, nil
+	}
+	if isValidChatTarget(resolved) {
+		return resolved, nil
+	}
+	return "", a2a.NewCodedError("channel_not_found",
+		fmt.Errorf("telegram: invalid chat target (channel_id=%q, resolved=%q)", supplied, resolved))
+}
+
+// isValidChatTarget reports whether s is a usable Telegram chat_id: a numeric ID
+// or a public @channelusername. Anything else (empty string, business name, etc.)
+// is rejected so the caller falls back to the integration's external_id.
+func isValidChatTarget(s string) bool {
+	if strings.HasPrefix(s, "@") {
+		return len(s) > 1
+	}
+	_, err := strconv.ParseInt(s, 10, 64)
+	return err == nil
+}
 
 // Handler is the Telegram agent's per-request processor. Its Handle method
 // satisfies a2a.Exec and is wired into a2a.NewAgent from cmd/main.go. The
@@ -136,19 +167,13 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 	if err != nil {
 		return nil, err
 	}
-	if channelIDStr == "" {
-		channelIDStr = resolvedID
+
+	target, err := resolveChatTarget(channelIDStr, resolvedID)
+	if err != nil {
+		return nil, err
 	}
 
-	chatID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
-	if parseErr != nil {
-		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
-		if err != nil {
-			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid channel_id %q: %w", channelIDStr, parseErr))
-		}
-	}
-
-	if err := sender.SendMessage(chatID, text); err != nil {
+	if err := sender.SendMessage(target, text); err != nil {
 		return nil, fmt.Errorf("telegram: send message: %w", classifyTelegramError(err))
 	}
 
@@ -164,19 +189,13 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 	if err != nil {
 		return nil, err
 	}
-	if channelIDStr == "" {
-		channelIDStr = resolvedID
+
+	target, err := resolveChatTarget(channelIDStr, resolvedID)
+	if err != nil {
+		return nil, err
 	}
 
-	chatID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
-	if parseErr != nil {
-		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
-		if err != nil {
-			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid channel_id %q: %w", channelIDStr, parseErr))
-		}
-	}
-
-	if err := sender.SendPhoto(chatID, photoURL, caption); err != nil {
+	if err := sender.SendPhoto(target, photoURL, caption); err != nil {
 		return nil, fmt.Errorf("telegram: send photo: %w", classifyTelegramError(err))
 	}
 
@@ -191,19 +210,13 @@ func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a
 	if err != nil {
 		return nil, err
 	}
-	if chatIDStr == "" {
-		chatIDStr = resolvedID
+
+	target, err := resolveChatTarget(chatIDStr, resolvedID)
+	if err != nil {
+		return nil, err
 	}
 
-	chatID, parseErr := strconv.ParseInt(chatIDStr, 10, 64)
-	if parseErr != nil {
-		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
-		if err != nil {
-			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid chat_id %q: %w", chatIDStr, parseErr))
-		}
-	}
-
-	if err := sender.SendMessage(chatID, text); err != nil {
+	if err := sender.SendMessage(target, text); err != nil {
 		return nil, fmt.Errorf("telegram: send notification: %w", classifyTelegramError(err))
 	}
 
@@ -257,18 +270,12 @@ func (h *Handler) replyToComment(ctx context.Context, req a2a.ToolRequest) (*a2a
 		return nil, err
 	}
 
-	if chatIDStr == "" {
-		chatIDStr = resolvedID
-	}
-	chatID, parseErr := strconv.ParseInt(chatIDStr, 10, 64)
-	if parseErr != nil {
-		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
-		if err != nil {
-			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid chat_id %q: %w", chatIDStr, parseErr))
-		}
+	target, err := resolveChatTarget(chatIDStr, resolvedID)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := sender.SendReply(chatID, messageID, text); err != nil {
+	if err := sender.SendReply(target, messageID, text); err != nil {
 		return nil, fmt.Errorf("telegram: reply to comment: %w", classifyTelegramError(err))
 	}
 
