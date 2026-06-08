@@ -280,6 +280,33 @@ func TestAuditLogRepository_ListByBusinessWithActors_EnrichesEmail(t *testing.T)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// The JOIN coalesces users.name into actor_display_name so the journal can
+// show the editable display name (falling back to email in the handler when
+// it is empty). Asserts both the SELECT shape and the scan wiring.
+func TestAuditLogRepository_ListByBusinessWithActors_EnrichesDisplayName(t *testing.T) {
+	mock, repo := newAuditLogRepoConcreteMock(t)
+	biz, actor := uuid.New(), uuid.New()
+
+	mock.ExpectQuery(`COALESCE\(u\.name, ''\) AS actor_display_name`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "business_id", "user_id", "action", "resource", "details",
+			"user_email_at_event", "created_at",
+			"actor_email", "actor_display_name",
+		}).AddRow(
+			uuid.New(), &biz, &actor, "rbac.role_granted", "role",
+			json.RawMessage(`{}`), "", time.Now().UTC(),
+			"alice@test.local", "Alice Liddell",
+		))
+
+	rows, err := repo.ListByBusinessWithActors(context.Background(), biz, domain.AuditLogFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "alice@test.local", rows[0].ActorEmail)
+	require.Equal(t, "Alice Liddell", rows[0].ActorDisplayName)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // LEFT JOIN with NULL user_id (failed-login row): COALESCE returns ”; the
 // scan target stays a plain string, no nil deref. ActorID on the domain
 // struct remains nil — frontend renders "Неизвестен ({email})" by reading

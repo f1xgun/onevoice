@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import type { AuditLogDTO } from '../_lib/types';
 import { actionToI18nKey } from '../_lib/actionLabels';
+import { isKnownResource } from '../_lib/resourceLabels';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
@@ -59,6 +60,7 @@ export function AuditTable({
   const t = useTranslations('audit.table');
   const tActions = useTranslations();
   const tFilters = useTranslations('audit.filters');
+  const tResources = useTranslations('audit.resources');
 
   if (isLoading && items.length === 0) {
     return (
@@ -103,7 +105,9 @@ export function AuditTable({
                 </td>
                 <td className="py-2 pr-4">{actorLabel(it, tFilters)}</td>
                 <td className="py-2 pr-4">{tActions(actionToI18nKey(it.action))}</td>
-                <td className="py-2 pr-4">{it.resource}</td>
+                <td className="py-2 pr-4">
+                  {isKnownResource(it.resource) ? tResources(it.resource) : it.resource}
+                </td>
               </tr>
             ))}
           </tbody>

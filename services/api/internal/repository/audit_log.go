@@ -141,7 +141,7 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 type AuditLogRow struct {
 	domain.AuditLog
 	ActorEmail       string // "" when user_id IS NULL or LEFT JOIN found no users row.
-	ActorDisplayName string // "" today (users.display_name does not exist yet).
+	ActorDisplayName string // "" when user_id IS NULL, no users row, or the user has no name set.
 }
 
 // ListByBusinessWithActors mirrors ListByBusiness but LEFT JOINs users on
@@ -164,7 +164,7 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 			"COALESCE(al.user_email_at_event, '') AS user_email_at_event",
 			"al.created_at",
 			"COALESCE(u.email, '') AS actor_email",
-			"'' AS actor_display_name",
+			"COALESCE(u.name, '') AS actor_display_name",
 		).
 		From("audit_logs al").
 		LeftJoin("users u ON u.id = al.user_id").
