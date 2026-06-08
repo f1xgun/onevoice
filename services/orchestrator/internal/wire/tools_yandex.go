@@ -33,17 +33,20 @@ func yandexTools() []toolregistry.ToolSpec {
 			DisplayName:     "Обновить часы работы",
 			DisplayNameKey:  "tools.yandex_business.update_hours.name",
 			UserDescription: "Обновляет часы работы организации в Яндекс.Бизнесе.",
-			DescriptionEn:   "Updates business hours in Yandex Business. Accepts a free-form schedule description.",
+			DescriptionEn:   "Updates business hours in Yandex Business.",
 			ParameterDescriptionsEn: map[string]string{
-				"hours": "Business hours in JSON format",
+				"hours": `JSON object mapping each weekday (monday..sunday) to a "HH:MM-HH:MM" range or "closed". Example: {"monday":"09:00-22:00","saturday":"10:00-18:00","sunday":"closed"}`,
 			},
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUpdateHours,
-				Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
+				Description: "Обновляет часы работы в Яндекс Бизнес.",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"hours": map[string]interface{}{"type": "string", "description": "Часы работы в формате JSON"},
+						"hours": map[string]interface{}{
+							"type":        "string",
+							"description": `JSON-объект: ключ — день недели (monday..sunday), значение — диапазон "HH:MM-HH:MM" или "closed". Пример: {"monday":"09:00-22:00","saturday":"10:00-18:00","sunday":"closed"}`,
+						},
 					},
 					"required": []string{"hours"},
 				},
