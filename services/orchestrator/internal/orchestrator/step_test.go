@@ -273,6 +273,58 @@ func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 	assert.Empty(t, findEvents(evts, orchestrator.EventError))
 }
 
+// TestStepRun_AliasedToolName_ResolvesToCanonical is the regression for the
+// demo failure: a free model emitted vk__send_post (a blend of Telegram's
+// telegram__send_channel_post) instead of the registered vk__publish_post.
+// An unknown name fail-closes to forbidden (policy_forbidden, no approval card).
+// With the alias registered, stepRun must canonicalize the name before floor
+// bucketing so it surfaces as a normal manual approval carrying the canonical
+// name (which is what gets dispatched to the VK agent).
+func TestStepRun_AliasedToolName_ResolvesToCanonical(t *testing.T) {
+	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{{
+				ID:       "call_vk",
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: "vk__send_post", Arguments: string(toolCallArgs)},
+			}},
+		},
+	}}
+
+	reg := newRegistryWithFloor("vk__publish_post", domain.ToolFloorManual, nil)
+	reg.RegisterAlias("vk__send_post", "vk__publish_post")
+	repo := newMockPendingRepo()
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "post to vk"}},
+		ConversationID:  "conv-1",
+		BusinessID:      "biz-1",
+		MessageID:       "msg-1",
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	assert.Empty(t, findEvents(evts, orchestrator.EventToolRejected),
+		"aliased tool must NOT fail-close to forbidden")
+
+	pauseEvts := findEvents(evts, orchestrator.EventToolApprovalRequired)
+	require.Len(t, pauseEvts, 1, "aliased manual tool must emit one approval card")
+	require.Len(t, pauseEvts[0].Calls, 1)
+	assert.Equal(t, "vk__publish_post", pauseEvts[0].Calls[0].ToolName,
+		"approval card + dispatch must carry the canonical name, not the alias")
+	assert.Equal(t, domain.ToolFloorManual, pauseEvts[0].Calls[0].Floor)
+
+	require.Len(t, repo.insertedBatches, 1)
+	require.Len(t, repo.insertedBatches[0].Calls, 1)
+	assert.Equal(t, "vk__publish_post", repo.insertedBatches[0].Calls[0].ToolName,
+		"persisted batch must store the canonical name so resume dispatches it")
+}
+
 func TestStepRun_ManualFloor_PersistFails_EmitsErrorAndDoesNotEmitPauseEvent(t *testing.T) {
 	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
 	stub := &stubLLM{responses: []*llm.ChatResponse{

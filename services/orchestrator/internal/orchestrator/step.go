@@ -162,6 +162,15 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeError, "", err
 		}
 
+		// Canonicalize tool names before any name-based logic (floor bucketing,
+		// batch snapshot, dispatch, display): weaker models emit plausible
+		// variants (e.g. vk__send_post) that would otherwise fail-close to
+		// forbidden. Rewriting here means history, the pause batch, and the NATS
+		// dispatch all carry the registered name.
+		for i := range resp.ToolCalls {
+			resp.ToolCalls[i].Function.Name = o.tools.Canonical(resp.ToolCalls[i].Function.Name)
+		}
+
 		state.AccumulatedInputTokens += resp.Usage.InputTokens
 		state.AccumulatedOutputTokens += resp.Usage.OutputTokens
 		if o.options.ConversationInputCap > 0 && state.AccumulatedInputTokens >= o.options.ConversationInputCap {

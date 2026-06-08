@@ -7,6 +7,7 @@ import (
 	natslib "github.com/nats-io/nats.go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -82,4 +83,14 @@ func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
 			reg.Register(spec, exec)
 		}
 	}
+
+	registerToolAliases(reg)
+}
+
+// registerToolAliases maps known LLM-emitted name variants onto their canonical
+// registered tools. Weaker models blend tool names across platforms — e.g.
+// vk__send_post from Telegram's telegram__send_channel_post — which would
+// otherwise fail-close to forbidden. See toolregistry.RegisterAlias.
+func registerToolAliases(reg *toolregistry.Registry) {
+	reg.RegisterAlias("vk__send_post", tools.VKPublishPost)
 }

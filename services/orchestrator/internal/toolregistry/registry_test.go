@@ -101,6 +101,18 @@ func TestRegistry_Execute_UnknownTool(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown tool")
 }
 
+func TestRegistry_Canonical_ResolvesAlias(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	reg.RegisterAlias("vk__send_post", tools.VKPublishPost)
+
+	assert.Equal(t, tools.VKPublishPost, reg.Canonical("vk__send_post"),
+		"a registered alias resolves to its canonical name")
+	assert.Equal(t, tools.VKPublishPost, reg.Canonical(tools.VKPublishPost),
+		"the canonical name passes through unchanged")
+	assert.Equal(t, "telegram__send_channel_post", reg.Canonical("telegram__send_channel_post"),
+		"an unaliased name passes through unchanged")
+}
+
 // toolNames extracts the sorted set of tool names from a slice of definitions.
 func toolNames(defs []llm.ToolDefinition) []string {
 	out := make([]string, len(defs))

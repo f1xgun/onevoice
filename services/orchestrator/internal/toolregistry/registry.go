@@ -50,12 +50,34 @@ type entry struct {
 // Registry holds tool definitions and their executors.
 // See docs/orchestrator/toolregistry.md.
 type Registry struct {
-	tools map[string]entry
+	tools   map[string]entry
+	aliases map[string]string // alternate LLM-emitted name -> canonical tool name
 }
 
 // NewRegistry creates a new empty tool registry.
 func NewRegistry() *Registry {
-	return &Registry{tools: make(map[string]entry)}
+	return &Registry{tools: make(map[string]entry), aliases: make(map[string]string)}
+}
+
+// RegisterAlias maps an alternate tool name to a registered canonical name.
+// Weaker LLMs sometimes emit a plausible variant (e.g. vk__send_post, blended
+// from telegram__send_channel_post) instead of the registered vk__publish_post.
+// Canonical resolves such variants so the call floors and dispatches normally
+// instead of fail-closing to forbidden (Floor returns ToolFloorForbidden for
+// unknown names). The alias is NOT advertised to the LLM — Available* only walk
+// registered tools — so it adds tolerance without widening the tool surface.
+// See docs/orchestrator/toolregistry.md.
+func (r *Registry) RegisterAlias(alias, canonical string) {
+	r.aliases[alias] = canonical
+}
+
+// Canonical resolves a possibly-aliased tool name to its registered canonical
+// name, or returns name unchanged when no alias is registered. See RegisterAlias.
+func (r *Registry) Canonical(name string) string {
+	if canonical, ok := r.aliases[name]; ok {
+		return canonical
+	}
+	return name
 }
 
 // ToolSpec is the declarative description of a tool at registration time.
