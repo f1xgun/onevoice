@@ -109,9 +109,8 @@ func (t *Turn) Run(
 	case gateReemitApproval:
 		t.reemitApprovalEvent(w, batch)
 		return OutcomeReemittedApproval, nil
-	case gateInlineError:
-		t.sseInlineError(w, "turn_already_in_progress")
-		return OutcomeInlineError, nil
+	case gateHealStranded:
+		t.finalizeStranded(ctx, activeMsg)
 	case gateFresh:
 	}
 

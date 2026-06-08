@@ -143,7 +143,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		chatProxyHandler.SetSSECounter(sseCounter, cfg.LLMTier)
 	}
 
-	hitlHandler, err := handler.NewHITLHandler(svcs.HITL, svcs.Business, repos.Conversation)
+	hitlHandler, err := handler.NewHITLHandler(svcs.HITL, svcs.Business, repos.Conversation, chatProxyHandler.Turn())
 	if err != nil {
 		return nil, fmt.Errorf("wire: create hitl handler: %w", err)
 	}

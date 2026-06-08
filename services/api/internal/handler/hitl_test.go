@@ -24,7 +24,41 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
 )
+
+// -- chatturn.Turn stubs for HITLHandler.Resume delegation -------------------
+// Resume now delegates to a chatResumer (satisfied by *chatturn.Turn). The
+// Turn's enrich-path deps (business/integration/project readers) are never
+// touched on the resume path, so they embed the interface and nil-panic if
+// called. Messages is real enough to satisfy FindByConversationActive + Update.
+
+type stubBusinessReader struct{ chatturn.BusinessReader }
+type stubIntegrationLister struct{ chatturn.IntegrationLister }
+type stubProjectReader struct{ chatturn.ProjectReader }
+
+type hitlMsgRepoStub struct{ domain.MessageRepository }
+
+func (hitlMsgRepoStub) FindByConversationActive(_ context.Context, convID string) (*domain.Message, error) {
+	return &domain.Message{
+		ID:             "active-" + convID,
+		ConversationID: convID,
+		Role:           domain.MessageRoleAssistant,
+		Status:         domain.MessageStatusPendingApproval,
+		ToolCalls: []domain.ToolCall{
+			{ID: "tc_a", Name: tools.TelegramSendChannelPost, Status: domain.ToolCallStatusPending},
+		},
+	}, nil
+}
+
+func (hitlMsgRepoStub) Update(_ context.Context, _ *domain.Message) error { return nil }
+
+// noopResumer is for HITL tests that never hit the resume path (GetTools).
+type noopResumer struct{}
+
+func (noopResumer) ResumeApproved(_ context.Context, _ http.ResponseWriter, _, _ string, _ []byte) (chatturn.TurnOutcome, error) {
+	return chatturn.OutcomeRejoinedResume, nil
+}
 
 // -- fakes -------------------------------------------------------------------
 
@@ -238,7 +272,16 @@ func buildHITLHandler(t *testing.T, pr *fakeHITLPendingRepo, biz *domain.Busines
 		seededToolsCache(),
 		orchestratorclient.New(orchURL, http.DefaultClient),
 	)
-	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{})
+	turn := chatturn.New(chatturn.Deps{
+		Business:      stubBusinessReader{},
+		Integrations:  stubIntegrationLister{},
+		Projects:      stubProjectReader{},
+		Conversations: &hitlConvRepo{},
+		Messages:      hitlMsgRepoStub{},
+		Pending:       pr,
+		Orch:          orchestratorclient.New(orchURL, http.DefaultClient),
+	})
+	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{}, turn)
 	if err != nil {
 		t.Fatalf("NewHITLHandler: %v", err)
 	}
@@ -772,7 +815,7 @@ func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
 		cache,
 		orchestratorclient.New(orch.URL, orch.Client()),
 	)
-	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{})
+	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{}, noopResumer{})
 	if err != nil {
 		t.Fatal(err)
 	}
