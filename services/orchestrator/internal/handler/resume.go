@@ -32,15 +32,22 @@ type Resumer interface {
 // The response is text/event-stream — same wire shape as POST /chat/{id}
 // (text / tool_call / tool_result / tool_rejected / done / error events).
 type ResumeHandler struct {
-	resumer Resumer
+	resumer      Resumer
+	defaultModel string
 }
 
 // NewResumeHandler constructs a ResumeHandler. resumer must be non-nil.
-func NewResumeHandler(resumer Resumer) *ResumeHandler {
+//
+// defaultModel is applied when the resume body omits a model, mirroring
+// ChatHandler. The chat_proxy implicit-resume path sends http.NoBody, so
+// without this fallback post-approval iterations would resume with model ""
+// and the LLM router returns ErrNoProvider — aborting the agent loop right
+// after the first approved tool runs.
+func NewResumeHandler(resumer Resumer, defaultModel string) *ResumeHandler {
 	if resumer == nil {
 		panic("NewResumeHandler: resumer cannot be nil")
 	}
-	return &ResumeHandler{resumer: resumer}
+	return &ResumeHandler{resumer: resumer, defaultModel: defaultModel}
 }
 
 // resumeRequest is the JSON shape chat_proxy sends in the request body.
@@ -92,6 +99,10 @@ func (h *ResumeHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
 		ctx = logger.WithCorrelationID(ctx, corrID)
+	}
+
+	if req.Model == "" {
+		req.Model = h.defaultModel
 	}
 
 	resumeReq := orchestrator.ResumeRequest{
