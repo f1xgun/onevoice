@@ -183,13 +183,29 @@ func (t *Turn) persistAfterStream(
 	if state.pauseEvent != nil {
 		saveCtx, cancel := t.persistContext(parentCtx)
 		defer cancel()
-		pendingToolCalls := make([]domain.ToolCall, 0, len(state.toolCalls))
+		// Approval-required calls are listed in the pause event. Depending on
+		// the model/provider they may ALSO have been streamed as tool_call
+		// frames (→ state.toolCalls) or not at all. Persist each call once:
+		// the batch calls in their pending form, plus any auto-executed calls
+		// that are NOT part of the batch. Building only from state.toolCalls
+		// (the old behavior) dropped the calls entirely when no tool_call
+		// frame preceded the pause, so a reload showed an empty bubble.
+		pendingIDs := make(map[string]struct{}, len(state.pauseEvent.Calls))
+		for _, call := range state.pauseEvent.Calls {
+			pendingIDs[call.CallID] = struct{}{}
+		}
+		toolCalls := make([]domain.ToolCall, 0, len(state.toolCalls)+len(state.pauseEvent.Calls))
 		for _, tc := range state.toolCalls {
-			pendingToolCalls = append(pendingToolCalls, domain.ToolCall{
-				ID:         tc.ID,
-				Name:       tc.Name,
-				Arguments:  tc.Arguments,
-				ApprovalID: fmt.Sprintf("%s-%s", state.pauseEvent.BatchID, tc.ID),
+			if _, batched := pendingIDs[tc.ID]; !batched {
+				toolCalls = append(toolCalls, tc)
+			}
+		}
+		for _, call := range state.pauseEvent.Calls {
+			toolCalls = append(toolCalls, domain.ToolCall{
+				ID:         call.CallID,
+				Name:       call.ToolName,
+				Arguments:  call.Args,
+				ApprovalID: fmt.Sprintf("%s-%s", state.pauseEvent.BatchID, call.CallID),
 				Status:     domain.ToolCallStatusPending,
 			})
 		}
@@ -198,7 +214,8 @@ func (t *Turn) persistAfterStream(
 			ConversationID: req.ConversationID,
 			Role:           domain.MessageRoleAssistant,
 			Content:        state.assistantText.String(),
-			ToolCalls:      pendingToolCalls,
+			ToolCalls:      toolCalls,
+			ToolResults:    state.toolResults,
 			Status:         domain.MessageStatusPendingApproval,
 		}
 		if err := t.persistAssistantPause(saveCtx, assistantMsg); err != nil {
