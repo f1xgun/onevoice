@@ -47,25 +47,25 @@ func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, ext
 // fakeSender records the last message sent.
 type fakeSender struct {
 	sentMessage  string
-	sentChatID   int64
+	sentChat     string
 	sentPhotoURL string
 	sentCaption  string
 }
 
-func (f *fakeSender) SendMessage(chatID int64, text string) error {
+func (f *fakeSender) SendMessage(chat, text string) error {
 	f.sentMessage = text
-	f.sentChatID = chatID
+	f.sentChat = chat
 	return nil
 }
 
-func (f *fakeSender) SendPhoto(chatID int64, photoURL, caption string) error {
-	f.sentChatID = chatID
+func (f *fakeSender) SendPhoto(chat, photoURL, caption string) error {
+	f.sentChat = chat
 	f.sentPhotoURL = photoURL
 	f.sentCaption = caption
 	return nil
 }
 
-func (f *fakeSender) SendReply(_ int64, _ int, _ string) error { return nil }
+func (f *fakeSender) SendReply(_ string, _ int, _ string) error { return nil }
 func (f *fakeSender) GetReviews(_ int) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{}, nil
 }
@@ -96,11 +96,54 @@ func TestHandler_SendChannelPost_FetchesTokenPerRequest(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.True(t, resp.Success)
 	assert.Equal(t, "Hello, channel!", sender.sentMessage)
-	assert.Equal(t, int64(-1001234567890), sender.sentChatID)
+	assert.Equal(t, "-1001234567890", sender.sentChat)
 
 	assert.Equal(t, "biz-42", fetcher.lastBizID)
 	assert.Equal(t, "telegram", fetcher.lastPlatform)
 	assert.Equal(t, "-1001234567890", fetcher.lastExtID)
+}
+
+// TestHandler_SendChannelPost_PublicUsername is the regression for the demo
+// failure: a public channel is connected as @channelusername, the LLM passes it
+// as channel_id, and the agent rejected it with strconv.ParseInt
+// (invalid channel_id "@onevoice_test"). Telegram accepts @username as chat_id;
+// the agent must forward it untouched.
+func TestHandler_SendChannelPost_PublicUsername(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "@onevoice_test"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramSendChannelPost,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "@onevoice_test"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, "@onevoice_test", sender.sentChat)
+}
+
+// TestHandler_SendChannelPost_EmptyChannelID_FallsBackToResolved proves the
+// resolution fallback still holds for the @username form: when the LLM omits
+// channel_id, the integration's resolved external_id (here a public @username)
+// is used as the chat target.
+func TestHandler_SendChannelPost_EmptyChannelID_FallsBackToResolved(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "@onevoice_test"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramSendChannelPost,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "channel_id": ""},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, "@onevoice_test", sender.sentChat)
 }
 
 func TestHandler_SendNotification_FetchesTokenPerRequest(t *testing.T) {
@@ -122,7 +165,7 @@ func TestHandler_SendNotification_FetchesTokenPerRequest(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.True(t, resp.Success)
 	assert.Equal(t, "You have a new review!", sender.sentMessage)
-	assert.Equal(t, int64(123456789), sender.sentChatID)
+	assert.Equal(t, "123456789", sender.sentChat)
 
 	assert.Equal(t, "biz-99", fetcher.lastBizID)
 	assert.Equal(t, "telegram", fetcher.lastPlatform)
@@ -166,9 +209,9 @@ type errSender struct {
 	err error
 }
 
-func (e *errSender) SendMessage(_ int64, _ string) error      { return e.err }
-func (e *errSender) SendPhoto(_ int64, _, _ string) error     { return e.err }
-func (e *errSender) SendReply(_ int64, _ int, _ string) error { return e.err }
+func (e *errSender) SendMessage(_, _ string) error             { return e.err }
+func (e *errSender) SendPhoto(_, _, _ string) error            { return e.err }
+func (e *errSender) SendReply(_ string, _ int, _ string) error { return e.err }
 func (e *errSender) GetReviews(_ int) ([]map[string]interface{}, error) {
 	return nil, e.err
 }
@@ -298,9 +341,9 @@ type countingSender struct {
 	sendCalls int64
 }
 
-func (c *countingSender) SendMessage(chatID int64, text string) error {
+func (c *countingSender) SendMessage(chat, text string) error {
 	atomic.AddInt64(&c.sendCalls, 1)
-	return c.fakeSender.SendMessage(chatID, text)
+	return c.fakeSender.SendMessage(chat, text)
 }
 
 func newDedupeTestHandler(t *testing.T, sender agent.Sender) (*agent.Handler, *miniredis.Miniredis, agent.TokenFetcher) {

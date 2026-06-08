@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,16 +112,27 @@ func sanitizeTokenError(err error, token string) error {
 	return errors.New(redacted)
 }
 
-// SendMessage sends a text message to the given chat ID.
-func (b *Bot) SendMessage(chatID int64, text string) error {
-	msg := tgbotapi.NewMessage(chatID, text)
+// SendMessage sends a text message to the given chat. chat is a numeric ID
+// (private chats/channels) or a public @channelusername — Telegram accepts
+// either as chat_id.
+func (b *Bot) SendMessage(chat, text string) error {
+	msg := newTextMessage(chat, text)
 	_, err := b.api.Send(msg)
 	return sanitizeTokenError(err, b.token)
 }
 
+// newTextMessage builds a MessageConfig addressed to a numeric chat ID or a
+// public @channelusername, matching Telegram's dual chat_id form.
+func newTextMessage(chat, text string) tgbotapi.MessageConfig {
+	if id, err := strconv.ParseInt(chat, 10, 64); err == nil {
+		return tgbotapi.NewMessage(id, text)
+	}
+	return tgbotapi.NewMessageToChannel(chat, text)
+}
+
 // SendPhoto downloads the image from photoURL and sends it to Telegram as file
 // bytes, avoiding Telegram-server-side URL fetching failures.
-func (b *Bot) SendPhoto(chatID int64, photoURL, caption string) error {
+func (b *Bot) SendPhoto(chat, photoURL, caption string) error {
 	resp, err := photoHTTPClient.Get(photoURL)
 	if err != nil {
 		return fmt.Errorf("download photo: %w", err)
@@ -140,15 +152,22 @@ func (b *Bot) SendPhoto(chatID int64, photoURL, caption string) error {
 		name = "photo.jpg"
 	}
 
-	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileBytes{Name: name, Bytes: data})
+	file := tgbotapi.FileBytes{Name: name, Bytes: data}
+	var photo tgbotapi.PhotoConfig
+	if id, perr := strconv.ParseInt(chat, 10, 64); perr == nil {
+		photo = tgbotapi.NewPhoto(id, file)
+	} else {
+		photo = tgbotapi.NewPhotoToChannel(chat, file)
+	}
 	photo.Caption = caption
 	_, err = b.api.Send(photo)
 	return sanitizeTokenError(err, b.token)
 }
 
 // SendReply sends a text message as a reply to a specific message in a chat.
-func (b *Bot) SendReply(chatID int64, messageID int, text string) error {
-	msg := tgbotapi.NewMessage(chatID, text)
+// chat is a numeric ID or a public @channelusername.
+func (b *Bot) SendReply(chat string, messageID int, text string) error {
+	msg := newTextMessage(chat, text)
 	msg.ReplyToMessageID = messageID
 	_, err := b.api.Send(msg)
 	return sanitizeTokenError(err, b.token)

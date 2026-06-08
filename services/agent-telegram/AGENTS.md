@@ -24,7 +24,7 @@ All tool names are prefixed with `telegram__`.
 
 ## Channel ID Resolution Pattern
 
-`getSender` returns `(Sender, resolvedExternalID, error)`. Handlers: if the LLM-supplied `channel_id` fails `strconv.ParseInt`, fall back to `resolvedExternalID` from the integration. This covers empty, business-name, and hallucinated channel IDs.
+`getSender` returns `(Sender, resolvedExternalID, error)`. Handlers resolve the chat target via `resolveChatTarget(supplied, resolved)`: the LLM-supplied `channel_id` wins when it is a valid Telegram chat_id — a numeric ID **or** a public `@channelusername` — otherwise it falls back to `resolvedExternalID` from the integration (the connect flow stores it in the same numeric-or-`@username` form: numeric for private channels, `@username` for public). This covers empty, business-name, and hallucinated channel IDs. `bot.go` picks `NewMessage`/`NewPhoto` for numeric IDs and `NewMessageToChannel`/`NewPhotoToChannel` for `@username`. Do **not** force `strconv.ParseInt` on the target — that rejects public-channel usernames.
 
 ## A2A Pattern
 

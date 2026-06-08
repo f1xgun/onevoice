@@ -70,12 +70,37 @@ func TestSendMessage_Success(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendMessage(-1001234567890, "Hello!")
+	err := bot.SendMessage("-1001234567890", "Hello!")
 
 	require.NoError(t, err)
 	assert.Contains(t, capturedPath, "/sendMessage")
 	assert.Equal(t, "-1001234567890", capturedChatID)
 	assert.Equal(t, "Hello!", capturedText)
+}
+
+func TestSendMessage_PublicChannelUsername(t *testing.T) {
+	var capturedChatID string
+	var capturedText string
+
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		capturedChatID = r.FormValue("chat_id")
+		capturedText = r.FormValue("text")
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":     true,
+			"result": map[string]interface{}{"message_id": 7},
+		})
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+	err := bot.SendMessage("@onevoice_test", "Hello, public channel!")
+
+	require.NoError(t, err)
+	assert.Equal(t, "@onevoice_test", capturedChatID, "public @username must be sent verbatim as chat_id")
+	assert.Equal(t, "Hello, public channel!", capturedText)
 }
 
 func TestSendMessage_APIError(t *testing.T) {
@@ -90,7 +115,7 @@ func TestSendMessage_APIError(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendMessage(999999, "Hello!")
+	err := bot.SendMessage("999999", "Hello!")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "chat not found")
@@ -127,7 +152,7 @@ func TestSendPhoto_Success(t *testing.T) {
 	photoHTTPClient = photoSrv.Client()
 	t.Cleanup(func() { photoHTTPClient = origClient })
 
-	err := bot.SendPhoto(-1001234567890, photoSrv.URL+"/image.jpg", "Nice pic!")
+	err := bot.SendPhoto("-1001234567890", photoSrv.URL+"/image.jpg", "Nice pic!")
 
 	require.NoError(t, err)
 	assert.Contains(t, capturedPath, "/sendPhoto")
@@ -151,7 +176,7 @@ func TestSendPhoto_DownloadFails(t *testing.T) {
 	photoHTTPClient = photoSrv.Client()
 	t.Cleanup(func() { photoHTTPClient = origClient })
 
-	err := bot.SendPhoto(-1001234567890, photoSrv.URL+"/missing.jpg", "caption")
+	err := bot.SendPhoto("-1001234567890", photoSrv.URL+"/missing.jpg", "caption")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "download photo")
@@ -164,7 +189,7 @@ func TestSendPhoto_InvalidURL(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendPhoto(-1001234567890, "://invalid-url", "caption")
+	err := bot.SendPhoto("-1001234567890", "://invalid-url", "caption")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "download photo")
@@ -182,7 +207,7 @@ func TestSendMessage_EmptyText(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendMessage(-1001234567890, "")
+	err := bot.SendMessage("-1001234567890", "")
 
 	require.Error(t, err)
 }
