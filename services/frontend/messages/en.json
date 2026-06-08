@@ -366,6 +366,9 @@
       "message": "This action expired — send a new message to continue.",
       "dismissLabel": "Dismiss message"
     },
+    "processingBanner": {
+      "message": "Action approved — running…"
+    },
     "projectPicker": {
       "currentLabel": "Project: {name}",
       "menuLabel": "Where should we save this chat?"

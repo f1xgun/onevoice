@@ -61,7 +61,7 @@ export interface PendingApprovalCall {
 export interface PendingApproval {
   batchId: string;
   conversationId?: string; // present on hydration path; absent on SSE arrival.
-  status: 'pending' | 'expired';
+  status: 'pending' | 'resolving' | 'expired';
   calls: PendingApprovalCall[];
   expiresAt?: string; // ISO — present on hydration; synthesized on SSE arrival.
   createdAt: string; // ISO
