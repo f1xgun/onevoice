@@ -35,6 +35,7 @@ type UserService interface {
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
+	UpdateName(ctx context.Context, userID uuid.UUID, name string) error
 }
 
 // ConsentDiffer powers the /auth/me requiresReconsent field. nil-safe.
@@ -186,6 +187,7 @@ func userToOpenAPI(u *domain.User) openapi.User {
 	return openapi.User{
 		Id:              u.ID,
 		Email:           openapi_types.Email(u.Email),
+		Name:            u.Name,
 		PreferredLocale: openapi.UserPreferredLocale(u.PreferredLocale),
 		CreatedAt:       u.CreatedAt,
 		UpdatedAt:       u.UpdatedAt,
@@ -232,6 +234,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	regCtx := service.RegistrationContext{
 		IP:        middleware.ClientIP(r),
 		UserAgent: r.UserAgent(),
+		Name:      req.Name,
 		Policies: []service.PolicyAccepted{
 			{Slug: string(legalconfig.PolicyTOS), Version: strDeref(req.Consents.Tos)},
 			{Slug: string(legalconfig.PolicyPrivacy), Version: strDeref(req.Consents.Privacy)},
@@ -458,6 +461,7 @@ func meResponseFromDomain(
 	resp := MeResponse{
 		Id:                        u.ID,
 		Email:                     openapi_types.Email(u.Email),
+		Name:                      u.Name,
 		PreferredLocale:           openapi.MeResponsePreferredLocale(u.PreferredLocale),
 		EmailVerified:             u.EmailVerified,
 		CreatedAt:                 u.CreatedAt,
@@ -609,6 +613,32 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 		}
 		slog.Error("failed to update preferred locale", "error", err)
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeUpdateLocaleInternal)
+		return
+	}
+
+	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// UpdateProfile handles PATCH /api/v1/auth/profile. Currently persists the
+// display name only; the request schema bounds it to 2..100 chars.
+func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	req, ok := decodeAndValidate[openapi.UpdateProfileRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+
+	if err := h.userService.UpdateName(r.Context(), userID, req.Name); err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			writeJSONError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		slog.Error("failed to update profile name", "error", err)
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeUpdateProfileInternal)
 		return
 	}
 

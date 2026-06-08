@@ -8,9 +8,13 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID `json:"id" db:"id"`
-	Email        string    `json:"email" db:"email"`
-	PasswordHash string    `json:"-" db:"password_hash"`
+	ID    uuid.UUID `json:"id" db:"id"`
+	Email string    `json:"email" db:"email"`
+	// Name is the user's display name, captured at registration and editable
+	// via PATCH /auth/profile. NOT NULL DEFAULT '' in the schema, so pre-feature
+	// rows read back as "" rather than NULL.
+	Name         string `json:"name" db:"name"`
+	PasswordHash string `json:"-" db:"password_hash"`
 	// PreferredLocale is the user's chosen UI language ('ru' | 'en').
 	// Persisted in users.preferred_locale. DB default 'ru'; CHECK constraint
 	// enforces the two-value enum. The frontend reads this on /auth/me to

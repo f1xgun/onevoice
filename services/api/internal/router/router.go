@@ -155,6 +155,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
 			r.Patch("/auth/locale", handlers.Auth.UpdatePreferredLocale)
+			r.Patch("/auth/profile", handlers.Auth.UpdateProfile)
 
 			if handlers.Permissions != nil {
 				r.Get("/permissions", handlers.Permissions.List)

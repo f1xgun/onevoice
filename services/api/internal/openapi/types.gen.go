@@ -846,6 +846,7 @@ type MeResponse struct {
 	EmailVerificationDeadline *time.Time                `json:"emailVerificationDeadline,omitempty"`
 	EmailVerified             bool                      `json:"emailVerified" validate:"required"`
 	Id                        openapi_types.UUID        `json:"id" validate:"required,uuid"`
+	Name                      string                    `json:"name" validate:"required"`
 	PreferredLocale           MeResponsePreferredLocale `json:"preferred_locale" validate:"required,oneof=ru en"`
 	RequiresReconsent         *RequiresReconsentInfo    `json:"requiresReconsent,omitempty"`
 	UpdatedAt                 time.Time                 `json:"updatedAt" validate:"required"`
@@ -1136,6 +1137,7 @@ type RegisterRequest struct {
 	// as a stale consent, not a schema violation.
 	Consents RegisterConsents    `json:"consents"`
 	Email    openapi_types.Email `json:"email" validate:"required,email"`
+	Name     string              `json:"name" validate:"required,min=2,max=100"`
 	Password string              `json:"password" validate:"required,min=8"`
 }
 
@@ -1501,6 +1503,11 @@ type UpdatePreferredLocaleRequest struct {
 // UpdatePreferredLocaleRequestLocale defines model for UpdatePreferredLocaleRequest.Locale.
 type UpdatePreferredLocaleRequestLocale string
 
+// UpdateProfileRequest defines model for UpdateProfileRequest.
+type UpdateProfileRequest struct {
+	Name string `json:"name" validate:"required,min=2,max=100"`
+}
+
 // UpdateRoleRequest defines model for UpdateRoleRequest.
 type UpdateRoleRequest = CreateRoleRequest
 
@@ -1553,6 +1560,7 @@ type User struct {
 	CreatedAt       time.Time           `json:"createdAt" validate:"required"`
 	Email           openapi_types.Email `json:"email" validate:"required,email"`
 	Id              openapi_types.UUID  `json:"id" validate:"required,uuid"`
+	Name            string              `json:"name" validate:"required"`
 	PreferredLocale UserPreferredLocale `json:"preferred_locale" validate:"required,oneof=ru en"`
 	UpdatedAt       time.Time           `json:"updatedAt" validate:"required"`
 }

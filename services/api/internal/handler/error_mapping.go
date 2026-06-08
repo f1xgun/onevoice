@@ -98,6 +98,7 @@ const (
 	ErrCodeGetUserInternal        = "get_user_internal"        // Me
 	ErrCodeChangePasswordInternal = "change_password_internal" // ChangePassword
 	ErrCodeUpdateLocaleInternal   = "update_locale_internal"   // UpdatePreferredLocale
+	ErrCodeUpdateProfileInternal  = "update_profile_internal"  // UpdateProfile
 )
 
 // writeJSONCodeError is defined in auth.go. It emits a {"code":"<code>"}

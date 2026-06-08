@@ -508,6 +508,7 @@ components:
       required:
       - id
       - email
+      - name
       - preferred_locale
       - createdAt
       - updatedAt
@@ -518,6 +519,8 @@ components:
         email:
           type: string
           format: email
+        name:
+          type: string
         preferred_locale:
           type: string
           enum:
@@ -534,6 +537,7 @@ components:
       required:
       - email
       - password
+      - name
       - consents
       properties:
         email:
@@ -542,6 +546,10 @@ components:
         password:
           type: string
           minLength: 8
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
         consents:
           $ref: '#/components/schemas/RegisterConsents'
     RegisterConsents:
@@ -616,6 +624,15 @@ components:
           enum:
           - ru
           - en
+    UpdateProfileRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
     StatusOKResponse:
       description: |
         `{status:"ok"}` envelope used by ChangePassword. Distinct from

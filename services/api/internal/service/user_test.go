@@ -26,6 +26,7 @@ type mockUserRepository struct {
 	getByEmailFunc            func(ctx context.Context, email string) (*domain.User, error)
 	updateFunc                func(ctx context.Context, user *domain.User) error
 	updatePreferredLocaleFunc func(ctx context.Context, userID uuid.UUID, locale string) error
+	updateNameFunc            func(ctx context.Context, userID uuid.UUID, name string) error
 }
 
 func (m *mockUserRepository) Create(ctx context.Context, user *domain.User) error {
@@ -74,6 +75,13 @@ func (m *mockUserRepository) UpdatePreferredLocale(ctx context.Context, userID u
 	return nil
 }
 
+func (m *mockUserRepository) UpdateName(ctx context.Context, userID uuid.UUID, name string) error {
+	if m.updateNameFunc != nil {
+		return m.updateNameFunc(ctx, userID, name)
+	}
+	return nil
+}
+
 // Test helpers
 func setupRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 	t.Helper()
@@ -90,6 +98,36 @@ func setupRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 	})
 
 	return client, mr
+}
+
+func TestUserService_UpdateName(t *testing.T) {
+	ctx := context.Background()
+	redisClient, _ := setupRedis(t)
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
+
+	t.Run("trims whitespace and persists", func(t *testing.T) {
+		var got string
+		repo := &mockUserRepository{
+			updateNameFunc: func(_ context.Context, _ uuid.UUID, name string) error {
+				got = name
+				return nil
+			},
+		}
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+		require.NoError(t, svc.UpdateName(ctx, uuid.New(), "  Jane Doe  "))
+		assert.Equal(t, "Jane Doe", got)
+	})
+
+	t.Run("propagates ErrUserNotFound", func(t *testing.T) {
+		repo := &mockUserRepository{
+			updateNameFunc: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return domain.ErrUserNotFound
+			},
+		}
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+		err := svc.UpdateName(ctx, uuid.New(), "Jane")
+		assert.ErrorIs(t, err, domain.ErrUserNotFound)
+	})
 }
 
 func TestUserService_Register(t *testing.T) {

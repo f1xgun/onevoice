@@ -19,6 +19,7 @@ export const API_PATHS = {
     LOGIN: '/auth/login',
     REGISTER: '/auth/register',
     PASSWORD: '/auth/password',
+    PROFILE: '/auth/profile',
     ME: '/auth/me',
   },
   // BUSINESS / INTEGRATIONS / TASKS also double as frontend route hrefs.
