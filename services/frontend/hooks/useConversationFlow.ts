@@ -24,6 +24,20 @@ import type {
 // Client-side mirror of the server's reject-reason cap.
 const REJECT_REASON_MAX_LEN = 500;
 
+// Synthetic placeholder ID for the "still generating" assistant bubble shown
+// after a reload that lands mid-turn (see resumeInFlightTurn). Sentinel, never
+// persisted — replaced by the real assistant message once the server finishes.
+const AWAITING_TURN_MESSAGE_ID = '__onevoice_awaiting_turn__';
+
+// The server finishes and persists a turn even after the client disconnects
+// (the API drains the orchestrator stream on a detached context — see
+// services/api/internal/service/chatturn/stream.go). So on reload mid-turn we
+// poll GET /messages until the assistant reply lands. Interval / cap below;
+// the cap matches the orchestrator streamBudget (10 min) so a long RPA chain
+// is not abandoned early.
+const TURN_POLL_INTERVAL_MS = 3000;
+const TURN_POLL_MAX_ATTEMPTS = 200;
+
 // Preserves status === 'expired' so the UI owns the render decision
 // (ExpiredApprovalBanner).
 function normalizePendingApproval(raw: unknown): PendingApproval | null {
@@ -106,6 +120,53 @@ interface ApiMessage {
   toolResults?: ApiToolResult[];
 }
 
+type MessagesPayload = ApiMessage[] | { messages: ApiMessage[]; pendingApprovals?: unknown[] };
+
+// extractApiMessages normalizes both wire shapes (bare array, or
+// { messages, pendingApprovals }) to ApiMessage[] | null.
+function extractApiMessages(payload: MessagesPayload | null): ApiMessage[] | null {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray((payload as { messages?: ApiMessage[] }).messages)) {
+    return (payload as { messages: ApiMessage[] }).messages;
+  }
+  return null;
+}
+
+// mapApiMessages converts persisted API messages to the client Message shape.
+// Every loaded message is status:'done' — the live SSE stream is what produces
+// 'streaming' messages.
+function mapApiMessages(apiMsgs: ApiMessage[]): Message[] {
+  return apiMsgs.map((m) => {
+    const toolCalls: ToolCall[] | undefined =
+      m.toolCalls && m.toolCalls.length > 0
+        ? m.toolCalls.map((tc) => {
+            const result = m.toolResults?.find((r) => r.toolCallId === tc.id);
+            const status: ToolCall['status'] = result
+              ? result.isError
+                ? 'error'
+                : 'done'
+              : 'aborted';
+            return {
+              id: tc.id,
+              name: tc.name,
+              args: tc.arguments ?? {},
+              result: result && !result.isError ? result.content : undefined,
+              error: result?.isError ? ((result.content?.error as string) ?? 'error') : undefined,
+              code: (result?.code as ToolCall['code']) || undefined,
+              status,
+            };
+          })
+        : undefined;
+    return {
+      id: m.id,
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+      toolCalls,
+      status: 'done' as const,
+    };
+  });
+}
+
 interface UseConversationFlowOptions {
   conversationId: string;
 }
@@ -114,10 +175,12 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [awaitingTurn, setAwaitingTurn] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const isStreamingRef = useRef(false);
   const isResolvingRef = useRef(false);
+  const turnPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tCommon = useTranslations('common');
   const tCommonErrors = useTranslations('common.errors');
@@ -137,69 +200,101 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     });
   }, []);
 
+  // Load history, then keep polling while a turn is still being generated
+  // server-side. The server finishes and persists a turn even after the client
+  // disconnects (refresh), so a trailing user message with no assistant reply
+  // means "still generating" — we show the typing placeholder and poll GET
+  // /messages until the reply lands (or the attempt cap is hit).
   useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
     setIsLoading(true);
-    fetch(messagesUrl(activeBusinessId, conversationId), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-      .then((r) => {
-        if (!r.ok) return null;
-        return r.json() as Promise<
-          ApiMessage[] | { messages: ApiMessage[]; pendingApprovals?: unknown[] }
-        >;
-      })
-      .then((payload) => {
-        const apiMsgs: ApiMessage[] | null = Array.isArray(payload)
-          ? payload
-          : payload && Array.isArray((payload as { messages?: ApiMessage[] }).messages)
-            ? (payload as { messages: ApiMessage[] }).messages
-            : null;
-        if (apiMsgs) {
-          setMessages(
-            apiMsgs.map((m) => {
-              const toolCalls: ToolCall[] | undefined =
-                m.toolCalls && m.toolCalls.length > 0
-                  ? m.toolCalls.map((tc) => {
-                      const result = m.toolResults?.find((r) => r.toolCallId === tc.id);
-                      const status: ToolCall['status'] = result
-                        ? result.isError
-                          ? 'error'
-                          : 'done'
-                        : 'aborted';
-                      return {
-                        id: tc.id,
-                        name: tc.name,
-                        args: tc.arguments ?? {},
-                        result: result && !result.isError ? result.content : undefined,
-                        error: result?.isError
-                          ? ((result.content?.error as string) ?? 'error')
-                          : undefined,
-                        code: (result?.code as ToolCall['code']) || undefined,
-                        status,
-                      };
-                    })
-                  : undefined;
-              return {
-                id: m.id,
-                role: m.role as 'user' | 'assistant',
-                content: m.content,
-                toolCalls,
-                status: 'done' as const,
-              };
-            })
-          );
+    setAwaitingTurn(false);
+
+    const clearPoll = () => {
+      if (turnPollRef.current) {
+        clearTimeout(turnPollRef.current);
+        turnPollRef.current = null;
+      }
+    };
+
+    const load = async (isInitial: boolean): Promise<void> => {
+      let payload: MessagesPayload | null = null;
+      try {
+        const r = await fetch(messagesUrl(activeBusinessId, conversationId), {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        payload = r.ok ? ((await r.json()) as MessagesPayload) : null;
+      } catch {
+        payload = null;
+      }
+      if (cancelled) return;
+      // A live send took over (only possible via a race) — let the SSE stream
+      // own message state instead of clobbering it with the persisted list.
+      if (!isInitial && isStreamingRef.current) {
+        clearPoll();
+        setAwaitingTurn(false);
+        return;
+      }
+
+      const apiMsgs = extractApiMessages(payload);
+      const pendings =
+        payload && !Array.isArray(payload)
+          ? (payload as { pendingApprovals?: unknown[] }).pendingApprovals
+          : undefined;
+      const hasPending = Array.isArray(pendings) && pendings.length > 0;
+
+      let keepWaiting = false;
+      if (apiMsgs) {
+        const mapped = mapApiMessages(apiMsgs);
+        const last = mapped[mapped.length - 1];
+        const turnInFlight =
+          !hasPending && !isStreamingRef.current && !!last && last.role === 'user';
+        keepWaiting = turnInFlight && attempts < TURN_POLL_MAX_ATTEMPTS;
+        if (keepWaiting) {
+          mapped.push({
+            id: AWAITING_TURN_MESSAGE_ID,
+            role: 'assistant',
+            content: '',
+            toolCalls: [],
+            status: 'streaming',
+          });
         }
-        if (payload && !Array.isArray(payload)) {
-          const pendings = (payload as { pendingApprovals?: unknown[] }).pendingApprovals;
-          if (Array.isArray(pendings) && pendings.length > 0) {
-            const normalized = normalizePendingApproval(pendings[0]);
-            if (normalized) setPendingApproval(normalized);
-          }
+        setMessages(mapped);
+      } else if (!isInitial) {
+        // Transient GET failure mid-poll — keep the placeholder and retry up to
+        // the cap instead of dropping the indicator on a network blip.
+        keepWaiting = attempts < TURN_POLL_MAX_ATTEMPTS;
+      }
+
+      if (hasPending) {
+        const normalized = normalizePendingApproval((pendings as unknown[])[0]);
+        if (normalized) setPendingApproval(normalized);
+      }
+
+      setAwaitingTurn(keepWaiting);
+      if (keepWaiting) {
+        attempts += 1;
+        turnPollRef.current = setTimeout(() => void load(false), TURN_POLL_INTERVAL_MS);
+      } else {
+        clearPoll();
+        // A turn we were waiting on just resolved — refresh the conversation
+        // list so the auto-generated title appears without a manual reload.
+        if (attempts > 0 && apiMsgs) {
+          queryClient.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
         }
-      })
-      .catch(() => {})
-      .finally(() => setIsLoading(false));
-  }, [conversationId, accessToken, activeBusinessId]);
+      }
+
+      if (isInitial) setIsLoading(false);
+    };
+
+    void load(true);
+
+    return () => {
+      cancelled = true;
+      clearPoll();
+    };
+  }, [conversationId, accessToken, activeBusinessId, queryClient]);
 
   const handleChatSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
@@ -247,6 +342,14 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     async (text: string) => {
       if (isStreamingRef.current) return;
 
+      // Stop any in-flight-turn polling and drop its placeholder — the live
+      // stream now owns message state.
+      if (turnPollRef.current) {
+        clearTimeout(turnPollRef.current);
+        turnPollRef.current = null;
+      }
+      setAwaitingTurn(false);
+
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -262,7 +365,11 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         status: 'streaming',
       };
 
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== AWAITING_TURN_MESSAGE_ID),
+        userMessage,
+        assistantMessage,
+      ]);
       setIsStreaming(true);
       isStreamingRef.current = true;
 
@@ -426,6 +533,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     messages,
     isLoading,
     isStreaming,
+    awaitingTurn,
     sendMessage,
     stop,
     pendingApproval,

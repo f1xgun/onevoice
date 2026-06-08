@@ -35,8 +35,15 @@ interface ChatWindowProps {
 
 export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
   const tChat = useTranslations('chat.window');
-  const { messages, isLoading, isStreaming, sendMessage, pendingApproval, resolveApproval } =
-    useConversationFlow({ conversationId });
+  const {
+    messages,
+    isLoading,
+    isStreaming,
+    awaitingTurn,
+    sendMessage,
+    pendingApproval,
+    resolveApproval,
+  } = useConversationFlow({ conversationId });
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
@@ -44,7 +51,10 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
   const canSend = usePermission('content.create').allowed;
 
-  const composerDisabled = isStreaming || pendingApproval !== null || !canSend;
+  // awaitingTurn: a prior turn is still generating server-side (we reloaded
+  // mid-turn). Block new sends — the backend would reject with
+  // turn_already_in_progress anyway.
+  const composerDisabled = isStreaming || awaitingTurn || pendingApproval !== null || !canSend;
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
