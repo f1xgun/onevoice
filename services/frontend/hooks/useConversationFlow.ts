@@ -486,6 +486,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       const controller = new AbortController();
       resumeAbortRef.current = controller;
       let sawDone = false;
+      let sawNextApproval = false;
 
       try {
         const resumeRes = await fetch(
@@ -497,20 +498,23 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           }
         );
         await consumeSSEStream(resumeRes, controller.signal, (event) => {
-          if (event.type === 'done') {
-            sawDone = true;
-            queryClient.invalidateQueries({
-              queryKey: conversationsQueryKey(activeBusinessId),
-            });
-          }
-          applyEventToLastAssistant(event);
+          if (event.type === 'done') sawDone = true;
+          // The resume can pause again on the NEXT tool in a sequential
+          // fan-out chain (Yandex → Telegram → VK). handleChatSSEEvent turns
+          // that tool_approval_required into the next approval card; without
+          // it the chain silently dead-ended after the first tool.
+          if (event.type === 'tool_approval_required') sawNextApproval = true;
+          handleChatSSEEvent(event);
         });
       } catch (err: unknown) {
         if ((err as Error).name === 'AbortError') return;
         toast.error(resumeStreamError);
       } finally {
-        setPendingApproval(null);
-        if (!sawDone) {
+        // Keep the freshly-arrived next card; only clear when the chain ended.
+        if (!sawNextApproval) {
+          setPendingApproval(null);
+        }
+        if (!sawDone && !sawNextApproval) {
           applyEventToLastAssistant({ type: 'done' });
         }
         isResolvingRef.current = false;
@@ -525,8 +529,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       tCommonErrors,
       resolveError,
       resumeStreamError,
-      queryClient,
       applyEventToLastAssistant,
+      handleChatSSEEvent,
     ]
   );
 
