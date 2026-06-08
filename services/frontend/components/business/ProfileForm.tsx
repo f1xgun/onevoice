@@ -7,7 +7,7 @@
 // elsewhere and is reserved for cross-section coordination later.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
@@ -22,26 +22,12 @@ import { usePermission } from '@/lib/hooks/usePermission';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { CategoryField } from '@/components/business/CategoryField';
 import type { Business } from '@/types/business';
-
-// Display order is fixed — labels are sourced from `business.categories.*`
-// in messages/{locale}.json. The select's `value` is the stable category
-// id; the `label` only drives what the user sees. Built inside the
-// component (B1) so a runtime locale switch swaps the labels along with
-// the rest of the page.
-const CATEGORY_IDS = ['cafe', 'retail', 'service', 'beauty', 'education', 'other'] as const;
 
 export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Business> }) {
   const tProfileForm = useTranslations('business.profileForm');
   const tCommon = useTranslations('common');
-  const tCategories = useTranslations('business.categories');
   const tValidation = useTranslations('validation');
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,10 +35,6 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const canEdit = usePermission('business.update').allowed;
 
-  const CATEGORIES = useMemo(
-    () => CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) })),
-    [tCategories]
-  );
   const businessSchema = useMemo(() => createBusinessSchema(tValidation), [tValidation]);
 
   const {
@@ -180,31 +162,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           <Input id="name" {...register('name')} placeholder={tProfileForm('namePlaceholder')} />
         </Field>
 
-        <Field label={tProfileForm('fields.category')} required error={errors.category?.message}>
-          <Controller
-            control={control}
-            name="category"
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                <SelectTrigger
-                  id="category"
-                  aria-label={tProfileForm('fields.category')}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                >
-                  <SelectValue placeholder={tProfileForm('categoryPlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </Field>
+        <CategoryField control={control} error={errors.category?.message} />
 
         <Field
           label={tProfileForm('fields.address')}

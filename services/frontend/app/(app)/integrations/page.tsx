@@ -229,16 +229,20 @@ export default function IntegrationsPage() {
 
         <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
         {integrationsLoading ? (
-          <SkeletonChannels count={3} />
+          <div className="mb-8">
+            <SkeletonChannels count={3} />
+          </div>
         ) : integrations.length === 0 && canConnect ? (
-          <EmptyChannels
-            onConnect={() => {
-              const target = document.getElementById('integrations-platform-grid');
-              if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }
-            }}
-          />
+          <div className="mb-8">
+            <EmptyChannels
+              onConnect={() => {
+                const target = document.getElementById('integrations-platform-grid');
+                if (target) {
+                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+            />
+          </div>
         ) : null}
         <div
           id="integrations-platform-grid"

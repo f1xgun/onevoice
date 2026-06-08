@@ -770,6 +770,8 @@
       "logoAlt": "Логотип",
       "namePlaceholder": "Кофейня «Мята»",
       "categoryPlaceholder": "Выберите категорию",
+      "customCategoryPlaceholder": "Например, автосервис",
+      "customCategoryAria": "Своя категория",
       "addressPlaceholder": "г. Москва, ул. Примерная, 1",
       "descriptionPlaceholder": "Маленькая кофейня у метро. Спешелти, выпекаем круассаны утром.",
       "fields": {

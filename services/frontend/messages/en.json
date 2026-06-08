@@ -770,6 +770,8 @@
       "logoAlt": "Logo",
       "namePlaceholder": "Mint Coffee Shop",
       "categoryPlaceholder": "Pick a category",
+      "customCategoryPlaceholder": "e.g. auto service",
+      "customCategoryAria": "Custom category",
       "addressPlaceholder": "123 Main St, Springfield",
       "descriptionPlaceholder": "A small coffee shop by the subway. Specialty coffee, croissants baked fresh every morning.",
       "fields": {

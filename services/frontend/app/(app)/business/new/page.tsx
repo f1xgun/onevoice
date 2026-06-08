@@ -11,7 +11,7 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -26,16 +26,8 @@ import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { CategoryField } from '@/components/business/CategoryField';
 import type { Business } from '@/types/business';
-
-const CATEGORY_IDS = ['cafe', 'retail', 'service', 'beauty', 'education', 'other'] as const;
 
 export default function NewBusinessPage() {
   const router = useRouter();
@@ -44,14 +36,9 @@ export default function NewBusinessPage() {
   const tNewPage = useTranslations('business.newPage');
   const tProfileForm = useTranslations('business.profileForm');
   const tSections = useTranslations('business.sections');
-  const tCategories = useTranslations('business.categories');
   const tValidation = useTranslations('validation');
   const tCommon = useTranslations('common');
 
-  const CATEGORIES = useMemo(
-    () => CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) })),
-    [tCategories]
-  );
   const schema = useMemo(() => createBusinessSchema(tValidation), [tValidation]);
 
   const {
@@ -117,35 +104,7 @@ export default function NewBusinessPage() {
                 />
               </Field>
 
-              <Field
-                label={tProfileForm('fields.category')}
-                required
-                error={errors.category?.message}
-              >
-                <Controller
-                  control={control}
-                  name="category"
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                      <SelectTrigger
-                        id="category"
-                        aria-label={tProfileForm('fields.category')}
-                        onBlur={field.onBlur}
-                        ref={field.ref}
-                      >
-                        <SelectValue placeholder={tProfileForm('categoryPlaceholder')} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CATEGORIES.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>
-                            {c.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </Field>
+              <CategoryField control={control} error={errors.category?.message} />
 
               <Field
                 label={tProfileForm('fields.address')}

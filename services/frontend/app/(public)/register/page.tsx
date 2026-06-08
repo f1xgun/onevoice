@@ -1,12 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
@@ -21,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { ConsentCheckboxes } from '@/components/auth/ConsentCheckboxes';
+import { FormError } from '@/components/ui/form-error';
 import { MonoLabel } from '@/components/ui/mono-label';
 
 // zod schema field identifiers for the two
@@ -42,13 +42,16 @@ export default function RegisterPage() {
     register,
     handleSubmit,
     control,
+    setError,
     formState: { errors, isSubmitting, isValid },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
     mode: 'onChange',
   });
+  const [formError, setFormError] = useState<string | null>(null);
 
   const onSubmit = async (data: RegisterInput) => {
+    setFormError(null);
     try {
       const res = await api.post(API_PATHS.AUTH.REGISTER, {
         name: data.name,
@@ -65,19 +68,41 @@ export default function RegisterPage() {
       queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
       router.push('/chat');
     } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data
-        ?.message;
+      const response = (
+        err as {
+          response?: {
+            status?: number;
+            data?: { code?: string; message?: string; fields?: Record<string, string> };
+          };
+        }
+      )?.response;
+      const status = response?.status;
+      const code = response?.data?.code;
+      const message = response?.data?.message;
+      const fields = response?.data?.fields;
+
       if (status === HTTP_STATUS.BAD_REQUEST && code === 'consent_required') {
-        toast.error(tRegErrors('consentRequired'));
+        setFormError(tRegErrors('consentRequired'));
         return;
       }
       if (status === HTTP_STATUS.CONFLICT) {
-        toast.error(tReg('emailExists'));
-      } else {
-        toast.error(message ?? tReg('genericError'));
+        setError('email', { type: 'server', message: tReg('emailExists') });
+        return;
       }
+      // Surface backend field-level validation inline under the matching
+      // input. Server field names are PascalCase (e.g. "Email"/"Password").
+      if (fields) {
+        let applied = false;
+        for (const [rawKey, fieldMessage] of Object.entries(fields)) {
+          const key = rawKey.toLowerCase();
+          if ((key === 'email' || key === 'password' || key === 'name') && fieldMessage) {
+            setError(key, { type: 'server', message: fieldMessage });
+            applied = true;
+          }
+        }
+        if (applied) return;
+      }
+      setFormError(message ?? tReg('genericError'));
     }
   };
 
@@ -160,6 +185,8 @@ export default function RegisterPage() {
           tosName={ACCEPT_TOS_PRIVACY_FIELD}
           pdnName={ACCEPT_PDN_FIELD}
         />
+
+        <FormError>{formError}</FormError>
 
         <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting || !isValid}>
           {isSubmitting ? tReg('submitting') : tReg('submit')}

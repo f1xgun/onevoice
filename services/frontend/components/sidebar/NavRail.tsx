@@ -96,21 +96,21 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
         aria-label={tSidebar('railWrapperAria')}
         className="flex h-screen w-14 shrink-0 flex-col items-center border-r border-line bg-paper-raised py-2"
       >
-        {/* BusinessSwitcher — visible payoff of the v2.0 multi-tenant model.
-            40x40 circular trigger above the OV mark; opens a Popover with the
-            user's memberships and a «+ Создать организацию» footer. See
-            components/business-switcher/BusinessSwitcher.tsx and UI-SPEC §S-1. */}
-        <BusinessSwitcher />
-
-        {/* OV mark — graphite on paper, the one always-visible brand cue. */}
+        {/* OV mark — graphite on paper, the always-visible brand cue. Anchored
+            at the very top of the rail, above the organization switcher. */}
         <Link
           href="/chat"
           aria-label="OneVoice"
           onClick={onNavigate}
-          className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-ink text-sm font-semibold tracking-tight text-paper"
+          className="mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-ink text-sm font-semibold tracking-tight text-paper"
         >
           OV
         </Link>
+
+        {/* BusinessSwitcher — visible payoff of the multi-tenant model. 40x40
+            circular trigger below the OV mark; opens a Popover with the user's
+            memberships and a «+ Создать организацию» footer. */}
+        <BusinessSwitcher />
 
         {/* Vertical nav-list. Active state: ink icon + 2px ochre left bar
             (no background change). Idle: ink-soft → ink on hover with

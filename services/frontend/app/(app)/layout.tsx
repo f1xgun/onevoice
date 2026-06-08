@@ -53,27 +53,39 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     const accessToken = useAuthStore.getState().accessToken;
     if (accessToken) {
       setReady(true);
-      return;
+      // The login/register response carries only a minimal user (no
+      // emailVerified / deletion / reconsent state). Hydrate the full
+      // profile from /auth/me so the verification banner, deletion-grace
+      // banner and re-consent modal reflect real state right after sign-in
+      // — not just after the next cold load. Non-blocking: the user is
+      // already authenticated, so failure keeps the minimal user.
+      api
+        .get(API_PATHS.AUTH.ME, { signal: controller.signal })
+        .then((res) => {
+          if (!isMounted.current) return;
+          setAuth(res.data, useAuthStore.getState().accessToken!);
+        })
+        .catch(() => {});
+    } else {
+      api
+        .post('/auth/refresh', {}, { signal: controller.signal })
+        .then((res) => {
+          if (!isMounted.current) return;
+          useAuthStore.getState().setAccessToken(res.data.accessToken);
+          return api.get(API_PATHS.AUTH.ME, { signal: controller.signal });
+        })
+        .then((res) => {
+          if (!isMounted.current || !res) return;
+          setAuth(res.data, useAuthStore.getState().accessToken!);
+          setReady(true);
+        })
+        .catch((_err: unknown) => {
+          if (controller.signal.aborted) return;
+          if (isMounted.current) {
+            router.replace('/login');
+          }
+        });
     }
-
-    api
-      .post('/auth/refresh', {}, { signal: controller.signal })
-      .then((res) => {
-        if (!isMounted.current) return;
-        useAuthStore.getState().setAccessToken(res.data.accessToken);
-        return api.get(API_PATHS.AUTH.ME, { signal: controller.signal });
-      })
-      .then((res) => {
-        if (!isMounted.current || !res) return;
-        setAuth(res.data, useAuthStore.getState().accessToken!);
-        setReady(true);
-      })
-      .catch((_err: unknown) => {
-        if (controller.signal.aborted) return;
-        if (isMounted.current) {
-          router.replace('/login');
-        }
-      });
 
     return () => {
       isMounted.current = false;
