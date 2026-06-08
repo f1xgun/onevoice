@@ -79,7 +79,7 @@ describe('RolesPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Системные роли')).toBeInTheDocument();
       expect(screen.getByText('Свои роли')).toBeInTheDocument();
-      expect(screen.getByText('owner')).toBeInTheDocument();
+      expect(screen.getByText('Владелец')).toBeInTheDocument();
       expect(screen.getByText('Marketing')).toBeInTheDocument();
     });
   });

@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChannelMark } from '@/components/ui/channel-mark';
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
 
@@ -81,7 +82,8 @@ function SiteNav() {
             </a>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <LanguageSwitcher />
           <Link href="/login" className="text-sm text-ink-mid transition-colors hover:text-ink">
             {tNav('login')}
           </Link>

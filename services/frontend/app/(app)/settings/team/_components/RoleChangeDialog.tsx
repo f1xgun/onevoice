@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { useRoleLabel } from '@/lib/hooks/useRoleLabel';
 import type { Role } from '@/lib/schemas';
 
 export interface RoleChangeDialogProps {
@@ -39,6 +40,7 @@ export function RoleChangeDialog({
   onSubmit,
 }: RoleChangeDialogProps) {
   const tTeam = useTranslations('team');
+  const getRoleLabel = useRoleLabel();
   const [selectedId, setSelectedId] = useState(currentRoleId);
   const [pending, setPending] = useState(false);
 
@@ -76,7 +78,7 @@ export function RoleChangeDialog({
             <SelectContent>
               {roles.map((r) => (
                 <SelectItem key={r.id} value={r.id}>
-                  {r.name}
+                  {getRoleLabel(r.name)}
                 </SelectItem>
               ))}
             </SelectContent>

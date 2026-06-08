@@ -6,7 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { useAuthStore } from '@/lib/auth';
@@ -18,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AuthShell } from '@/components/auth/AuthShell';
+import { FormError } from '@/components/ui/form-error';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { SmartCaptcha, type SmartCaptchaHandle } from '@/components/auth/SmartCaptcha';
 
@@ -46,6 +46,7 @@ export default function LoginPage() {
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const captchaRef = useRef<SmartCaptchaHandle | null>(null);
   const [lockedRetrySeconds, setLockedRetrySeconds] = useState<number | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const captchaSiteKey = process.env.NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY ?? '';
 
@@ -58,6 +59,7 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginInput) => {
+    setFormError(null);
     try {
       const headers: Record<string, string> = {};
       if (captchaRequired && captchaRef.current && captchaSiteKey) {
@@ -83,25 +85,25 @@ export default function LoginPage() {
 
       if (code === 'captcha_required') {
         setCaptchaRequired(true);
-        toast.error(tLogin('captchaRequired'));
+        setFormError(tLogin('captchaRequired'));
         return;
       }
 
       if (code === 'captcha_invalid') {
-        toast.error(tLogin('captchaInvalid'));
+        setFormError(tLogin('captchaInvalid'));
         return;
       }
 
       if (code) {
         try {
-          toast.error(tErrors(code));
+          setFormError(tErrors(code));
           return;
         } catch {}
       }
 
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data
         ?.message;
-      toast.error(message ?? tLogin('invalidCredentials'));
+      setFormError(message ?? tLogin('invalidCredentials'));
     }
   };
 
@@ -174,6 +176,8 @@ export default function LoginPage() {
           {captchaRequired && captchaSiteKey && (
             <SmartCaptcha ref={captchaRef} siteKey={captchaSiteKey} />
           )}
+
+          <FormError>{formError}</FormError>
 
           <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting}>
             {isSubmitting ? tLogin('submitting') : tLogin('submit')}

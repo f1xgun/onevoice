@@ -62,13 +62,13 @@ afterEach(() => {
 });
 
 describe('SystemRolesSection', () => {
-  it('renders all 4 rows in fixed Owner→Admin→Editor→Viewer order regardless of input order', () => {
+  it('renders all 4 rows in fixed Owner→Admin→Editor→Viewer order with localized labels', () => {
     renderSection();
     const items = screen.getAllByRole('listitem');
-    expect(items[0]).toHaveTextContent('owner');
-    expect(items[1]).toHaveTextContent('admin');
-    expect(items[2]).toHaveTextContent('editor');
-    expect(items[3]).toHaveTextContent('viewer');
+    expect(items[0]).toHaveTextContent('Владелец');
+    expect(items[1]).toHaveTextContent('Администратор');
+    expect(items[2]).toHaveTextContent('Редактор');
+    expect(items[3]).toHaveTextContent('Наблюдатель');
   });
 
   it('applies opacity-60 to make system rows visually muted (non-interactive)', () => {

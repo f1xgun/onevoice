@@ -26,7 +26,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCreateInvitation } from '@/lib/hooks/useInvitations';
-import { useMapInviteError } from '@/lib/resolveErrorMap';
+import { useMapInviteError, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
+import { useRoleLabel } from '@/lib/hooks/useRoleLabel';
 import type { Role } from '@/lib/schemas';
 
 const EXPIRY_OPTIONS = ['3600', '86400', '604800', '2592000'] as const;
@@ -63,6 +64,8 @@ export function InviteModal({
   const tInviteCopy = useTranslations('team.invite.copy');
   const tExpiry = useTranslations('team.invite.expiryOptions');
   const mapInviteError = useMapInviteError();
+  const mapVerifyError = useMapEmailVerificationError();
+  const getRoleLabel = useRoleLabel();
   const [state, setState] = useState<ModalState>({ kind: 'form' });
   const [inlineError, setInlineError] = useState<string | null>(null);
   const copyButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -107,7 +110,7 @@ export function InviteModal({
       onInvitationCreated(res.id, res.token);
       setState({ kind: 'copy', url, durationLabel, invitationId: res.id, rawToken: res.token });
     } catch (err) {
-      setInlineError(mapInviteError(err));
+      setInlineError(mapVerifyError(err) ?? mapInviteError(err));
     }
   };
 
@@ -175,7 +178,7 @@ export function InviteModal({
                   <SelectContent>
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
-                        {r.name}
+                        {getRoleLabel(r.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>

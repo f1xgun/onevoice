@@ -32,6 +32,7 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { SYSTEM_ROLE_ORDER } from '@/lib/constants/roles';
 import { useMapRoleError } from '@/lib/resolveErrorMap';
+import { useRoleLabel } from '@/lib/hooks/useRoleLabel';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/lib/schemas';
 
@@ -136,6 +137,7 @@ export function DeleteRoleDialog({
 }: DeleteRoleDialogProps) {
   const t = useTranslations('roles.delete');
   const tList = useTranslations('roles.list');
+  const getRoleLabel = useRoleLabel();
   const mapRoleError = useMapRoleError();
   const qc = useQueryClient();
   const deleteMut = useDeleteRole(businessId);
@@ -208,7 +210,7 @@ export function DeleteRoleDialog({
       <AlertDialogContent className="max-w-md rounded-lg border border-line bg-paper-raised p-6 shadow-ov-2">
         <AlertDialogHeader className="gap-2">
           <AlertDialogTitle className="text-lg font-medium tracking-tight text-ink">
-            {t('title', { name: role.name })}
+            {t('title', { name: getRoleLabel(role.name) })}
           </AlertDialogTitle>
           <AlertDialogDescription className="text-sm leading-relaxed text-ink-mid">
             {variant === 'simple'
@@ -232,7 +234,7 @@ export function DeleteRoleDialog({
                     <SelectLabel>{tList('systemSection')}</SelectLabel>
                     {systemOptions.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value} disabled={opt.disabled}>
-                        {opt.label}
+                        {getRoleLabel(opt.rawName)}
                       </SelectItem>
                     ))}
                   </SelectGroup>

@@ -4,7 +4,10 @@ import { z } from 'zod';
 // constraints in one place and to satisfy the
 // `no-magic-numbers` lint rule.
 const EMAIL_MAX_LEN = 254; // RFC 5321 SMTP local+domain limit
-const PASSWORD_MIN_LEN = 6;
+// Mirror the backend RegisterRequest constraint (validate:"min=8"). Keeping
+// these in sync means a too-short password is caught inline on the form
+// instead of bouncing off the API with a generic "check your details" error.
+const PASSWORD_MIN_LEN = 8;
 // User name (register form). Distinct from BUSINESS_NAME_MAX_LEN below
 // because user names tend to be shorter than business / brand names.
 const NAME_MIN_LEN = 2;
