@@ -869,6 +869,7 @@ type Member struct {
 	User   struct {
 		Email openapi_types.Email `json:"email" validate:"required,email"`
 		Id    openapi_types.UUID  `json:"id" validate:"required,uuid"`
+		Name  *string             `json:"name,omitempty"`
 	} `json:"user" validate:"required"`
 }
 

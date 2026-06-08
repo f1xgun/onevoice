@@ -1254,6 +1254,8 @@ components:
             email:
               type: string
               format: email
+            name:
+              type: string
         role:
           type: object
           required:

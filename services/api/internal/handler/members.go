@@ -99,6 +99,10 @@ func domainMemberToOpenAPI(m domain.BusinessMember, user *domain.User, role *dom
 	}
 	out.User.Id = user.ID
 	out.User.Email = openapi_types.Email(user.Email)
+	if user.Name != "" {
+		name := user.Name
+		out.User.Name = &name
+	}
 	out.Role.Id = role.ID
 	out.Role.Name = role.Name
 	out.Role.Permissions = role.Permissions
