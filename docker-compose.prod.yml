@@ -23,7 +23,11 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN}
-    volumes:
+    # !override replaces (not appends to) the base nginx volumes. Without it the
+    # base `./nginx/nginx.conf:/etc/nginx/nginx.conf:ro` mount is inherited, and
+    # the entrypoint's `envsubst > /etc/nginx/nginx.conf` then fails writing to a
+    # read-only bind mount. Requires Compose v2.24.4+.
+    volumes: !override
       # Template + rendered config — entrypoint runs envsubst on start.
       - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
       # Let's Encrypt live + archive directories (shared with certbot).

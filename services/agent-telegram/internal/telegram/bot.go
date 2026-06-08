@@ -11,13 +11,27 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"github.com/f1xgun/onevoice/pkg/netdial"
 )
+
+// telegramAPIClient is the HTTP client backing the Bot API calls. It pins
+// outbound dials to IPv4 — Yandex Cloud VMs have no IPv6 route, and
+// api.telegram.org publishes AAAA records, so without this every Bot API
+// request can hang on the dead v6 address until timeout. No Client.Timeout is
+// set on purpose: GetUpdates long-polls, so the per-dial timeout inside
+// netdial is the only deadline that applies.
+var telegramAPIClient = &http.Client{
+	Transport: &http.Transport{DialContext: netdial.TCP4DialContext},
+}
 
 // photoHTTPClient is used for downloading images from user-provided URLs.
 // TLS verification is skipped because external image URLs may use self-signed
-// or corp-CA certificates not present in the container trust store.
+// or corp-CA certificates not present in the container trust store. It also
+// pins IPv4 for the same no-IPv6 reason as telegramAPIClient.
 var photoHTTPClient = &http.Client{
 	Transport: &http.Transport{
+		DialContext:     netdial.TCP4DialContext,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: intentional, external image hosts may use self-signed certs
 	},
 }
@@ -34,7 +48,7 @@ func New(token string) (*Bot, error) {
 	var api *tgbotapi.BotAPI
 	err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
 		var e error
-		api, e = tgbotapi.NewBotAPI(token)
+		api, e = tgbotapi.NewBotAPIWithClient(token, tgbotapi.APIEndpoint, telegramAPIClient)
 		return e
 	})
 	if err != nil {

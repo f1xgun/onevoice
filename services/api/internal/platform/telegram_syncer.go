@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/netdial"
 )
 
 // defaultTelegramAPIBase is the public Bot API root. Overridable via
@@ -50,7 +51,13 @@ func NewTelegramSyncer(integrations integrationProvider, httpClient *http.Client
 		panic("platform.NewTelegramSyncer: integrations cannot be nil")
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPClientTimeout}
+		// Pin IPv4: api.telegram.org publishes AAAA records and Yandex Cloud
+		// VMs have no IPv6 route, so a dual-stack dial can hang on the dead v6
+		// address until timeout.
+		httpClient = &http.Client{
+			Timeout:   defaultHTTPClientTimeout,
+			Transport: &http.Transport{DialContext: netdial.TCP4DialContext},
+		}
 	}
 	if telegramBase == "" {
 		telegramBase = defaultTelegramAPIBase

@@ -40,4 +40,4 @@ COPY scripts/entrypoint-ulimit.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["./agent-telegram"]
+CMD ["./agent"]

@@ -199,6 +199,15 @@ services:
       PG_MAX_CONN_IDLE_TIME: ${PG_MAX_CONN_IDLE_TIME:-}
       PG_HEALTH_CHECK_PERIOD: ${PG_HEALTH_CHECK_PERIOD:-}
       PG_MAX_CONN_LIFETIME_JITTER: ${PG_MAX_CONN_LIFETIME_JITTER:-}
+      # Token envelope encryption (Phase 30). The api wraps each integration
+      # row's DEK with Yandex Cloud KMS; both vars are REQUIRED by config load
+      # — without them the api fails to boot ("TOKEN_ENCRYPTION_KMS_KEY_ID is
+      # required"). See .env.example for how to provision them.
+      TOKEN_ENCRYPTION_KMS_KEY_ID: ${TOKEN_ENCRYPTION_KMS_KEY_ID:?TOKEN_ENCRYPTION_KMS_KEY_ID must be set, see .env.example}
+      YC_SA_JSON_CREDENTIALS: ${YC_SA_JSON_CREDENTIALS:?YC_SA_JSON_CREDENTIALS must be set (single-line SA key JSON), see .env.example}
+      # Optional KMS rotation knobs — leave empty outside a key-rotation window.
+      TOKEN_ENCRYPTION_KMS_DUAL_DECRYPT_VERSIONS: ${TOKEN_ENCRYPTION_KMS_DUAL_DECRYPT_VERSIONS:-}
+      TOKEN_ENCRYPTION_KMS_VERSION_MAP: ${TOKEN_ENCRYPTION_KMS_VERSION_MAP:-}
       # mTLS — internal :8443 listener uses these to terminate TLS and
       # require a client cert signed by the dev CA. See infra/mtls/README.md.
       ONEVOICE_MTLS_ENABLED: "true"
