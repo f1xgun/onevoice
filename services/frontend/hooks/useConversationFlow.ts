@@ -54,7 +54,8 @@ function normalizePendingApproval(raw: unknown): PendingApproval | null {
       floor: (cr.floor as string) ?? 'manual',
     };
   });
-  const status: PendingApproval['status'] = r.status === 'expired' ? 'expired' : 'pending';
+  const status: PendingApproval['status'] =
+    r.status === 'expired' ? 'expired' : r.status === 'resolving' ? 'resolving' : 'pending';
   return {
     batchId: (r.batchId as string) ?? '',
     conversationId: r.conversationId as string | undefined,

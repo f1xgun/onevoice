@@ -11,6 +11,7 @@ import { ProjectChip } from './ProjectChip';
 import { ProjectPickerChip } from './ProjectPickerChip';
 import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
+import { ProcessingApprovalBanner } from './ProcessingApprovalBanner';
 import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -184,6 +185,11 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
       {/* Expired approval banner — sits above the card; owned by. */}
       {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
+
+      {/* Processing banner — the batch was approved and the resume is running
+          server-side (resolving). Replaces the actionable card so a reload
+          mid-resume cannot re-submit (which would 409 already_resolved). */}
+      {pendingApproval?.status === 'resolving' && <ProcessingApprovalBanner />}
 
       {/* Integration-token-invalid banner — surfaces above the composer when
           the newest assistant turn's tool call failed with the typed code. */}
