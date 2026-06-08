@@ -208,6 +208,15 @@ services:
       # Optional KMS rotation knobs — leave empty outside a key-rotation window.
       TOKEN_ENCRYPTION_KMS_DUAL_DECRYPT_VERSIONS: ${TOKEN_ENCRYPTION_KMS_DUAL_DECRYPT_VERSIONS:-}
       TOKEN_ENCRYPTION_KMS_VERSION_MAP: ${TOKEN_ENCRYPTION_KMS_VERSION_MAP:-}
+      # Transactional email (Unisender Go) — the email_outbox worker drains
+      # verification / password-reset / invitation mail through this provider.
+      # When UNISENDER_API_KEY is empty the api falls back to NoopSender, which
+      # ACCEPTS and then silently DROPS every message — so registration
+      # confirmation mail never arrives. Set a real key + a sender on a verified
+      # domain in .env for production. (Optional here so dev still boots.)
+      UNISENDER_API_KEY: ${UNISENDER_API_KEY:-}
+      UNISENDER_FROM_EMAIL: ${UNISENDER_FROM_EMAIL:-noreply@onevoice.app}
+      UNISENDER_FROM_NAME: ${UNISENDER_FROM_NAME:-OneVoice}
       # mTLS — internal :8443 listener uses these to terminate TLS and
       # require a client cert signed by the dev CA. See infra/mtls/README.md.
       ONEVOICE_MTLS_ENABLED: "true"
