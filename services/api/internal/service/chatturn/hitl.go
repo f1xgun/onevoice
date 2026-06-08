@@ -229,6 +229,7 @@ func (t *Turn) runResumeStream(
 	}
 
 	var terminated, fireAutoTitle bool
+	var rePause *sse.Event
 
 	streamErr := t.deps.Orch.StreamSSE(ctx, orchestratorclient.StreamSSERequest{
 		ConversationID: conversationID,
@@ -243,6 +244,9 @@ func (t *Turn) runResumeStream(
 			switch ev.Type {
 			case "text":
 				postText.WriteString(ev.Content)
+			case "tool_approval_required":
+				evCopy := ev
+				rePause = &evCopy
 			case "tool_result":
 				var content map[string]interface{}
 				if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -296,6 +300,10 @@ func (t *Turn) runResumeStream(
 		return OutcomeRejoinedResume, nil
 	}
 
+	if rePause != nil {
+		return t.persistResumeRePause(ctx, &msg, postText.String(), rePause), nil
+	}
+
 	msg.Content = postText.String()
 	if msg.Status == domain.MessageStatusPendingApproval || msg.Status == domain.MessageStatusInProgress {
 		msg.Status = domain.MessageStatusComplete
@@ -307,6 +315,43 @@ func (t *Turn) runResumeStream(
 			"error", err, "message_id", msg.ID)
 	}
 	return OutcomeRejoinedResume, nil
+}
+
+// persistResumeRePause keeps the assistant message ACTIVE when the resume loop
+// paused again on the next manual-floor tool in a sequential fan-out (model
+// emits one tool call per turn, so Yandex→Telegram→VK each pause separately).
+// The orchestrator already persisted the next batch; we mirror persistAfterStream
+// by appending its calls as pending and writing Status=PendingApproval. Marking
+// the message Complete here (the pre-fix fallback did) stranded the chain at the
+// SECOND tool: the next approve's FindByConversationActive found nothing and
+// failed with no_active_approval_for_conversation. See docs/services/chatturn-hitl.md.
+func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Message, content string, pause *sse.Event) TurnOutcome {
+	msg.Content = content
+	existing := make(map[string]struct{}, len(msg.ToolCalls))
+	for _, tc := range msg.ToolCalls {
+		existing[tc.ID] = struct{}{}
+	}
+	for _, call := range pause.Calls {
+		if _, dup := existing[call.CallID]; dup {
+			continue
+		}
+		msg.ToolCalls = append(msg.ToolCalls, domain.ToolCall{
+			ID:         call.CallID,
+			Name:       call.ToolName,
+			Arguments:  call.Args,
+			ApprovalID: fmt.Sprintf("%s-%s", pause.BatchID, call.CallID),
+			Status:     domain.ToolCallStatusPending,
+		})
+	}
+	msg.Status = domain.MessageStatusPendingApproval
+
+	saveCtx, cancel := t.persistContext(parentCtx)
+	defer cancel()
+	if err := t.deps.Messages.Update(saveCtx, msg); err != nil {
+		slog.WarnContext(saveCtx, "chatturn: resume: failed to persist re-paused message",
+			"error", err, "message_id", msg.ID)
+	}
+	return OutcomePauseHITL
 }
 
 // persistResumeDone writes the assistant message at resume terminal events.
