@@ -101,18 +101,33 @@ func formatHoursForYandex(hoursJSON string) string {
 				days[ruDay] = &dayHrs{open: o, close: c}
 			}
 		case []interface{}:
-			if len(v) > 0 {
-				if m, ok := v[0].(map[string]interface{}); ok {
-					o, _ := m["open"].(string)
-					c, _ := m["close"].(string)
-					if o == "" && c == "" {
-						o, _ = m["start"].(string)
-						c, _ = m["end"].(string)
-					}
-					if o != "" && c != "" {
-						days[ruDay] = &dayHrs{open: o, close: c}
-					}
+			if len(v) == 0 {
+				continue
+			}
+			if m, ok := v[0].(map[string]interface{}); ok {
+				o, _ := m["open"].(string)
+				c, _ := m["close"].(string)
+				if o == "" && c == "" {
+					o, _ = m["start"].(string)
+					c, _ = m["end"].(string)
 				}
+				if o != "" && c != "" {
+					days[ruDay] = &dayHrs{open: o, close: c}
+				}
+				continue
+			}
+			// Array of range strings: ["09:00-22:00"] or split shifts
+			// ["09:00-13:00","14:00-18:00"]. Each element already carries its
+			// own dash-separated range, so keep it verbatim in `open` (the
+			// formatter emits "<day> <open>" when close is empty).
+			ranges := make([]string, 0, len(v))
+			for _, item := range v {
+				if s, ok := item.(string); ok && s != "" && s != "closed" {
+					ranges = append(ranges, s)
+				}
+			}
+			if len(ranges) > 0 {
+				days[ruDay] = &dayHrs{open: strings.Join(ranges, ", ")}
 			}
 		}
 	}
