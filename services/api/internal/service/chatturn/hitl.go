@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
@@ -173,7 +174,7 @@ func (t *Turn) streamResume(
 		t.sseInlineError(w, "no_active_approval_for_conversation")
 		return OutcomeInlineError, nil
 	}
-	return t.runResumeStream(ctx, w, conversationID, activeMsg, batchID, nil)
+	return t.runResumeStream(ctx, w, conversationID, batch.BusinessID, activeMsg, batchID, nil)
 }
 
 // ResumeApproved is the primary approve→resume path (POST /chat/{id}/resume).
@@ -203,7 +204,7 @@ func (t *Turn) ResumeApproved(
 		t.sseInlineError(w, "no_active_approval_for_conversation")
 		return OutcomeInlineError, nil
 	}
-	return t.runResumeStream(ctx, w, conversationID, activeMsg, batchID, body)
+	return t.runResumeStream(ctx, w, conversationID, batch.BusinessID, activeMsg, batchID, body)
 }
 
 // runResumeStream is the shared resume core for both the rejoin (streamResume)
@@ -215,6 +216,7 @@ func (t *Turn) runResumeStream(
 	ctx context.Context,
 	w http.ResponseWriter,
 	conversationID string,
+	businessID string,
 	activeMsg *domain.Message,
 	batchID string,
 	body []byte,
@@ -227,6 +229,29 @@ func (t *Turn) runResumeStream(
 	for i, tc := range msg.ToolCalls {
 		callIdx[tc.ID] = i
 	}
+
+	// Side-effect parity with the primary path (streamOrchestrator/dispatchEvent):
+	// manual-floor publishing tools ALWAYS execute here on resume, never inline,
+	// so without this the Tasks page and Posts page stayed empty after a
+	// successful approval. taskOpsCtx is detached so AgentTask writes survive a
+	// mid-resume client disconnect; newCalls/newResults scope the post/review
+	// fan-out to THIS resume's executions (msg.ToolResults accumulates across the
+	// whole chain, so recording the full set each round would duplicate posts).
+	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), streamBudget)
+	if corrID := logger.CorrelationIDFromContext(ctx); corrID != "" {
+		taskOpsCtx = logger.WithCorrelationID(taskOpsCtx, corrID)
+	}
+	defer cancelTaskOps()
+	idMap := make(map[string]string)
+	var newCalls []domain.ToolCall
+	var newResults []domain.ToolResult
+	defer func() {
+		if len(newResults) > 0 {
+			sideCtx, cancel := t.persistContext(ctx)
+			defer cancel()
+			t.recordPostsAndReviews(sideCtx, businessID, newCalls, newResults)
+		}
+	}()
 
 	var terminated, fireAutoTitle bool
 	var rePause *sse.Event
@@ -247,6 +272,13 @@ func (t *Turn) runResumeStream(
 			case "tool_approval_required":
 				evCopy := ev
 				rePause = &evCopy
+			case "tool_call":
+				newCalls = append(newCalls, domain.ToolCall{
+					ID:        ev.ToolCallID,
+					Name:      ev.ToolName,
+					Arguments: ev.ToolArgs,
+				})
+				t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
 			case "tool_result":
 				var content map[string]interface{}
 				if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -260,6 +292,13 @@ func (t *Turn) runResumeStream(
 					IsError:    ev.ToolError != "",
 					Code:       ev.Code,
 				})
+				newResults = append(newResults, domain.ToolResult{
+					ToolCallID: ev.ToolCallID,
+					Content:    content,
+					IsError:    ev.ToolError != "",
+					Code:       ev.Code,
+				})
+				t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, ev.Code, idMap)
 				if idx, ok := callIdx[ev.ToolCallID]; ok {
 					if ev.ToolError != "" {
 						msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected

@@ -44,6 +44,16 @@ func (r *resumeMsgRepo) Update(_ context.Context, m *domain.Message) error {
 	return nil
 }
 
+type resumePostRepo struct {
+	domain.PostRepository
+	created []*domain.Post
+}
+
+func (r *resumePostRepo) Create(_ context.Context, p *domain.Post) error {
+	r.created = append(r.created, p)
+	return nil
+}
+
 // TestResumeApproved_PersistsFinalizedMessage is the regression for the bug
 // where POST /chat/{id}/resume streamed the approved-tool result to the browser
 // but never wrote it back: the orchestrator marked the batch resolved while the
@@ -156,6 +166,61 @@ func TestResumeApproved_RePause_KeepsMessageActive(t *testing.T) {
 	assert.Equal(t, "batch-tg-tc_tg", msgRepo.updated.ToolCalls[1].ApprovalID)
 	require.Len(t, msgRepo.updated.ToolResults, 1)
 	assert.Equal(t, "tc_yandex", msgRepo.updated.ToolResults[0].ToolCallID)
+}
+
+// TestResumeApproved_RecordsPostOnPublish is the regression for the side-effect
+// gap: publishing tools are manual-floor, so they ALWAYS execute on resume, not
+// inline — and runResumeStream never called recordPostsAndReviews. So after a
+// successful approval the Posts page stayed empty. The resume must create a Post
+// for a posting tool's tool_call + successful tool_result, like the primary path.
+func TestResumeApproved_RecordsPostOnPublish(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_vk","tool_name":"vk__publish_post","tool_args":{"text":"Мы работаем до 22:00"}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_vk","result":{"ok":true}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer orch.Close()
+
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_vk", Name: "vk__publish_post", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	posts := &resumePostRepo{}
+	turn := New(Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  resumeStubInteg{},
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages:      msgRepo,
+		Posts:         posts,
+		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+			ID: "batch-vk", ConversationID: "conv-1", BusinessID: "biz-1",
+		}},
+		Orch: orchestratorclient.New(orch.URL, http.DefaultClient),
+	})
+
+	rr := httptest.NewRecorder()
+	_, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-vk", nil)
+	require.NoError(t, err)
+
+	require.Len(t, posts.created, 1, "a published post must be recorded on resume")
+	assert.Equal(t, "biz-1", posts.created[0].BusinessID)
+	assert.Equal(t, "Мы работаем до 22:00", posts.created[0].Content)
+	assert.Equal(t, "published", posts.created[0].Status)
+	_, hasVK := posts.created[0].PlatformResults["vk"]
+	assert.True(t, hasVK, "post must carry a vk platform result")
 }
 
 // TestResumeApproved_NoActiveMessage_InlineError — if there is no active message
