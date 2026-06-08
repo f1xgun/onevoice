@@ -273,6 +273,7 @@ func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform,
 func vkInfoInput(b *domain.Business, integ domain.Integration) map[string]string {
 	input := map[string]string{
 		"group_id":    integ.ExternalID,
+		"title":       b.Name,
 		"description": b.Description,
 		"phone":       b.Phone,
 	}
