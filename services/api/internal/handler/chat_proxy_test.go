@@ -1132,10 +1132,14 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), `"call_id":"call-p"`)
 }
 
-// TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress
-// case (d): active in_progress Message with NO batch (shouldn't happen in
-// healthy flow) → inline error "turn_already_in_progress".
-func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testing.T) {
+// TestChatProxy_OrphanActive_NoBatch_SelfHealsInsteadOfDeadEnd
+// case (d): an active message whose approval batch already resolved (or
+// vanished) but whose resume never wrote back. The gate must self-heal —
+// finalize the stranded message and proceed as a fresh turn — instead of
+// dead-ending every later request with turn_already_in_progress. (Empty body
+// here means the fresh turn then short-circuits on missing message; the point
+// is the dead-end is gone and the orphan was finalized.)
+func TestChatProxy_OrphanActive_NoBatch_SelfHealsInsteadOfDeadEnd(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 	convID := "conv-orphan"
@@ -1144,7 +1148,10 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 
 	activeMsg := &domain.Message{
 		ID: "msg-orphan", ConversationID: convID, Role: "assistant",
-		Status: domain.MessageStatusInProgress,
+		Status: domain.MessageStatusPendingApproval,
+		ToolCalls: []domain.ToolCall{
+			{ID: "tc_a", Name: "yandex_business__update_hours", Status: domain.ToolCallStatusPending},
+		},
 	}
 
 	orchHits := 0
@@ -1158,9 +1165,14 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
+	var healed *domain.Message
 	msgRepo := &MockMessageRepository{
 		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
 			return activeMsg, nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			healed = m
+			return nil
 		},
 	}
 	pendingRepo := &MockPendingToolCallRepository{
@@ -1185,10 +1197,16 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 	rr := httptest.NewRecorder()
 	h.Chat(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
+	// Dead-end is gone: no turn_already_in_progress. Empty body → fresh turn
+	// short-circuits with 400 "message is required".
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.NotContains(t, rr.Body.String(), "turn_already_in_progress")
 	assert.Equal(t, 0, orchHits)
-	assert.Contains(t, rr.Body.String(), `"type":"error"`)
-	assert.Contains(t, rr.Body.String(), `"content":"turn_already_in_progress"`)
+
+	// The stranded message was finalized so the conversation is usable again.
+	require.NotNil(t, healed, "stranded message must be finalized")
+	assert.Equal(t, domain.MessageStatusComplete, healed.Status)
+	assert.Equal(t, domain.ToolCallStatusApproved, healed.ToolCalls[0].Status)
 }
 
 // TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails covers the

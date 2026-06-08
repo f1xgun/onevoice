@@ -3,40 +3,52 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
 )
 
 // hitlBatchResolvingRetryAfterMs is the 409 retry hint (ms). 500ms balances
 // "don't hammer" vs "feels responsive". See docs/api/handlers/hitl.md.
 const hitlBatchResolvingRetryAfterMs = 500
 
+// chatResumer is the narrow slice of the chat-turn lifecycle that Resume needs:
+// run the orchestrator resume stream AND persist the finalized assistant
+// message. *chatturn.Turn satisfies it. Kept as an interface so HITL tests can
+// inject a fake without wiring a full Turn.
+type chatResumer interface {
+	ResumeApproved(ctx context.Context, w http.ResponseWriter, conversationID, batchID string, body []byte) (chatturn.TurnOutcome, error)
+}
+
 // HITLHandler serves the three HITL HTTP endpoints. See docs/api/handlers/hitl.md.
 type HITLHandler struct {
 	hitlService      *service.HITLService
 	businessService  BusinessService
 	conversationRepo domain.ConversationRepository
+	resumer          chatResumer
 }
 
-// NewHITLHandler constructs a HITLHandler; all three deps are required.
+// NewHITLHandler constructs a HITLHandler; all four deps are required. resumer
+// is the shared chat-turn lifecycle — Resume delegates to it so the approved-tool
+// result is persisted (the bare SSE proxy this replaces never wrote it back).
 func NewHITLHandler(
 	hitlService *service.HITLService,
 	businessService BusinessService,
 	conversationRepo domain.ConversationRepository,
+	resumer chatResumer,
 ) (*HITLHandler, error) {
 	if hitlService == nil {
 		return nil, fmt.Errorf("NewHITLHandler: hitlService cannot be nil")
@@ -47,10 +59,14 @@ func NewHITLHandler(
 	if conversationRepo == nil {
 		return nil, fmt.Errorf("NewHITLHandler: conversationRepo cannot be nil")
 	}
+	if resumer == nil {
+		return nil, fmt.Errorf("NewHITLHandler: resumer cannot be nil")
+	}
 	return &HITLHandler{
 		hitlService:      hitlService,
 		businessService:  businessService,
 		conversationRepo: conversationRepo,
+		resumer:          resumer,
 	}, nil
 }
 
@@ -256,18 +272,18 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := json.Marshal(body)
 
-	streamErr := h.hitlService.OrchClient().StreamSSE(r.Context(), orchestratorclient.StreamSSERequest{
-		ConversationID: conversationID,
-		BatchID:        batchID,
-		Body:           raw,
-		Writer:         w,
-	})
+	// Delegate to the shared chat-turn lifecycle so the approved-tool result is
+	// accumulated and the assistant message is finalized (complete + results).
+	// The bare SSE proxy this replaces streamed the result to the browser but
+	// never wrote it back, stranding the message at pending_approval and bricking
+	// the conversation with turn_already_in_progress on the next message.
+	outcome, streamErr := h.resumer.ResumeApproved(r.Context(), w, conversationID, batchID, raw)
+	if outcome == chatturn.OutcomeOrchestratorUnavailable {
+		slog.ErrorContext(r.Context(), "resume: orchestrator request failed", "error", streamErr)
+		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
+		return
+	}
 	if streamErr != nil {
-		if strings.Contains(streamErr.Error(), "stream resume:") {
-			slog.ErrorContext(r.Context(), "resume: orchestrator request failed", "error", streamErr)
-			writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
-			return
-		}
 		slog.WarnContext(r.Context(), "resume: stream ended with error",
 			"error", streamErr, "conversation_id", conversationID)
 	}

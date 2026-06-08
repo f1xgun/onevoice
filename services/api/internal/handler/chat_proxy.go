@@ -43,6 +43,10 @@ type ChatProxyHandler struct {
 	defaultTier string
 }
 
+// Turn exposes the shared chat-turn lifecycle so sibling handlers (HITLHandler.Resume)
+// can delegate to the same persisting resume path instead of building a second Turn.
+func (h *ChatProxyHandler) Turn() *chatturn.Turn { return h.turn }
+
 // SetSSECounter wires the per-user SSE concurrency cap (optional).
 func (h *ChatProxyHandler) SetSSECounter(c *ssecounter.Counter, defaultTier string) {
 	h.sseCounter = c
