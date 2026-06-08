@@ -37,7 +37,10 @@ const (
 type RegistrationContext struct {
 	IP        string
 	UserAgent string
-	Policies  []PolicyAccepted
+	// Name is the display name from the registration form. Persisted on the
+	// atomic register path; trimmed by RegisterWithContext.
+	Name     string
+	Policies []PolicyAccepted
 }
 
 // UserService defines the interface for user-related operations.
@@ -53,6 +56,8 @@ type UserService interface {
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
 	// UpdatePreferredLocale persists the user's UI language choice.
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
+	// UpdateName persists the user's display name (PATCH /auth/profile).
+	UpdateName(ctx context.Context, userID uuid.UUID, name string) error
 }
 
 type userService struct {
@@ -205,6 +210,7 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 	user := &domain.User{
 		ID:           uuid.New(),
 		Email:        email,
+		Name:         strings.TrimSpace(regCtx.Name),
 		PasswordHash: string(passwordHash),
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -383,6 +389,19 @@ func (s *userService) UpdatePreferredLocale(ctx context.Context, userID uuid.UUI
 			return err
 		}
 		return fmt.Errorf("update preferred locale: %w", err)
+	}
+	return nil
+}
+
+// UpdateName persists the user's display name. Length is enforced at the
+// handler boundary (RegisterRequest / UpdateProfileRequest schema); the service
+// trims surrounding whitespace before the write.
+func (s *userService) UpdateName(ctx context.Context, userID uuid.UUID, name string) error {
+	if err := s.repo.UpdateName(ctx, userID, strings.TrimSpace(name)); err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return err
+		}
+		return fmt.Errorf("update name: %w", err)
 	}
 	return nil
 }

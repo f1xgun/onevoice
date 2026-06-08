@@ -20,6 +20,8 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
+	// UpdateName sets users.name. Caller trims/validates; ErrUserNotFound when no row.
+	UpdateName(ctx context.Context, userID uuid.UUID, name string) error
 }
 
 // BusinessRepository persists business records.

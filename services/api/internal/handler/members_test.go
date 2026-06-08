@@ -217,6 +217,10 @@ func (m *MockUserRepository) UpdatePreferredLocale(ctx context.Context, userID u
 	return errors.New("not implemented")
 }
 
+func (m *MockUserRepository) UpdateName(ctx context.Context, userID uuid.UUID, name string) error {
+	return errors.New("not implemented")
+}
+
 // MockCacheInvalidator is a testify/mock for memberCacheInvalidator.
 type MockCacheInvalidator struct {
 	mock.Mock

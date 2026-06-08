@@ -19,6 +19,9 @@ import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 
 const NEW_PASSWORD_MIN_LEN = 8;
+// Mirror the backend UpdateProfileRequest constraint (min=2,max=100).
+const NAME_MIN_LEN = 2;
+const NAME_MAX_LEN = 100;
 
 // Schema is built inside the component so validation messages follow the
 // active locale. useMemo keeps schema identity stable across re-renders
@@ -85,7 +88,7 @@ export default function SettingsPage() {
               </h2>
             </header>
             <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
-              <ReadOnlyField label={tSettings('nameLabel')} value={user?.name} />
+              <AccountNameForm />
               <ReadOnlyField label={tSettings('emailLabel')} value={user?.email} />
             </div>
           </section>
@@ -192,6 +195,74 @@ function ReadOnlyField({ label, value, mono }: { label: string; value?: string; 
         {value ?? tSettings('fallbackEmpty')}
       </div>
     </div>
+  );
+}
+
+type NameInput = { name: string };
+
+// Editable display name. `values` (not defaultValues) re-syncs the field when
+// the user object hydrates from /auth/me after first paint. On success the
+// auth store is patched so the new name shows everywhere without a reload.
+function AccountNameForm() {
+  const tSettings = useTranslations('settings.page');
+  const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const setAuth = useAuthStore((s) => s.setAuth);
+
+  const schema = useMemo(
+    () =>
+      z.object({
+        name: z
+          .string()
+          .trim()
+          .min(NAME_MIN_LEN, tSettings('nameMinChars'))
+          .max(NAME_MAX_LEN, tSettings('nameMaxChars')),
+      }),
+    [tSettings]
+  );
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting, isDirty },
+  } = useForm<NameInput>({
+    resolver: zodResolver(schema),
+    values: { name: user?.name ?? '' },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (data: NameInput) => api.patch(API_PATHS.AUTH.PROFILE, { name: data.name.trim() }),
+    onSuccess: (_res, data) => {
+      const name = data.name.trim();
+      if (user && accessToken) setAuth({ ...user, name }, accessToken);
+      toast.success(tSettings('nameSaved'));
+      reset({ name });
+    },
+    onError: () => toast.error(tSettings('nameSaveError')),
+  });
+
+  const busy = isSubmitting || mutation.isPending;
+
+  return (
+    <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="flex flex-col gap-1.5">
+      <Label htmlFor="account-name">
+        <MonoLabel>{tSettings('nameLabel')}</MonoLabel>
+      </Label>
+      <div className="flex gap-2">
+        <Input
+          id="account-name"
+          autoComplete="name"
+          placeholder={tSettings('namePlaceholder')}
+          className="flex-1"
+          {...register('name')}
+        />
+        <Button type="submit" size="sm" disabled={!isDirty || busy}>
+          {busy ? tSettings('submitting') : tSettings('saveName')}
+        </Button>
+      </div>
+      {errors.name && <p className="text-sm text-[var(--ov-danger)]">{errors.name.message}</p>}
+    </form>
   );
 }
 

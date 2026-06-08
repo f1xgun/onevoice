@@ -94,6 +94,11 @@ func (m *MockUserService) UpdatePreferredLocale(ctx context.Context, userID uuid
 	return args.Error(0)
 }
 
+func (m *MockUserService) UpdateName(ctx context.Context, userID uuid.UUID, name string) error {
+	args := m.Called(ctx, userID, name)
+	return args.Error(0)
+}
+
 func TestRegister(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -104,7 +109,7 @@ func TestRegister(t *testing.T) {
 	}{
 		{
 			name:        "successful registration",
-			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(&domain.User{
@@ -188,7 +193,7 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "user already exists",
-			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(nil, domain.ErrUserExists)
@@ -209,7 +214,7 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "internal server error",
-			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(nil, errors.New("database connection failed"))
@@ -223,7 +228,7 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "phase 22 consent missing",
-			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
@@ -236,7 +241,7 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "phase 22 stale pdn version",
-			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v0.9"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v0.9"}}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
@@ -872,7 +877,7 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 
 	handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -1237,6 +1242,117 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			handler.UpdatePreferredLocale(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w)
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+// TestUpdateProfile covers PATCH /api/v1/auth/profile (display name).
+func TestUpdateProfile(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	withUser := func(r *http.Request) *http.Request {
+		ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+		return r.WithContext(ctx)
+	}
+
+	tests := []struct {
+		name          string
+		setupContext  func(*http.Request) *http.Request
+		requestBody   string
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
+	}{
+		{
+			name:         "successful name update",
+			setupContext: withUser,
+			requestBody:  `{"name":"Jane Doe"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("UpdateName", mock.Anything, testUserID, "Jane Doe").Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Empty(t, w.Body.String(), "204 No Content must have empty body")
+			},
+		},
+		{
+			name:         "name too short returns 400",
+			setupContext: withUser,
+			requestBody:  `{"name":"J"}`,
+			mockSetup:    func(m *MockUserService) {},
+			wantStatus:   http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
+				assert.Contains(t, body, `"Name"`)
+			},
+		},
+		{
+			name:         "missing userID in context returns 401",
+			setupContext: func(r *http.Request) *http.Request { return r },
+			requestBody:  `{"name":"Jane Doe"}`,
+			mockSetup:    func(m *MockUserService) {},
+			wantStatus:   http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"unauthorized"`)
+			},
+		},
+		{
+			name:         "invalid JSON body returns 400",
+			setupContext: withUser,
+			requestBody:  `{not-json`,
+			mockSetup:    func(m *MockUserService) {},
+			wantStatus:   http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"invalid request body"`)
+			},
+		},
+		{
+			name:         "user not found returns 404",
+			setupContext: withUser,
+			requestBody:  `{"name":"Jane Doe"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("UpdateName", mock.Anything, testUserID, "Jane Doe").Return(domain.ErrUserNotFound)
+			},
+			wantStatus: http.StatusNotFound,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"user not found"`)
+			},
+		},
+		{
+			name:         "internal error returns 500 without leaking",
+			setupContext: withUser,
+			requestBody:  `{"name":"Jane Doe"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("UpdateName", mock.Anything, testUserID, "Jane Doe").
+					Return(errors.New("postgres connection refused"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"code":"update_profile_internal"`)
+				assert.NotContains(t, body, "postgres")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
+
+			req := httptest.NewRequest(http.MethodPatch, "/api/v1/auth/profile", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			req = tt.setupContext(req)
+			w := httptest.NewRecorder()
+
+			handler.UpdateProfile(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 			tt.checkResponse(t, w)

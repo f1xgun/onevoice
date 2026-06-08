@@ -129,8 +129,8 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 	sql, args, err := r.sb.
 		Insert("users").
-		Columns("id", "email", "password_hash", "created_at", "updated_at").
-		Values(user.ID, user.Email, user.PasswordHash, user.CreatedAt, user.UpdatedAt).
+		Columns("id", "email", "name", "password_hash", "created_at", "updated_at").
+		Values(user.ID, user.Email, user.Name, user.PasswordHash, user.CreatedAt, user.UpdatedAt).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -160,8 +160,8 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 
 	sql, args, err := r.sb.
 		Insert("users").
-		Columns("id", "email", "password_hash", "created_at", "updated_at").
-		Values(user.ID, user.Email, user.PasswordHash, user.CreatedAt, user.UpdatedAt).
+		Columns("id", "email", "name", "password_hash", "created_at", "updated_at").
+		Values(user.ID, user.Email, user.Name, user.PasswordHash, user.CreatedAt, user.UpdatedAt).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert tx: %w", err)
@@ -186,6 +186,7 @@ func scanUser(row scanner) (domain.User, error) {
 	err := row.Scan(
 		&user.ID,
 		&user.Email,
+		&user.Name,
 		&user.PasswordHash,
 		&user.PreferredLocale,
 		&user.EmailVerified,
@@ -204,7 +205,7 @@ func scanUser(row scanner) (domain.User, error) {
 // deletion-aware callers use GetByIDIncludingDeleted.
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "preferred_locale",
+		Select("id", "email", "name", "password_hash", "preferred_locale",
 			"COALESCE(email_verified, FALSE) AS email_verified",
 			"email_verified_at",
 			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
@@ -233,7 +234,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 // of a soft-deleted user (grace banner, restore endpoint).
 func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "preferred_locale",
+		Select("id", "email", "name", "password_hash", "preferred_locale",
 			"COALESCE(email_verified, FALSE) AS email_verified",
 			"email_verified_at",
 			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
@@ -260,7 +261,7 @@ func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UU
 // `deleted_at IS NULL` so soft-deleted accounts don't bleed into reads.
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "preferred_locale",
+		Select("id", "email", "name", "password_hash", "preferred_locale",
 			"COALESCE(email_verified, FALSE) AS email_verified",
 			"email_verified_at",
 			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
@@ -481,7 +482,7 @@ func (r *userRepository) EnumeratePendingDeletionsInTx(ctx context.Context, tx p
 // inside (fromTime, toTime] — the T-7 warning window. Pool-based because the
 // warning sweeper has no surrounding business transaction.
 func (r *userRepository) EnumerateUpcomingDeletions(ctx context.Context, fromTime, toTime time.Time, limit int) ([]*domain.User, error) {
-	const q = `SELECT id, email, password_hash, preferred_locale,
+	const q = `SELECT id, email, name, password_hash, preferred_locale,
 	                  COALESCE(email_verified, FALSE) AS email_verified,
 	                  email_verified_at,
 	                  deleted_at, deletion_requested_at, deletion_canceled_at,
@@ -537,6 +538,31 @@ func (r *userRepository) UpdatePreferredLocale(ctx context.Context, userID uuid.
 	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("update preferred_locale: %w", err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+
+	return nil
+}
+
+// UpdateName sets users.name + updated_at. Length validation ('2..100') happens
+// at the handler boundary; the repo just persists the trimmed value.
+func (r *userRepository) UpdateName(ctx context.Context, userID uuid.UUID, name string) error {
+	sql, args, err := r.sb.
+		Update("users").
+		Set("name", name).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{"id": userID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update name: %w", err)
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("update name: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
