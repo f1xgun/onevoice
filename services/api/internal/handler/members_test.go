@@ -297,7 +297,7 @@ func TestMembersHandler_ListMembers_HappyPath(t *testing.T) {
 		{BusinessID: bizID, UserID: userID1, RoleID: roleID, Status: "active", JoinedAt: now},
 		{BusinessID: bizID, UserID: userID2, RoleID: roleID, Status: "active", JoinedAt: now},
 	}, nil)
-	ur.On("GetByID", mock.Anything, userID1).Return(&domain.User{ID: userID1, Email: "user1@example.com"}, nil)
+	ur.On("GetByID", mock.Anything, userID1).Return(&domain.User{ID: userID1, Email: "user1@example.com", Name: "Alice Liddell"}, nil)
 	ur.On("GetByID", mock.Anything, userID2).Return(&domain.User{ID: userID2, Email: "user2@example.com"}, nil)
 	rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{ID: roleID, Name: "viewer", Permissions: []string{"members.read"}}, nil).Times(2)
 
@@ -309,9 +309,19 @@ func TestMembersHandler_ListMembers_HappyPath(t *testing.T) {
 	h.ListMembers(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var body []map[string]interface{}
+	var body []map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	assert.Len(t, body, 2)
+
+	byID := map[string]map[string]any{}
+	for _, row := range body {
+		u := row["user"].(map[string]any)
+		byID[u["id"].(string)] = u
+	}
+	assert.Equal(t, "Alice Liddell", byID[userID1.String()]["name"], "named member carries name")
+	_, hasName := byID[userID2.String()]["name"]
+	assert.False(t, hasName, "nameless member omits the name field (omitempty)")
+
 	mr.AssertExpectations(t)
 	ur.AssertExpectations(t)
 	rr.AssertExpectations(t)
