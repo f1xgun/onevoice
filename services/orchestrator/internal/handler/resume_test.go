@@ -28,10 +28,17 @@ func (s *stubResumer) Resume(ctx context.Context, req orchestrator.ResumeRequest
 	return s.fn(ctx, req)
 }
 
+// newResumeHandler builds a ResumeHandler with an empty default model. The
+// model-fallback path is exercised explicitly by
+// TestResumeHandler_EmptyModel_FallsBackToDefault.
+func newResumeHandler(r handler.Resumer) *handler.ResumeHandler {
+	return handler.NewResumeHandler(r, "")
+}
+
 // TestResumeHandler_MissingBatchID_Returns400 — empty batch_id query param
 // is a 400 before any orchestrator call is made.
 func TestResumeHandler_MissingBatchID_Returns400(t *testing.T) {
-	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, _ orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+	h := newResumeHandler(&stubResumer{fn: func(_ context.Context, _ orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
 		t.Fatal("resumer should not be called when batch_id is missing")
 		return nil, nil
 	}})
@@ -49,7 +56,7 @@ func TestResumeHandler_MissingBatchID_Returns400(t *testing.T) {
 // events (tool_result + done), the handler must write both as SSE `data:`
 // frames to the response body.
 func TestResumeHandler_StreamsEventsAsSSE(t *testing.T) {
-	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+	h := newResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
 		if req.BatchID != "batch-123" {
 			t.Fatalf("batch_id = %q, want batch-123", req.BatchID)
 		}
@@ -96,7 +103,7 @@ func TestResumeHandler_StreamsEventsAsSSE(t *testing.T) {
 // HITL-approved tool call lands in MongoDB with empty display labels.
 // Regression guard for the resume-path drop fixed alongside this test.
 func TestResumeHandler_StreamsToolDisplayNameAndKey(t *testing.T) {
-	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, _ orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+	h := newResumeHandler(&stubResumer{fn: func(_ context.Context, _ orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
 		ch := make(chan orchestrator.Event, 3)
 		ch <- orchestrator.Event{
 			Type:               orchestrator.EventToolCall,
@@ -188,7 +195,7 @@ func parseSSEFrames(t *testing.T, body string) []map[string]interface{} {
 // ResumeRequest.
 func TestResumeHandler_ForwardsFreshApprovalMaps(t *testing.T) {
 	var got orchestrator.ResumeRequest
-	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+	h := newResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
 		got = req
 		ch := make(chan orchestrator.Event, 1)
 		ch <- orchestrator.Event{Type: orchestrator.EventDone}
@@ -232,7 +239,7 @@ func TestResumeHandler_ForwardsFreshApprovalMaps(t *testing.T) {
 // maps and still drive the orchestrator.
 func TestResumeHandler_EmptyBody_UsesZeroValues(t *testing.T) {
 	var called bool
-	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+	h := newResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
 		called = true
 		if req.BatchID != "b1" {
 			t.Errorf("BatchID = %q, want b1", req.BatchID)
@@ -250,6 +257,56 @@ func TestResumeHandler_EmptyBody_UsesZeroValues(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("resumer was not invoked")
+	}
+}
+
+// TestResumeHandler_EmptyModel_FallsBackToDefault — the chat_proxy implicit-
+// resume path sends http.NoBody, so the resume body carries no model. The
+// handler must substitute its configured defaultModel; otherwise the
+// post-approval continuation routes to model "" and the LLM router returns
+// ErrNoProvider, aborting the agent loop right after the first approved tool.
+func TestResumeHandler_EmptyModel_FallsBackToDefault(t *testing.T) {
+	var got orchestrator.ResumeRequest
+	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+		got = req
+		ch := make(chan orchestrator.Event, 1)
+		ch <- orchestrator.Event{Type: orchestrator.EventDone}
+		close(ch)
+		return ch, nil
+	}}, "cfg-default-model")
+
+	req := httptest.NewRequest(http.MethodPost, "/chat/conv1/resume?batch_id=b1", http.NoBody)
+	rec := httptest.NewRecorder()
+	h.Resume(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got.Model != "cfg-default-model" {
+		t.Errorf("Model = %q, want cfg-default-model (defaultModel fallback)", got.Model)
+	}
+}
+
+// TestResumeHandler_ExplicitModel_OverridesDefault — when the body DOES carry a
+// model it wins over the handler's defaultModel.
+func TestResumeHandler_ExplicitModel_OverridesDefault(t *testing.T) {
+	var got orchestrator.ResumeRequest
+	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, req orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+		got = req
+		ch := make(chan orchestrator.Event, 1)
+		ch <- orchestrator.Event{Type: orchestrator.EventDone}
+		close(ch)
+		return ch, nil
+	}}, "cfg-default-model")
+
+	body := `{"model":"gpt-5"}`
+	req := httptest.NewRequest(http.MethodPost, "/chat/conv1/resume?batch_id=b1", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.Resume(rec, req)
+
+	if got.Model != "gpt-5" {
+		t.Errorf("Model = %q, want gpt-5 (explicit body model wins)", got.Model)
 	}
 }
 

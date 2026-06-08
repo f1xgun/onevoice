@@ -60,7 +60,7 @@ func TestResumeHandler_WireGolden(t *testing.T) {
 		return ch, nil
 	}}
 
-	h := handler.NewResumeHandler(resumer)
+	h := handler.NewResumeHandler(resumer, "")
 	req := httptest.NewRequest(http.MethodPost, "/chat/conv1/resume?batch_id=batch-2", http.NoBody)
 	rec := httptest.NewRecorder()
 	h.Resume(rec, req)
