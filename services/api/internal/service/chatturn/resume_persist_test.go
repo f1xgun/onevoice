@@ -97,6 +97,67 @@ func TestResumeApproved_PersistsFinalizedMessage(t *testing.T) {
 	assert.Equal(t, domain.ToolCallStatusApproved, msgRepo.updated.ToolCalls[0].Status)
 }
 
+// TestResumeApproved_RePause_KeepsMessageActive is the regression for the
+// sequential fan-out bug: gpt-oss-120b:free emits one tool call per turn, so
+// approving Yandex resumes the loop which immediately pauses AGAIN on Telegram.
+// The orchestrator emits tool_result(yandex) + tool_approval_required(next) with
+// NO done. The pre-fix fallback marked the message Complete, so the next approve
+// found no active message and failed with no_active_approval_for_conversation
+// ("only Yandex fired"). ResumeApproved must keep the message PendingApproval,
+// flip Yandex to approved, and append the Telegram call as pending.
+func TestResumeApproved_RePause_KeepsMessageActive(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_yandex","result":{"ok":true}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_approval_required","batch_id":"batch-tg","calls":[{"call_id":"tc_tg","tool_name":"telegram__send_channel_post","args":{"text":"hi"}}]}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer orch.Close()
+
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_yandex", Name: "yandex_business__update_hours", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	turn := New(Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  resumeStubInteg{},
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages:      msgRepo,
+		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+			ID: "batch-yandex", ConversationID: "conv-1",
+		}},
+		Orch: orchestratorclient.New(orch.URL, http.DefaultClient),
+	})
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-yandex", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomePauseHITL, outcome, "re-pause must NOT finalize the turn")
+
+	require.NotNil(t, msgRepo.updated, "re-pause MUST persist the still-active message")
+	assert.Equal(t, domain.MessageStatusPendingApproval, msgRepo.updated.Status,
+		"message must stay active so the next approve finds it")
+	require.Len(t, msgRepo.updated.ToolCalls, 2, "Telegram call must be appended")
+	assert.Equal(t, domain.ToolCallStatusApproved, msgRepo.updated.ToolCalls[0].Status,
+		"Yandex flips to approved after its result")
+	assert.Equal(t, "tc_tg", msgRepo.updated.ToolCalls[1].ID)
+	assert.Equal(t, "telegram__send_channel_post", msgRepo.updated.ToolCalls[1].Name)
+	assert.Equal(t, domain.ToolCallStatusPending, msgRepo.updated.ToolCalls[1].Status)
+	assert.Equal(t, "batch-tg-tc_tg", msgRepo.updated.ToolCalls[1].ApprovalID)
+	require.Len(t, msgRepo.updated.ToolResults, 1)
+	assert.Equal(t, "tc_yandex", msgRepo.updated.ToolResults[0].ToolCallID)
+}
+
 // TestResumeApproved_NoActiveMessage_InlineError — if there is no active message
 // to finalize (anomalous), ResumeApproved must not proceed to stream; it emits
 // an inline error instead of stranding a half-run resume.
