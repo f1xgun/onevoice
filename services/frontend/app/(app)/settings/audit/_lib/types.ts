@@ -53,6 +53,8 @@ export const AUDIT_ACTIONS = [
   'integration.connected',
   'integration.disconnected',
   'integration.token_rotated',
+  'integration.token_decrypted',
+  'integration.deleted',
   'business.created',
   'business.updated',
   'project.created',

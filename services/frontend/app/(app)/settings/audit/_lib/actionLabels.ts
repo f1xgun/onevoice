@@ -44,6 +44,8 @@ export const ACTION_LABEL_KEYS: Record<AuditAction, string> = {
   'integration.connected': 'audit.actions.integration_connected',
   'integration.disconnected': 'audit.actions.integration_disconnected',
   'integration.token_rotated': 'audit.actions.integration_token_rotated',
+  'integration.token_decrypted': 'audit.actions.integration_token_decrypted',
+  'integration.deleted': 'audit.actions.integration_deleted',
   'business.created': 'audit.actions.business_created',
   'business.updated': 'audit.actions.business_updated',
   'project.created': 'audit.actions.project_created',

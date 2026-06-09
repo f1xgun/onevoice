@@ -159,14 +159,19 @@ type InvitationRepository interface {
 // AuditLogFilter is the filter set for AuditLogRepository.ListByBusiness.
 // Empty strings / nil pointers mean "no filter"; CursorTime + CursorID are paired.
 type AuditLogFilter struct {
-	Category   string
-	Action     string
-	ActorID    *uuid.UUID
-	From       *time.Time
-	To         *time.Time
-	CursorTime *time.Time
-	CursorID   *uuid.UUID
-	Limit      int
+	Category string
+	Action   string
+	// ExcludeActions drops rows whose action is in this set (SQL NOT IN).
+	// Used to hide high-volume system events (e.g. integration.token_decrypted)
+	// from the default journal feed while keeping them reachable when the
+	// caller explicitly filters by that action. Empty = no exclusion.
+	ExcludeActions []string
+	ActorID        *uuid.UUID
+	From           *time.Time
+	To             *time.Time
+	CursorTime     *time.Time
+	CursorID       *uuid.UUID
+	Limit          int
 }
 
 // AuditLogRepository persists and queries audit_logs. See docs/pkg/domain-repository.md.

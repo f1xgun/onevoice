@@ -39,12 +39,24 @@ function formatRelative(iso: string, tTable: AuditTableTranslator): string {
   return tTable('relDays', { d });
 }
 
+// SYSTEM_ACTIONS are emitted by the platform itself with no human actor by
+// design (the audit builders leave user_id nil). Rendering them as "Система"
+// is clearer than "Неизвестен (—)", which reads like a missing-data bug.
+const SYSTEM_ACTIONS = new Set<string>([
+  'integration.token_decrypted',
+  'integration.token_rotated',
+  'rpa.scope_violation',
+]);
+
 function actorLabel(item: AuditLogDTO, tFilters: AuditFiltersTranslator): string {
   if (item.actor_display_name) return item.actor_display_name;
   if (item.actor_email) return item.actor_email;
   const d = item.details as Record<string, unknown> | null;
   if (d && typeof d === 'object' && typeof d.attempted_email === 'string') {
     return tFilters('actorUnknown', { email: d.attempted_email });
+  }
+  if (SYSTEM_ACTIONS.has(item.action)) {
+    return tFilters('actorSystem');
   }
   return tFilters('actorUnknown', { email: '—' });
 }
