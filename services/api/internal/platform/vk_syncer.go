@@ -45,9 +45,13 @@ func NewVKSyncer(integrations integrationProvider, httpClient *http.Client, vkBa
 	}
 }
 
-// SyncInfo pushes business description + phone + website to VK using the
+// SyncInfo pushes business name + description + phone + website to VK using the
 // dedicated groups.edit API. The dispatcher records the AgentTask; this
 // method only performs the API call and returns an error on failure.
+//
+// title carries the business name: groups.edit treats it as the community name,
+// so omitting it (the prior behavior) meant a business rename never reached VK —
+// the task reported "done" because description/phone/website still synced.
 //
 // Error-message shape ("token fetch failed: <inner>") is preserved verbatim
 // from the prior implementation so existing log/UI assertions continue to
@@ -65,6 +69,9 @@ func (v *VKSyncer) SyncInfo(ctx context.Context, b *domain.Business, integ domai
 		"group_id":     {groupID},
 		"access_token": {token},
 		"v":            {vkapi.APIVersion},
+	}
+	if b.Name != "" {
+		params.Set("title", b.Name)
 	}
 	params.Set("description", b.Description)
 	if b.Phone != "" {
