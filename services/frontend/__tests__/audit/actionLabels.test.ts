@@ -8,8 +8,9 @@ import {
 import ru from '@/messages/ru.json';
 
 // Drift guard for the audit action surface (B3). AUDIT_ACTIONS in types.ts
-// is the single source of truth. This file pins:
-//   1. The 21-action count (matches pkg/audit/actions.go).
+// is the single source of truth for the actions selectable in the journal
+// filter dropdown. This file pins:
+//   1. The action count (the filterable subset of pkg/audit/actions.go).
 //   2. Every entry has a corresponding messages/ru.json key.
 //   3. ACTION_LABEL_KEYS covers every AUDIT_ACTIONS entry (the
 //      Record<AuditAction, string> typing already enforces this at
@@ -17,7 +18,7 @@ import ru from '@/messages/ru.json';
 //      message at CI time human-readable rather than a TS error).
 //   4. actionsForCategory filters from the canonical list.
 
-const EXPECTED_ACTION_COUNT = 21;
+const EXPECTED_ACTION_COUNT = 23;
 
 describe('audit action labels drift guard', () => {
   it('AUDIT_ACTIONS has the expected count', () => {

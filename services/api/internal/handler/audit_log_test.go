@@ -229,6 +229,80 @@ func TestAuditLogHandler_List_AllFiltersThreaded(t *testing.T) {
 	assert.Equal(t, 10, f.Limit)
 }
 
+// --- token_decrypted noise suppression ---
+
+// By default (no ?action=) the handler excludes integration.token_decrypted —
+// the once-per-action system event that would otherwise flood the journal.
+func TestAuditLogHandler_List_DefaultHidesTokenDecrypted(t *testing.T) {
+	t.Parallel()
+	biz := uuid.New()
+	stub := &fakeAuditLister{}
+	h := NewAuditLogHandler(stub)
+
+	ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, stub.gotFilter.ExcludeActions, audit.ActionIntegrationTokenDecrypted,
+		"default feed must exclude token_decrypted")
+}
+
+// A non-token_decrypted action filter (e.g. category=integration drilldown)
+// still excludes token_decrypted, so the integration view stays clean.
+func TestAuditLogHandler_List_OtherActionStillHidesTokenDecrypted(t *testing.T) {
+	t.Parallel()
+	biz := uuid.New()
+	stub := &fakeAuditLister{}
+	h := NewAuditLogHandler(stub)
+
+	ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+	req := httptest.NewRequest(http.MethodGet, "/?action=integration.connected", http.NoBody).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "integration.connected", stub.gotFilter.Action)
+	assert.Contains(t, stub.gotFilter.ExcludeActions, audit.ActionIntegrationTokenDecrypted)
+}
+
+// Explicitly selecting ?action=integration.token_decrypted is now a valid
+// action (200, not 400) AND must NOT be excluded — this is how the user reveals
+// the otherwise-hidden token-decrypt rows via the filter.
+func TestAuditLogHandler_List_ExplicitTokenDecrypted_Revealed(t *testing.T) {
+	t.Parallel()
+	biz := uuid.New()
+	stub := &fakeAuditLister{}
+	h := NewAuditLogHandler(stub)
+
+	ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+	req := httptest.NewRequest(http.MethodGet, "/?action=integration.token_decrypted", http.NoBody).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "token_decrypted must be an accepted action filter")
+	assert.Equal(t, audit.ActionIntegrationTokenDecrypted, stub.gotFilter.Action)
+	assert.NotContains(t, stub.gotFilter.ExcludeActions, audit.ActionIntegrationTokenDecrypted,
+		"explicit token_decrypted filter must reveal those rows")
+}
+
+// integration.deleted is also a newly-accepted action filter (was 400 before).
+func TestAuditLogHandler_List_IntegrationDeleted_Accepted(t *testing.T) {
+	t.Parallel()
+	biz := uuid.New()
+	stub := &fakeAuditLister{}
+	h := NewAuditLogHandler(stub)
+
+	ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+	req := httptest.NewRequest(http.MethodGet, "/?action=integration.deleted", http.NoBody).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, audit.ActionIntegrationDeleted, stub.gotFilter.Action)
+}
+
 // --- Error paths ---
 
 func TestAuditLogHandler_List_Forbidden_WithoutPerm(t *testing.T) {

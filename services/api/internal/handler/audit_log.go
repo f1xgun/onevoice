@@ -63,27 +63,53 @@ type AuditLogListResponse = openapi.AuditLogListResponse
 // knownActions is the closed validation set for the ?action= query parameter.
 // Adding a new audit action requires a matching entry here (failure mode: 400 invalid_action).
 var knownActions = map[string]struct{}{
-	audit.ActionRoleGranted:             {},
-	audit.ActionMemberRemoved:           {},
-	audit.ActionRoleCreated:             {},
-	audit.ActionRoleUpdated:             {},
-	audit.ActionRoleDeleted:             {},
-	audit.ActionInvitationCreated:       {},
-	audit.ActionInvitationRevoked:       {},
-	audit.ActionInvitationAccepted:      {},
-	audit.ActionLoginSuccess:            {},
-	audit.ActionLoginFailed:             {},
-	audit.ActionLogout:                  {},
-	audit.ActionPasswordChanged:         {},
-	audit.ActionUserRegistered:          {},
-	audit.ActionIntegrationConnected:    {},
-	audit.ActionIntegrationDisconnected: {},
-	audit.ActionIntegrationTokenRotated: {},
-	audit.ActionBusinessCreated:         {},
-	audit.ActionBusinessUpdated:         {},
-	audit.ActionProjectCreated:          {},
-	audit.ActionProjectUpdated:          {},
-	audit.ActionProjectDeleted:          {},
+	audit.ActionRoleGranted:               {},
+	audit.ActionMemberRemoved:             {},
+	audit.ActionRoleCreated:               {},
+	audit.ActionRoleUpdated:               {},
+	audit.ActionRoleDeleted:               {},
+	audit.ActionInvitationCreated:         {},
+	audit.ActionInvitationRevoked:         {},
+	audit.ActionInvitationAccepted:        {},
+	audit.ActionLoginSuccess:              {},
+	audit.ActionLoginFailed:               {},
+	audit.ActionLogout:                    {},
+	audit.ActionPasswordChanged:           {},
+	audit.ActionUserRegistered:            {},
+	audit.ActionIntegrationConnected:      {},
+	audit.ActionIntegrationDisconnected:   {},
+	audit.ActionIntegrationTokenRotated:   {},
+	audit.ActionIntegrationTokenDecrypted: {},
+	audit.ActionIntegrationDeleted:        {},
+	audit.ActionBusinessCreated:           {},
+	audit.ActionBusinessUpdated:           {},
+	audit.ActionProjectCreated:            {},
+	audit.ActionProjectUpdated:            {},
+	audit.ActionProjectDeleted:            {},
+}
+
+// noiseActionsHiddenByDefault lists high-volume system events suppressed from
+// the default journal feed. integration.token_decrypted fires once per sync /
+// agent action (every action decrypts a token first), so it would otherwise
+// drown out the human-meaningful events. It stays reachable when the caller
+// explicitly selects it via ?action= — see the ExcludeActions wiring in List.
+var noiseActionsHiddenByDefault = []string{
+	audit.ActionIntegrationTokenDecrypted,
+}
+
+// hiddenActionsExcept returns the default-hidden noise actions to exclude from
+// the result set, minus the one (if any) the caller explicitly selected. So
+// the journal hides token_decrypted by default, yet ?action=integration.token_decrypted
+// reveals exactly those rows. Returns nil when nothing should be excluded.
+func hiddenActionsExcept(selected string) []string {
+	var out []string
+	for _, a := range noiseActionsHiddenByDefault {
+		if a == selected {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // knownCategories is the closed set the frontend tab filter uses.
@@ -128,6 +154,7 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.Action = a
 	}
+	filter.ExcludeActions = hiddenActionsExcept(filter.Action)
 	if actor := q.Get("actor"); actor != "" {
 		id, err := uuid.Parse(actor)
 		if err != nil {

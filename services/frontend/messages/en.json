@@ -1632,7 +1632,8 @@
       "datePresetCustom": "Custom range",
       "actorLabel": "Author",
       "actorAny": "Any",
-      "actorUnknown": "Unknown ({email})"
+      "actorUnknown": "Unknown ({email})",
+      "actorSystem": "System"
     },
     "table": {
       "colTime": "Time",
@@ -1680,14 +1681,32 @@
       "auth_logout": "Signed out",
       "auth_password_changed": "Password changed",
       "auth_user_registered": "Registered",
+      "auth_password_reset_requested": "Password reset requested",
+      "auth_password_reset_completed": "Password reset completed",
+      "auth_password_reset_request_unknown_email": "Password reset: unknown email",
+      "auth_email_verification_link_viewed": "Email verification link opened",
+      "auth_email_verified": "Email verified",
+      "auth_email_changed_before_verify": "Email changed before verification",
+      "auth_consent_recorded": "Consent recorded",
+      "auth_consent_reconsent_required": "Re-consent required",
+      "auth_consent_reconsented": "Re-consented",
+      "auth_consent_withdrawn": "Consent withdrawn",
+      "auth_consent_policy_version_bumped": "Consent policy version updated",
       "integration_connected": "Integration connected",
       "integration_disconnected": "Integration disconnected",
       "integration_token_rotated": "Integration token updated",
+      "integration_token_decrypted": "Integration token accessed",
+      "integration_deleted": "Integration deleted",
       "business_created": "Organization created",
       "business_updated": "Organization updated",
       "project_created": "Project created",
       "project_updated": "Project updated",
-      "project_deleted": "Project deleted"
+      "project_deleted": "Project deleted",
+      "account_deletion_requested": "Account deletion requested",
+      "account_deletion_canceled": "Account deletion canceled",
+      "account_sole_owner_blocked": "Deletion blocked: sole owner",
+      "account_user_self_deleted": "Account deleted",
+      "rpa_scope_violation": "RPA scope violation"
     }
   },
   "sidebar": {

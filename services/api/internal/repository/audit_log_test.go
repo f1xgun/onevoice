@@ -237,6 +237,26 @@ func TestAuditLogRepository_ListByBusiness_QueryError(t *testing.T) {
 	require.Contains(t, err.Error(), "query audit_log list")
 }
 
+// ExcludeActions emits an `action NOT IN (...)` predicate so the default feed
+// can suppress high-volume noise (integration.token_decrypted) at the SQL
+// layer. The excluded value is bound as a positional arg, not inlined.
+func TestAuditLogRepository_ListByBusiness_ExcludeActions(t *testing.T) {
+	mock, repo := newAuditLogRepoMock(t)
+	biz := uuid.New()
+
+	mock.ExpectQuery(`FROM audit_logs WHERE business_id = \$1 AND action NOT IN \(\$2\)`).
+		WithArgs(pgxmock.AnyArg(), "integration.token_decrypted").
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "business_id", "user_id", "action", "resource", "details", "user_email_at_event", "created_at",
+		}))
+
+	_, err := repo.ListByBusiness(context.Background(), biz, domain.AuditLogFilter{
+		ExcludeActions: []string{"integration.token_decrypted"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // --- ListByBusinessWithActors (LEFT JOIN users enrichment) ---
 
 // newAuditLogRepoConcreteMock returns the underlying *auditLogRepository so

@@ -100,6 +100,9 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 	if f.Action != "" {
 		q = q.Where(squirrel.Eq{"action": f.Action})
 	}
+	if len(f.ExcludeActions) > 0 {
+		q = q.Where(squirrel.NotEq{"action": f.ExcludeActions})
+	}
 	if f.ActorID != nil {
 		q = q.Where(squirrel.Eq{"user_id": *f.ActorID})
 	}
@@ -175,6 +178,9 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 	}
 	if f.Action != "" {
 		q = q.Where(squirrel.Eq{"al.action": f.Action})
+	}
+	if len(f.ExcludeActions) > 0 {
+		q = q.Where(squirrel.NotEq{"al.action": f.ExcludeActions})
 	}
 	if f.ActorID != nil {
 		q = q.Where(squirrel.Eq{"al.user_id": *f.ActorID})
