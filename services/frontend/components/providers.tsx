@@ -2,16 +2,12 @@
 
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
-import { Toaster as ShadcnToaster } from '@/components/ui/toaster';
 import { queryClient } from '@/lib/queryClient';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      {/* shadcn/radix toaster — backs the `@/hooks/use-toast` calls (auth flows).
-          Without it mounted, those toasts never render. */}
-      <ShadcnToaster />
       <Toaster
         position="top-right"
         duration={5000}

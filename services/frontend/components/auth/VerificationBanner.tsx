@@ -21,7 +21,7 @@ import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { Button } from '@/components/ui/button';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 import { EmailChangeBeforeVerifyModal } from './EmailChangeBeforeVerifyModal';
 
@@ -53,15 +53,15 @@ export function VerificationBanner() {
   async function resend() {
     try {
       await api.post(API_PATHS.AUTH.VERIFY_EMAIL_RESEND);
-      toast({ description: t('resendSuccess') });
+      toast.success(t('resendSuccess'));
       setCooldownSec(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === HTTP_TOO_MANY_REQUESTS) {
-        toast({ description: t('throttled'), variant: 'destructive' });
+        toast.error(t('throttled'));
         setCooldownSec(RESEND_COOLDOWN_SECONDS);
       } else {
-        toast({ description: t('genericError'), variant: 'destructive' });
+        toast.error(t('genericError'));
       }
     }
   }
