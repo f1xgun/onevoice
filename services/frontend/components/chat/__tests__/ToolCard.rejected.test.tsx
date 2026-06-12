@@ -45,4 +45,18 @@ describe('ToolCard — rejected', () => {
     render(<ToolCard tool={makeRejected({ rejectReason: undefined })} />);
     expect(screen.queryByText(/Причина:/)).not.toBeInTheDocument();
   });
+
+  it('WW: policy_forbidden renders the policy badge, NOT the user-rejection badge', () => {
+    render(<ToolCard tool={makeRejected({ rejectReason: 'policy_forbidden' })} />);
+    expect(screen.getByText('Запрещено политикой')).toBeInTheDocument();
+    expect(screen.queryByText('Отклонено пользователем')).not.toBeInTheDocument();
+    expect(screen.getByText(/Инструмент недоступен для текущей роли/)).toBeInTheDocument();
+    expect(screen.queryByText(/Причина:\s*policy_forbidden/)).not.toBeInTheDocument();
+  });
+
+  it('XX: policy_revoked renders the policy badge + revoked explanation', () => {
+    render(<ToolCard tool={makeRejected({ rejectReason: 'policy_revoked' })} />);
+    expect(screen.getByText('Запрещено политикой')).toBeInTheDocument();
+    expect(screen.getByText(/Доступ к инструменту был отозван политикой/)).toBeInTheDocument();
+  });
 });

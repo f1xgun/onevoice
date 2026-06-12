@@ -22,6 +22,16 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
+// System/policy rejections carry one of these rejectReason codes (emitted by
+// the orchestrator). They get a distinct "blocked by policy" badge + a readable
+// explanation instead of the user-rejection copy — a policy_forbidden was being
+// mislabeled as "rejected by the user". Any other rejectReason is a user HITL
+// rejection (free-text or empty).
+const POLICY_REJECT_REASON_KEYS: Record<string, string> = {
+  policy_forbidden: 'policyForbiddenReason',
+  policy_revoked: 'policyRevokedReason',
+};
+
 export function ToolCard({ tool }: { tool: ToolCall }) {
   const tCard = useTranslations('chat.toolCard');
   const tToolNames = useTranslations('agentTasks.displayName');
@@ -30,6 +40,10 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
   const borderLeftColor = tool.status === 'rejected' ? 'hsl(var(--destructive))' : color;
+
+  const policyReasonKey = tool.rejectReason
+    ? POLICY_REJECT_REASON_KEYS[tool.rejectReason]
+    : undefined;
 
   const displayName = (() => {
     if (!tool.displayNameKey) return tool.name;
@@ -101,7 +115,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
         )}
         {tool.status === 'rejected' && (
           <Badge tone="danger" className="text-destructive">
-            {tCard('rejectedBadge')}
+            {policyReasonKey ? tCard('rejectedByPolicyBadge') : tCard('rejectedBadge')}
           </Badge>
         )}
         {tool.status === 'expired' && <Badge tone="warning">{tCard('expiredBadge')}</Badge>}
@@ -112,7 +126,9 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
       {tool.error && <p className="text-xs text-[var(--ov-danger)]">{tool.error}</p>}
       {tool.status === 'rejected' && tool.rejectReason && (
         <p className="text-xs italic text-muted-foreground">
-          {tCard('rejectedReason', { reason: tool.rejectReason })}
+          {policyReasonKey
+            ? tCard(policyReasonKey)
+            : tCard('rejectedReason', { reason: tool.rejectReason })}
         </p>
       )}
       {tool.status === 'aborted' && (
