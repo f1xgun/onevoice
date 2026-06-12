@@ -497,6 +497,8 @@ type ChatRequestProjectWhitelistMode string
 
 // ChatTurnRequest defines model for ChatTurnRequest.
 type ChatTurnRequest struct {
+	// Locale BCP-47 language tag (e.g. "ru", "en") for the LLM response language. Takes precedence over the Accept-Language header, which browsers cannot set on fetch. Empty falls back to Accept-Language.
+	Locale  *string `json:"locale,omitempty"`
 	Message *string `json:"message,omitempty"`
 	Model   *string `json:"model,omitempty"`
 }

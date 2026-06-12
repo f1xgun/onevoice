@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/auth';
 import { useBusinessStore } from '@/lib/stores/business';
@@ -185,6 +185,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
   const tCommon = useTranslations('common');
   const tCommonErrors = useTranslations('common.errors');
+  const locale = useLocale();
   const { resolveError, resumeStreamError } = useResolveErrorMap();
 
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -388,7 +389,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({ message: text, locale }),
           signal: controller.signal,
         });
 
@@ -409,7 +410,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         isStreamingRef.current = false;
       }
     },
-    [conversationId, accessToken, activeBusinessId, finalizeStreamingAssistant, tCommon]
+    [conversationId, accessToken, activeBusinessId, finalizeStreamingAssistant, tCommon, locale]
   );
 
   const stop = useCallback(() => {
