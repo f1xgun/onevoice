@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from '@/lib/auth';
+import { resolvePostAuthRedirect } from '@/lib/postAuthRedirect';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
@@ -66,7 +67,7 @@ export default function RegisterPage() {
       setAuth(res.data.user, res.data.accessToken);
       queryClient.removeQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
       queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
-      router.push('/chat');
+      router.push(resolvePostAuthRedirect(window.location.search));
     } catch (err) {
       const response = (
         err as {
