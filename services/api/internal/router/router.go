@@ -51,31 +51,32 @@ type RateLimits struct {
 
 // Handlers encapsulates all HTTP handlers consumed by Setup / SetupInternal.
 type Handlers struct {
-	Auth            *handler.AuthHandler
-	Business        *handler.BusinessHandler
-	Integration     *handler.IntegrationHandler
-	Conversation    *handler.ConversationHandler
-	OAuth           *oauth.OAuthHandler
-	Connect         *connect.ConnectHandler
-	InternalToken   *handler.InternalTokenHandler
-	InternalBilling *handler.InternalBillingHandler // mTLS internal only
-	ChatProxy       *handler.ChatProxyHandler
-	Review          *handler.ReviewHandler
-	Post            *handler.PostHandler
-	AgentTask       *handler.AgentTaskHandler
-	Telemetry       *handler.TelemetryHandler
-	Project         *handler.ProjectHandler
-	HITL            *handler.HITLHandler
-	Titler          *handler.TitlerHandler
-	Search          *handler.SearchHandler
-	Platforms       *handler.PlatformsHandler
-	Permissions     *handler.PermissionsHandler
-	Members         *handler.MembersHandler
-	Roles           *handler.RolesHandler
-	Invitations     *handler.InvitationsHandler
-	AuditLog        *handler.AuditLogHandler
-	UserDeletion    *handler.UserDeletionHandler
-	Consents        *handler.ConsentsHandler
+	Auth             *handler.AuthHandler
+	Business         *handler.BusinessHandler
+	Integration      *handler.IntegrationHandler
+	Conversation     *handler.ConversationHandler
+	OAuth            *oauth.OAuthHandler
+	Connect          *connect.ConnectHandler
+	InternalToken    *handler.InternalTokenHandler
+	InternalBilling  *handler.InternalBillingHandler // mTLS internal only
+	ChatProxy        *handler.ChatProxyHandler
+	Review           *handler.ReviewHandler
+	Post             *handler.PostHandler
+	AgentTask        *handler.AgentTaskHandler
+	Telemetry        *handler.TelemetryHandler
+	Project          *handler.ProjectHandler
+	HITL             *handler.HITLHandler
+	Titler           *handler.TitlerHandler
+	Search           *handler.SearchHandler
+	Platforms        *handler.PlatformsHandler
+	Permissions      *handler.PermissionsHandler
+	Members          *handler.MembersHandler
+	Roles            *handler.RolesHandler
+	Invitations      *handler.InvitationsHandler
+	AuditLog         *handler.AuditLogHandler
+	UserDeletion     *handler.UserDeletionHandler
+	BusinessDeletion *handler.BusinessDeletionHandler
+	Consents         *handler.ConsentsHandler
 }
 
 // Setup creates and configures the public Chi router. See
@@ -181,6 +182,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				r.Get("/", handlers.Business.GetBusiness)
 				r.Put("/", handlers.Business.UpdateBusiness)
+				if handlers.BusinessDeletion != nil {
+					r.Delete("/", handlers.BusinessDeletion.Delete)
+					r.Post("/restore", handlers.BusinessDeletion.Restore)
+				}
 				r.Put("/schedule", handlers.Business.UpdateSchedule)
 				r.Put("/voice-tone", handlers.Business.UpdateVoiceTone)
 				r.Put("/logo", handlers.Business.UploadLogo)

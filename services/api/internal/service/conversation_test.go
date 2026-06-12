@@ -95,6 +95,10 @@ func (s *stubConversationRepo) MongoConversationsCleanup(_ context.Context, _, _
 	return 0, nil
 }
 
+func (s *stubConversationRepo) MongoBusinessCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // stubMessageRepo captures the system note appended by MoveToProject and
 // serves a preloaded message list for OpenChat tests via the Messages
 // field.

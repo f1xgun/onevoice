@@ -16,7 +16,7 @@ import (
 )
 
 type businessRepository struct {
-	pool *pgxpool.Pool
+	pool pgxPool
 	sb   squirrel.StatementBuilderType
 }
 
@@ -87,18 +87,19 @@ func (r *businessRepository) CreateInTx(ctx context.Context, tx pgx.Tx, business
 	return nil
 }
 
-func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
-	sql, args, err := r.sb.
-		Select("id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
-		From("businesses").
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("build select: %w", err)
-	}
+// businessColumns is the canonical select order shared by the Get paths and
+// EnumerateUpcomingDeletions.
+var businessColumns = []string{
+	"id", "name", "category", "address", "phone", "website", "description",
+	"logo_url", "settings", "deleted_at", "deletion_requested_at",
+	"deletion_canceled_at", "created_at", "updated_at",
+}
 
+// scanBusiness maps one businesses row into a domain.Business in businessColumns
+// order.
+func scanBusiness(row scanner) (domain.Business, error) {
 	var business domain.Business
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
+	err := row.Scan(
 		&business.ID,
 		&business.Name,
 		&business.Category,
@@ -108,9 +109,31 @@ func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		&business.Description,
 		&business.LogoURL,
 		&business.Settings,
+		&business.DeletedAt,
+		&business.DeletionRequestedAt,
+		&business.DeletionCanceledAt,
 		&business.CreatedAt,
 		&business.UpdatedAt,
 	)
+	return business, err
+}
+
+// GetByID returns the active organization row matching id. Soft-deleted rows
+// are filtered out via `deleted_at IS NULL` and surface as ErrBusinessNotFound,
+// so a soft-deleted organization disappears from the app immediately;
+// deletion-aware callers use GetByIDIncludingDeleted.
+func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	sql, args, err := r.sb.
+		Select(businessColumns...).
+		From("businesses").
+		Where(squirrel.Eq{"id": id}).
+		Where("deleted_at IS NULL").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+
+	business, err := scanBusiness(r.pool.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrBusinessNotFound
@@ -200,4 +223,179 @@ func (r *businessRepository) Update(ctx context.Context, business *domain.Busine
 	}
 
 	return nil
+}
+
+// GetByIDIncludingDeleted is the same SELECT as GetByID minus the
+// `deleted_at IS NULL` filter; lets the deletion-aware code path read the
+// deletion state of a soft-deleted organization (grace banner, restore).
+func (r *businessRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	sql, args, err := r.sb.
+		Select(businessColumns...).
+		From("businesses").
+		Where(squirrel.Eq{"id": id}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+	business, err := scanBusiness(r.pool.QueryRow(ctx, sql, args...))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrBusinessNotFound
+		}
+		return nil, fmt.Errorf("query business: %w", err)
+	}
+	return &business, nil
+}
+
+// RequestDeletionInTx flips active → pending. The
+// `deletion_requested_at IS NULL` guard makes the write idempotent; the
+// follow-up classify-read distinguishes ErrBusinessNotFound from
+// ErrBusinessDeletionAlreadyPending.
+func (r *businessRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) error {
+	const q = `UPDATE businesses
+	              SET deletion_requested_at = NOW(),
+	                  deleted_at = NOW(),
+	                  deletion_canceled_at = NULL,
+	                  updated_at = NOW()
+	            WHERE id = $1
+	              AND deletion_requested_at IS NULL`
+	cmdTag, err := tx.Exec(ctx, q, businessID)
+	if err != nil {
+		return fmt.Errorf("request business deletion: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		var requestedAt *time.Time
+		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at FROM businesses WHERE id = $1`, businessID).
+			Scan(&requestedAt)
+		if err2 != nil {
+			if errors.Is(err2, pgx.ErrNoRows) {
+				return domain.ErrBusinessNotFound
+			}
+			return fmt.Errorf("classify business deletion state: %w", err2)
+		}
+		if requestedAt != nil {
+			return domain.ErrBusinessDeletionAlreadyPending
+		}
+		return domain.ErrBusinessNotFound
+	}
+	return nil
+}
+
+// CancelDeletion flips pending → restored via UPDATE..RETURNING gated by the
+// 30-day grace boundary. Distinguishes ErrBusinessAlreadyPurged from
+// ErrNoBusinessDeletionPending via a follow-up classify-read on zero matches.
+func (r *businessRepository) CancelDeletion(ctx context.Context, businessID uuid.UUID, graceDays int) (bool, error) {
+	sql := fmt.Sprintf(`UPDATE businesses
+	                       SET deletion_canceled_at = NOW(),
+	                           deleted_at = NULL,
+	                           updated_at = NOW()
+	                     WHERE id = $1
+	                       AND deletion_requested_at IS NOT NULL
+	                       AND deletion_canceled_at IS NULL
+	                       AND deletion_requested_at > NOW() - INTERVAL '%d days'
+	                     RETURNING id`, graceDays)
+	var returnedID uuid.UUID
+	err := r.pool.QueryRow(ctx, sql, businessID).Scan(&returnedID)
+	if err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return false, fmt.Errorf("cancel business deletion: %w", err)
+	}
+	var requestedAt *time.Time
+	var canceledAt *time.Time
+	err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deletion_canceled_at FROM businesses WHERE id = $1`, businessID).
+		Scan(&requestedAt, &canceledAt)
+	if err2 != nil {
+		if errors.Is(err2, pgx.ErrNoRows) {
+			return false, domain.ErrBusinessAlreadyPurged
+		}
+		return false, fmt.Errorf("classify business cancel state: %w", err2)
+	}
+	if requestedAt == nil {
+		return false, domain.ErrNoBusinessDeletionPending
+	}
+	if canceledAt != nil {
+		return true, nil
+	}
+	return false, domain.ErrBusinessAlreadyPurged
+}
+
+// EnumeratePendingDeletionsInTx claims a batch for the hard-delete sweeper
+// using FOR UPDATE SKIP LOCKED so concurrent sweepers + the cancel endpoint
+// don't deadlock or race-clobber. Oldest-first for deterministic progress.
+func (r *businessRepository) EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error) {
+	const q = `SELECT id FROM businesses
+	            WHERE deletion_requested_at IS NOT NULL
+	              AND deletion_canceled_at IS NULL
+	              AND deletion_requested_at < $1
+	            ORDER BY deletion_requested_at ASC
+	            FOR UPDATE SKIP LOCKED
+	            LIMIT $2`
+	rows, err := tx.Query(ctx, q, before, limit)
+	if err != nil {
+		return nil, fmt.Errorf("enumerate pending business deletions: %w", err)
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (uuid.UUID, error) {
+		var id uuid.UUID
+		err := row.Scan(&id)
+		return id, err
+	})
+}
+
+// HardDeleteInTx issues DELETE FROM businesses inside the caller-supplied tx.
+// FK cascades remove integrations + members; the caller writes the
+// business_self_deleted audit row BEFORE the DELETE in the same tx.
+func (r *businessRepository) HardDeleteInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) error {
+	cmdTag, err := tx.Exec(ctx, `DELETE FROM businesses WHERE id = $1`, businessID)
+	if err != nil {
+		return fmt.Errorf("hard delete business: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrBusinessNotFound
+	}
+	return nil
+}
+
+// BusinessDeletionExtAdapter exposes the tx-aware slice of businessRepository
+// that BusinessDeletionService consumes. Concrete type so wire does not need to
+// import the service package. Mirrors UserResetExtAdapter.
+type BusinessDeletionExtAdapter struct {
+	inner *businessRepository
+}
+
+// NewBusinessDeletionExtAdapter constructs the deletion extension repo sharing
+// the pool with NewBusinessRepository via the pgxpool connection multiplex.
+func NewBusinessDeletionExtAdapter(pool *pgxpool.Pool) *BusinessDeletionExtAdapter {
+	return &BusinessDeletionExtAdapter{
+		inner: &businessRepository{
+			pool: pool,
+			sb:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		},
+	}
+}
+
+// GetByIDIncludingDeleted delegates to the inner concrete repo.
+func (a *BusinessDeletionExtAdapter) GetByIDIncludingDeleted(ctx context.Context, businessID uuid.UUID) (*domain.Business, error) {
+	return a.inner.GetByIDIncludingDeleted(ctx, businessID)
+}
+
+// RequestDeletionInTx delegates to the inner concrete repo.
+func (a *BusinessDeletionExtAdapter) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) error {
+	return a.inner.RequestDeletionInTx(ctx, tx, businessID)
+}
+
+// CancelDeletion delegates to the inner concrete repo.
+func (a *BusinessDeletionExtAdapter) CancelDeletion(ctx context.Context, businessID uuid.UUID, graceDays int) (bool, error) {
+	return a.inner.CancelDeletion(ctx, businessID, graceDays)
+}
+
+// EnumeratePendingDeletionsInTx delegates to the inner concrete repo.
+func (a *BusinessDeletionExtAdapter) EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error) {
+	return a.inner.EnumeratePendingDeletionsInTx(ctx, tx, before, limit)
+}
+
+// HardDeleteInTx delegates to the inner concrete repo.
+func (a *BusinessDeletionExtAdapter) HardDeleteInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) error {
+	return a.inner.HardDeleteInTx(ctx, tx, businessID)
 }

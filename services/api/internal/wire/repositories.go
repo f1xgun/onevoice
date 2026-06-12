@@ -46,6 +46,12 @@ type Repos struct {
 	// NewEmailVerificationService.
 	UserResetExt *repository.UserResetExtAdapter
 
+	// tx-aware organization soft-delete surface, exposed separately from the
+	// domain.BusinessRepository interface (which stays tx-free). The concrete
+	// *repository.BusinessDeletionExtAdapter satisfies
+	// service.BusinessDeletionRepo by structural typing.
+	BusinessDeletionExt *repository.BusinessDeletionExtAdapter
+
 	// email_verification_tokens repository.
 	EmailVerificationToken *repository.EmailVerificationTokenRepository
 
@@ -85,6 +91,7 @@ func Repositories(h *DBHandles) *Repos {
 		EmailOutbox:            repository.NewEmailOutboxRepository(h.PG),
 		PasswordResetToken:     repository.NewPasswordResetTokenRepository(h.PG),
 		UserResetExt:           repository.NewUserResetExtAdapter(h.PG),
+		BusinessDeletionExt:    repository.NewBusinessDeletionExtAdapter(h.PG),
 		EmailVerificationToken: repository.NewEmailVerificationTokenRepository(h.PG),
 		UserConsents:           repository.NewUserConsentsRepository(h.PG),
 		MembershipLoader:       repository.NewMembershipLoader(h.PG),

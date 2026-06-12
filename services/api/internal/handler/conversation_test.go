@@ -135,6 +135,10 @@ func (m *MockConversationRepository) MongoConversationsCleanup(_ context.Context
 	return 0, nil
 }
 
+func (m *MockConversationRepository) MongoBusinessCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // MockPendingToolCallRepository is a minimal test double for the
 // PendingToolCallRepository. Only the methods actually called by the handler
 // under test need a *Func field; others return nil / empty slices.

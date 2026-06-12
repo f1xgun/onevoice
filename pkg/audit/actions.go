@@ -66,10 +66,17 @@ const (
 	ActionIntegrationDeleted        = "integration.deleted"
 )
 
-// business.* — business lifecycle.
+// business.* — business lifecycle. ActionBusinessSelfDeleted is written by
+// BusinessDeletionService.HardDeleteSweeper inside the same PG TX as the
+// businesses-row DELETE; the audit row survives via audit_logs.business_id ON
+// DELETE SET NULL + the name snapshot in details.
 const (
-	ActionBusinessCreated = "business.created"
-	ActionBusinessUpdated = "business.updated"
+	ActionBusinessCreated           = "business.created"
+	ActionBusinessUpdated           = "business.updated"
+	ActionBusinessDeletionRequested = "business.deletion_requested"
+	ActionBusinessDeletionCanceled  = "business.deletion_canceled"
+	ActionBusinessNotOwnerBlocked   = "business.not_owner_blocked"
+	ActionBusinessSelfDeleted       = "business.self_deleted"
 )
 
 // project.* — project lifecycle.

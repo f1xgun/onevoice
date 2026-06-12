@@ -52,8 +52,17 @@ type Business struct {
 	Description string                 `json:"description" db:"description"`
 	LogoURL     string                 `json:"logoUrl" db:"logo_url"`
 	Settings    map[string]interface{} `json:"settings" db:"settings"`
-	CreatedAt   time.Time              `json:"createdAt" db:"created_at"`
-	UpdatedAt   time.Time              `json:"updatedAt" db:"updated_at"`
+	// organization-deletion lifecycle. All three are pointer-time.Time so they
+	// can be nil (the "no pending deletion" state). JSON-hidden — surfaced via a
+	// typed wrapper at the read boundary so listing endpoints don't leak them.
+	// GetByID filters `deleted_at IS NULL` so a soft-deleted organization
+	// becomes "not found" everywhere reads happen; use GetByIDIncludingDeleted
+	// when the deletion-aware code path needs to inspect these fields.
+	DeletedAt           *time.Time `json:"-" db:"deleted_at"`
+	DeletionRequestedAt *time.Time `json:"-" db:"deletion_requested_at"`
+	DeletionCanceledAt  *time.Time `json:"-" db:"deletion_canceled_at"`
+	CreatedAt           time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt           time.Time  `json:"updatedAt" db:"updated_at"`
 }
 
 type BusinessSchedule struct {

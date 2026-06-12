@@ -136,6 +136,8 @@ paths:
     $ref: paths/business.yaml#/~1businesses
   /businesses/{id}:
     $ref: paths/business.yaml#/~1businesses~1{id}
+  /businesses/{id}/restore:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1restore
   /businesses/{id}/schedule:
     $ref: paths/business.yaml#/~1businesses~1{id}~1schedule
   /businesses/{id}/voice-tone:
@@ -781,6 +783,7 @@ components:
           type: string
           enum:
           - account_pending_deletion
+          - business_pending_deletion
         deletionDate:
           type: string
         restoreUrl:
