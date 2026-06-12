@@ -1685,6 +1685,12 @@ components:
           type: string
         model:
           type: string
+        locale:
+          type: string
+          description: >-
+            BCP-47 language tag (e.g. "ru", "en") for the LLM response
+            language. Takes precedence over the Accept-Language header, which
+            browsers cannot set on fetch. Empty falls back to Accept-Language.
     SSEConcurrencyError:
       type: object
       required:

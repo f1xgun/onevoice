@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -192,7 +193,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Message:        strDeref(body.Message),
 		Model:          strDeref(body.Model),
 		ResumeBatchID:  headerBatch,
-		Locale:         i18n.LocaleFromContext(r.Context()),
+		Locale:         resolveTurnLocale(r.Context(), body.Locale),
 	}
 
 	outcome, err := h.turn.Run(r.Context(), w, req, nil)
@@ -209,6 +210,19 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 	}
+}
+
+// resolveTurnLocale picks the LLM response language: the request-body locale
+// wins over the Accept-Language-derived context locale. The body is the only
+// channel the browser can use — fetch forbids setting Accept-Language — so
+// without this the LLM language follows the browser's Accept-Language instead
+// of the user's OneVoice UI locale. Mirrors the orchestrator's own body-wins
+// precedence (resolveChatLocale).
+func resolveTurnLocale(ctx context.Context, bodyLocale *string) language.Tag {
+	if bodyLocale != nil && *bodyLocale != "" {
+		return i18n.MatchAcceptLanguage(*bodyLocale)
+	}
+	return i18n.LocaleFromContext(ctx)
 }
 
 // loadHistory loads conversation history through the message repository.
