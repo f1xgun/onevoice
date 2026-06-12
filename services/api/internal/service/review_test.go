@@ -75,6 +75,60 @@ func TestBuildPlatformReply_TelegramMissingMeta(t *testing.T) {
 	}
 }
 
+// Ingestion → reply regression for P0-4: a Telegram review map (the shape the
+// agent returns, numbers as JSON float64) must carry chat_id+message_id into
+// PlatformMeta so the reply that follows can target the original message.
+func TestReviewFromMap_TelegramPopulatesPlatformMeta(t *testing.T) {
+	m := map[string]interface{}{
+		"id":         "-1003615540583_21",
+		"message_id": float64(21),
+		"chat_id":    float64(-1003615540583),
+		"author":     "Иван",
+		"text":       "Отличный сервис",
+		"created_at": "2026-06-12T10:00:00Z",
+	}
+	review := reviewFromMap(m, "biz-1", a2a.AgentTelegram)
+
+	chatID, ok := metaInt(review.PlatformMeta, "chat_id")
+	if !ok || chatID != -1003615540583 {
+		t.Fatalf("chat_id not preserved: %+v", review.PlatformMeta)
+	}
+	messageID, ok := metaInt(review.PlatformMeta, "message_id")
+	if !ok || messageID != 21 {
+		t.Fatalf("message_id not preserved: %+v", review.PlatformMeta)
+	}
+
+	tool, args, err := buildPlatformReply(review, "Спасибо за отзыв!")
+	if err != nil {
+		t.Fatalf("reply build failed after ingestion: %v", err)
+	}
+	if tool != tools.TelegramReplyToComment {
+		t.Errorf("tool = %q", tool)
+	}
+	if args["chat_id"].(string) != "-1003615540583" {
+		t.Errorf("chat_id = %v", args["chat_id"])
+	}
+	if args["message_id"].(float64) != 21 {
+		t.Errorf("message_id = %v", args["message_id"])
+	}
+}
+
+// VK comments address replies via external_id (<post>_<comment>), not chat
+// coordinates, so reviewFromMap must not invent a platform_meta for them.
+func TestReviewFromMap_VKHasNoPlatformMeta(t *testing.T) {
+	m := map[string]interface{}{
+		"id":      float64(42),
+		"post_id": float64(11),
+		"from_id": float64(7),
+		"text":    "комментарий",
+		"date":    float64(1_700_000_000),
+	}
+	review := reviewFromMap(m, "biz-1", a2a.AgentVK)
+	if review.PlatformMeta != nil {
+		t.Errorf("expected nil PlatformMeta for VK, got %+v", review.PlatformMeta)
+	}
+}
+
 func TestBuildPlatformReply_Yandex(t *testing.T) {
 	r := &domain.Review{Platform: a2a.AgentYandexBusiness, ExternalID: "yreview-77"}
 	tool, args, err := buildPlatformReply(r, "thx")
