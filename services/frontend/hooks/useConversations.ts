@@ -15,19 +15,35 @@ export const conversationsQueryKey = (activeBusinessId: string | null) =>
 // makes the new title feel laggy after the user sends their first message.
 const TITLE_POLL_INTERVAL_MS = 2000;
 
+// Hard give-up bound on the auto_pending poll. The auto-titler normally
+// resolves in 3–8 s; a chat still auto_pending this long after creation means
+// the titler failed (it never self-heals), so polling it is pointless. Without
+// this bound a single stuck chat drives one request every 2 s forever — and the
+// sidebar plus both ChatHeader observers each run this query, compounding to
+// thousands of requests/hour/tab. After the bound the title simply keeps its
+// placeholder; the user can force it via Regenerate.
+const TITLE_POLL_GIVE_UP_MS = 60_000;
+
+// titlePollInterval is the refetchInterval decision extracted as a pure
+// function so the freshness bound is unit-testable without react-query. Polls
+// only while at least one chat has a *fresh* auto_pending title.
+export function titlePollInterval(data: Conversation[] | undefined, now: number): number | false {
+  if (!data) return false;
+  const hasFreshPending = data.some(
+    (c) =>
+      c.titleStatus === 'auto_pending' &&
+      now - new Date(c.createdAt).getTime() < TITLE_POLL_GIVE_UP_MS
+  );
+  return hasFreshPending ? TITLE_POLL_INTERVAL_MS : false;
+}
+
 export function useConversationsQuery() {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useQuery<Conversation[]>({
     queryKey: conversationsQueryKey(activeBusinessId),
     queryFn: () => conversationsApi.listConversations(activeBusinessId!),
     enabled: !!activeBusinessId,
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (data && data.some((c) => c.titleStatus === 'auto_pending')) {
-        return TITLE_POLL_INTERVAL_MS;
-      }
-      return false;
-    },
+    refetchInterval: (query) => titlePollInterval(query.state.data, Date.now()),
   });
 }
 
