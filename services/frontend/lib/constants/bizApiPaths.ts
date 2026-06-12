@@ -95,6 +95,7 @@ export const BIZ_API_PATHS = {
   },
   REVIEWS: {
     ROOT: '/reviews',
+    REFRESH: '/reviews/refresh',
     REPLY: (id: string) => `/reviews/${id}/reply`,
   },
   POSTS: {

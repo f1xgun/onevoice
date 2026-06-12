@@ -21,6 +21,8 @@ export const API_PATHS = {
     PASSWORD: '/auth/password',
     PROFILE: '/auth/profile',
     ME: '/auth/me',
+    VERIFY_EMAIL_RESEND: '/auth/verify-email/resend',
+    EMAIL_BEFORE_VERIFY: '/auth/email-before-verify',
   },
   // BUSINESS / INTEGRATIONS / TASKS also double as frontend route hrefs.
   // The API endpoints themselves moved under BIZ_API_PATHS.
@@ -32,11 +34,6 @@ export const API_PATHS = {
   },
   TASKS: '/tasks',
   TELEMETRY: '/telemetry',
-  // POST /reviews/refresh is INTENTIONALLY NOT business-scoped — it
-  // fans out a sync to every connected agent for the caller's businesses.
-  REVIEWS: {
-    REFRESH: '/reviews/refresh',
-  },
   // Public invitation routes go through raw `api` (NOT `bizApi`). Preview
   // call must pass `skipBusinessNotFound: true` so the 404 interceptor
   // doesn't mistake a missing token for a stale active business.

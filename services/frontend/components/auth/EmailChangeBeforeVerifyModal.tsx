@@ -11,6 +11,8 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 
+import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +26,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 
-const HTTP_NO_CONTENT = 204;
 const HTTP_CONFLICT = 409;
 const HTTP_FORBIDDEN = 403;
 
@@ -44,29 +45,20 @@ export function EmailChangeBeforeVerifyModal({ open, onOpenChange }: Props) {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/auth/email-before-verify', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newEmail }),
-      });
-      if (res.status === HTTP_NO_CONTENT) {
-        toast({ description: t('changeSuccess', { newEmail }) });
-        onOpenChange(false);
-        setNewEmail('');
-        if (typeof window !== 'undefined') window.location.reload();
-        return;
-      }
-      if (res.status === HTTP_CONFLICT) {
+      await api.patch(API_PATHS.AUTH.EMAIL_BEFORE_VERIFY, { newEmail });
+      toast({ description: t('changeSuccess', { newEmail }) });
+      onOpenChange(false);
+      setNewEmail('');
+      if (typeof window !== 'undefined') window.location.reload();
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === HTTP_CONFLICT) {
         setError(t('emailTaken'));
-        return;
-      }
-      if (res.status === HTTP_FORBIDDEN) {
+      } else if (status === HTTP_FORBIDDEN) {
         setError(t('alreadyVerified'));
-        return;
+      } else {
+        setError(t('genericError'));
       }
-      setError(t('genericError'));
-    } catch {
-      setError(t('genericError'));
     } finally {
       setPending(false);
     }
