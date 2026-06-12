@@ -3,6 +3,7 @@ package chatturn
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,17 +22,50 @@ import (
 const taskStatusError = "error"
 
 // postingToolInfo describes how to extract post data from a platform tool call.
+// scheduled marks tools that queue a delayed publish (vk__schedule_post) rather
+// than posting immediately: those records are stored with status "scheduled"
+// and ScheduledAt parsed from scheduleField instead of PublishedAt=now.
 type postingToolInfo struct {
-	platform     string
-	contentField string
-	mediaField   string
+	platform      string
+	contentField  string
+	mediaField    string
+	scheduled     bool
+	scheduleField string
+}
+
+// parseScheduleTime best-effort parses a delayed-publish timestamp (ISO 8601 or
+// Unix seconds, per the vk__schedule_post schema) into a *time.Time. Returns nil
+// when absent or unparseable; the record still gets status "scheduled".
+func parseScheduleTime(v interface{}) *time.Time {
+	switch t := v.(type) {
+	case string:
+		if t == "" {
+			return nil
+		}
+		if parsed, err := time.Parse(time.RFC3339, t); err == nil {
+			return &parsed
+		}
+		if sec, err := strconv.ParseInt(t, 10, 64); err == nil {
+			parsed := time.Unix(sec, 0).UTC()
+			return &parsed
+		}
+	case float64:
+		parsed := time.Unix(int64(t), 0).UTC()
+		return &parsed
+	}
+	return nil
 }
 
 // postingTools maps tool names that publish content to their extraction info.
+// Every content-publishing tool the agents expose must be listed here, or a
+// successful publish leaves no Post record and the Posts feed silently omits it.
 var postingTools = map[string]postingToolInfo{
 	tools.TelegramSendChannelPost:  {platform: a2a.AgentTelegram, contentField: "text"},
 	tools.TelegramSendChannelPhoto: {platform: a2a.AgentTelegram, contentField: "caption", mediaField: "photo_url"},
 	tools.VKPublishPost:            {platform: a2a.AgentVK, contentField: "text"},
+	tools.VKPostPhoto:              {platform: a2a.AgentVK, contentField: "caption", mediaField: "photo_url"},
+	tools.VKSchedulePost:           {platform: a2a.AgentVK, contentField: "text", scheduled: true, scheduleField: "publish_date"},
+	tools.YandexBusinessCreatePost: {platform: a2a.AgentYandexBusiness, contentField: "text"},
 }
 
 // onToolCall records a new AgentTask in "running" state and publishes a
@@ -178,17 +212,22 @@ func (t *Turn) recordPostsAndReviews(
 			}
 
 			status := "published"
-			var publishedAt *time.Time
+			var publishedAt, scheduledAt *time.Time
+			switch {
+			case tr.IsError:
+				status = taskStatusError
+			case info.scheduled:
+				status = "scheduled"
+				scheduledAt = parseScheduleTime(tc.Arguments[info.scheduleField])
+			default:
+				now := time.Now()
+				publishedAt = &now
+			}
 			platformResult := domain.PlatformResult{Status: status}
 			if tr.IsError {
-				status = taskStatusError
-				platformResult.Status = taskStatusError
 				if errMsg, ok := tr.Content["error"].(string); ok {
 					platformResult.Error = errMsg
 				}
-			} else {
-				now := time.Now()
-				publishedAt = &now
 			}
 
 			post := &domain.Post{
@@ -199,6 +238,7 @@ func (t *Turn) recordPostsAndReviews(
 					info.platform: platformResult,
 				},
 				Status:      status,
+				ScheduledAt: scheduledAt,
 				PublishedAt: publishedAt,
 			}
 			if err := t.deps.Posts.Create(ctx, post); err != nil {

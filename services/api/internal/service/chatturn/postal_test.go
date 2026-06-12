@@ -165,3 +165,61 @@ func TestOnToolCall_InternalToolSkipped(t *testing.T) {
 
 	assert.Empty(t, repo.created, "internal tools must not be persisted as agent_tasks")
 }
+
+// fakePostRepo records Create calls so the posting-tool coverage test can
+// assert the persisted Post shape.
+type fakePostRepo struct {
+	domain.PostRepository
+	created []domain.Post
+}
+
+func (f *fakePostRepo) Create(_ context.Context, p *domain.Post) error {
+	f.created = append(f.created, *p)
+	return nil
+}
+
+// TestRecordPosts_CoversAllPostingTools — every content-publishing tool must
+// produce a Post record, or a successful publish silently vanishes from the
+// feed. Guards the three tools that were missing from postingTools
+// (vk__post_photo, vk__schedule_post, yandex_business__create_post) and asserts
+// the scheduled tool records as "scheduled" with a parsed ScheduledAt rather
+// than an immediate "published".
+func TestRecordPosts_CoversAllPostingTools(t *testing.T) {
+	repo := &fakePostRepo{}
+	turn := &Turn{deps: Deps{Posts: repo}}
+
+	toolCalls := []domain.ToolCall{
+		{ID: "c1", Name: tools.VKPostPhoto, Arguments: map[string]interface{}{"caption": "photo cap", "photo_url": "https://x/img.jpg"}},
+		{ID: "c2", Name: tools.VKSchedulePost, Arguments: map[string]interface{}{"text": "later", "publish_date": "2026-03-20T12:00:00Z"}},
+		{ID: "c3", Name: tools.YandexBusinessCreatePost, Arguments: map[string]interface{}{"text": "ya post"}},
+	}
+	toolResults := []domain.ToolResult{
+		{ToolCallID: "c1"},
+		{ToolCallID: "c2"},
+		{ToolCallID: "c3"},
+	}
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	require.Len(t, repo.created, 3, "each posting tool must persist a Post")
+	byContent := map[string]domain.Post{}
+	for _, p := range repo.created {
+		byContent[p.Content] = p
+	}
+
+	photo := byContent["photo cap"]
+	assert.Equal(t, "published", photo.Status)
+	assert.Equal(t, []string{"https://x/img.jpg"}, photo.MediaURLs)
+	_, hasVK := photo.PlatformResults["vk"]
+	assert.True(t, hasVK, "vk photo post recorded under the vk platform")
+
+	scheduled := byContent["later"]
+	assert.Equal(t, "scheduled", scheduled.Status, "vk schedule_post records as scheduled, not published")
+	assert.Nil(t, scheduled.PublishedAt)
+	require.NotNil(t, scheduled.ScheduledAt, "publish_date must parse into ScheduledAt")
+	assert.Equal(t, 2026, scheduled.ScheduledAt.Year())
+
+	yandex := byContent["ya post"]
+	assert.Equal(t, "published", yandex.Status)
+	_, hasYandex := yandex.PlatformResults["yandex_business"]
+	assert.True(t, hasYandex, "yandex create_post recorded under the yandex_business platform")
+}

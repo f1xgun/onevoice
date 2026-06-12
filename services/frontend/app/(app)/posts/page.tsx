@@ -25,6 +25,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { format } from 'date-fns';
+import Link from 'next/link';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 
 import { bizApi } from '@/lib/api/business-api';
@@ -202,15 +203,11 @@ export default function PostsPage() {
         sub={tPosts('subtitle')}
         actions={
           canCreate ? (
-            <Button
-              variant="primary"
-              size="md"
-              disabled
-              title={tPosts('createPostTooltip')}
-              aria-label={tPosts('createPostTooltip')}
-            >
-              <Plus aria-hidden />
-              {tPosts('createPost')}
+            <Button asChild variant="primary" size="md" title={tPosts('createPostTooltip')}>
+              <Link href="/chat" aria-label={tPosts('createPostTooltip')}>
+                <Plus aria-hidden />
+                {tPosts('createPost')}
+              </Link>
             </Button>
           ) : undefined
         }
