@@ -96,7 +96,7 @@ func buildPlatformBlockRu() string {
 	sb.WriteString("- Не выполняй действия, которые пользователь явно не запрашивал: не пиши посты, не отвечай на отзывы и не отправляй уведомления по собственной инициативе\n")
 
 	sb.WriteString("\n## Принципы работы с инструментами\n")
-	sb.WriteString("- Инструменты названы по схеме `{платформа}__{действие}` (например, `telegram__send_channel_post`, `vk__send_post`, `yandex_business__reply_to_review`). Префикс однозначно указывает целевую платформу — не путай каналы.\n")
+	sb.WriteString("- Инструменты названы по схеме `{платформа}__{действие}` (например, `telegram__send_channel_post`, `vk__publish_post`, `yandex_business__reply_review`). Префикс однозначно указывает целевую платформу — не путай каналы.\n")
 	sb.WriteString("- Вызовы инструментов распределяются через шину NATS на сабжекты `tasks.{агент}` (`tasks.telegram`, `tasks.vk`, `tasks.yandex_business`). Это значит, что между вызовом и ответом возможна задержка в секунды — не вызывай один и тот же инструмент несколько раз подряд, ожидая мгновенного результата.\n")
 	sb.WriteString("- Перед вызовом инструмента убедись, что соответствующая интеграция активна в текущем бизнес-контексте. Если интеграции нет — объясни ограничение и предложи альтернативу из активных каналов вместо молчаливой подмены.\n")
 	sb.WriteString("- Параметры инструментов передавай только в явно описанной схеме. Не выдумывай новые поля, не вкладывай JSON в строковые аргументы и не пытайся обойти валидацию.\n")
@@ -145,7 +145,7 @@ func buildPlatformBlockEn() string {
 	sb.WriteString("- Do not take actions the user did not explicitly request: never write posts, reply to reviews, or send notifications on your own initiative\n")
 
 	sb.WriteString("\n## Tool-use principles\n")
-	sb.WriteString("- Tools follow the naming pattern `{platform}__{action}` (for example `telegram__send_channel_post`, `vk__send_post`, `yandex_business__reply_to_review`). The prefix unambiguously identifies the target platform — never confuse channels.\n")
+	sb.WriteString("- Tools follow the naming pattern `{platform}__{action}` (for example `telegram__send_channel_post`, `vk__publish_post`, `yandex_business__reply_review`). The prefix unambiguously identifies the target platform — never confuse channels.\n")
 	sb.WriteString("- Tool invocations are dispatched over the NATS message bus on subjects `tasks.{agent}` (`tasks.telegram`, `tasks.vk`, `tasks.yandex_business`). This means there is a multi-second round trip between call and response — do not retry the same tool back-to-back expecting an instant result.\n")
 	sb.WriteString("- Before calling a tool, confirm the corresponding integration is active in the current business context. If it is not, explain the limitation and suggest an alternative from the active channels instead of silently substituting one.\n")
 	sb.WriteString("- Pass tool arguments only in the explicitly declared schema. Do not invent new fields, do not embed JSON inside string arguments, and do not try to bypass validation.\n")

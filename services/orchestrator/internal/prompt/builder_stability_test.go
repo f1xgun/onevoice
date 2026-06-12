@@ -24,12 +24,12 @@ import (
 // change MUST be deliberate. To rotate the hash: re-run
 // TestSystemPromptHash_Stability_LockedHash with -v, copy the printed sha256
 // into this constant, and document the prompt change in the PR description.
-const blockOneRuSHA256 = "8b9b193fcc0dd9addcfbd6fb136bdb4dcda11592a3b6b7e7819626ecff379acf"
+const blockOneRuSHA256 = "185388c26c89784c27580d63a4c3f24821bafcde659ae4612614b9429e0660be"
 
 // blockOneEnSHA256 is the locked sha256 of the English Block 1 (padded to
 // ~1189 estimated tokens, safely above Sonnet 4.6's 1024-token cache floor).
 // See blockOneRuSHA256 doc comment for rotation procedure.
-const blockOneEnSHA256 = "55cec729cbf2888143b4e14c32dcab38facad9b8a95af93a16accb4b923ce9bd"
+const blockOneEnSHA256 = "e60a9b5101135a1840af9ee38cc42d89f5232c62b94227c81e563b3b67bf1a76"
 
 // TestSystemPromptHash_Stability proves Block 1 (platform-wide) is BYTE-
 // IDENTICAL across BusinessContext variations for the same locale — this is
