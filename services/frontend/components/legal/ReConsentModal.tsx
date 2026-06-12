@@ -23,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { postReconsent, type ConsentError } from '@/lib/api/consents';
 import { useAuthStore, type PolicyDiff } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { legalDocHref } from '@/lib/legal/routes';
 
 interface ReConsentModalProps {
   policies: PolicyDiff[];
@@ -108,7 +109,7 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
                   {t('diff.old', { old: p.oldVersion })} · {t('diff.new', { new: p.newVersion })}
                 </p>
                 <a
-                  href={`/legal/${p.slug}`}
+                  href={legalDocHref(p.slug)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-2 inline-block text-[14px] text-[var(--ov-accent)] hover:underline"
