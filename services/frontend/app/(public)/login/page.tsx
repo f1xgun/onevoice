@@ -167,6 +167,12 @@ export default function LoginPage() {
             {errors.password && (
               <p className="text-sm text-[var(--ov-danger)]">{errors.password.message}</p>
             )}
+            <Link
+              href="/auth/password-reset"
+              className="self-end text-sm font-medium text-ink-mid hover:text-ink hover:underline"
+            >
+              {tLogin('forgotPassword')}
+            </Link>
           </div>
 
           {/* Invisible SmartCaptcha. Only mounted after the backend signals

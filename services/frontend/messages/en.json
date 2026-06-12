@@ -1375,6 +1375,7 @@
       "description": "Enter your email and password to open the shared inbox.",
       "emailLabel": "Email",
       "passwordLabel": "Password",
+      "forgotPassword": "Forgot password?",
       "noAccount": "Don't have an account yet?",
       "register": "Sign up",
       "submit": "Log in",
