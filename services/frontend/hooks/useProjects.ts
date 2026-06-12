@@ -63,14 +63,20 @@ export function useUpdateProject(id: string) {
   });
 }
 
+// The projects invalidation is `exact` on purpose, and the detail cache is NOT
+// removed here. The bare projects key is a prefix of the detail query
+// (['businesses', id, 'projects', projectId] in useProjectQuery, still mounted
+// on /projects/[id]); a non-exact invalidate prefix-matched it, and a
+// removeQueries force-refetched it — both hit /projects/{id} for the
+// just-deleted id → transient 404 before useProjectForm navigates away. The
+// deleted project's detail cache is left to garbage-collect after unmount.
 export function useDeleteProject() {
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation({
     mutationFn: (id: string) => projectsApi.deleteProject(activeBusinessId!, id),
-    onSuccess: (_data, id) => {
-      void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
-      qc.removeQueries({ queryKey: projectQueryKey(activeBusinessId, id) });
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId), exact: true });
     },
   });
 }
