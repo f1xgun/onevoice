@@ -298,11 +298,7 @@ function ChannelList({
               aria-hidden
               className={cn(
                 'h-2 w-2 shrink-0 rounded-full',
-                i.status === 'active' && 'bg-success',
-                i.status === 'inactive' && 'bg-ink-faint',
-                i.status === 'error' && 'bg-danger',
-                i.status === 'pending_cookies' && 'bg-warning',
-                i.status === 'token_expired' && 'bg-danger'
+                i.status === 'active' ? 'bg-success' : 'bg-ink-faint'
               )}
             />
             <div className="min-w-0 flex-1">

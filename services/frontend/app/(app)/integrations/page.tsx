@@ -9,6 +9,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS, INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import type { IntegrationStatus } from '@/lib/constants/integrationStatus';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
@@ -52,7 +53,7 @@ const MODAL_INVALIDATES_ON_CLOSE: Record<ModalPlatform, boolean> = {
 interface Integration {
   id: string;
   platform: string;
-  status: 'active' | 'inactive' | 'error' | 'pending_cookies' | 'token_expired';
+  status: IntegrationStatus;
   externalId: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
