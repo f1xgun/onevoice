@@ -15,6 +15,8 @@
 
 import { useTranslations } from 'next-intl';
 
+import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +29,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
 
-const HTTP_NO_CONTENT = 204;
 const HTTP_TOO_MANY_REQUESTS = 429;
 
 interface Props {
@@ -41,10 +42,11 @@ export function EmailVerifiedRequiredModal({ open, onOpenChange, variant }: Prop
 
   async function resend() {
     try {
-      const res = await fetch('/api/v1/auth/verify-email/resend', { method: 'POST' });
-      if (res.status === HTTP_NO_CONTENT) {
-        toast({ description: t('resendSuccess') });
-      } else if (res.status === HTTP_TOO_MANY_REQUESTS) {
+      await api.post(API_PATHS.AUTH.VERIFY_EMAIL_RESEND);
+      toast({ description: t('resendSuccess') });
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === HTTP_TOO_MANY_REQUESTS) {
         toast({ description: t('throttled'), variant: 'destructive' });
       }
     } finally {

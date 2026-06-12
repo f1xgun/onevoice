@@ -15,8 +15,6 @@ import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
@@ -206,7 +204,9 @@ export default function ReviewsPage() {
 
   const refreshMutation = useMutation({
     mutationFn: () =>
-      api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
+      bizApi(activeBusinessId!).post(BIZ_API_PATHS.REVIEWS.REFRESH, undefined, {
+        timeout: REVIEWS_REFRESH_TIMEOUT_MS,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
       toast.success(tReviews('refreshSuccess'));

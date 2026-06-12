@@ -320,14 +320,15 @@ func TestPasswordResetService_ConfirmReset_EmptyToken_ReturnsInvalid(t *testing.
 // --- email body builders sanity checks ---------------------------------
 
 func TestBuildResetEmailPlainText_ContainsTokenAndTTL(t *testing.T) {
-	body := buildResetEmailPlainText("test-token-xyz")
+	confirmURL := "https://app.example.com" + resetConfirmURLPath
+	body := buildResetEmailPlainText(confirmURL, "test-token-xyz")
 	require.Contains(t, body, "test-token-xyz")
 	require.Contains(t, body, "30 минут")
-	require.Contains(t, body, resetConfirmURLBase)
+	require.Contains(t, body, confirmURL)
 }
 
 func TestBuildResetEmailHTML_ContainsTokenAndCTA(t *testing.T) {
-	body := buildResetEmailHTML("test-token-xyz")
+	body := buildResetEmailHTML("https://app.example.com"+resetConfirmURLPath, "test-token-xyz")
 	require.Contains(t, body, "test-token-xyz")
 	require.Contains(t, body, "Задать новый пароль")
 }
@@ -428,6 +429,6 @@ func TestPasswordResetService_ConfirmReset_ConsumeAtomicError_MapsToInvalid(t *t
 
 func TestResetEmailSubject_LockedRU(t *testing.T) {
 	require.Equal(t, "Восстановление пароля — OneVoice", resetEmailSubject)
-	require.True(t, strings.Contains(buildResetEmailHTML("X"), "Восстановление"))
-	require.True(t, strings.Contains(buildResetEmailPlainText("X"), "Здравствуйте"))
+	require.True(t, strings.Contains(buildResetEmailHTML("https://x", "X"), "Восстановление"))
+	require.True(t, strings.Contains(buildResetEmailPlainText("https://x", "X"), "Здравствуйте"))
 }

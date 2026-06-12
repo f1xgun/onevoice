@@ -18,12 +18,13 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
+import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 import { EmailChangeBeforeVerifyModal } from './EmailChangeBeforeVerifyModal';
 
-const HTTP_NO_CONTENT = 204;
 const HTTP_TOO_MANY_REQUESTS = 429;
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -51,18 +52,17 @@ export function VerificationBanner() {
 
   async function resend() {
     try {
-      const res = await fetch('/api/v1/auth/verify-email/resend', { method: 'POST' });
-      if (res.status === HTTP_NO_CONTENT) {
-        toast({ description: t('resendSuccess') });
-        setCooldownSec(RESEND_COOLDOWN_SECONDS);
-      } else if (res.status === HTTP_TOO_MANY_REQUESTS) {
+      await api.post(API_PATHS.AUTH.VERIFY_EMAIL_RESEND);
+      toast({ description: t('resendSuccess') });
+      setCooldownSec(RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === HTTP_TOO_MANY_REQUESTS) {
         toast({ description: t('throttled'), variant: 'destructive' });
         setCooldownSec(RESEND_COOLDOWN_SECONDS);
       } else {
         toast({ description: t('genericError'), variant: 'destructive' });
       }
-    } catch {
-      toast({ description: t('genericError'), variant: 'destructive' });
     }
   }
 

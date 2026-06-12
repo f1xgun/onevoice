@@ -291,6 +291,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.AuditLogger,
 		h.Redis,
 		s.Lockout,
+		cfg.PublicURL,
 	)
 
 	s.EmailVerification = service.NewEmailVerificationService(
