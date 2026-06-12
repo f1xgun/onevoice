@@ -130,13 +130,19 @@ export function useRegenerateConversationTitle() {
   });
 }
 
+// The conversations invalidation is `exact` on purpose. The bare conversations
+// key is a prefix of the open chat's detail query (['businesses', id,
+// 'conversations', convId] in ChatWindow), so a non-exact invalidate refetched
+// the just-deleted chat against /conversations/{id} → transient 404 before the
+// route unmounted. The deleted chat's detail cache is left to garbage-collect
+// once ChatRowMenu navigates away.
 export function useDeleteConversation() {
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<void, Error, string>({
     mutationFn: (id) => conversationsApi.deleteConversation(activeBusinessId!, id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId), exact: true });
       void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
     },
   });
