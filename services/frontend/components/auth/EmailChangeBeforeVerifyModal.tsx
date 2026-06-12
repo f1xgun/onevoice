@@ -24,7 +24,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 const HTTP_CONFLICT = 409;
 const HTTP_FORBIDDEN = 403;
@@ -46,7 +46,7 @@ export function EmailChangeBeforeVerifyModal({ open, onOpenChange }: Props) {
     setError(null);
     try {
       await api.patch(API_PATHS.AUTH.EMAIL_BEFORE_VERIFY, { newEmail });
-      toast({ description: t('changeSuccess', { newEmail }) });
+      toast.success(t('changeSuccess', { newEmail }));
       onOpenChange(false);
       setNewEmail('');
       if (typeof window !== 'undefined') window.location.reload();

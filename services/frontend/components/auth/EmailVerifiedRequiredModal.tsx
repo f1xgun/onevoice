@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 const HTTP_TOO_MANY_REQUESTS = 429;
 
@@ -43,11 +43,11 @@ export function EmailVerifiedRequiredModal({ open, onOpenChange, variant }: Prop
   async function resend() {
     try {
       await api.post(API_PATHS.AUTH.VERIFY_EMAIL_RESEND);
-      toast({ description: t('resendSuccess') });
+      toast.success(t('resendSuccess'));
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === HTTP_TOO_MANY_REQUESTS) {
-        toast({ description: t('throttled'), variant: 'destructive' });
+        toast.error(t('throttled'));
       }
     } finally {
       onOpenChange(false);

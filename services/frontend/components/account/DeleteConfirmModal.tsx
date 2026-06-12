@@ -29,7 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FieldError } from '@/components/ui/field-error';
 import { Button } from '@/components/ui/button';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import {
   deleteAccount,
   type DeletionAccountError,
@@ -85,7 +85,7 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
     setSubmitting(true);
     try {
       await deleteAccount(password);
-      toast({ description: t('successToast') });
+      toast.success(t('successToast'));
       window.location.href = '/login';
     } catch (e) {
       const err = e as DeletionAccountError;
@@ -100,12 +100,12 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
           onOpenChange(false);
           return;
         case 'account_pending_deletion':
-          toast({ description: tErrors('pendingDeletion'), variant: 'destructive' });
+          toast.error(tErrors('pendingDeletion'));
           onOpenChange(false);
           window.location.reload();
           return;
         default:
-          toast({ description: tErrors('passwordInvalid'), variant: 'destructive' });
+          toast.error(tErrors('passwordInvalid'));
       }
     }
   }

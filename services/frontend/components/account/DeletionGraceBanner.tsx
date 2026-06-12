@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
 import { restoreAccount, type DeletionAccountError } from '@/lib/api/account';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { localeToIntlTag } from '@/lib/i18n/locales';
 import { cn } from '@/lib/utils';
@@ -46,20 +46,18 @@ export function DeletionGraceBanner() {
     setSubmitting(true);
     try {
       await restoreAccount();
-      toast({ description: t('restoreSuccessToast') });
+      toast.success(t('restoreSuccessToast'));
       window.location.reload();
     } catch (e) {
       const err = e as DeletionAccountError;
       if (err.code === 'deletion_too_old' || err.status === HTTP_GONE) {
-        toast({ description: t('errors.tooOld'), variant: 'destructive' });
+        toast.error(t('errors.tooOld'));
         window.location.href = '/login';
         return;
       }
-      toast({
-        description:
-          err.code === 'origin_not_allowed' ? t('errors.originNotAllowed') : t('errors.tooOld'),
-        variant: 'destructive',
-      });
+      toast.error(
+        err.code === 'origin_not_allowed' ? t('errors.originNotAllowed') : t('errors.tooOld')
+      );
       setSubmitting(false);
     }
   }
