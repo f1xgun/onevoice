@@ -275,15 +275,16 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 	}
 
 	return &domain.Review{
-		ID:          uuid.NewString(),
-		BusinessID:  businessID,
-		Platform:    platform,
-		ExternalID:  externalID,
-		AuthorName:  author,
-		Rating:      rating,
-		Text:        text,
-		ReplyText:   reply,
-		ReplyStatus: replyStatus,
-		CreatedAt:   createdAt,
+		ID:           uuid.NewString(),
+		BusinessID:   businessID,
+		Platform:     platform,
+		ExternalID:   externalID,
+		AuthorName:   author,
+		Rating:       rating,
+		Text:         text,
+		ReplyText:    reply,
+		ReplyStatus:  replyStatus,
+		CreatedAt:    createdAt,
+		PlatformMeta: domain.PlatformMetaFromMap(m),
 	}
 }
