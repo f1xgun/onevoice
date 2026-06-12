@@ -36,6 +36,7 @@ import {
 import { useAuthStore } from '@/lib/auth';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import type { PolicySlug } from '@/lib/legal/versions';
+import { legalDocHref } from '@/lib/legal/routes';
 
 const ORDERED_SLUGS: readonly PolicySlug[] = ['tos', 'privacy', 'pdn'] as const;
 
@@ -145,7 +146,7 @@ export function WithdrawalPanel() {
                   : '—'}
               </p>
               <a
-                href={`/legal/${slug}`}
+                href={legalDocHref(slug)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-2 inline-block text-[14px] text-[var(--ov-accent)] hover:underline"
