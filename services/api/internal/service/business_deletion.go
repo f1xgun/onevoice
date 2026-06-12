@@ -129,8 +129,10 @@ func (s *BusinessDeletionService) RequestDeletion(ctx context.Context, actorUser
 	}
 
 	ownerEmail := ""
+	ownerLocale := ""
 	if owner, ownerErr := s.users.GetByID(ctx, actorUserID); ownerErr == nil && owner != nil {
 		ownerEmail = owner.Email
+		ownerLocale = owner.PreferredLocale
 	} else if ownerErr != nil {
 		slog.WarnContext(ctx, "resolve owner email failed (sending no email)", "userID", actorUserID, "err", ownerErr)
 	}
@@ -158,9 +160,9 @@ func (s *BusinessDeletionService) RequestDeletion(ctx context.Context, actorUser
 	if ownerEmail != "" {
 		confirmIn := repository.OutboxEnqueueInput{
 			ToEmail:  ownerEmail,
-			Subject:  templates.BusinessDeletionConfirmationSubject,
-			BodyText: templates.BusinessDeletionConfirmationText(business.Name, scheduledDeletionAt),
-			BodyHTML: templates.BusinessDeletionConfirmationHTML(business.Name, scheduledDeletionAt),
+			Subject:  templates.BusinessDeletionConfirmationSubject(ownerLocale),
+			BodyText: templates.BusinessDeletionConfirmationText(ownerLocale, business.Name, scheduledDeletionAt),
+			BodyHTML: templates.BusinessDeletionConfirmationHTML(ownerLocale, business.Name, scheduledDeletionAt),
 		}
 		if _, err := s.outbox.Enqueue(ctx, tx, confirmIn); err != nil {
 			return fmt.Errorf("enqueue confirmation email: %w", err)
@@ -168,9 +170,9 @@ func (s *BusinessDeletionService) RequestDeletion(ctx context.Context, actorUser
 
 		warnIn := repository.OutboxEnqueueInput{
 			ToEmail:  ownerEmail,
-			Subject:  templates.BusinessDeletionT7WarningSubject,
-			BodyText: templates.BusinessDeletionT7WarningText(business.Name, scheduledDeletionAt),
-			BodyHTML: templates.BusinessDeletionT7WarningHTML(business.Name, scheduledDeletionAt),
+			Subject:  templates.BusinessDeletionT7WarningSubject(ownerLocale),
+			BodyText: templates.BusinessDeletionT7WarningText(ownerLocale, business.Name, scheduledDeletionAt),
+			BodyHTML: templates.BusinessDeletionT7WarningHTML(ownerLocale, business.Name, scheduledDeletionAt),
 		}
 		t7At := time.Now().Add(time.Duration(s.t7OffsetDays) * 24 * time.Hour)
 		if _, err := s.outbox.EnqueueDeferred(ctx, tx, warnIn, t7At); err != nil {

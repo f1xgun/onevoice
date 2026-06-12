@@ -18,7 +18,7 @@ import ru from '@/messages/ru.json';
 //      message at CI time human-readable rather than a TS error).
 //   4. actionsForCategory filters from the canonical list.
 
-const EXPECTED_ACTION_COUNT = 23;
+const EXPECTED_ACTION_COUNT = 27;
 
 describe('audit action labels drift guard', () => {
   it('AUDIT_ACTIONS has the expected count', () => {
