@@ -52,8 +52,12 @@ const (
 	defaultYandexRedirectURI = "http://localhost/api/v1/oauth/yandex_business/callback"
 	defaultGoogleRedirectURI = "http://localhost/api/v1/oauth/google_business/callback"
 	defaultOrchestratorURL   = "http://localhost:8090"
-	defaultPublicURL         = "http://localhost:8080"
-	defaultCORSDevOrigin     = "http://localhost:3000"
+	// PublicURL is the user-facing reverse-proxy origin (nginx): it serves the
+	// frontend at /, the API under /api/v1, and uploads under /media. It is the
+	// base for links emailed to users (verify-email, password-reset) — which
+	// are FRONTEND routes — so it must NOT point at the API's :8080 port.
+	defaultPublicURL     = "http://localhost"
+	defaultCORSDevOrigin = "http://localhost:3000"
 )
 
 // SelfHostedEndpoint holds configuration for one self-hosted LLM inference

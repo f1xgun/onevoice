@@ -31,8 +31,10 @@ const (
 	resetMinPasswordLen  = 8
 	resetRateLimitMax    = 3
 	resetRateLimitWindow = time.Hour
-	// TODO: source from cfg.PublicURL once the public host is wired in.
-	resetConfirmURLBase = "https://onevoice.app/auth/password-reset/confirm"
+	// Path appended to the configured PublicURL (the reverse-proxy origin) to
+	// form the reset-confirm link. It is a FRONTEND route, so it must ride on
+	// PublicURL, not a hardcoded host.
+	resetConfirmURLPath = "/auth/password-reset/confirm"
 	resetEmailSubject   = "Восстановление пароля — OneVoice"
 	// SCAN batch — 256 balances roundtrips vs per-page work (Redis recommends 100-1000).
 	resetRefreshScanBatch int64 = 256
@@ -62,6 +64,7 @@ type PasswordResetService struct {
 	auditLog  audit.Logger
 	redis     *redis.Client
 	lockout   *lockout.Lockout
+	publicURL string
 }
 
 // NewPasswordResetService constructs a PasswordResetService. lockout is optional:
@@ -74,6 +77,7 @@ func NewPasswordResetService(
 	auditLogger audit.Logger,
 	redisClient *redis.Client,
 	lockoutSvc *lockout.Lockout,
+	publicURL string,
 ) *PasswordResetService {
 	return &PasswordResetService{
 		pool:      pool,
@@ -83,6 +87,7 @@ func NewPasswordResetService(
 		auditLog:  auditLogger,
 		redis:     redisClient,
 		lockout:   lockoutSvc,
+		publicURL: publicURL,
 	}
 }
 
@@ -150,8 +155,8 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 	if _, err := s.outbox.Enqueue(ctx, tx, repository.OutboxEnqueueInput{
 		ToEmail:  user.Email,
 		Subject:  resetEmailSubject,
-		BodyText: buildResetEmailPlainText(plaintext),
-		BodyHTML: buildResetEmailHTML(plaintext),
+		BodyText: buildResetEmailPlainText(s.publicURL+resetConfirmURLPath, plaintext),
+		BodyHTML: buildResetEmailHTML(s.publicURL+resetConfirmURLPath, plaintext),
 	}); err != nil {
 		slog.ErrorContext(ctx, "password reset: enqueue outbox", "error", err)
 		return nil
@@ -299,7 +304,7 @@ func (s *PasswordResetService) audit(ctx context.Context, action string, userID 
 // --- email body builders ---------------------------------------------------
 
 // buildResetEmailPlainText is the Unisender-required plain-text fallback.
-func buildResetEmailPlainText(token string) string {
+func buildResetEmailPlainText(confirmURL, token string) string {
 	return fmt.Sprintf(`Здравствуйте!
 
 Кто-то запросил восстановление пароля для вашего аккаунта в OneVoice.
@@ -311,11 +316,11 @@ func buildResetEmailPlainText(token string) string {
 
 С уважением,
 команда OneVoice
-`, resetConfirmURLBase, token)
+`, confirmURL, token)
 }
 
 // buildResetEmailHTML is the rich-format variant with inline Linen-palette styles.
-func buildResetEmailHTML(token string) string {
+func buildResetEmailHTML(confirmURL, token string) string {
 	return fmt.Sprintf(`<!doctype html>
 <html><body style="font-family:-apple-system,system-ui,sans-serif;color:#2C2520;background:#F5E9D9;padding:24px">
   <h2 style="font-weight:500">Восстановление пароля</h2>
@@ -326,5 +331,5 @@ func buildResetEmailHTML(token string) string {
   </p>
   <p style="font-size:13px;color:#6B6258">Если не вы — просто проигнорируйте это письмо.</p>
 </body></html>
-`, resetConfirmURLBase, token)
+`, confirmURL, token)
 }
