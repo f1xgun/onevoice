@@ -4,12 +4,32 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
+
+// fakeIntegrations records MarkTokenExpired calls so the test can assert the
+// token-health flip fires only on integration_token_invalid. The embedded
+// IntegrationLister leaves ListByBusinessID nil — the postal path never calls
+// it.
+type fakeIntegrations struct {
+	IntegrationLister
+	marked []markCall
+}
+
+type markCall struct {
+	businessID uuid.UUID
+	platform   string
+}
+
+func (f *fakeIntegrations) MarkTokenExpired(_ context.Context, businessID uuid.UUID, platform string) error {
+	f.marked = append(f.marked, markCall{businessID: businessID, platform: platform})
+	return nil
+}
 
 // fakeAgentTaskRepo records every Create / Update call so the test can assert
 // on the persisted shape. Other methods nil-panic — the tests in this file
@@ -90,11 +110,18 @@ func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
 type fakeAgentTaskRepoWithUpdate struct {
 	fakeAgentTaskRepo
 	updated []domain.AgentTask
+	// reloadPlatform is the Platform stamped on the task returned by GetByID,
+	// used by the token-flip path to resolve which integration to expire.
+	reloadPlatform string
 }
 
 func (f *fakeAgentTaskRepoWithUpdate) Update(_ context.Context, t *domain.AgentTask) error {
 	f.updated = append(f.updated, *t)
 	return nil
+}
+
+func (f *fakeAgentTaskRepoWithUpdate) GetByID(_ context.Context, businessID, taskID string) (*domain.AgentTask, error) {
+	return &domain.AgentTask{ID: taskID, BusinessID: businessID, Platform: f.reloadPlatform}, nil
 }
 
 // TestOnToolResult_StampsErrorCode — when the SSE tool_result frame carries a
@@ -142,6 +169,73 @@ func TestOnToolResult_NoCode_LeavesErrorCodeEmpty(t *testing.T) {
 
 	require.Len(t, repo.updated, 1)
 	assert.Empty(t, repo.updated[0].ErrorCode)
+}
+
+// TestOnToolResult_IntegrationTokenInvalid_FlipsStatus — a rejected-token tool
+// result must flip the integration status for the task's platform so the
+// dashboard prompts a reconnect.
+func TestOnToolResult_IntegrationTokenInvalid_FlipsStatus(t *testing.T) {
+	repo := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "telegram"}
+	integ := &fakeIntegrations{}
+	turn := &Turn{deps: Deps{AgentTasks: repo, Integrations: integ}}
+
+	businessID := uuid.New()
+	idMap := map[string]string{"call-1": "task-1"}
+	turn.onToolResult(
+		context.Background(),
+		businessID.String(),
+		"call-1",
+		map[string]interface{}{"error": "Unauthorized: bot kicked"},
+		"telegram: send message: Unauthorized: bot kicked",
+		"integration_token_invalid",
+		idMap,
+	)
+
+	require.Len(t, integ.marked, 1, "MarkTokenExpired must fire on integration_token_invalid")
+	assert.Equal(t, businessID, integ.marked[0].businessID)
+	assert.Equal(t, "telegram", integ.marked[0].platform)
+}
+
+// TestOnToolResult_Success_DoesNotFlipStatus — a successful tool result must
+// never touch integration status.
+func TestOnToolResult_Success_DoesNotFlipStatus(t *testing.T) {
+	repo := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "telegram"}
+	integ := &fakeIntegrations{}
+	turn := &Turn{deps: Deps{AgentTasks: repo, Integrations: integ}}
+
+	idMap := map[string]string{"call-1": "task-1"}
+	turn.onToolResult(
+		context.Background(),
+		uuid.New().String(),
+		"call-1",
+		map[string]interface{}{"message_id": float64(42)},
+		"",
+		"",
+		idMap,
+	)
+
+	assert.Empty(t, integ.marked, "MarkTokenExpired must not fire on a successful tool result")
+}
+
+// TestOnToolResult_OtherErrorCode_DoesNotFlipStatus — a non-token error code
+// (e.g. rate_limit_exceeded) must not flip integration status.
+func TestOnToolResult_OtherErrorCode_DoesNotFlipStatus(t *testing.T) {
+	repo := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "vk"}
+	integ := &fakeIntegrations{}
+	turn := &Turn{deps: Deps{AgentTasks: repo, Integrations: integ}}
+
+	idMap := map[string]string{"call-1": "task-1"}
+	turn.onToolResult(
+		context.Background(),
+		uuid.New().String(),
+		"call-1",
+		map[string]interface{}{"error": "Too Many Requests"},
+		"vk: rate limited",
+		"rate_limit_exceeded",
+		idMap,
+	)
+
+	assert.Empty(t, integ.marked, "MarkTokenExpired must only fire on integration_token_invalid")
 }
 
 // TestOnToolCall_InternalToolSkipped — internal tools (no "__" separator) do

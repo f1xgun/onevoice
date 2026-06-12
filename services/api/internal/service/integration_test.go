@@ -33,6 +33,7 @@ type mockIntegrationRepository struct {
 	deleteFunc                        func(ctx context.Context, id uuid.UUID) error
 	softDeleteFunc                    func(ctx context.Context, id uuid.UUID) error
 	deleteOlderThanFunc               func(ctx context.Context, cutoff time.Time) (int64, error)
+	markTokenExpiredFunc              func(ctx context.Context, businessID uuid.UUID, platform string) (int64, error)
 }
 
 func (m *mockIntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
@@ -105,6 +106,13 @@ func (m *mockIntegrationRepository) SoftDelete(ctx context.Context, id uuid.UUID
 func (m *mockIntegrationRepository) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
 	if m.deleteOlderThanFunc != nil {
 		return m.deleteOlderThanFunc(ctx, cutoff)
+	}
+	return 0, nil
+}
+
+func (m *mockIntegrationRepository) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) (int64, error) {
+	if m.markTokenExpiredFunc != nil {
+		return m.markTokenExpiredFunc(ctx, businessID, platform)
 	}
 	return 0, nil
 }
@@ -654,6 +662,88 @@ func TestConnect_ForwardsParsedFormat(t *testing.T) {
 	assert.Empty(t, details.ParsedFormat)
 }
 
+// TestConnect_IdempotentReconnect_SoftDeletesExistingRow — reconnecting the
+// same channel must retire the live row first (so the partial-unique index
+// lets the fresh active row replace a token_expired one), then create anew.
+func TestConnect_IdempotentReconnect_SoftDeletesExistingRow(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	externalID := "ext_telegram_reconnect"
+	existingID := uuid.New()
+
+	var softDeletedID uuid.UUID
+	var created bool
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, bid uuid.UUID, plat, extID string) (*domain.Integration, error) {
+			if bid == businessID && plat == "telegram" && extID == externalID {
+				return &domain.Integration{
+					ID:         existingID,
+					BusinessID: businessID,
+					Platform:   "telegram",
+					ExternalID: externalID,
+					Status:     domain.IntegrationStatusTokenExpired,
+				}, nil
+			}
+			return nil, domain.ErrIntegrationNotFound
+		},
+		softDeleteFunc: func(_ context.Context, id uuid.UUID) error {
+			softDeletedID = id
+			return nil
+		},
+		createFunc: func(_ context.Context, integration *domain.Integration) error {
+			created = true
+			assert.Equal(t, domain.IntegrationStatusActive, integration.Status)
+			return nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, nil, audit.Nop())
+	result, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:  businessID,
+		Platform:    "telegram",
+		ExternalID:  externalID,
+		AccessToken: "fresh_token",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, existingID, softDeletedID, "the existing live row must be soft-deleted before create")
+	assert.True(t, created, "a fresh active row must be created")
+	assert.Equal(t, domain.IntegrationStatusActive, result.Status)
+}
+
+// TestConnect_NoExistingRow_SkipsSoftDelete — a first-time connect (no live
+// row) must not attempt a soft-delete; ErrIntegrationNotFound is the normal
+// no-op path.
+func TestConnect_NoExistingRow_SkipsSoftDelete(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	softDeleteCalled := false
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return nil, domain.ErrIntegrationNotFound
+		},
+		softDeleteFunc: func(_ context.Context, _ uuid.UUID) error {
+			softDeleteCalled = true
+			return nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, nil, audit.Nop())
+	_, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:  uuid.New(),
+		Platform:    "telegram",
+		ExternalID:  "ext_new",
+		AccessToken: "token",
+	})
+
+	require.NoError(t, err)
+	assert.False(t, softDeleteCalled, "soft-delete must not run when no live row exists")
+}
+
 func TestConnect_Duplicate(t *testing.T) {
 	ctx := context.Background()
 	enc := testEncryptor(t)
@@ -846,6 +936,38 @@ func TestListByBusinessAndPlatform_Success(t *testing.T) {
 	assert.Len(t, result, 2)
 	assert.Equal(t, "chan_1", result[0].ExternalID)
 	assert.Equal(t, "chan_2", result[1].ExternalID)
+}
+
+func TestMarkTokenExpired_DelegatesToRepo(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	var gotBusinessID uuid.UUID
+	var gotPlatform string
+	repo := &mockIntegrationRepository{
+		markTokenExpiredFunc: func(_ context.Context, bid uuid.UUID, plat string) (int64, error) {
+			gotBusinessID = bid
+			gotPlatform = plat
+			return 2, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, nil, audit.Nop())
+	err := svc.MarkTokenExpired(ctx, businessID, "telegram")
+
+	require.NoError(t, err)
+	assert.Equal(t, businessID, gotBusinessID)
+	assert.Equal(t, "telegram", gotPlatform)
+}
+
+func TestMarkTokenExpired_Validation(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+	svc := NewIntegrationService(&mockIntegrationRepository{}, testEnvelope(t, enc), nil, nil, audit.Nop())
+
+	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.Nil, "telegram"), "business id is required")
+	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.New(), ""), "platform is required")
 }
 
 func TestListByBusinessAndPlatform_NilBusinessID(t *testing.T) {

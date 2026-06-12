@@ -125,10 +125,12 @@ type BusinessReader interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 }
 
-// IntegrationLister is the narrow subset of *service.IntegrationService
-// that enrichment needs.
+// IntegrationLister is the narrow subset of *service.IntegrationService that
+// enrichment needs plus the token-health write the postal step performs when
+// an agent reports integration_token_invalid.
 type IntegrationLister interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
+	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) error
 }
 
 // ProjectReader is the narrow subset of *service.ProjectService that

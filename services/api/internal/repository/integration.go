@@ -269,6 +269,33 @@ func (r *integrationRepository) DeleteOlderThan(ctx context.Context, cutoff time
 	return cmdTag.RowsAffected(), nil
 }
 
+// MarkTokenExpired flips every active, non-deleted integration for
+// (businessID, platform) to token_expired and returns the rows affected. Zero
+// rows is a benign no-op (nothing active to flip, or already flipped).
+func (r *integrationRepository) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) (int64, error) {
+	sql, args, err := r.sb.
+		Update("integrations").
+		Set("status", domain.IntegrationStatusTokenExpired).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{
+			"business_id": businessID,
+			"platform":    platform,
+			"status":      domain.IntegrationStatusActive,
+			"deleted_at":  nil,
+		}).
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("build mark-token-expired: %w", err)
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, fmt.Errorf("mark token expired: %w", err)
+	}
+
+	return cmdTag.RowsAffected(), nil
+}
+
 func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {
 	sql, args, err := r.activeQuery().
 		Where(squirrel.Eq{"business_id": businessID, "platform": platform}).

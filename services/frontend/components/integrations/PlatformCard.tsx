@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -299,10 +300,8 @@ function ChannelList({
               className={cn(
                 'h-2 w-2 shrink-0 rounded-full',
                 i.status === 'active' && 'bg-success',
-                i.status === 'inactive' && 'bg-ink-faint',
-                i.status === 'error' && 'bg-danger',
-                i.status === 'pending_cookies' && 'bg-warning',
-                i.status === 'token_expired' && 'bg-danger'
+                i.status === 'token_expired' && 'bg-[var(--ov-danger)]',
+                i.status !== 'active' && i.status !== 'token_expired' && 'bg-ink-faint'
               )}
             />
             <div className="min-w-0 flex-1">
@@ -349,6 +348,12 @@ function ChannelList({
               )}
 
               <Badge tone={tone}>{statusLabel}</Badge>
+
+              {i.status === 'token_expired' && (
+                <Button variant="secondary" size="sm" className="h-7 px-2" asChild>
+                  <Link href={`/integrations?reconnect=${platform}`}>{tCard('reconnect')}</Link>
+                </Button>
+              )}
 
               {canDisconnect && (
                 <AlertDialog>

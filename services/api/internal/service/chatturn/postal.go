@@ -161,15 +161,48 @@ func (t *Turn) onToolResult(
 		slog.ErrorContext(ctx, "chatturn: failed to update agent task record", "task_id", taskID, "error", err)
 		return
 	}
-	if t.deps.TaskHub == nil {
+
+	flipTokenStatus := toolErrorCode == integrationTokenInvalidCode && t.deps.Integrations != nil
+	if t.deps.TaskHub == nil && !flipTokenStatus {
 		return
 	}
+
 	fresh, err := t.deps.AgentTasks.GetByID(ctx, businessID, taskID)
 	if err != nil {
-		slog.ErrorContext(ctx, "chatturn: failed to reload agent task for hub publish", "task_id", taskID, "error", err)
+		slog.ErrorContext(ctx, "chatturn: failed to reload agent task", "task_id", taskID, "error", err)
 		return
 	}
-	t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
+
+	if flipTokenStatus {
+		t.markIntegrationTokenExpired(ctx, businessID, fresh.Platform)
+	}
+	if t.deps.TaskHub != nil {
+		t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
+	}
+}
+
+// integrationTokenInvalidCode is the typed error code a platform agent emits
+// when a token/session is rejected. onToolResult flips the integration's stored
+// status to token_expired on this code so the dashboard prompts a reconnect.
+const integrationTokenInvalidCode = "integration_token_invalid"
+
+// markIntegrationTokenExpired flips the integration status for the platform that
+// produced a rejected-token tool result. Best-effort: a parse or write failure
+// is logged and never fails the turn.
+func (t *Turn) markIntegrationTokenExpired(ctx context.Context, businessID, platform string) {
+	if platform == "" {
+		return
+	}
+	bizUUID, err := uuid.Parse(businessID)
+	if err != nil {
+		slog.WarnContext(ctx, "chatturn: cannot mark token expired, invalid business id",
+			"business_id", businessID, "error", err)
+		return
+	}
+	if err := t.deps.Integrations.MarkTokenExpired(ctx, bizUUID, platform); err != nil {
+		slog.WarnContext(ctx, "chatturn: failed to mark integration token expired",
+			"business_id", businessID, "platform", platform, "error", err)
+	}
 }
 
 // recordPostsAndReviews walks the accumulated ToolCalls / ToolResults after

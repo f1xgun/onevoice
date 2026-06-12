@@ -56,6 +56,12 @@ vi.mock('@/lib/api/business-api', () => ({
   }),
 }));
 
+// `usePermission` is exercised by the inner `ChannelList` when integrations
+// are present. Grant the permission so the channel rows mount.
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
 function Wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -137,5 +143,41 @@ describe('<PlatformCard /> Preview badge', () => {
 
     expect(screen.queryByText('Предпросмотр')).toBeNull();
     expect(screen.queryByText('Preview')).toBeNull();
+  });
+});
+
+const tokenExpiredIntegration = {
+  id: 'integ-1',
+  platform: 'telegram',
+  status: 'token_expired' as const,
+  externalId: 'chan-1',
+  metadata: {},
+};
+
+describe('<PlatformCard /> token_expired status', () => {
+  afterEach(() => {
+    cleanup();
+    globalThis.__setTestLocale('ru');
+  });
+
+  it('renders the localized token-expired badge for a token_expired channel', () => {
+    render(
+      <Wrapper>
+        <PlatformCard {...baseProps} platform="telegram" integrations={[tokenExpiredIntegration]} />
+      </Wrapper>
+    );
+
+    expect(screen.getByText('Токен истёк')).toBeInTheDocument();
+  });
+
+  it('renders a Reconnect link pointing at ?reconnect={platform}', () => {
+    render(
+      <Wrapper>
+        <PlatformCard {...baseProps} platform="telegram" integrations={[tokenExpiredIntegration]} />
+      </Wrapper>
+    );
+
+    const reconnect = screen.getByText('Переподключить');
+    expect(reconnect.closest('a')).toHaveAttribute('href', '/integrations?reconnect=telegram');
   });
 });

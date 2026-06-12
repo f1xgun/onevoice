@@ -946,6 +946,7 @@
       "addChannel": "+ Add channel",
       "connect": "Connect",
       "connecting": "Connecting…",
+      "reconnect": "Reconnect",
       "addBotToGroupTitle": "Add the bot to the discussion group",
       "addBotToGroupBody": "This channel has a linked discussion group for comments, but the bot isn't in it — so comments on posts aren't being collected. Open the discussion group → members → invite the bot.",
       "close": "Close",
