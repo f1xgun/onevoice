@@ -87,6 +87,7 @@ type IntegrationService interface {
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
+	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) error
 }
 
 type integrationService struct {
@@ -293,6 +294,19 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	}
 	if params.Platform == "" {
 		return nil, fmt.Errorf("platform is required")
+	}
+
+	if params.ExternalID != "" {
+		existing, lookupErr := s.repo.GetByBusinessPlatformExternal(ctx, params.BusinessID, params.Platform, params.ExternalID)
+		switch {
+		case lookupErr == nil:
+			if delErr := s.repo.SoftDelete(ctx, existing.ID); delErr != nil && !errors.Is(delErr, domain.ErrIntegrationNotFound) {
+				return nil, fmt.Errorf("retire existing integration: %w", delErr)
+			}
+		case errors.Is(lookupErr, domain.ErrIntegrationNotFound):
+		default:
+			return nil, fmt.Errorf("lookup existing integration: %w", lookupErr)
+		}
 	}
 
 	integrationID := uuid.New()
@@ -566,4 +580,29 @@ func (s *integrationService) ListByBusinessAndPlatform(ctx context.Context, busi
 		return nil, fmt.Errorf("business id is required")
 	}
 	return s.repo.ListByBusinessAndPlatform(ctx, businessID, platform)
+}
+
+// MarkTokenExpired flips the stored status of every active integration for
+// (businessID, platform) to token_expired so the dashboard prompts a reconnect.
+// Invoked when an agent reports the typed code integration_token_invalid for a
+// dispatch. A no-op (zero rows) is normal — the row may already be flipped.
+func (s *integrationService) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) error {
+	if businessID == uuid.Nil {
+		return fmt.Errorf("business id is required")
+	}
+	if platform == "" {
+		return fmt.Errorf("platform is required")
+	}
+
+	n, err := s.repo.MarkTokenExpired(ctx, businessID, platform)
+	if err != nil {
+		return fmt.Errorf("mark token expired: %w", err)
+	}
+
+	slog.InfoContext(ctx, "integration token marked expired",
+		"business_id", businessID,
+		"platform", platform,
+		"rows_affected", n,
+	)
+	return nil
 }

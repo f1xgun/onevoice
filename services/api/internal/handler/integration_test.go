@@ -44,6 +44,11 @@ func (m *MockIntegrationService) Delete(ctx context.Context, integrationID, acto
 	return args.Error(0)
 }
 
+func (m *MockIntegrationService) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) error {
+	args := m.Called(ctx, businessID, platform)
+	return args.Error(0)
+}
+
 // integrationBizCtx seeds a BusinessContext with the given permissions.
 func integrationBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context.Context {
 	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{

@@ -274,6 +274,41 @@ func TestIntegrationRepo_ListAllActiveByPlatforms_ExcludesSoftDeleted(t *testing
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
+func TestIntegrationRepo_MarkTokenExpired_FlipsActiveRows(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	platform := "telegram"
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET status = \$1, updated_at = \$2 WHERE business_id = \$3 AND deleted_at IS NULL AND platform = \$4 AND status = \$5`).
+		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), platform, "active").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 2))
+
+	n, err := repo.MarkTokenExpired(ctx, businessID, platform)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestIntegrationRepo_MarkTokenExpired_NoActiveRowsIsNoOp(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET status = \$1`).
+		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), "vk", "active").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	n, err := repo.MarkTokenExpired(ctx, businessID, "vk")
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
 // TestIntegrationRepo_Create_PersistsEnvelopeColumns guards the Phase 30
 // regression where Create dropped wrapped_dek/key_version/
 // encryption_key_fingerprint, leaving every new integration's token

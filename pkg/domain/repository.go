@@ -56,6 +56,12 @@ type IntegrationRepository interface {
 	SoftDelete(ctx context.Context, id uuid.UUID) error
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 
+	// MarkTokenExpired flips every active, non-deleted integration for
+	// (businessID, platform) to IntegrationStatusTokenExpired and returns the
+	// number of rows updated. The platform token is shared per (business,
+	// platform), so one rejection invalidates them all.
+	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) (int64, error)
+
 	// CountIntegrationsWithDifferentFingerprint returns the count of non-deleted
 	// integrations whose encryption_key_fingerprint is set and differs from
 	// currentFP. Used by the fingerprint boot-check to detect key-ID drift.
