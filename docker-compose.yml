@@ -418,6 +418,15 @@ services:
       args:
         API_URL: http://api:8080
         ORCHESTRATOR_URL: http://orchestrator:8090
+        # 152-ФЗ Art. 14 data-controller identity, inlined at build time.
+        # APP_ENV=production makes the build hard-fail on placeholder values
+        # (see services/frontend/scripts/check-legal-entity.mjs); defaults to
+        # development so local builds skip the gate.
+        APP_ENV: ${APP_ENV:-development}
+        NEXT_PUBLIC_LEGAL_ENTITY_NAME: ${NEXT_PUBLIC_LEGAL_ENTITY_NAME:-}
+        NEXT_PUBLIC_LEGAL_INN: ${NEXT_PUBLIC_LEGAL_INN:-}
+        NEXT_PUBLIC_LEGAL_ADDRESS: ${NEXT_PUBLIC_LEGAL_ADDRESS:-}
+        NEXT_PUBLIC_LEGAL_EMAIL_PDN: ${NEXT_PUBLIC_LEGAL_EMAIL_PDN:-}
     container_name: onevoice-frontend
     environment:
       - NODE_ENV=production

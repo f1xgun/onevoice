@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/check-legal-entity.mjs && next build",
     "start": "next start",
     "lint": "next lint --dir app --dir components --dir lib --dir hooks",
     "test": "vitest run",
