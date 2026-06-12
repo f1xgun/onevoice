@@ -474,6 +474,59 @@ func LogBusinessUpdated(ctx context.Context, l Logger, businessID, actorID uuid.
 	})
 }
 
+// LogBusinessDeletionRequested records business.deletion_requested on
+// soft-delete via DELETE /businesses/{id}.
+func LogBusinessDeletionRequested(ctx context.Context, l Logger, businessID, actorID uuid.UUID, ip, ua string) {
+	l.Log(ctx, Entry{
+		Action:     ActionBusinessDeletionRequested,
+		Resource:   "business",
+		BusinessID: &businessID,
+		UserID:     &actorID,
+		Details:    mustMarshal(BusinessDeletionRequestedDetails{IP: ip, UserAgent: ua}),
+	})
+}
+
+// LogBusinessDeletionCanceled records business.deletion_canceled on POST
+// /businesses/{id}/restore within the 30-day grace window.
+func LogBusinessDeletionCanceled(ctx context.Context, l Logger, businessID, actorID uuid.UUID, ip, ua string) {
+	l.Log(ctx, Entry{
+		Action:     ActionBusinessDeletionCanceled,
+		Resource:   "business",
+		BusinessID: &businessID,
+		UserID:     &actorID,
+		Details:    mustMarshal(BusinessDeletionCanceledDetails{IP: ip, UserAgent: ua}),
+	})
+}
+
+// LogBusinessNotOwnerBlocked records business.not_owner_blocked when a
+// delete/restore attempt is rejected because the actor is not an OWNER.
+func LogBusinessNotOwnerBlocked(ctx context.Context, l Logger, businessID, actorID uuid.UUID, ip, ua string) {
+	l.Log(ctx, Entry{
+		Action:     ActionBusinessNotOwnerBlocked,
+		Resource:   "business",
+		BusinessID: &businessID,
+		UserID:     &actorID,
+		Details:    mustMarshal(BusinessNotOwnerBlockedDetails{IP: ip, UserAgent: ua}),
+	})
+}
+
+// LogBusinessSelfDeletedTx is INTENTIONALLY called WITHIN the HardDelete PG tx —
+// the audit insert is atomic with the businesses-row deletion. The audit row
+// MUST land before the DELETE so the FK SET NULL has somewhere to land + the
+// name snapshot survives in details for forensic queries.
+func LogBusinessSelfDeletedTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, originalName string) error {
+	const q = `INSERT INTO audit_logs (id, business_id, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`
+	details, err := json.Marshal(BusinessCreatedDetails{Name: originalName})
+	if err != nil {
+		return fmt.Errorf("audit: business_self_deleted marshal: %w", err)
+	}
+	if _, err := tx.Exec(ctx, q, businessID, ActionBusinessSelfDeleted, "business", details); err != nil {
+		return fmt.Errorf("audit: business_self_deleted insert: %w", err)
+	}
+	return nil
+}
+
 // ---- project builders ---------------------------------------------------
 
 // LogProjectCreated records a new project.

@@ -51,6 +51,10 @@ func (s *stubConversationRepo) MongoConversationsCleanup(_ context.Context, _, _
 	return 0, nil
 }
 
+func (s *stubConversationRepo) MongoBusinessCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // --- Tests ---
 
 func TestNewAuthHandler_NilService_ReturnsError(t *testing.T) {

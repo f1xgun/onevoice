@@ -248,6 +248,33 @@ func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, 
 	return result.MatchedCount, nil
 }
 
+// MongoBusinessCleanup is the soft-delete sweeper for a departing organization.
+// Nulls business_id, snapshots the original name, marks deleted_business=true on
+// every conversation, post, and review scoped to the organization. Documents
+// themselves are NOT dropped — forensic history persists. Mirrors
+// MongoConversationsCleanup. Messages carry no business_id (they are scoped via
+// the conversation allowlist) so they are left intact alongside the nulled
+// conversations, matching the user-deletion template.
+func (r *conversationRepository) MongoBusinessCleanup(ctx context.Context, businessID, originalName string) (int64, error) {
+	db := r.collection.Database()
+	filter := bson.M{"business_id": businessID}
+	update := bson.M{"$set": bson.M{
+		"business_id":             nil,
+		"business_name_at_delete": originalName,
+		"deleted_business":        true,
+		"updated_at":              time.Now(),
+	}}
+	var total int64
+	for _, name := range []string{"conversations", "posts", "reviews"} {
+		result, err := db.Collection(name).UpdateMany(ctx, filter, update)
+		if err != nil {
+			return total, fmt.Errorf("mongo business cleanup (%s): %w", name, err)
+		}
+		total += result.MatchedCount
+	}
+	return total, nil
+}
+
 // Pin atomically sets pinned_at = now (UTC), scoped by (id, business_id, user_id)
 // for defense-in-depth against cross-tenant pin manipulation.
 func (r *conversationRepository) Pin(ctx context.Context, id, businessID, userID string) error {

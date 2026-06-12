@@ -91,6 +91,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		go runDeletionWarningSweeper(ctx, log, svcs.AccountDeletion)
 	}
 
+	if svcs.BusinessDeletion != nil {
+		go runBusinessHardDeleteSweeper(ctx, log, svcs.BusinessDeletion)
+	}
+
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)
 	if err != nil {
 		return err
@@ -215,6 +219,34 @@ func runHardDeleteSweeper(ctx context.Context, log *slog.Logger, svc *service.Ac
 			}
 			if processed > 0 {
 				log.InfoContext(ctx, "hard delete sweeper completed", "processed", processed)
+			}
+		}
+	}
+}
+
+// runBusinessHardDeleteSweeper hard-deletes organizations whose
+// deletion_requested_at < NOW - 30d. Hourly cadence (forgiving of an hour of
+// imprecision against the 30-day grace). Each batch runs in its own service-level
+// TX via FOR UPDATE SKIP LOCKED so concurrent CancelDeletion calls can race-win
+// the row. Lifecycle bound to ctx so SIGTERM cancels the ticker cleanly.
+func runBusinessHardDeleteSweeper(ctx context.Context, log *slog.Logger, svc *service.BusinessDeletionService) {
+	const tickInterval = 1 * time.Hour
+	ticker := time.NewTicker(tickInterval)
+	defer ticker.Stop()
+	log.InfoContext(ctx, "business hard delete sweeper: starting", "interval", tickInterval.String())
+	for {
+		select {
+		case <-ctx.Done():
+			log.InfoContext(ctx, "business hard delete sweeper: stopping")
+			return
+		case <-ticker.C:
+			processed, err := svc.HardDeleteSweeper(ctx)
+			if err != nil {
+				log.WarnContext(ctx, "business hard delete sweeper failed", "err", err)
+				continue
+			}
+			if processed > 0 {
+				log.InfoContext(ctx, "business hard delete sweeper completed", "processed", processed)
 			}
 		}
 	}

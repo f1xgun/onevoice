@@ -21,6 +21,17 @@ var (
 	ErrBusinessExists   = errors.New("business already exists")
 )
 
+// Organization (business) deletion errors. Mirror the account-deletion
+// sentinels — same lifecycle, different resource.
+var (
+	ErrBusinessDeletionAlreadyPending = errors.New("organization deletion already pending")
+	ErrNoBusinessDeletionPending      = errors.New("no organization deletion pending")
+	ErrBusinessAlreadyPurged          = errors.New("organization deletion grace expired")
+	// ErrNotBusinessOwner gates DELETE/restore to members holding the system
+	// OWNER role; surfaces as 403 at the handler boundary.
+	ErrNotBusinessOwner = errors.New("not organization owner")
+)
+
 // Integration errors.
 var (
 	ErrIntegrationNotFound = errors.New("integration not found")

@@ -205,6 +205,11 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		userDeletionHandler = handler.NewUserDeletionHandler(svcs.AccountDeletion, cfg.CORSAllowedOrigins)
 	}
 
+	var businessDeletionHandler *handler.BusinessDeletionHandler
+	if svcs.BusinessDeletion != nil {
+		businessDeletionHandler = handler.NewBusinessDeletionHandler(svcs.BusinessDeletion, cfg.CORSAllowedOrigins)
+	}
+
 	var consentsHandler *handler.ConsentsHandler
 	if svcs.Consent != nil {
 		consentsHandler = handler.NewConsentsHandler(svcs.Consent, repos.UserConsents, cfg.CORSAllowedOrigins)
@@ -214,30 +219,31 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}
 
 	return &router.Handlers{
-		Auth:            authHandler,
-		Business:        businessHandler,
-		Integration:     integrationHandler,
-		Conversation:    conversationHandler,
-		OAuth:           oauthHandler,
-		Connect:         connectHandler,
-		InternalToken:   internalTokenHandler,
-		InternalBilling: internalBillingHandler,
-		ChatProxy:       chatProxyHandler,
-		Review:          reviewHandler,
-		Post:            postHandler,
-		AgentTask:       agentTaskHandler,
-		Project:         projectHandler,
-		HITL:            hitlHandler,
-		Titler:          titlerHandler,
-		Search:          searchHandler,
-		Platforms:       platformsHandler,
-		Permissions:     handler.NewPermissionsHandler(),
-		Members:         membersHandler,
-		Roles:           rolesHandler,
-		Invitations:     invitationsHandler,
-		AuditLog:        auditLogHandler,
-		UserDeletion:    userDeletionHandler,
-		Consents:        consentsHandler,
-		Telemetry:       &handler.TelemetryHandler{},
+		Auth:             authHandler,
+		Business:         businessHandler,
+		Integration:      integrationHandler,
+		Conversation:     conversationHandler,
+		OAuth:            oauthHandler,
+		Connect:          connectHandler,
+		InternalToken:    internalTokenHandler,
+		InternalBilling:  internalBillingHandler,
+		ChatProxy:        chatProxyHandler,
+		Review:           reviewHandler,
+		Post:             postHandler,
+		AgentTask:        agentTaskHandler,
+		Project:          projectHandler,
+		HITL:             hitlHandler,
+		Titler:           titlerHandler,
+		Search:           searchHandler,
+		Platforms:        platformsHandler,
+		Permissions:      handler.NewPermissionsHandler(),
+		Members:          membersHandler,
+		Roles:            rolesHandler,
+		Invitations:      invitationsHandler,
+		AuditLog:         auditLogHandler,
+		UserDeletion:     userDeletionHandler,
+		BusinessDeletion: businessDeletionHandler,
+		Consents:         consentsHandler,
+		Telemetry:        &handler.TelemetryHandler{},
 	}, nil
 }

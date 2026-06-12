@@ -270,6 +270,26 @@ type BusinessCreatedDetails struct {
 // (Assumption A3). Add a fields slice in a later phase if compliance asks.
 type BusinessUpdatedDetails struct{}
 
+// BusinessDeletionRequestedDetails records an organization-deletion request.
+type BusinessDeletionRequestedDetails struct {
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// BusinessDeletionCanceledDetails records the forensic context of a canceled
+// organization deletion.
+type BusinessDeletionCanceledDetails struct {
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// BusinessNotOwnerBlockedDetails records a non-owner attempting to delete or
+// restore an organization.
+type BusinessNotOwnerBlockedDetails struct {
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
 // ---- project ------------------------------------------------------------
 
 // ProjectCreatedDetails captures the project ID + human name.

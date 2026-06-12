@@ -146,7 +146,8 @@ const (
 
 // Defines values for PendingDeletionResponseCode.
 const (
-	AccountPendingDeletion PendingDeletionResponseCode = "account_pending_deletion"
+	AccountPendingDeletion  PendingDeletionResponseCode = "account_pending_deletion"
+	BusinessPendingDeletion PendingDeletionResponseCode = "business_pending_deletion"
 )
 
 // Defines values for PlatformStatus.
@@ -956,7 +957,7 @@ type PendingApprovalCall struct {
 
 // PendingDeletionResponse defines model for PendingDeletionResponse.
 type PendingDeletionResponse struct {
-	Code         PendingDeletionResponseCode `json:"code" validate:"required,oneof=account_pending_deletion"`
+	Code         PendingDeletionResponseCode `json:"code" validate:"required,oneof=account_pending_deletion business_pending_deletion"`
 	DeletionDate string                      `json:"deletionDate" validate:"required"`
 	RestoreUrl   string                      `json:"restoreUrl" validate:"required"`
 }

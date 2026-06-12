@@ -79,6 +79,10 @@ type Services struct {
 	// runHardDeleteSweeper / runDeletionWarningSweeper goroutines.
 	AccountDeletion *service.AccountDeletionService
 
+	// BusinessDeletion is wired into BusinessDeletionHandler + into
+	// cmd/main.go's runBusinessHardDeleteSweeper goroutine.
+	BusinessDeletion *service.BusinessDeletionService
+
 	// Consent is wired into ConsentsHandler + into UserService.Register via
 	// SetRegisterConsentService so the 3-row UPSERT runs in the same tx as
 	// the user row.
@@ -306,6 +310,16 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.AccountDeletion = service.NewAccountDeletionService(
 		h.PG,
 		repos.UserResetExt,
+		repos.Conversation,
+		repos.EmailOutbox,
+		s.AuditLogger,
+	)
+
+	s.BusinessDeletion = service.NewBusinessDeletionService(
+		h.PG,
+		repos.BusinessDeletionExt,
+		repos.BusinessMembership,
+		repos.User,
 		repos.Conversation,
 		repos.EmailOutbox,
 		s.AuditLogger,

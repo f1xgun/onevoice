@@ -723,6 +723,33 @@
     "subtitle": "The more you tell us about yourself, the better the AI will sound like you.",
     "createSubtitle": "Fill in \"Basics\" and the other sections will appear. OneVoice uses this whenever it writes on your behalf.",
     "errorLoad": "Couldn't load the data. Try refreshing the page.",
+    "deletion": {
+      "dangerZoneHeading": "Danger zone",
+      "dangerZoneDescription": "Deleting the organization starts a 30-day grace period. After it ends, all organization data — chats, posts, reviews, and connections — is permanently erased. You can cancel the deletion until the grace period ends.",
+      "deleteButton": "Delete organization",
+      "restoreSuccessToast": "Organization deletion canceled.",
+      "graceBanner": "Organization “{name}” will be deleted on {date}. You can cancel the deletion until then.",
+      "graceBannerAction": "Cancel deletion",
+      "graceBannerActionAria": "Cancel organization deletion",
+      "graceBannerSubmitting": "Canceling…",
+      "confirmModal": {
+        "heading": "Delete organization?",
+        "body": "Organization “{name}” and all its data will be deleted in 30 days. You can cancel the deletion until then.",
+        "nameLabel": "Type “{name}” to confirm",
+        "nameMismatch": "The name doesn't match.",
+        "cta": "Delete organization",
+        "submitting": "Deleting…",
+        "cancel": "Cancel",
+        "successToast": "Organization deletion scheduled."
+      },
+      "errors": {
+        "notOwner": "Only the owner can delete the organization.",
+        "pendingDeletion": "Organization deletion is already scheduled.",
+        "generic": "Couldn't complete the action. Please try again.",
+        "tooOld": "The cancellation window has expired — the organization is already deleted.",
+        "originNotAllowed": "Action blocked for security reasons."
+      }
+    },
     "newPage": {
       "title": "New organization",
       "sub": "Fill in the basics — you can add hours, a logo, and the team after it's created.",

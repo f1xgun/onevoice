@@ -240,6 +240,10 @@ func (c *hitlConvRepo) MongoConversationsCleanup(_ context.Context, _, _ string)
 	return 0, nil
 }
 
+func (c *hitlConvRepo) MongoBusinessCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // -- helpers -----------------------------------------------------------------
 
 func seededToolsCache() *service.ToolsRegistryCache {

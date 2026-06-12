@@ -111,6 +111,10 @@ func (r *titlerConvRepo) MongoConversationsCleanup(_ context.Context, _, _ strin
 	return 0, nil
 }
 
+func (r *titlerConvRepo) MongoBusinessCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 func (r *titlerConvRepo) TransitionToAutoPending(_ context.Context, _ string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
