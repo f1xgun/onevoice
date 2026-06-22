@@ -135,6 +135,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		MaxIterations:         cfg.MaxIterations,
 		ConversationInputCap:  cfg.ConversationInputCap,
 		ConversationOutputCap: cfg.ConversationOutputCap,
+		RedactOutboundPDn:     !cfg.AllowTransborderLLM,
 	})
 	handlers := wire.Handlers(orch, registry, router, cfg)
 

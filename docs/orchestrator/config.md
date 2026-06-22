@@ -66,6 +66,22 @@ via env.
 | `AnthropicAPIKey` | `ANTHROPIC_API_KEY` | `""` | — |
 | `SelfHostedEndpoints` | `SELF_HOSTED_N_URL`, `SELF_HOSTED_N_MODEL`, `SELF_HOSTED_N_API_KEY` | `nil` | Indexed env scan; see *Self-hosted endpoints*. |
 
+### Personal-data residency (152-FZ transborder guard)
+
+| Field | Env | Default | Range / Semantic |
+|---|---|---|---|
+| `AllowTransborderLLM` | `ALLOW_TRANSBORDER_LLM` | `false` | When `false` (default) the orchestrator redacts personal data from every outbound LLM request before it can reach a provider running outside Russia. `cmd/main.go` wires `Options.RedactOutboundPDn = !AllowTransborderLLM`, so the *safe* posture is the zero value. **Boot error** on a non-boolean value. |
+
+The redaction chokepoint lives in `internal/orchestrator/redact.go` (`applyOutboundRedaction`), invoked in `stepRun` just before `o.llm.Chat` — so it covers both the fresh `Run` and the HITL `Resume` path (both route through `stepRun`). It scrubs, via `pkg/security.RedactPII`:
+
+- conversation **history** message content (untrusted review/DM bodies the LLM is fed back),
+- **tool-call arguments and tool-result** content,
+- the **per-business** prompt block (block 2) — owner phone/email/card patterns.
+
+It never touches block 1 (the locale-fixed platform prefix that anchors the provider cache prefix), and it works on a copy so the persisted HITL pause snapshot keeps the original, un-redacted bytes for the approval card and audit. `RedactPII` matches email / RU phone / IBAN / RU passport / INN / Luhn-valid card numbers; it does **not** recognize free-form physical addresses or person names, so the business `Адрес` line is preserved (lower-risk owner data, frequently load-bearing for the assistant). Set `ALLOW_TRANSBORDER_LLM=true` only with a documented legal basis for transborder transfer, or when inference is pinned to RU / self-hosted endpoints.
+
+> Out of scope for this knob (separate ingress): the standalone `/internal/draft-reply` handler also sends review text to the LLM and is not yet covered.
+
 ### Storage / message bus
 
 | Field | Env | Default | Range / Semantic |
@@ -88,6 +104,7 @@ via env.
   `"local_fallback"` → returns error naming the accepted values.
 - `LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR` set to a non-integer →
   `must be a positive integer`.
+- `ALLOW_TRANSBORDER_LLM` set to a non-boolean → `must be a boolean`.
 - `LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback` with
   `LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR <= 0` →
   `must be > 0 when ... =local_fallback`.

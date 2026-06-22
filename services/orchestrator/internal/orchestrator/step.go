@@ -152,6 +152,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 				{Text: state.SystemBusiness},
 			}
 		}
+		o.applyOutboundRedaction(&llmReq)
 		resp, err := o.llm.Chat(ctx, llmReq)
 		if err != nil {
 			ev := translateChatError(ctx, err)

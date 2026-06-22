@@ -85,6 +85,12 @@ type Config struct {
 
 	// LocalFallbackWindow is the re-probe interval after a Redis failure.
 	LocalFallbackWindow time.Duration
+
+	// AllowTransborderLLM, when true, disables outbound personal-data redaction
+	// before LLM calls. Leave false (default) unless there is a legal basis for
+	// transborder personal-data transfer or inference is routed only to
+	// RU/self-hosted endpoints. See docs/orchestrator/config.md.
+	AllowTransborderLLM bool
 }
 
 // SelfHostedEndpoint holds one self-hosted LLM inference endpoint.
@@ -185,6 +191,15 @@ func Load() (*Config, error) {
 		}
 	}
 
+	allowTransborderLLM := false
+	if v := os.Getenv("ALLOW_TRANSBORDER_LLM"); v != "" {
+		b, perr := strconv.ParseBool(v)
+		if perr != nil {
+			return nil, fmt.Errorf("ALLOW_TRANSBORDER_LLM must be a boolean, got %q: %w", v, perr)
+		}
+		allowTransborderLLM = b
+	}
+
 	return &Config{
 		Port:               getEnv("PORT", "8090"),
 		LLMModel:           model,
@@ -215,6 +230,7 @@ func Load() (*Config, error) {
 		RedisDownPolicy:              redisDownPolicy,
 		LocalFallbackRequestsPerHour: localFallbackRequestsPerHour,
 		LocalFallbackWindow:          localFallbackWindow,
+		AllowTransborderLLM:          allowTransborderLLM,
 	}, nil
 }
 
