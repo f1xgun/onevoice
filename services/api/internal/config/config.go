@@ -70,6 +70,10 @@ type SelfHostedEndpoint struct {
 
 // Config is the API service's runtime configuration.
 type Config struct {
+	// AppEnv is the deployment environment ("production" enables fail-closed
+	// gates; any other value, including empty, is treated as dev/non-prod).
+	// Compare via IsProduction rather than reading the field directly.
+	AppEnv        string
 	Port          string
 	PostgresHost  string
 	PostgresPort  string
@@ -218,6 +222,7 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
+		AppEnv:        os.Getenv("APP_ENV"),
 		Port:          getEnv("PORT", "8080"),
 		PostgresHost:  getEnv("POSTGRES_HOST", "localhost"),
 		PostgresPort:  getEnv("POSTGRES_PORT", "5432"),
@@ -479,7 +484,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {
+	if cfg.IsProduction() {
 		if err := validateLegalProduction(cfg); err != nil {
 			return nil, fmt.Errorf("LEGAL_* validation failed in production: %w", err)
 		}
@@ -514,6 +519,14 @@ func parseInternalACL() (map[string][]string, error) {
 		return nil, fmt.Errorf("ONEVOICE_INTERNAL_ACL_JSON must contain at least one CN→platforms entry")
 	}
 	return acl, nil
+}
+
+// IsProduction reports whether the service is running in the production
+// environment. The single source of truth for the APP_ENV gate that fail-closed
+// boot checks (legal validation, transactional email) share, so each gate uses
+// identical matching semantics (case-insensitive, whitespace-trimmed).
+func (c *Config) IsProduction() bool {
+	return strings.EqualFold(strings.TrimSpace(c.AppEnv), "production")
 }
 
 // getEnv returns the env var or defaultValue when unset / empty.

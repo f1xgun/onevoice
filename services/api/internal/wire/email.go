@@ -1,12 +1,14 @@
 // Package wire — email.go
 //
 // transactional email wiring. Lives in this dedicated file
-// (NOT databases.go) per : Unisender is stateless HTTP
+// (NOT databases.go) because Unisender is stateless HTTP
 // with no Close-tracked resource, so it doesn't belong on DBHandles.
 //
 // Two public constructors:
-// - BuildEmailSender(log, cfg) email.Sender — picks UnisenderSender
-// when UNISENDER_API_KEY is set, falls back to NoopSender otherwise.
+// - BuildEmailSender(log, cfg) (email.Sender, error) — picks UnisenderSender
+// when UNISENDER_API_KEY (and a From address) are set; in production a missing
+// configuration is a hard boot error (mail must not be silently dropped), while
+// dev/non-prod falls back to NoopSender with a loud warning.
 // - StartOutboxWorker(ctx, log, repo, sender, pollInterval, maxAttempts)
 // spawns a non-blocking goroutine that polls email_outbox and
 // drains pending rows. Lifecycle bound to ctx (SIGTERM cancels).
@@ -15,10 +17,12 @@ package wire
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/email"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -28,16 +32,24 @@ import (
 // burst of 25 covers any reasonable spike without starving the DB pool.
 const outboxBatchLimit = 25
 
-// BuildEmailSender returns a production Sender when the Unisender API
-// key is configured, and a NoopSender otherwise (dev/local). Failing
-// open to NoopSender — instead of erroring at startup — matches the
-// existing NATS-optional pattern in databases.go: dev environments
-// should boot without external dependencies, and the outbox worker
-// logs a clear warn line so the operator knows email is no-op.
-func BuildEmailSender(log *slog.Logger, cfg *config.Config) email.Sender {
-	if cfg.UnisenderAPIKey == "" {
-		log.Warn("email: UNISENDER_API_KEY not set — using NoopSender (dev mode). Production MUST set this.")
-		return email.NewNoopSender()
+// BuildEmailSender returns the transactional-email Sender.
+//
+// In production (cfg.IsProduction) a missing UNISENDER_API_KEY or From
+// address is a hard boot error: NoopSender silently accepts every message and
+// the worker would then mark the row 'sent', so verify/reset/invite mail would
+// be dropped while onboarding and account-recovery flows believe it was
+// delivered. Failing the boot mirrors the JWT_SECRET / ENCRYPTION_KEY
+// deny-list gates — a misconfigured production deploy must not start.
+//
+// In dev/non-prod a missing key falls back to NoopSender with a loud warning
+// so local development boots without an external dependency.
+func BuildEmailSender(log *slog.Logger, cfg *config.Config) (email.Sender, error) {
+	if cfg.UnisenderAPIKey == "" || cfg.UnisenderFromEmail == "" {
+		if cfg.IsProduction() {
+			return nil, fmt.Errorf("email: UNISENDER_API_KEY and UNISENDER_FROM_EMAIL are required in production (transactional mail must not be silently dropped)")
+		}
+		log.Warn("email: UNISENDER_API_KEY/UNISENDER_FROM_EMAIL not set — using NoopSender (dev mode). Mail will be DROPPED, not delivered. Production MUST set these.")
+		return email.NewNoopSender(), nil
 	}
 	s, err := email.NewUnisenderSender(email.UnisenderConfig{
 		APIKey:    cfg.UnisenderAPIKey,
@@ -45,11 +57,14 @@ func BuildEmailSender(log *slog.Logger, cfg *config.Config) email.Sender {
 		FromName:  cfg.UnisenderFromName,
 	})
 	if err != nil {
-		log.Error("email: NewUnisenderSender failed — falling back to NoopSender", "error", err)
-		return email.NewNoopSender()
+		if cfg.IsProduction() {
+			return nil, fmt.Errorf("email: NewUnisenderSender failed in production: %w", err)
+		}
+		log.Error("email: NewUnisenderSender failed — falling back to NoopSender (dev mode)", "error", err)
+		return email.NewNoopSender(), nil
 	}
 	log.Info("email: UnisenderSender constructed", "from_email", cfg.UnisenderFromEmail)
-	return s
+	return s, nil
 }
 
 // StartOutboxWorker spawns a non-blocking goroutine that polls
@@ -80,6 +95,12 @@ func runOutboxWorker(ctx context.Context, log *slog.Logger, repo *repository.Ema
 }
 
 func drainOutboxOnce(ctx context.Context, log *slog.Logger, repo *repository.EmailOutboxRepository, sender email.Sender, maxAttempts int) {
+	if pending, err := repo.CountPending(ctx); err != nil {
+		log.ErrorContext(ctx, "email_outbox: count pending failed", "error", err)
+	} else {
+		metrics.OutboxPendingRows.Set(float64(pending))
+	}
+
 	rows, err := repo.DrainPending(ctx, outboxBatchLimit)
 	if err != nil {
 		log.ErrorContext(ctx, "email_outbox: drain query failed", "error", err)
@@ -93,19 +114,37 @@ func drainOutboxOnce(ctx context.Context, log *slog.Logger, repo *repository.Ema
 			BodyHTML: row.BodyHTML,
 		})
 		if sendErr == nil {
+			metrics.EmailsSentTotal.WithLabelValues(sendResult(sender)).Inc()
 			if mErr := repo.MarkSent(ctx, row.ID, jobID); mErr != nil {
 				log.ErrorContext(ctx, "email_outbox: mark_sent failed", "id", row.ID, "error", mErr)
 			}
 			continue
 		}
 		if errors.Is(sendErr, email.ErrPermanent) {
+			metrics.EmailsDeadLetteredTotal.Inc()
 			if mErr := repo.MarkFailed(ctx, row.ID, sendErr.Error()); mErr != nil {
 				log.ErrorContext(ctx, "email_outbox: mark_failed failed", "id", row.ID, "error", mErr)
 			}
 			continue
 		}
+		if row.Attempts+1 >= maxAttempts {
+			metrics.EmailsDeadLetteredTotal.Inc()
+		} else {
+			metrics.EmailsRescheduledTotal.Inc()
+		}
 		if rErr := repo.Reschedule(ctx, row.ID, row.Attempts, sendErr.Error(), maxAttempts); rErr != nil {
 			log.ErrorContext(ctx, "email_outbox: reschedule failed", "id", row.ID, "error", rErr)
 		}
 	}
+}
+
+// sendResult maps a successful Sender.Send to its emails_sent_total result
+// label. A NoopSender accepts the message without delivering it, so its sends
+// are recorded as noop_dropped — dropped mail stays visible rather than being
+// counted as a real delivery.
+func sendResult(sender email.Sender) string {
+	if _, ok := sender.(*email.NoopSender); ok {
+		return "noop_dropped"
+	}
+	return "sent"
 }
