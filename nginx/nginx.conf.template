@@ -95,10 +95,12 @@ http {
       set $api_upstream http://api:8080;
       proxy_pass $api_upstream;
     }
-    location /metrics {
-      set $api_upstream http://api:8080;
-      proxy_pass $api_upstream;
-    }
+
+    # /metrics is intentionally NOT proxied here. It exposes request
+    # volumes, spend-blocked counts, token usage and pool saturation —
+    # internal telemetry that must not be reachable from the public
+    # internet. Prometheus scrapes the api directly over the compose
+    # network (api:8080), so no public route is needed.
 
     location / {
       set $frontend_upstream http://frontend:3000;
