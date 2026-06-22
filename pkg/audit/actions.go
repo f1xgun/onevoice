@@ -86,9 +86,17 @@ const (
 	ActionProjectDeleted = "project.deleted"
 )
 
-// rpa.* — Playwright RPA browser gate events.
+// rpa.* — Playwright RPA browser gate events and mutations. The mutation
+// actions record every write the RPA worker lands on a third-party public
+// listing (Yandex.Business), so each change is attributable to a business +
+// actor for incident investigation and 152-FZ data-minimization evidence.
 const (
 	ActionRPAScopeViolation = "rpa.scope_violation"
+	ActionRPAReviewReplied  = "rpa.review_replied"
+	ActionRPAPostPublished  = "rpa.post_published"
+	ActionRPAPhotoUploaded  = "rpa.photo_uploaded"
+	ActionRPAInfoUpdated    = "rpa.info_updated"
+	ActionRPAHoursUpdated   = "rpa.hours_updated"
 )
 
 // ActionCategory returns the closed-set category for an action string.

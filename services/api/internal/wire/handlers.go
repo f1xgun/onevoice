@@ -132,6 +132,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		svcs.TaskHub,
 		svcs.OrchClient,
 		svcs.Titler,
+		svcs.AuditLogger,
 	)
 
 	if h.Redis != nil && cfg.SSEMaxPerUser > 0 {

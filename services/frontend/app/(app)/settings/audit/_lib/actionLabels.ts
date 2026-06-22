@@ -55,4 +55,10 @@ export const ACTION_LABEL_KEYS: Record<AuditAction, string> = {
   'project.created': 'audit.actions.project_created',
   'project.updated': 'audit.actions.project_updated',
   'project.deleted': 'audit.actions.project_deleted',
+  'rpa.scope_violation': 'audit.actions.rpa_scope_violation',
+  'rpa.review_replied': 'audit.actions.rpa_review_replied',
+  'rpa.post_published': 'audit.actions.rpa_post_published',
+  'rpa.photo_uploaded': 'audit.actions.rpa_photo_uploaded',
+  'rpa.info_updated': 'audit.actions.rpa_info_updated',
+  'rpa.hours_updated': 'audit.actions.rpa_hours_updated',
 };

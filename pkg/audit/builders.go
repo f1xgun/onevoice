@@ -579,3 +579,18 @@ func LogRPAScopeViolation(ctx context.Context, l Logger, businessID uuid.UUID, h
 		}),
 	})
 }
+
+// LogRPAMutation records a write the RPA worker landed on a third-party public
+// listing (reply / post / photo / info / hours). action is one of the
+// ActionRPA* mutation constants; actorID may be nil when the triggering user
+// can't be resolved (the event is still attributable to businessID). target is
+// a non-PII external identifier (e.g. review id) or "". Fire-and-forget.
+func LogRPAMutation(ctx context.Context, l Logger, action string, businessID uuid.UUID, actorID *uuid.UUID, tool, platform, target string) {
+	l.Log(ctx, Entry{
+		Action:     action,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		UserID:     actorID,
+		Details:    mustMarshal(RPAMutationDetails{Tool: tool, Platform: platform, Target: target}),
+	})
+}

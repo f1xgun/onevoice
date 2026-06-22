@@ -174,7 +174,7 @@ func (t *Turn) streamResume(
 		t.sseInlineError(w, "no_active_approval_for_conversation")
 		return OutcomeInlineError, nil
 	}
-	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batchID, nil)
+	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batch.UserID, batchID, nil)
 }
 
 // ResumeApproved is the primary approve→resume path (POST /chat/{id}/resume).
@@ -204,7 +204,7 @@ func (t *Turn) ResumeApproved(
 		t.sseInlineError(w, "no_active_approval_for_conversation")
 		return OutcomeInlineError, nil
 	}
-	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batchID, body)
+	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batch.UserID, batchID, body)
 }
 
 // runResumeStream is the shared resume core for both the rejoin (streamResume)
@@ -239,6 +239,7 @@ func (t *Turn) runResumeStream(
 	conversationID string,
 	activeMsg *domain.Message,
 	businessID string,
+	actorUserID string,
 	batchID string,
 	body []byte,
 ) (TurnOutcome, error) {
@@ -317,11 +318,11 @@ func (t *Turn) runResumeStream(
 				}
 			case sseEventError:
 				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
-				t.persistResumeDone(ctx, &msg, businessID, recCalls, recResults)
+				t.persistResumeDone(ctx, &msg, businessID, actorUserID, recCalls, recResults)
 				terminated = true
 			case "done":
 				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
-				t.persistResumeDone(ctx, &msg, businessID, recCalls, recResults)
+				t.persistResumeDone(ctx, &msg, businessID, actorUserID, recCalls, recResults)
 				fireAutoTitle = true
 				terminated = true
 			}
@@ -403,7 +404,7 @@ func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Messa
 // where manual-floor publishing tools actually execute, so this is the only
 // place those records can be created. Uses persistContext (NOT request ctx —
 // that ctx is canceled when the SSE stream closes).
-func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message, businessID string, toolCalls []domain.ToolCall, toolResults []domain.ToolResult) {
+func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message, businessID, actorUserID string, toolCalls []domain.ToolCall, toolResults []domain.ToolResult) {
 	saveCtx, cancel := t.persistContext(parentCtx)
 	defer cancel()
 	if err := t.deps.Messages.Update(saveCtx, msg); err != nil {
@@ -413,4 +414,5 @@ func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message,
 	if t.deps.Posts != nil || t.deps.Reviews != nil {
 		t.recordPostsAndReviews(saveCtx, businessID, toolCalls, toolResults)
 	}
+	t.auditRPAMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
 }

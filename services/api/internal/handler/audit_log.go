@@ -90,6 +90,12 @@ var knownActions = map[string]struct{}{
 	audit.ActionProjectCreated:            {},
 	audit.ActionProjectUpdated:            {},
 	audit.ActionProjectDeleted:            {},
+	audit.ActionRPAScopeViolation:         {},
+	audit.ActionRPAReviewReplied:          {},
+	audit.ActionRPAPostPublished:          {},
+	audit.ActionRPAPhotoUploaded:          {},
+	audit.ActionRPAInfoUpdated:            {},
+	audit.ActionRPAHoursUpdated:           {},
 }
 
 // noiseActionsHiddenByDefault lists high-volume system events suppressed from

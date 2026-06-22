@@ -3,7 +3,14 @@
 // re-shapes them, so keeping the names identical reduces translation
 // surface in tests and dev tools.
 
-export type AuditCategory = 'rbac' | 'auth' | 'integration' | 'business' | 'project' | 'other';
+export type AuditCategory =
+  | 'rbac'
+  | 'auth'
+  | 'integration'
+  | 'business'
+  | 'project'
+  | 'rpa'
+  | 'other';
 
 export interface AuditLogDTO {
   id: string;
@@ -64,6 +71,12 @@ export const AUDIT_ACTIONS = [
   'project.created',
   'project.updated',
   'project.deleted',
+  'rpa.scope_violation',
+  'rpa.review_replied',
+  'rpa.post_published',
+  'rpa.photo_uploaded',
+  'rpa.info_updated',
+  'rpa.hours_updated',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

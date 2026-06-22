@@ -1693,6 +1693,7 @@
       "categoryIntegration": "Интеграции",
       "categoryBusiness": "Организация",
       "categoryProject": "Проекты",
+      "categoryRpa": "Действия на площадках",
       "actionLabel": "Действие",
       "actionAny": "Любое",
       "dateLabel": "Период",
@@ -1780,7 +1781,12 @@
       "account_deletion_canceled": "Удаление аккаунта отменено",
       "account_sole_owner_blocked": "Удаление заблокировано: единственный владелец",
       "account_user_self_deleted": "Аккаунт удалён",
-      "rpa_scope_violation": "Нарушение границ RPA"
+      "rpa_scope_violation": "Нарушение границ RPA",
+      "rpa_review_replied": "Ответ на отзыв опубликован",
+      "rpa_post_published": "Публикация размещена",
+      "rpa_photo_uploaded": "Фото загружено",
+      "rpa_info_updated": "Информация о карточке обновлена",
+      "rpa_hours_updated": "Часы работы обновлены"
     }
   },
   "sidebar": {

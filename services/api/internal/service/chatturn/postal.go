@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
@@ -388,4 +389,68 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 		CreatedAt:    createdAt,
 		PlatformMeta: domain.PlatformMetaFromMap(m),
 	}
+}
+
+// rpaMutationTools maps each RPA (Playwright) write tool to the audit action it
+// records. Reads (get_info / get_reviews / list_companies) are absent: only
+// mutations of the third-party public listing are audited.
+var rpaMutationTools = map[string]string{
+	tools.YandexBusinessReplyReview: audit.ActionRPAReviewReplied,
+	tools.YandexBusinessCreatePost:  audit.ActionRPAPostPublished,
+	tools.YandexBusinessUploadPhoto: audit.ActionRPAPhotoUploaded,
+	tools.YandexBusinessUpdateInfo:  audit.ActionRPAInfoUpdated,
+	tools.YandexBusinessUpdateHours: audit.ActionRPAHoursUpdated,
+}
+
+// auditRPAMutations writes one audit row per successful RPA mutation in the
+// turn, attributing the change to the business and (when resolvable) the actor.
+// RPA writes land on a third-party public listing via the owner's session, so
+// the trail is what makes "who changed what, when" answerable for incident
+// investigation and 152-FZ minimization evidence. No-op without an Audit
+// logger. Errors are skipped — only landed writes are recorded.
+func (t *Turn) auditRPAMutations(ctx context.Context, businessID, actorUserID string, toolCalls []domain.ToolCall, toolResults []domain.ToolResult) {
+	if t.deps.Audit == nil || len(toolResults) == 0 {
+		return
+	}
+	bizID, err := uuid.Parse(businessID)
+	if err != nil {
+		return
+	}
+	var actor *uuid.UUID
+	if a, perr := uuid.Parse(actorUserID); perr == nil {
+		actor = &a
+	}
+
+	callByID := make(map[string]domain.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		callByID[tc.ID] = tc
+	}
+	for _, tr := range toolResults {
+		if tr.IsError {
+			continue
+		}
+		tc, ok := callByID[tr.ToolCallID]
+		if !ok {
+			continue
+		}
+		action, isMutation := rpaMutationTools[tc.Name]
+		if !isMutation {
+			continue
+		}
+		audit.LogRPAMutation(ctx, t.deps.Audit, action, bizID, actor,
+			tc.Name, a2a.AgentYandexBusiness, rpaTargetID(tc.Name, tc.Arguments))
+	}
+}
+
+// rpaTargetID extracts a non-PII external identifier of the mutated object from
+// the tool arguments. Only the review-reply tool carries one (review_id); the
+// other mutations target the listing as a whole and have no per-object id in
+// args. Never returns review text, photo URLs, hours, or author data.
+func rpaTargetID(toolName string, args map[string]interface{}) string {
+	if toolName == tools.YandexBusinessReplyReview {
+		if id, ok := args["review_id"].(string); ok {
+			return id
+		}
+	}
+	return ""
 }
