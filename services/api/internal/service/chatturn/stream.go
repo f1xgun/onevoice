@@ -33,6 +33,22 @@ type streamState struct {
 	idMap map[string]string
 }
 
+// toolArgsByCallID returns the arguments of the tool_call that matches a
+// tool_result frame, or nil when no matching call was seen. The tool_call always
+// arrives before its tool_result, so by the time a result is dispatched its
+// call is already recorded in toolCalls.
+func (s *streamState) toolArgsByCallID(toolCallID string) map[string]interface{} {
+	if toolCallID == "" {
+		return nil
+	}
+	for i := range s.toolCalls {
+		if s.toolCalls[i].ID == toolCallID {
+			return s.toolCalls[i].Arguments
+		}
+	}
+	return nil
+}
+
 // streamOrchestrator opens POST /chat/{id} on the orchestrator, forwards SSE
 // bytes verbatim to w, and routes each parsed event into the per-stream
 // state + on-the-fly postal side effects.
@@ -99,7 +115,8 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 			IsError:    ev.ToolError != "",
 			Code:       ev.Code,
 		})
-		t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, ev.Code, state.idMap)
+		toolArgs := state.toolArgsByCallID(ev.ToolCallID)
+		t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, toolArgs, ev.ToolError, ev.Code, state.idMap)
 	case "tool_approval_required":
 		evCopy := ev
 		state.pauseEvent = &evCopy

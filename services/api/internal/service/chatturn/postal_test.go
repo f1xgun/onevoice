@@ -24,10 +24,11 @@ type fakeIntegrations struct {
 type markCall struct {
 	businessID uuid.UUID
 	platform   string
+	externalID string
 }
 
-func (f *fakeIntegrations) MarkTokenExpired(_ context.Context, businessID uuid.UUID, platform string) error {
-	f.marked = append(f.marked, markCall{businessID: businessID, platform: platform})
+func (f *fakeIntegrations) MarkTokenExpired(_ context.Context, businessID uuid.UUID, platform, externalID string) error {
+	f.marked = append(f.marked, markCall{businessID: businessID, platform: platform, externalID: externalID})
 	return nil
 }
 
@@ -137,6 +138,7 @@ func TestOnToolResult_StampsErrorCode(t *testing.T) {
 		"biz-1",
 		"call-1",
 		map[string]interface{}{"error": "Unauthorized: bot kicked"},
+		nil,
 		"telegram: send message: Unauthorized: bot kicked",
 		"integration_token_invalid",
 		idMap,
@@ -162,6 +164,7 @@ func TestOnToolResult_NoCode_LeavesErrorCodeEmpty(t *testing.T) {
 		"biz-1",
 		"call-2",
 		map[string]interface{}{"error": "transient network error"},
+		nil,
 		"transient network error",
 		"",
 		idMap,
@@ -173,7 +176,9 @@ func TestOnToolResult_NoCode_LeavesErrorCodeEmpty(t *testing.T) {
 
 // TestOnToolResult_IntegrationTokenInvalid_FlipsStatus — a rejected-token tool
 // result must flip the integration status for the task's platform so the
-// dashboard prompts a reconnect.
+// dashboard prompts a reconnect. When the failing tool call identifies the
+// channel the flip must be scoped to that one integration so a sibling channel
+// on the same platform is not falsely forced to reconnect.
 func TestOnToolResult_IntegrationTokenInvalid_FlipsStatus(t *testing.T) {
 	repo := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "telegram"}
 	integ := &fakeIntegrations{}
@@ -186,6 +191,7 @@ func TestOnToolResult_IntegrationTokenInvalid_FlipsStatus(t *testing.T) {
 		businessID.String(),
 		"call-1",
 		map[string]interface{}{"error": "Unauthorized: bot kicked"},
+		map[string]interface{}{"channel_id": "@first_channel", "text": "hi"},
 		"telegram: send message: Unauthorized: bot kicked",
 		"integration_token_invalid",
 		idMap,
@@ -194,6 +200,35 @@ func TestOnToolResult_IntegrationTokenInvalid_FlipsStatus(t *testing.T) {
 	require.Len(t, integ.marked, 1, "MarkTokenExpired must fire on integration_token_invalid")
 	assert.Equal(t, businessID, integ.marked[0].businessID)
 	assert.Equal(t, "telegram", integ.marked[0].platform)
+	assert.Equal(t, "@first_channel", integ.marked[0].externalID,
+		"flip must be scoped to the channel the failing call targeted")
+}
+
+// TestOnToolResult_IntegrationTokenInvalid_NoExternalID_FlipsPlatformWide — when
+// the failing tool call carries no channel identifier the flip falls back to the
+// platform-wide behavior (empty external_id) so the rejection is not silently
+// dropped.
+func TestOnToolResult_IntegrationTokenInvalid_NoExternalID_FlipsPlatformWide(t *testing.T) {
+	repo := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "telegram"}
+	integ := &fakeIntegrations{}
+	turn := &Turn{deps: Deps{AgentTasks: repo, Integrations: integ}}
+
+	businessID := uuid.New()
+	idMap := map[string]string{"call-1": "task-1"}
+	turn.onToolResult(
+		context.Background(),
+		businessID.String(),
+		"call-1",
+		map[string]interface{}{"error": "Unauthorized: bot kicked"},
+		map[string]interface{}{"text": "hi"},
+		"telegram: send message: Unauthorized: bot kicked",
+		"integration_token_invalid",
+		idMap,
+	)
+
+	require.Len(t, integ.marked, 1, "MarkTokenExpired must fire on integration_token_invalid")
+	assert.Empty(t, integ.marked[0].externalID,
+		"missing channel identifier falls back to a platform-wide flip")
 }
 
 // TestOnToolResult_Success_DoesNotFlipStatus — a successful tool result must
@@ -209,6 +244,7 @@ func TestOnToolResult_Success_DoesNotFlipStatus(t *testing.T) {
 		uuid.New().String(),
 		"call-1",
 		map[string]interface{}{"message_id": float64(42)},
+		nil,
 		"",
 		"",
 		idMap,
@@ -230,6 +266,7 @@ func TestOnToolResult_OtherErrorCode_DoesNotFlipStatus(t *testing.T) {
 		uuid.New().String(),
 		"call-1",
 		map[string]interface{}{"error": "Too Many Requests"},
+		nil,
 		"vk: rate limited",
 		"rate_limit_exceeded",
 		idMap,

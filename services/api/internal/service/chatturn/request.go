@@ -130,7 +130,7 @@ type BusinessReader interface {
 // an agent reports integration_token_invalid.
 type IntegrationLister interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
-	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) error
+	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform, externalID string) error
 }
 
 // ProjectReader is the narrow subset of *service.ProjectService that
