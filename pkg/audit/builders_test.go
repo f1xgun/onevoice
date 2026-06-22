@@ -298,7 +298,7 @@ func TestLogTokenDecryptedSync_PropagatesError(t *testing.T) {
 	sentinel := errors.New("insert failed")
 	c := &captureLogger{syncErr: sentinel}
 	biz, integ := uuid.New(), uuid.New()
-	err := LogTokenDecryptedSync(context.Background(), c, biz, integ, "telegram", "agent-telegram", "corr-9", "telegram_notify")
+	err := LogTokenDecryptedSync(context.Background(), c, biz, integ, "telegram", "agent-telegram", "corr-9", "telegram_notify", 1)
 	require.ErrorIs(t, err, sentinel)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -314,11 +314,12 @@ func TestLogTokenDecryptedSync_PropagatesError(t *testing.T) {
 	require.Equal(t, "agent-telegram", d.CallerService)
 	require.Equal(t, "corr-9", d.CorrelationID)
 	require.Equal(t, "telegram_notify", d.Reason)
+	require.Equal(t, int16(1), d.KeyVersion)
 }
 
 func TestLogTokenDecryptedSync_SuccessReturnsNil(t *testing.T) {
 	c := &captureLogger{}
-	err := LogTokenDecryptedSync(context.Background(), c, uuid.New(), uuid.New(), "vk", "agent-vk", "", "vk_post")
+	err := LogTokenDecryptedSync(context.Background(), c, uuid.New(), uuid.New(), "vk", "agent-vk", "", "vk_post", 0)
 	require.NoError(t, err)
 	c.mu.Lock()
 	defer c.mu.Unlock()
