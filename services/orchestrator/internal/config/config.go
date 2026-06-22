@@ -4,11 +4,18 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // defaultShutdownTimeout is the fallback graceful-shutdown budget when SHUTDOWN_TIMEOUT is unset.
 const defaultShutdownTimeout = 30 * time.Second
+
+// defaultToolExecTimeout bounds a single tool call when TOOL_EXEC_TIMEOUT is
+// unset. A platform agent that hangs (stuck RPA page, unanswered NATS request)
+// must not pin an agent-loop iteration open indefinitely, so an empty env still
+// gets a finite per-call deadline.
+const defaultToolExecTimeout = 60 * time.Second
 
 // defaultAPIInternalURL is the in-cluster mTLS endpoint dialed for internal API calls.
 const defaultAPIInternalURL = "https://api:8443"
@@ -46,7 +53,9 @@ type Config struct {
 	MaxIterations   int
 	NATSUrl         string
 	ShutdownTimeout time.Duration
-	// ToolExecTimeout bounds a single tool call; zero disables the per-tool deadline.
+	// ToolExecTimeout bounds a single tool call. Defaults to
+	// defaultToolExecTimeout when TOOL_EXEC_TIMEOUT is unset so an empty env
+	// still gets a finite per-call deadline.
 	ToolExecTimeout time.Duration
 
 	// HealthCheckTimeout caps any single dep ping inside /health/ready
@@ -116,7 +125,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	var toolExecTimeout time.Duration
+	toolExecTimeout := defaultToolExecTimeout
 	if v := os.Getenv("TOOL_EXEC_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			toolExecTimeout = d
@@ -216,6 +225,43 @@ func Load() (*Config, error) {
 		LocalFallbackRequestsPerHour: localFallbackRequestsPerHour,
 		LocalFallbackWindow:          localFallbackWindow,
 	}, nil
+}
+
+// RateLimiterDecision is the resolved outcome of the boot-time cost-guard
+// gate. Enabled is true when REDIS_URL is present and the limiter will be
+// wired; when false the orchestrator runs without a daily-spend / per-business
+// cap (Degraded), which is only permitted outside production or with an
+// explicit dev escape hatch.
+type RateLimiterDecision struct {
+	// Enabled is true when REDIS_URL is set and the rate limiter is wired.
+	Enabled bool
+	// Degraded is true when the limiter is intentionally off (no REDIS_URL).
+	Degraded bool
+}
+
+// RateLimiterGate decides whether the orchestrator may boot with the LLM
+// cost-guard disabled. Without Redis there is no daily-spend cap or per-
+// business limit, so unbounded third-party LLM spend is possible.
+//
+// Rules:
+//   - REDIS_URL set                       → Enabled (limiter wired).
+//   - REDIS_URL unset, production          → boot error UNLESS
+//     ALLOW_NO_RATE_LIMIT=true, in which case it boots Degraded.
+//   - REDIS_URL unset, non-production      → boots Degraded (caller warns).
+//
+// Production is detected with the same APP_ENV=production idiom used across the
+// codebase (services/api, agent-yandex-business).
+func (c *Config) RateLimiterGate() (RateLimiterDecision, error) {
+	if c.RedisURL != "" {
+		return RateLimiterDecision{Enabled: true}, nil
+	}
+	isProd := strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
+	escapeHatch := strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_NO_RATE_LIMIT")), "true")
+	if isProd && !escapeHatch {
+		return RateLimiterDecision{}, fmt.Errorf(
+			"REDIS_URL is required in production: the LLM cost guard (daily-spend / per-business cap) cannot run without Redis; set REDIS_URL or ALLOW_NO_RATE_LIMIT=true to override (unbounded LLM spend)")
+	}
+	return RateLimiterDecision{Degraded: true}, nil
 }
 
 // RedactMongoURI returns the Mongo URI with embedded user:password stripped, safe for logs.
