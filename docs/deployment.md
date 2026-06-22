@@ -97,7 +97,7 @@ openssl rand -base64 48     # JWT_SECRET (≥ 32 chars)
 openssl rand -hex 16        # ENCRYPTION_KEY (exactly 32 bytes — 16 hex bytes = 32 ASCII chars)
 openssl rand -base64 24     # MINIO_ROOT_USER
 openssl rand -base64 24     # MINIO_ROOT_PASSWORD
-openssl rand -base64 24     # POSTGRES_PASSWORD (optional but recommended)
+openssl rand -base64 24     # POSTGRES_PASSWORD (REQUIRED — compose aborts if unset)
 ```
 
 ### Required values from external services
