@@ -311,7 +311,8 @@
     "projectNameRequired": "Укажите название проекта.",
     "projectSystemPromptMax": "Системный промпт слишком длинный (максимум {max, plural, one {# символ} few {# символа} many {# символов} other {# символов}}).",
     "projectAllowedToolsRequired": "Выберите хотя бы один инструмент или переключите режим на «Никаких».",
-    "consentRequired": "Обязательно для регистрации"
+    "consentRequired": "Обязательно для регистрации",
+    "feedbackMessageRequired": "Введите сообщение"
   },
   "chat": {
     "heading": "Чаты",
@@ -1079,10 +1080,29 @@
     "posts": "Посты",
     "tasks": "Задачи",
     "settings": "Настройки",
+    "feedback": "Обратная связь",
     "logout": "Выйти",
     "platformsGroup": "Платформы",
     "railAria": "Основная навигация",
     "skipToContent": "Перейти к содержимому"
+  },
+  "feedback": {
+    "title": "Обратная связь",
+    "description": "Расскажите, что улучшить — мы читаем каждое сообщение.",
+    "categoryLabel": "Тип обращения",
+    "category": {
+      "bug": "Ошибка",
+      "idea": "Идея",
+      "question": "Вопрос",
+      "other": "Другое"
+    },
+    "messageLabel": "Сообщение",
+    "messagePlaceholder": "Опишите подробнее…",
+    "submit": "Отправить",
+    "submitting": "Отправляем…",
+    "cancel": "Отмена",
+    "successToast": "Спасибо! Сообщение отправлено.",
+    "errorToast": "Не удалось отправить. Попробуйте ещё раз."
   },
   "noConnection": {
     "heading": "Не удаётся связаться с OneVoice",

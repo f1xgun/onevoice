@@ -42,11 +42,12 @@ const corsMaxAge = 300
 // router.Setup takes one parameter instead of four. See docs/api/routes.md
 // for the budget rationale per field.
 type RateLimits struct {
-	Register int
-	Login    int
-	Chat     int
-	HITL     int
-	Consents int
+	Register  int
+	Login     int
+	Chat      int
+	HITL      int
+	Consents  int
+	Telemetry int
 }
 
 // Handlers encapsulates all HTTP handlers consumed by Setup / SetupInternal.
@@ -77,6 +78,7 @@ type Handlers struct {
 	UserDeletion     *handler.UserDeletionHandler
 	BusinessDeletion *handler.BusinessDeletionHandler
 	Consents         *handler.ConsentsHandler
+	Feedback         *handler.FeedbackHandler
 }
 
 // Setup creates and configures the public Chi router. See
@@ -170,7 +172,13 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Post("/businesses", handlers.Business.CreateBusiness)
 			}
 
-			r.Post("/telemetry", handlers.Telemetry.Ingest)
+			r.With(middleware.RateLimitByUser(redisClient, rateLimits.Telemetry, time.Minute, "telemetry")).
+				Post("/telemetry", handlers.Telemetry.Ingest)
+
+			if handlers.Feedback != nil {
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Consents, time.Minute, "feedback")).
+					Post("/feedback", handlers.Feedback.Submit)
+			}
 
 			if handlers.Invitations != nil {
 				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Login, time.Minute, "invite_accept")).
