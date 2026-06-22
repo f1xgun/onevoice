@@ -134,11 +134,12 @@ type Config struct {
 	HTTPIdleTimeout          time.Duration
 	OrchestratorFetchTimeout time.Duration
 
-	RateLimitRegister int
-	RateLimitLogin    int
-	RateLimitChat     int
-	RateLimitHITL     int
-	RateLimitConsents int
+	RateLimitRegister  int
+	RateLimitLogin     int
+	RateLimitChat      int
+	RateLimitHITL      int
+	RateLimitConsents  int
+	RateLimitTelemetry int
 
 	ShutdownTimeout time.Duration
 
@@ -147,6 +148,11 @@ type Config struct {
 	UnisenderFromName  string
 	OutboxPollInterval time.Duration
 	OutboxMaxAttempts  int
+
+	// FeedbackNotifyEmail receives an owner-notification when a user submits
+	// in-app feedback. Empty disables the notification (the feedback row is
+	// still persisted).
+	FeedbackNotifyEmail string
 
 	// Legal entity (152-ФЗ Art. 14 data controller). Placeholder defaults
 	// render fallback /legal/* copy; pre-launch checklist verifies real values.
@@ -261,19 +267,21 @@ func Load() (*Config, error) {
 		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", defaultHTTPIdleTimeout),
 		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", defaultOrchestratorFetchTO),
 
-		RateLimitRegister: getEnvInt("RATE_LIMIT_REGISTER", 5), //nolint:mnd // env-driven default
-		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
-		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
-		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
-		RateLimitConsents: getEnvInt("RATE_LIMIT_CONSENTS", 10),
+		RateLimitRegister:  getEnvInt("RATE_LIMIT_REGISTER", 5), //nolint:mnd // env-driven default
+		RateLimitLogin:     getEnvInt("RATE_LIMIT_LOGIN", 10),
+		RateLimitChat:      getEnvInt("RATE_LIMIT_CHAT", 10),
+		RateLimitHITL:      getEnvInt("RATE_LIMIT_HITL", 10),
+		RateLimitConsents:  getEnvInt("RATE_LIMIT_CONSENTS", 10),
+		RateLimitTelemetry: getEnvInt("RATE_LIMIT_TELEMETRY", 60), //nolint:mnd // env-driven default; telemetry batches ~12/min so the cap is generous
 
 		ShutdownTimeout: shutdownTimeout,
 
-		UnisenderAPIKey:    os.Getenv("UNISENDER_API_KEY"),
-		UnisenderFromEmail: getEnv("UNISENDER_FROM_EMAIL", "noreply@onevoice.app"),
-		UnisenderFromName:  getEnv("UNISENDER_FROM_NAME", "OneVoice"),
-		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
-		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
+		UnisenderAPIKey:     os.Getenv("UNISENDER_API_KEY"),
+		UnisenderFromEmail:  getEnv("UNISENDER_FROM_EMAIL", "noreply@onevoice.app"),
+		UnisenderFromName:   getEnv("UNISENDER_FROM_NAME", "OneVoice"),
+		FeedbackNotifyEmail: os.Getenv("FEEDBACK_NOTIFY_EMAIL"),
+		OutboxPollInterval:  getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
+		OutboxMaxAttempts:   getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
 
 		LegalEntityName: os.Getenv("LEGAL_ENTITY_NAME"),
 		LegalINN:        os.Getenv("LEGAL_INN"),

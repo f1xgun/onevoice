@@ -88,6 +88,12 @@ type Services struct {
 	// the user row.
 	Consent *service.ConsentService
 
+	// Telemetry persists frontend product-analytics events.
+	Telemetry *service.TelemetryService
+
+	// Feedback persists in-app user feedback + founder notification.
+	Feedback *service.FeedbackService
+
 	// Lockout is non-nil whenever h.Redis is non-nil (Redis is the storage
 	// layer). SmartCaptcha is always non-nil — Noop impl when
 	// SMARTCAPTCHA_SECRET_KEY is empty so the handler has a stable
@@ -334,6 +340,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			return legalconfig.CurrentVersion(slug), ""
 		},
 	)
+
+	s.Telemetry = service.NewTelemetryService(repos.TelemetryEvent)
+	s.Feedback = service.NewFeedbackService(h.PG, repos.ProductFeedback, repos.EmailOutbox, repos.User, cfg.FeedbackNotifyEmail)
 
 	if registerSetter, ok := s.User.(interface {
 		SetRegisterCollaborators(

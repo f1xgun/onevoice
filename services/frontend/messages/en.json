@@ -311,7 +311,8 @@
     "projectNameRequired": "Enter a project name.",
     "projectSystemPromptMax": "System prompt is too long (max {max, plural, one {# character} other {# characters}}).",
     "projectAllowedToolsRequired": "Pick at least one tool, or switch the mode to \"None\".",
-    "consentRequired": "Required for registration"
+    "consentRequired": "Required for registration",
+    "feedbackMessageRequired": "Enter a message"
   },
   "chat": {
     "heading": "Chats",
@@ -1079,10 +1080,29 @@
     "posts": "Posts",
     "tasks": "Tasks",
     "settings": "Settings",
+    "feedback": "Feedback",
     "logout": "Log out",
     "platformsGroup": "Platforms",
     "railAria": "Main navigation",
     "skipToContent": "Skip to content"
+  },
+  "feedback": {
+    "title": "Feedback",
+    "description": "Tell us what to improve — we read every message.",
+    "categoryLabel": "Type",
+    "category": {
+      "bug": "Bug",
+      "idea": "Idea",
+      "question": "Question",
+      "other": "Other"
+    },
+    "messageLabel": "Message",
+    "messagePlaceholder": "Describe it in detail…",
+    "submit": "Send",
+    "submitting": "Sending…",
+    "cancel": "Cancel",
+    "successToast": "Thanks! Your message was sent.",
+    "errorToast": "Couldn't send. Please try again."
   },
   "noConnection": {
     "heading": "Can't reach OneVoice",

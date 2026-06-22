@@ -244,6 +244,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		UserDeletion:     userDeletionHandler,
 		BusinessDeletion: businessDeletionHandler,
 		Consents:         consentsHandler,
-		Telemetry:        &handler.TelemetryHandler{},
+		Telemetry:        handler.NewTelemetryHandler(svcs.Telemetry),
+		Feedback:         handler.NewFeedbackHandler(svcs.Feedback),
 	}, nil
 }

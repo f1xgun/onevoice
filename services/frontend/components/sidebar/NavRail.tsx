@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -11,11 +12,13 @@ import {
   FileText,
   ListTodo,
   Settings,
+  MessageSquarePlus,
   LogOut,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { FeedbackDialog } from '@/components/feedback/FeedbackDialog';
 import { BusinessSwitcher } from '@/components/business-switcher/BusinessSwitcher';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
@@ -70,6 +73,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const platformFullLabels = usePlatformFullLabels();
   const logout = useAuthStore((s) => s.logout);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const { data: integrations } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
@@ -192,6 +196,24 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
             </ul>
           </TooltipContent>
         </Tooltip>
+
+        {/* Feedback — always-reachable affordance so a frustrated user can
+            leave an actionable signal in-app instead of churning silently.
+            Sits above the locale + identity controls in the footer cluster. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              aria-label={tNav('feedback')}
+              className="mb-2 flex h-10 w-10 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
+            >
+              <MessageSquarePlus size={18} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{tNav('feedback')}</TooltipContent>
+        </Tooltip>
+        <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
 
         {/* Language switcher — 40 px globe icon button matching the rail's
             icon column. Sits directly above logout so locale + identity

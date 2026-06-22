@@ -59,6 +59,13 @@ type Repos struct {
 	// to extend.
 	UserConsents *repository.UserConsentsRepository
 
+	// telemetry_events repository — persists product analytics events.
+	// Concrete pointer (like EmailOutbox): only TelemetryService depends on it.
+	TelemetryEvent *repository.TelemetryEventRepository
+
+	// product_feedback repository — system of record for in-app feedback.
+	ProductFeedback *repository.ProductFeedbackRepository
+
 	// MembershipLoader backs the authz cache (v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
 	// authz.MembershipLoader interface to keep the cache decoupled.
@@ -94,6 +101,8 @@ func Repositories(h *DBHandles) *Repos {
 		BusinessDeletionExt:    repository.NewBusinessDeletionExtAdapter(h.PG),
 		EmailVerificationToken: repository.NewEmailVerificationTokenRepository(h.PG),
 		UserConsents:           repository.NewUserConsentsRepository(h.PG),
+		TelemetryEvent:         repository.NewTelemetryEventRepository(h.PG),
+		ProductFeedback:        repository.NewProductFeedbackRepository(h.PG),
 		MembershipLoader:       repository.NewMembershipLoader(h.PG),
 		Billing:                repository.NewBillingRepository(h.PG),
 	}
