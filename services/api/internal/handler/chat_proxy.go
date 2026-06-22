@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/text/language"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
@@ -88,8 +89,8 @@ func (h *ChatProxyHandler) writeConcurrencyError(w http.ResponseWriter, err erro
 	}
 }
 
-// NewChatProxyHandler keeps the legacy 12-arg signature; internally builds
-// the chatturn.Turn. See docs/api/handlers/chat-proxy.md §"Construction".
+// NewChatProxyHandler builds the chatturn.Turn from its dependency set. See
+// docs/api/handlers/chat-proxy.md §"Construction".
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
@@ -103,6 +104,7 @@ func NewChatProxyHandler(
 	taskHub *taskhub.Hub,
 	orchClient *orchestratorclient.Client,
 	titler *service.Titler,
+	auditLogger audit.Logger,
 ) *ChatProxyHandler {
 	if projectService == nil {
 		panic("NewChatProxyHandler: projectService cannot be nil")
@@ -134,6 +136,7 @@ func NewChatProxyHandler(
 		TaskHub:       taskHub,
 		Orch:          orchClient,
 		Titler:        titlerImpl,
+		Audit:         auditLogger,
 	})
 
 	return &ChatProxyHandler{

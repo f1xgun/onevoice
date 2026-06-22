@@ -321,3 +321,14 @@ type RPAScopeViolationDetails struct {
 	AttemptedURL string `json:"attempted_url"`
 	AllowedScope string `json:"allowed_scope"`
 }
+
+// RPAMutationDetails records a write the RPA worker landed on a third-party
+// public listing. Tool is the canonical tool name, Platform the listing
+// provider, and Target a non-PII external identifier of the affected object
+// (e.g. a review id) when the call carries one — never review text, photo
+// URLs, hours, or any author personal data.
+type RPAMutationDetails struct {
+	Tool     string `json:"tool"`
+	Platform string `json:"platform"`
+	Target   string `json:"target,omitempty"`
+}

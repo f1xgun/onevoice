@@ -1693,6 +1693,7 @@
       "categoryIntegration": "Integrations",
       "categoryBusiness": "Organization",
       "categoryProject": "Projects",
+      "categoryRpa": "Listing actions",
       "actionLabel": "Action",
       "actionAny": "Any",
       "dateLabel": "Period",
@@ -1780,7 +1781,12 @@
       "account_deletion_canceled": "Account deletion canceled",
       "account_sole_owner_blocked": "Deletion blocked: sole owner",
       "account_user_self_deleted": "Account deleted",
-      "rpa_scope_violation": "RPA scope violation"
+      "rpa_scope_violation": "RPA scope violation",
+      "rpa_review_replied": "Review reply published",
+      "rpa_post_published": "Post published",
+      "rpa_photo_uploaded": "Photo uploaded",
+      "rpa_info_updated": "Listing info updated",
+      "rpa_hours_updated": "Business hours updated"
     }
   },
   "sidebar": {

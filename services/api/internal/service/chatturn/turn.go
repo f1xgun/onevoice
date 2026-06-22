@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/logger"
@@ -17,13 +18,14 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
-// Deps wires the eleven repository / service / transport dependencies a Turn
-// needs. Mirrors the dependency set of services/api/internal/handler.ChatProxyHandler;
+// Deps wires the repository / service / transport dependencies a Turn needs.
+// Mirrors the dependency set of services/api/internal/handler.ChatProxyHandler;
 // the deepening refactor moves the lifecycle into chatturn while keeping the
 // dep surface byte-identical.
 //
-// All fields are required EXCEPT Titler — a nil Titler is the graceful-
-// disable path (auto-titling off in dev / tests without OpenAI credentials).
+// All fields are required EXCEPT Titler and Audit — a nil Titler is the
+// graceful-disable path (auto-titling off in dev / tests without OpenAI
+// credentials), and a nil Audit disables the RPA mutation audit trail.
 type Deps struct {
 	Business     BusinessReader
 	Integrations IntegrationLister
@@ -38,7 +40,8 @@ type Deps struct {
 
 	TaskHub *taskhub.Hub
 	Orch    *orchestratorclient.Client
-	Titler  Titler // nil → auto-title disabled
+	Titler  Titler       // nil → auto-title disabled
+	Audit   audit.Logger // nil → RPA mutation audit disabled
 }
 
 // Turn is the chat-turn lifecycle: one HTTP request, one Run call, one
@@ -146,10 +149,11 @@ func (t *Turn) Run(
 	}
 
 	t.persistAfterStream(ctx, req, enriched, streamStartID, state)
-	if t.deps.Posts != nil || t.deps.Reviews != nil {
+	if t.deps.Posts != nil || t.deps.Reviews != nil || t.deps.Audit != nil {
 		sideCtx, cancel := t.persistContext(ctx)
 		defer cancel()
 		t.recordPostsAndReviews(sideCtx, enriched.business.ID.String(), state.toolCalls, state.toolResults)
+		t.auditRPAMutations(sideCtx, enriched.business.ID.String(), req.UserID.String(), state.toolCalls, state.toolResults)
 	}
 
 	if state.pauseEvent != nil {

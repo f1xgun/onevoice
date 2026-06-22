@@ -131,7 +131,7 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 		},
 		&MockMessageRepository{},
 		&MockPendingToolCallRepository{},
-		nil, nil, spy, hub, orchestratorclient.New(orchServer.URL, nil), nil,
+		nil, nil, spy, hub, orchestratorclient.New(orchServer.URL, nil), nil, nil,
 	)
 
 	body := `{"message":"post please","model":"gpt-4"}`
