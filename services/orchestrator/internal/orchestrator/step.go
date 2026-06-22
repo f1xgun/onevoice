@@ -90,6 +90,52 @@ func friendlyConversationCapMessage(ctx context.Context) string {
 	return conversationCapMessageRU
 }
 
+// Two-locale fallback strings for the max_iterations SSE error. The numeric
+// iteration count is intentionally kept OUT of the user-facing text — it lives
+// in the slog line and metrics instead.
+const (
+	maxIterationsMessageRU = "Не получилось завершить запрос — действие оказалось слишком сложным. Попробуйте сформулировать его проще или разбить на части."
+	maxIterationsMessageEN = "Could not complete the request — the task was too complex. Try rephrasing it or breaking it into smaller steps."
+)
+
+// Two-locale fallback strings for the generic internal_error SSE error. The
+// raw failure detail stays in logs; the user only ever sees this calm message.
+const (
+	internalErrorMessageRU = "Произошла внутренняя ошибка. Попробуйте ещё раз чуть позже."
+	internalErrorMessageEN = "Something went wrong on our side. Please try again in a moment."
+)
+
+// Two-locale fallback strings for the approval_expired SSE error emitted when
+// a resume targets a batch that already expired.
+const (
+	approvalExpiredMessageRU = "Время на подтверждение действия истекло. Отправьте новое сообщение, чтобы продолжить."
+	approvalExpiredMessageEN = "The approval window for this action has expired. Send a new message to continue."
+)
+
+// friendlyMaxIterationsMessage returns the max_iterations message in the locale from ctx.
+func friendlyMaxIterationsMessage(ctx context.Context) string {
+	if i18n.LocaleFromContext(ctx) == language.English {
+		return maxIterationsMessageEN
+	}
+	return maxIterationsMessageRU
+}
+
+// friendlyInternalErrorMessage returns the generic internal-error message in the locale from ctx.
+func friendlyInternalErrorMessage(ctx context.Context) string {
+	if i18n.LocaleFromContext(ctx) == language.English {
+		return internalErrorMessageEN
+	}
+	return internalErrorMessageRU
+}
+
+// friendlyApprovalExpiredMessage returns the approval-expired message in the locale from ctx.
+func friendlyApprovalExpiredMessage(ctx context.Context) string {
+	if i18n.LocaleFromContext(ctx) == language.English {
+		return approvalExpiredMessageEN
+	}
+	return approvalExpiredMessageRU
+}
+
 // In-loop rate-limiter sentinel translations; matches the chat handler's bootstrap-error catalog.
 const (
 	dailySpendInLoopRU        = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра."
@@ -101,7 +147,8 @@ const (
 )
 
 // translateChatError maps Router rate-limiter sentinels to coded SSE Events.
-// Non-sentinel errors keep their legacy free-text shape for observability.
+// Non-sentinel errors collapse to a generic internal_error code with a
+// localized message; the raw detail is logged, never shown to the user.
 func translateChatError(ctx context.Context, err error) Event {
 	en := i18n.LocaleFromContext(ctx) == language.English
 	switch {
@@ -124,7 +171,8 @@ func translateChatError(ctx context.Context, err error) Event {
 		}
 		return Event{Type: EventError, Code: "rate_limit_exceeded", Content: msg}
 	default:
-		return Event{Type: EventError, Content: err.Error()}
+		slog.ErrorContext(ctx, "stepRun: LLM call failed", "error", err)
+		return Event{Type: EventError, Code: "internal_error", Content: friendlyInternalErrorMessage(ctx)}
 	}
 }
 
@@ -245,8 +293,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		if len(manualCalls) > 0 {
 			if o.pendingRepo == nil {
 				err := fmt.Errorf("HITL not configured: manual-floor tool classified but pendingRepo is nil")
+				slog.ErrorContext(ctx, "stepRun: manual-floor tool surfaced without HITL repo", "error", err)
 				select {
-				case out <- Event{Type: EventError, Content: err.Error()}:
+				case out <- Event{Type: EventError, Code: "internal_error", Content: friendlyInternalErrorMessage(ctx)}:
 				case <-ctx.Done():
 				}
 				return OutcomeError, "", err
@@ -256,8 +305,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			batch := buildPendingBatch(batchID, state, manualCalls)
 
 			if err := o.pendingRepo.Persist(ctx, batch); err != nil {
+				slog.ErrorContext(ctx, "stepRun: failed to persist approval batch", "error", err, "batch_id", batchID)
 				select {
-				case out <- Event{Type: EventError, Content: fmt.Sprintf("failed to persist approval batch: %v", err)}:
+				case out <- Event{Type: EventError, Code: "internal_error", Content: friendlyInternalErrorMessage(ctx)}:
 				case <-ctx.Done():
 				}
 				return OutcomeError, "", err
@@ -278,8 +328,12 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		state.Iter++
 	}
 
+	slog.WarnContext(ctx, "stepRun: max iterations reached",
+		"max_iterations", o.options.MaxIterations,
+		"conversation_id", state.ConversationID,
+	)
 	select {
-	case out <- Event{Type: EventError, Content: fmt.Sprintf("max iterations (%d) reached", o.options.MaxIterations)}:
+	case out <- Event{Type: EventError, Code: "max_iterations", Content: friendlyMaxIterationsMessage(ctx)}:
 	case <-ctx.Done():
 	}
 	return OutcomeMaxIterations, "", nil

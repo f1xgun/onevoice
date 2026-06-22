@@ -98,28 +98,44 @@ describe('applySSEEvent', () => {
     expect(result.status).toBe('done');
   });
 
-  it('appends [Error: ...] wrapper to content on error event', () => {
+  it('stamps errorCode + errorDetail instead of splicing a raw [Error: ...] string', () => {
     const result = applySSEEvent(baseMessage, {
       type: 'error',
-      content: 'rate limit exceeded',
+      code: 'max_iterations',
+      content: 'max iterations (10) reached',
     });
-    expect(result.content).toBe('[Error: rate limit exceeded]');
+    expect(result.content).toBe('');
+    expect(result.errorCode).toBe('max_iterations');
+    expect(result.errorDetail).toBe('max iterations (10) reached');
     expect(result.status).toBe('done');
   });
 
-  it('preserves existing assistant content when appending an error', () => {
+  it('preserves existing assistant content and never appends the raw error', () => {
     const withText: Message = { ...baseMessage, content: 'Привет.' };
     const result = applySSEEvent(withText, {
       type: 'error',
+      code: 'internal_error',
       content: 'openrouter 429',
     });
-    expect(result.content).toBe('Привет.\n\n[Error: openrouter 429]');
+    expect(result.content).toBe('Привет.');
+    expect(result.content).not.toContain('[Error:');
+    expect(result.errorCode).toBe('internal_error');
+    expect(result.errorDetail).toBe('openrouter 429');
     expect(result.status).toBe('done');
   });
 
-  it('marks done on error event even when content is empty', () => {
+  it('records detail with no code when the frame omits code (unknown → FE fallback)', () => {
+    const result = applySSEEvent(baseMessage, { type: 'error', content: 'something raw' });
+    expect(result.errorCode).toBeUndefined();
+    expect(result.errorDetail).toBe('something raw');
+    expect(result.status).toBe('done');
+  });
+
+  it('marks done on error event even when content and code are empty', () => {
     const result = applySSEEvent(baseMessage, { type: 'error', content: '' });
     expect(result.content).toBe('');
+    expect(result.errorCode).toBeUndefined();
+    expect(result.errorDetail).toBeUndefined();
     expect(result.status).toBe('done');
   });
 

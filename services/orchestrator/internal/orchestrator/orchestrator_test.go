@@ -154,5 +154,8 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 		}
 	}
 	assert.Len(t, errorEvents, 1)
-	assert.Contains(t, errorEvents[0].Content, "max iterations")
+	assert.Equal(t, "max_iterations", errorEvents[0].Code)
+	assert.NotEmpty(t, errorEvents[0].Content)
+	assert.NotContains(t, errorEvents[0].Content, "max iterations",
+		"user-facing content must not leak the raw English error string")
 }

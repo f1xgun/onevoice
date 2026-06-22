@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -300,7 +299,10 @@ func TestStepRun_ManualFloor_PersistFails_EmitsErrorAndDoesNotEmitPauseEvent(t *
 	evts := drainEvents(events)
 	errs := findEvents(evts, orchestrator.EventError)
 	require.Len(t, errs, 1)
-	assert.Contains(t, errs[0].Content, "failed to persist approval batch")
+	assert.Equal(t, "internal_error", errs[0].Code)
+	assert.NotEmpty(t, errs[0].Content)
+	assert.NotContains(t, errs[0].Content, "approval batch",
+		"user-facing content must not leak the raw persist-failure detail")
 	assert.Empty(t, findEvents(evts, orchestrator.EventToolApprovalRequired),
 		"MUST NOT emit pause event when persist failed (Pitfall 1/3)")
 }
@@ -464,8 +466,11 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 	evts := drainEvents(events)
 	errs := findEvents(evts, orchestrator.EventError)
 	require.Len(t, errs, 1)
-	assert.True(t, strings.Contains(errs[0].Content, "HITL not configured"),
-		"nil pendingRepo + manual-floor must emit EventError 'HITL not configured'")
+	assert.Equal(t, "internal_error", errs[0].Code,
+		"nil pendingRepo + manual-floor must emit a coded internal_error event")
+	assert.NotEmpty(t, errs[0].Content)
+	assert.NotContains(t, errs[0].Content, "HITL not configured",
+		"user-facing content must not leak the raw HITL-not-configured detail")
 }
 
 // --- end-to-end billing smoke ---
@@ -990,6 +995,84 @@ func TestStepRun_ConversationCap_FriendlyMessageEnglish(t *testing.T) {
 func i18nWithEnglish(t *testing.T) context.Context {
 	t.Helper()
 	return i18n.WithLocale(context.Background(), language.English)
+}
+
+// ---------------------------------------------------------------------
+// Max-iterations terminal tests
+// ---------------------------------------------------------------------
+
+// maxIterationsLooper builds a registry + LLM stub that loop forever by always
+// requesting one auto tool call, so the loop runs to the iteration cap.
+func maxIterationsLooper(t *testing.T) (orchestrator.LLMClient, *toolregistry.Registry) {
+	t.Helper()
+	stub := &stubLLM{}
+	for i := 0; i < 15; i++ {
+		stub.responses = append(stub.responses, makeToolCallResponse("auto_tool", 1, 0))
+	}
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, nil)
+	return stub, reg
+}
+
+// TestStepRun_MaxIterations_CodedFriendlyRussian — default locale = RU. The
+// max-iterations terminal carries Code=max_iterations and a localized,
+// non-raw Content (the numeric count must NOT leak into the user text).
+func TestStepRun_MaxIterations_CodedFriendlyRussian(t *testing.T) {
+	stub, reg := maxIterationsLooper(t)
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{MaxIterations: 3})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "loop"}},
+	})
+	require.NoError(t, err)
+
+	errs := findEvents(drainEvents(events), orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "max_iterations", errs[0].Code)
+	assert.Contains(t, errs[0].Content, "слишком сложным")
+	assert.NotContains(t, errs[0].Content, "max iterations")
+	assert.NotContains(t, errs[0].Content, "3",
+		"the iteration count must stay out of the user-facing message")
+}
+
+// TestStepRun_MaxIterations_CodedFriendlyEnglish — locale=en switches the
+// fallback content string while keeping the same machine-readable code.
+func TestStepRun_MaxIterations_CodedFriendlyEnglish(t *testing.T) {
+	stub, reg := maxIterationsLooper(t)
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{MaxIterations: 3})
+
+	events, err := orch.Run(i18nWithEnglish(t), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "loop"}},
+	})
+	require.NoError(t, err)
+
+	errs := findEvents(drainEvents(events), orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "max_iterations", errs[0].Code)
+	assert.Contains(t, errs[0].Content, "too complex")
+	assert.NotContains(t, errs[0].Content, "max iterations")
+}
+
+// TestStepRun_TranslateChatError_InternalErrorCoded — a non-sentinel LLM error
+// collapses to a coded internal_error event with a localized, non-raw Content.
+func TestStepRun_TranslateChatError_InternalErrorCoded(t *testing.T) {
+	stub := &erroringLLM{err: errors.New("openrouter 500: upstream exploded")}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(stub, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+
+	errs := findEvents(drainEvents(events), orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "internal_error", errs[0].Code)
+	assert.NotEmpty(t, errs[0].Content)
+	assert.NotContains(t, errs[0].Content, "openrouter",
+		"raw upstream error string must not reach the user-facing content")
 }
 
 // erroringLLM returns the canned err from every Chat call. Used to drive the
