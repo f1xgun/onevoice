@@ -49,7 +49,7 @@ func TestDraftReplyHandler_Happy(t *testing.T) {
 	chatter := &fakeChatter{
 		resp: &llm.ChatResponse{Content: "  Спасибо за отзыв!  ", Provider: "openrouter"},
 	}
-	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini")
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini", false)
 
 	req := postBody(t, DraftReplyRequest{
 		BusinessID:          "b1",
@@ -98,7 +98,7 @@ func TestDraftReplyHandler_Happy(t *testing.T) {
 }
 
 func TestDraftReplyHandler_RejectsEmptyReview(t *testing.T) {
-	h := NewDraftReplyHandler(&fakeChatter{}, "m")
+	h := NewDraftReplyHandler(&fakeChatter{}, "m", false)
 	req := postBody(t, DraftReplyRequest{ReviewText: "   "})
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -108,7 +108,7 @@ func TestDraftReplyHandler_RejectsEmptyReview(t *testing.T) {
 }
 
 func TestDraftReplyHandler_RejectsNonPOST(t *testing.T) {
-	h := NewDraftReplyHandler(&fakeChatter{}, "m")
+	h := NewDraftReplyHandler(&fakeChatter{}, "m", false)
 	req := httptest.NewRequest(http.MethodGet, "/internal/draft-reply", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -119,7 +119,7 @@ func TestDraftReplyHandler_RejectsNonPOST(t *testing.T) {
 
 func TestDraftReplyHandler_LLMRateLimit(t *testing.T) {
 	chatter := &fakeChatter{err: llm.ErrRateLimitExceeded}
-	h := NewDraftReplyHandler(chatter, "m")
+	h := NewDraftReplyHandler(chatter, "m", false)
 	req := postBody(t, DraftReplyRequest{ReviewText: "x"})
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -130,7 +130,7 @@ func TestDraftReplyHandler_LLMRateLimit(t *testing.T) {
 
 func TestDraftReplyHandler_LLMGenericError(t *testing.T) {
 	chatter := &fakeChatter{err: errors.New("provider exploded")}
-	h := NewDraftReplyHandler(chatter, "m")
+	h := NewDraftReplyHandler(chatter, "m", false)
 	req := postBody(t, DraftReplyRequest{ReviewText: "x"})
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -225,7 +225,7 @@ func TestDraftReplyHandler_EnglishLocale_E2E(t *testing.T) {
 	chatter := &fakeChatter{
 		resp: &llm.ChatResponse{Content: "Thanks for the review!", Provider: "openrouter"},
 	}
-	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini")
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini", false)
 
 	body, _ := json.Marshal(DraftReplyRequest{
 		BusinessID:   "b1",
@@ -306,7 +306,7 @@ func TestDraftReply_PassesBusinessIDFromRequest(t *testing.T) {
 	chatter := &fakeChatter{
 		resp: &llm.ChatResponse{Content: "Thanks!", Provider: "openrouter"},
 	}
-	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini")
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini", false)
 
 	req := postBody(t, DraftReplyRequest{
 		BusinessID: bizID,
@@ -333,7 +333,7 @@ func TestDraftReply_MalformedBusinessID_DegradesToNil(t *testing.T) {
 	chatter := &fakeChatter{
 		resp: &llm.ChatResponse{Content: "ok", Provider: "openrouter"},
 	}
-	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini")
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini", false)
 
 	req := postBody(t, DraftReplyRequest{
 		BusinessID: "not-a-uuid",
@@ -348,6 +348,106 @@ func TestDraftReply_MalformedBusinessID_DegradesToNil(t *testing.T) {
 	}
 	if chatter.gotReq.BusinessID.String() != "00000000-0000-0000-0000-000000000000" {
 		t.Errorf("malformed business_id must degrade to uuid.Nil, got %q", chatter.gotReq.BusinessID)
+	}
+}
+
+// TestDraftReplyHandler_RedactsPDn_WhenEnabled is the core compliance guard:
+// with redactPDn=true (the default, !ALLOW_TRANSBORDER_LLM), customer personal
+// data carried by the review text AND the few-shot examples AND the business
+// block must be scrubbed to "[Скрыто]" before the request reaches the LLM.
+// This is the second outbound LLM ingress alongside the agent loop, so the same
+// 152-FZ transborder protection applies here.
+func TestDraftReplyHandler_RedactsPDn_WhenEnabled(t *testing.T) {
+	chatter := &fakeChatter{
+		resp: &llm.ChatResponse{Content: "ok", Provider: "openrouter"},
+	}
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini", true)
+
+	req := postBody(t, DraftReplyRequest{
+		BusinessID:          "11111111-2222-3333-4444-555555555555",
+		BusinessName:        "Кофейня",
+		BusinessDescription: "Звоните +7 (495) 111-22-33",
+		Platform:            "yandex_business",
+		ReviewText:          "Перезвоните мне на +7 999 123-45-67 или leak@mail.ru",
+		Rating:              5,
+		Examples: []DraftReplyExample{
+			{ReviewText: "Свяжитесь old@example.com", ReplyText: "Спасибо!", Rating: 5},
+		},
+	})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	var blob strings.Builder
+	for _, m := range chatter.gotReq.Messages {
+		blob.WriteString(m.Content)
+		blob.WriteString("\n")
+	}
+	sent := blob.String()
+
+	for _, leak := range []string{
+		"+7 999 123-45-67",
+		"+7 (495) 111-22-33",
+		"leak@mail.ru",
+		"old@example.com",
+	} {
+		if strings.Contains(sent, leak) {
+			t.Errorf("PDn leaked to LLM despite redaction: %q\nfull:\n%s", leak, sent)
+		}
+	}
+	if !strings.Contains(sent, "[Скрыто]") {
+		t.Errorf("expected redaction placeholder in outbound messages, got:\n%s", sent)
+	}
+}
+
+// TestDraftReplyHandler_NoRedaction_WhenTransborderAllowed documents the
+// opt-out: with redactPDn=false (operator set ALLOW_TRANSBORDER_LLM=true, i.e.
+// has a legal basis or routes to RU/self-hosted), the review text passes through
+// verbatim so the LLM sees the real contact the customer left.
+func TestDraftReplyHandler_NoRedaction_WhenTransborderAllowed(t *testing.T) {
+	chatter := &fakeChatter{
+		resp: &llm.ChatResponse{Content: "ok", Provider: "openrouter"},
+	}
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini", false)
+
+	req := postBody(t, DraftReplyRequest{
+		BusinessID: "11111111-2222-3333-4444-555555555555",
+		ReviewText: "Перезвоните на +7 999 123-45-67",
+		Rating:     5,
+	})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	final := chatter.gotReq.Messages[len(chatter.gotReq.Messages)-1].Content
+	if !strings.Contains(final, "+7 999 123-45-67") {
+		t.Errorf("transborder-allowed path should pass phone verbatim, got: %q", final)
+	}
+}
+
+// TestRedactDraftMessages_Unit pins the in-place transform directly: every
+// message content is scrubbed, placeholder substituted, and non-PDn framing
+// (the rating prefix) is preserved.
+func TestRedactDraftMessages_Unit(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: "system", Content: "Бизнес: X. Почта owner@x.ru"},
+		{Role: "user", Content: "Отзыв (5/5): звонить +7 495 1234567"},
+	}
+	redactDraftMessages(msgs)
+
+	if strings.Contains(msgs[0].Content, "owner@x.ru") {
+		t.Errorf("system content not redacted: %q", msgs[0].Content)
+	}
+	if strings.Contains(msgs[1].Content, "+7 495 1234567") {
+		t.Errorf("user content not redacted: %q", msgs[1].Content)
+	}
+	if !strings.HasPrefix(msgs[1].Content, "Отзыв (5/5):") {
+		t.Errorf("rating framing should survive redaction: %q", msgs[1].Content)
 	}
 }
 
