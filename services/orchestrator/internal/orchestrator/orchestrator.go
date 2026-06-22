@@ -294,15 +294,22 @@ func buildToolResultEvent(tc llm.ToolCall, displayName, displayNameKey string, r
 	return ev
 }
 
+// toolCallContext derives the per-tool call context, applying ToolExecTimeout
+// when configured. The returned cancel MUST always be called (it is a no-op
+// when no timeout is set). Shared by the fresh-run and resume dispatch paths so
+// both bound a single tool call identically.
+func (o *Orchestrator) toolCallContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if o.options.ToolExecTimeout > 0 {
+		return context.WithTimeout(ctx, o.options.ToolExecTimeout)
+	}
+	return ctx, func() {}
+}
+
 // executeOne runs a single tool, optionally bounded by ToolExecTimeout, and
 // records metrics. Safe for concurrent calls.
 func (o *Orchestrator) executeOne(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
-	callCtx := ctx
-	var cancel context.CancelFunc
-	if o.options.ToolExecTimeout > 0 {
-		callCtx, cancel = context.WithTimeout(ctx, o.options.ToolExecTimeout)
-		defer cancel()
-	}
+	callCtx, cancel := o.toolCallContext(ctx)
+	defer cancel()
 
 	start := time.Now()
 	result, err := o.tools.Execute(callCtx, name, args)

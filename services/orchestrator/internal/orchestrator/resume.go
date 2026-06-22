@@ -268,7 +268,9 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				return
 			}
 
-			result, execErr := o.tools.ExecuteWithApproval(ctx, c.ToolName, args, approvalID)
+			callCtx, cancel := o.toolCallContext(ctx)
+			result, execErr := o.tools.ExecuteWithApproval(callCtx, c.ToolName, args, approvalID)
+			cancel()
 
 			mu.Lock()
 			errStr := ""

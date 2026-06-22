@@ -269,20 +269,63 @@ func (r *integrationRepository) DeleteOlderThan(ctx context.Context, cutoff time
 	return cmdTag.RowsAffected(), nil
 }
 
-// MarkTokenExpired flips every active, non-deleted integration for
-// (businessID, platform) to token_expired and returns the rows affected. Zero
-// rows is a benign no-op (nothing active to flip, or already flipped).
-func (r *integrationRepository) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) (int64, error) {
+// MarkTokenExpired flips matching active, non-deleted integrations to
+// token_expired and returns the rows affected. When externalID is non-empty the
+// flip is scoped to that one integration; an empty externalID flips every active
+// integration for (businessID, platform). Zero rows is a benign no-op (nothing
+// active to flip, or already flipped).
+//
+// The externalID is derived from raw LLM-supplied tool arguments, which the
+// agents normalize before use (Telegram resolves an empty/business-name id to
+// the integration's stored id; VK rewrites "123" → "-123"). When the supplied
+// form differs from the stored external_id the scoped flip matches zero rows,
+// so a non-empty externalID that affects nothing AND matches no stored
+// integration is treated as an id-form mismatch and falls back to the
+// platform-wide flip, ensuring the genuinely-broken integration is still
+// flipped. The existence check guards that fallback: if the supplied id DOES
+// match a stored integration that simply was not active (already
+// expired/disconnected), zero rows is returned WITHOUT falling back, otherwise
+// the fallback would collateral-flip a healthy sibling integration.
+func (r *integrationRepository) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform, externalID string) (int64, error) {
+	affected, err := r.markTokenExpiredWhere(ctx, businessID, platform, externalID)
+	if err != nil {
+		return 0, err
+	}
+	if affected > 0 || externalID == "" {
+		return affected, nil
+	}
+
+	exists, err := r.integrationExists(ctx, businessID, platform, externalID)
+	if err != nil {
+		return 0, err
+	}
+	if exists {
+		return 0, nil
+	}
+
+	return r.markTokenExpiredWhere(ctx, businessID, platform, "")
+}
+
+// markTokenExpiredWhere runs the token_expired UPDATE scoped to (businessID,
+// platform), narrowing to external_id when non-empty, and returns the rows
+// affected. It is the single source of the flip SQL shared by both the scoped
+// attempt and the platform-wide fallback.
+func (r *integrationRepository) markTokenExpiredWhere(ctx context.Context, businessID uuid.UUID, platform, externalID string) (int64, error) {
+	where := squirrel.Eq{
+		"business_id": businessID,
+		"platform":    platform,
+		"status":      domain.IntegrationStatusActive,
+		"deleted_at":  nil,
+	}
+	if externalID != "" {
+		where["external_id"] = externalID
+	}
+
 	sql, args, err := r.sb.
 		Update("integrations").
 		Set("status", domain.IntegrationStatusTokenExpired).
 		Set("updated_at", time.Now()).
-		Where(squirrel.Eq{
-			"business_id": businessID,
-			"platform":    platform,
-			"status":      domain.IntegrationStatusActive,
-			"deleted_at":  nil,
-		}).
+		Where(where).
 		ToSql()
 	if err != nil {
 		return 0, fmt.Errorf("build mark-token-expired: %w", err)
@@ -294,6 +337,39 @@ func (r *integrationRepository) MarkTokenExpired(ctx context.Context, businessID
 	}
 
 	return cmdTag.RowsAffected(), nil
+}
+
+// integrationExists reports whether any non-deleted integration row exists for
+// (businessID, platform, externalID), regardless of status. It distinguishes an
+// id that maps to a present-but-inactive integration (no fallback) from an id
+// that maps to nothing (fall back to the platform-wide flip).
+func (r *integrationRepository) integrationExists(ctx context.Context, businessID uuid.UUID, platform, externalID string) (bool, error) {
+	inner := r.sb.
+		Select("1").
+		From("integrations").
+		Where(squirrel.Eq{
+			"business_id": businessID,
+			"platform":    platform,
+			"external_id": externalID,
+			"deleted_at":  nil,
+		})
+	innerSQL, innerArgs, err := inner.ToSql()
+	if err != nil {
+		return false, fmt.Errorf("build integration-exists inner: %w", err)
+	}
+
+	sql, args, err := r.sb.
+		Select(fmt.Sprintf("EXISTS(%s)", innerSQL)).
+		ToSql()
+	if err != nil {
+		return false, fmt.Errorf("build integration-exists: %w", err)
+	}
+
+	var exists bool
+	if err := r.pool.QueryRow(ctx, sql, append(args, innerArgs...)...).Scan(&exists); err != nil {
+		return false, fmt.Errorf("integration exists: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {

@@ -285,9 +285,31 @@ func TestIntegrationRepo_MarkTokenExpired_FlipsActiveRows(t *testing.T) {
 		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), platform, "active").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 2))
 
-	n, err := repo.MarkTokenExpired(ctx, businessID, platform)
+	n, err := repo.MarkTokenExpired(ctx, businessID, platform, "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), n)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_MarkTokenExpired_ScopedByExternalID — a non-empty
+// external_id must narrow the WHERE so only the failing channel flips; a sibling
+// channel of the same platform keeps its active status.
+func TestIntegrationRepo_MarkTokenExpired_ScopedByExternalID(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	platform := "telegram"
+	externalID := "@first_channel"
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET status = \$1, updated_at = \$2 WHERE business_id = \$3 AND deleted_at IS NULL AND external_id = \$4 AND platform = \$5 AND status = \$6`).
+		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), externalID, platform, "active").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	n, err := repo.MarkTokenExpired(ctx, businessID, platform, externalID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
 
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
@@ -302,7 +324,67 @@ func TestIntegrationRepo_MarkTokenExpired_NoActiveRowsIsNoOp(t *testing.T) {
 		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), "vk", "active").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 
-	n, err := repo.MarkTokenExpired(ctx, businessID, "vk")
+	n, err := repo.MarkTokenExpired(ctx, businessID, "vk", "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_MarkTokenExpired_IDFormMismatchFallsBack covers the case
+// where the LLM-supplied external_id differs in form from the stored value
+// (e.g. VK "123" vs stored "-123"): the scoped UPDATE matches zero rows, the
+// existence check finds NO row for that id, so the flip falls back to the
+// platform-wide UPDATE and the genuinely-broken integration is still flipped.
+func TestIntegrationRepo_MarkTokenExpired_IDFormMismatchFallsBack(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	platform := "vk"
+	externalID := "123"
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET status = \$1, updated_at = \$2 WHERE business_id = \$3 AND deleted_at IS NULL AND external_id = \$4 AND platform = \$5 AND status = \$6`).
+		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), externalID, platform, "active").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	mockPool.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM integrations WHERE business_id = \$1 AND deleted_at IS NULL AND external_id = \$2 AND platform = \$3\)`).
+		WithArgs(pgxmock.AnyArg(), externalID, platform).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+
+	mockPool.ExpectExec(`UPDATE integrations SET status = \$1, updated_at = \$2 WHERE business_id = \$3 AND deleted_at IS NULL AND platform = \$4 AND status = \$5`).
+		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), platform, "active").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	n, err := repo.MarkTokenExpired(ctx, businessID, platform, externalID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_MarkTokenExpired_InactiveSiblingNoFallback covers the
+// guard: the supplied external_id maps to a present-but-inactive integration
+// (already expired/disconnected), so the scoped UPDATE matches zero active rows
+// but the existence check finds the row. The flip returns 0 WITHOUT falling
+// back, so a healthy sibling integration is never collateral-flipped.
+func TestIntegrationRepo_MarkTokenExpired_InactiveSiblingNoFallback(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	platform := "telegram"
+	externalID := "@already_expired"
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET status = \$1, updated_at = \$2 WHERE business_id = \$3 AND deleted_at IS NULL AND external_id = \$4 AND platform = \$5 AND status = \$6`).
+		WithArgs("token_expired", pgxmock.AnyArg(), pgxmock.AnyArg(), externalID, platform, "active").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	mockPool.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM integrations WHERE business_id = \$1 AND deleted_at IS NULL AND external_id = \$2 AND platform = \$3\)`).
+		WithArgs(pgxmock.AnyArg(), externalID, platform).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+
+	n, err := repo.MarkTokenExpired(ctx, businessID, platform, externalID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
 

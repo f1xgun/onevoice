@@ -162,6 +162,19 @@ func (r *EmailOutboxRepository) DrainPending(ctx context.Context, limit int) ([]
 	return out, nil
 }
 
+// CountPending returns the number of rows still in status='pending',
+// regardless of next_attempt_at. Used to sample the outbox backlog gauge each
+// worker tick; backoff-deferred rows are intentionally included so the gauge
+// reflects total undelivered mail, not just the due slice.
+func (r *EmailOutboxRepository) CountPending(ctx context.Context) (int, error) {
+	const q = `SELECT COUNT(*) FROM email_outbox WHERE status = 'pending'`
+	var n int
+	if err := r.pool.QueryRow(ctx, q).Scan(&n); err != nil {
+		return 0, fmt.Errorf("email_outbox: count pending: %w", err)
+	}
+	return n, nil
+}
+
 // MarkSent transitions a row to status='sent' atomically. The WHERE clause
 // `AND status='pending'` makes this idempotent under at-least-once worker
 // semantics — a concurrent winner becomes a silent no-op for the loser.

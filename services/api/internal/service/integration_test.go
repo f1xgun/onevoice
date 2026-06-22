@@ -33,7 +33,7 @@ type mockIntegrationRepository struct {
 	deleteFunc                        func(ctx context.Context, id uuid.UUID) error
 	softDeleteFunc                    func(ctx context.Context, id uuid.UUID) error
 	deleteOlderThanFunc               func(ctx context.Context, cutoff time.Time) (int64, error)
-	markTokenExpiredFunc              func(ctx context.Context, businessID uuid.UUID, platform string) (int64, error)
+	markTokenExpiredFunc              func(ctx context.Context, businessID uuid.UUID, platform, externalID string) (int64, error)
 }
 
 func (m *mockIntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
@@ -110,9 +110,9 @@ func (m *mockIntegrationRepository) DeleteOlderThan(ctx context.Context, cutoff 
 	return 0, nil
 }
 
-func (m *mockIntegrationRepository) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) (int64, error) {
+func (m *mockIntegrationRepository) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform, externalID string) (int64, error) {
 	if m.markTokenExpiredFunc != nil {
-		return m.markTokenExpiredFunc(ctx, businessID, platform)
+		return m.markTokenExpiredFunc(ctx, businessID, platform, externalID)
 	}
 	return 0, nil
 }
@@ -942,23 +942,37 @@ func TestMarkTokenExpired_DelegatesToRepo(t *testing.T) {
 	ctx := context.Background()
 	enc := testEncryptor(t)
 
-	businessID := uuid.New()
-	var gotBusinessID uuid.UUID
-	var gotPlatform string
-	repo := &mockIntegrationRepository{
-		markTokenExpiredFunc: func(_ context.Context, bid uuid.UUID, plat string) (int64, error) {
-			gotBusinessID = bid
-			gotPlatform = plat
-			return 2, nil
-		},
+	tests := []struct {
+		name       string
+		externalID string
+	}{
+		{name: "scoped to one integration", externalID: "chan_1001"},
+		{name: "platform-wide fallback when external id unknown", externalID: ""},
 	}
 
-	svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, nil, audit.Nop())
-	err := svc.MarkTokenExpired(ctx, businessID, "telegram")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			businessID := uuid.New()
+			var gotBusinessID uuid.UUID
+			var gotPlatform, gotExternalID string
+			repo := &mockIntegrationRepository{
+				markTokenExpiredFunc: func(_ context.Context, bid uuid.UUID, plat, ext string) (int64, error) {
+					gotBusinessID = bid
+					gotPlatform = plat
+					gotExternalID = ext
+					return 1, nil
+				},
+			}
 
-	require.NoError(t, err)
-	assert.Equal(t, businessID, gotBusinessID)
-	assert.Equal(t, "telegram", gotPlatform)
+			svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, nil, audit.Nop())
+			err := svc.MarkTokenExpired(ctx, businessID, "telegram", tt.externalID)
+
+			require.NoError(t, err)
+			assert.Equal(t, businessID, gotBusinessID)
+			assert.Equal(t, "telegram", gotPlatform)
+			assert.Equal(t, tt.externalID, gotExternalID)
+		})
+	}
 }
 
 func TestMarkTokenExpired_Validation(t *testing.T) {
@@ -966,8 +980,8 @@ func TestMarkTokenExpired_Validation(t *testing.T) {
 	enc := testEncryptor(t)
 	svc := NewIntegrationService(&mockIntegrationRepository{}, testEnvelope(t, enc), nil, nil, audit.Nop())
 
-	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.Nil, "telegram"), "business id is required")
-	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.New(), ""), "platform is required")
+	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.Nil, "telegram", "chan_1"), "business id is required")
+	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.New(), "", "chan_1"), "platform is required")
 }
 
 func TestListByBusinessAndPlatform_NilBusinessID(t *testing.T) {

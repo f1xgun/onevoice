@@ -63,3 +63,12 @@ const dialogSettleDelay = 500 * time.Millisecond
 // tmpFileMode is the standard "owner-only read/write" permission used when
 // staging downloaded media to disk before re-uploading to Yandex.
 const tmpFileMode = 0o600
+
+// Guardrails for fetching a caller-supplied photo URL. The RPA worker holds
+// live session cookies, so a hostile (prompt-injected) URL must not be able to
+// reach internal/metadata endpoints or exhaust memory.
+const (
+	maxPhotoBytes     = 10 << 20         // 10 MiB cap on a downloaded photo
+	photoFetchTimeout = 15 * time.Second // total budget for the photo download
+	maxPhotoRedirects = 5                // cap redirect chain length
+)

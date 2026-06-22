@@ -3,11 +3,19 @@ package yandex
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/playwright-community/playwright-go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
+
+// replyConfirmTimeoutMs bounds how long we wait for the posted reply to surface
+// under its review card before treating the submit as failed. Yandex.Business
+// re-renders the card with the owner response after a short round-trip, so this
+// rides above that worst-case while keeping the tool from hanging on a silent
+// failure.
+const replyConfirmTimeoutMs = 10000
 
 // ReplyReview posts a reply to a Yandex.Business review via RPA.
 func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text string) error {
@@ -72,7 +80,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 		}
 		textareaFilled := false
 		for _, sel := range textareaSelectors {
-			textarea := page.Locator(sel).First()
+			textarea := reviewCard.Locator(sel).First()
 			if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
 				Timeout: playwright.Float(primaryActionTimeoutMs),
 				State:   playwright.WaitForSelectorStateVisible,
@@ -90,13 +98,13 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 
 		submitSelectors := []string{
 			"[data-testid='submit-reply']",
-			"button:has-text('Отправить')",
-			"button[type='submit']",
+			"[class*='ReplyForm'] button:has-text('Отправить')",
+			"[class*='reply-form'] button:has-text('Отправить')",
 			"[class*='SubmitReply']",
 		}
 		submitted := false
 		for _, sel := range submitSelectors {
-			btn := page.Locator(sel).First()
+			btn := reviewCard.Locator(sel).First()
 			if err := btn.WaitFor(playwright.LocatorWaitForOptions{
 				Timeout: playwright.Float(uiPollTimeoutMs),
 				State:   playwright.WaitForSelectorStateVisible,
@@ -108,10 +116,59 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			}
 		}
 		if !submitted {
-			return fmt.Errorf("submit button not found — reply may not have been sent")
+			return a2a.NewNonRetryableError(fmt.Errorf("reply submit control not found for review %s", reviewID))
 		}
-
 		humanDelay()
+
+		if err := confirmReplyPosted(reviewCard, text); err != nil {
+			debugScreenshot(page, "reply_not_confirmed")
+			return a2a.NewNonRetryableError(err)
+		}
 		return nil
 	})
+}
+
+// confirmReplyPosted waits for the submitted reply to surface as the owner
+// response under reviewCard. Yandex.Business re-renders the card with the
+// posted answer after the submit round-trip, so a click alone is not proof the
+// reply was accepted. We poll the owner-response region until it contains the
+// submitted text or the bounded wait elapses.
+func confirmReplyPosted(reviewCard playwright.Locator, text string) error {
+	ownerResponseSelectors := []string{
+		"[data-testid='owner-response']",
+		".Review-OwnerComment",
+		"[class*='OwnerComment']",
+		"[class*='OwnerResponse']",
+		"[class*='owner-response']",
+		"[class*='BusinessReply']",
+	}
+	for _, sel := range ownerResponseSelectors {
+		response := reviewCard.Locator(sel).First()
+		if err := response.WaitFor(playwright.LocatorWaitForOptions{
+			Timeout: playwright.Float(replyConfirmTimeoutMs),
+			State:   playwright.WaitForSelectorStateVisible,
+		}); err != nil {
+			continue
+		}
+		posted, err := response.TextContent(playwright.LocatorTextContentOptions{
+			Timeout: playwright.Float(uiPollTimeoutMs),
+		})
+		if err == nil && replyTextMatches(posted, text) {
+			return nil
+		}
+	}
+	return fmt.Errorf("reply not confirmed posted — owner response did not appear under review card")
+}
+
+// replyTextMatches reports whether the owner-response text scraped from the
+// review card contains the reply we submitted, comparing on whitespace- and
+// case-normalized content so layout newlines or casing differences in the
+// rendered DOM don't cause a false negative.
+func replyTextMatches(posted, submitted string) bool {
+	want := strings.ToLower(normalizeWhitespace(submitted))
+	if want == "" {
+		return false
+	}
+	got := strings.ToLower(normalizeWhitespace(posted))
+	return strings.Contains(got, want)
 }

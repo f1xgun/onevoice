@@ -14,6 +14,20 @@ type BusinessBrowser struct {
 	businessID string
 	cookies    string
 	permalink  string // Yandex Sprav permalink (e.g. "114697172504")
+
+	// fetchPhotoFn downloads a caller-supplied photo URL. Production leaves it
+	// nil and downloadPhoto falls back to the SSRF-guarded fetchPhoto; tests
+	// override it to skip the network without weakening the production guard.
+	fetchPhotoFn func(ctx context.Context, photoURL string) ([]byte, error)
+}
+
+// downloadPhoto fetches the photo bytes via the injectable seam, defaulting to
+// the SSRF-guarded fetchPhoto when no override is set.
+func (bb *BusinessBrowser) downloadPhoto(ctx context.Context, photoURL string) ([]byte, error) {
+	if bb.fetchPhotoFn != nil {
+		return bb.fetchPhotoFn(ctx, photoURL)
+	}
+	return fetchPhoto(ctx, photoURL)
 }
 
 // ForBusiness returns a BusinessBrowser scoped to the given business.

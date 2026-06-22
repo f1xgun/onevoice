@@ -44,8 +44,8 @@ func (m *MockIntegrationService) Delete(ctx context.Context, integrationID, acto
 	return args.Error(0)
 }
 
-func (m *MockIntegrationService) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) error {
-	args := m.Called(ctx, businessID, platform)
+func (m *MockIntegrationService) MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform, externalID string) error {
+	args := m.Called(ctx, businessID, platform, externalID)
 	return args.Error(0)
 }
 
