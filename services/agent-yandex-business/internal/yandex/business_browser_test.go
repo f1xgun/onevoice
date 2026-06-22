@@ -367,11 +367,11 @@ func TestBusinessBrowser_CreatePost_SubmitsTextareaAndClicksPublish(t *testing.T
 
 // Test #16 — UploadPhoto picks the right input selector based on category.
 // We exercise the selector switch by passing each known category and asserting
-// SetInputFiles is invoked on the correctly-mapped locator. Photo download
-// goes to a real http.Get; we use a tiny inline HTTP test server.
+// SetInputFiles is invoked on the correctly-mapped locator. The photo download
+// is stubbed via fetchPhotoFn so the test never touches the network and the
+// SSRF guard on the production path stays intact.
 func TestBusinessBrowser_UploadPhoto_SetsCategoryAndUploadsFile(t *testing.T) {
-	srv := newPNGServer(t)
-	defer srv.Close()
+	const png = "\x89PNG\r\n\x1a\n"
 
 	cases := []struct {
 		category string
@@ -392,7 +392,10 @@ func TestBusinessBrowser_UploadPhoto_SetsCategoryAndUploadsFile(t *testing.T) {
 			}
 
 			bb := businessBrowserOnPage(page, "123")
-			err := bb.UploadPhoto(context.Background(), srv.URL, tc.category)
+			bb.fetchPhotoFn = func(context.Context, string) ([]byte, error) {
+				return []byte(png), nil
+			}
+			err := bb.UploadPhoto(context.Background(), "https://cdn.example.com/photo.png", tc.category)
 			if err != nil {
 				t.Fatalf("UploadPhoto(%s) returned error: %v", tc.category, err)
 			}
