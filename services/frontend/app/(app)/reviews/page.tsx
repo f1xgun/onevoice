@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -170,7 +171,12 @@ export default function ReviewsPage() {
     onValueChange: setReplyStatus,
   });
 
-  const { data: reviews = [], isLoading } = useQuery<Review[]>({
+  const {
+    data: reviews = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<Review[]>({
     queryKey: ['businesses', activeBusinessId, 'reviews', platform, replyStatus],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -344,7 +350,9 @@ export default function ReviewsPage() {
           </Button>
         </div>
 
-        {isLoading && (
+        {isError && <ListLoadError onRetry={refetch} />}
+
+        {!isError && isLoading && (
           <div className="space-y-3 duration-200 animate-in fade-in">
             {Array.from({ length: 3 }, (_, i) => (
               <ReviewSkeleton key={i} />
@@ -352,9 +360,11 @@ export default function ReviewsPage() {
           </div>
         )}
 
-        {!isLoading && reviews.length === 0 && <ReviewsEmptyState replyStatus={replyStatus} />}
+        {!isError && !isLoading && reviews.length === 0 && (
+          <ReviewsEmptyState replyStatus={replyStatus} />
+        )}
 
-        {!isLoading && reviews.length > 0 && (
+        {!isError && !isLoading && reviews.length > 0 && (
           <div className="space-y-3 duration-300 animate-in fade-in">
             {reviews.map((review) => (
               <ReviewCard

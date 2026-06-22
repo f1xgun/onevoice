@@ -164,7 +164,7 @@ api.interceptors.response.use(
       !skipBusinessNotFound
     ) {
       useBusinessStore.getState().clear();
-      queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY, exact: true });
       void showStaleBusinessToast();
     }
 

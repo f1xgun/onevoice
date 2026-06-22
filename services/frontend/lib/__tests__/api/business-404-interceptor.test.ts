@@ -90,7 +90,7 @@ describe('404 interceptor', () => {
     await expect(triggerInterceptors('/businesses/abc/integrations', 404)).rejects.toBeDefined();
 
     expect(clearFn).toHaveBeenCalled();
-    expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'] });
+    expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'], exact: true });
   });
 
   it('Test 2: skipBusinessNotFound=true prevents store clear and query invalidation', async () => {
@@ -178,7 +178,7 @@ describe('404 interceptor — warning toast', () => {
   it('fires toast.warning + clears store + invalidates on 404 /businesses/...', async () => {
     await expect(invokeInterceptor('/businesses/biz-1/members', 404)).rejects.toBeDefined();
     expect(clearFn).toHaveBeenCalled();
-    expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'] });
+    expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'], exact: true });
     await vi.waitFor(() => expect(toast.warning).toHaveBeenCalled());
     expect(toast.warning).toHaveBeenCalledWith('Эта организация больше недоступна');
   });
