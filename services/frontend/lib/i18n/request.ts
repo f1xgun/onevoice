@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import { getRequestConfig } from 'next-intl/server';
 import { isLocale, LOCALE_COOKIE, parseAcceptLanguage, type Locale } from './locales';
+import { intlMessageFallback, onIntlError } from './fallback';
 
 // next-intl request config. Locale resolution precedence (highest → lowest):
 //   1. `NEXT_LOCALE` cookie (set by POST /api/locale via <LanguageSwitcher>).
@@ -26,5 +27,7 @@ export default getRequestConfig(async () => {
   return {
     locale,
     messages,
+    onError: onIntlError,
+    getMessageFallback: intlMessageFallback,
   };
 });

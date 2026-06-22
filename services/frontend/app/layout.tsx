@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Manrope, JetBrains_Mono } from 'next/font/google';
-import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import './globals.css';
 import { Providers } from '@/components/providers';
+import { IntlClientProvider } from '@/components/IntlClientProvider';
 import { SkipLink } from '@/components/a11y/skip-link';
 
 // Manrope is the cyrillic-supporting fallback for Mona Sans (the design spec's
@@ -41,10 +41,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang={locale} className={`${sans.variable} ${mono.variable}`}>
       <body className="font-sans antialiased">
-        <NextIntlClientProvider locale={locale} messages={messages}>
+        <IntlClientProvider locale={locale} messages={messages}>
           <SkipLink />
           <Providers>{children}</Providers>
-        </NextIntlClientProvider>
+        </IntlClientProvider>
       </body>
     </html>
   );
