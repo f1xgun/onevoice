@@ -130,7 +130,10 @@ func TestResume_BatchMissing_EmitsError(t *testing.T) {
 	evts := drainEvents(events)
 	errs := findEvents(evts, orchestrator.EventError)
 	require.Len(t, errs, 1)
-	assert.Contains(t, errs[0].Content, "batch not found")
+	assert.Equal(t, "internal_error", errs[0].Code)
+	assert.NotEmpty(t, errs[0].Content)
+	assert.NotContains(t, errs[0].Content, "batch not found",
+		"user-facing content must not leak the raw batch-not-found detail")
 }
 
 func TestResume_BatchExpired_EmitsError(t *testing.T) {
@@ -147,7 +150,10 @@ func TestResume_BatchExpired_EmitsError(t *testing.T) {
 	evts := drainEvents(events)
 	errs := findEvents(evts, orchestrator.EventError)
 	require.Len(t, errs, 1)
-	assert.Equal(t, "approval_expired", errs[0].Content)
+	assert.Equal(t, "approval_expired", errs[0].Code)
+	assert.NotEmpty(t, errs[0].Content)
+	assert.NotEqual(t, "approval_expired", errs[0].Content,
+		"content must be a localized message, not the raw code")
 }
 
 func TestResume_AllApproved_DispatchesInParallel(t *testing.T) {

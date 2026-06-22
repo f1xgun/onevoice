@@ -400,7 +400,25 @@
       "gotComments": "Received: {count, plural, one {# comment} other {# comments}}",
       "gotPosts": "Received: {count, plural, one {# post} other {# posts}}",
       "gotMessages": "Received: {count, plural, one {# message} other {# messages}}",
-      "gotItems": "Received: {count, plural, one {# item} other {# items}}"
+      "gotItems": "Received: {count, plural, one {# item} other {# items}}",
+      "errorTokenInvalid": "Access to the platform has expired. Reconnect the channel to continue.",
+      "errorRateLimit": "The platform asked us to wait. We'll try again shortly.",
+      "errorTransient": "The platform is temporarily unavailable. Please try again shortly.",
+      "errorNotFound": "Channel not found. Check that it's still connected and accessible.",
+      "errorMedia": "Couldn't upload the image — the file may be too large or the platform rejected it.",
+      "errorFallback": "The action couldn't be completed. Please try again in a moment.",
+      "errorDetailsLabel": "Details"
+    },
+    "streamError": {
+      "maxIterations": "Could not complete the request — the task was too complex. Try rephrasing it or breaking it into smaller steps.",
+      "internalError": "Something went wrong on our side. Please try again in a moment.",
+      "conversationTokenCap": "This chat has reached its size limit. Start a new chat to continue.",
+      "dailySpendExceeded": "The daily limit for this organization has been reached. Try again tomorrow.",
+      "rateLimitUnavailable": "The service is temporarily unavailable. Please try again later.",
+      "rateLimitExceeded": "Too many requests. Wait a minute and try again.",
+      "approvalExpired": "The approval window for this action has expired. Send a new message to continue.",
+      "fallback": "Something went wrong. Please try again in a moment.",
+      "detailsLabel": "Details"
     },
     "toolNeedsHelp": {
       "badge": "needs help",

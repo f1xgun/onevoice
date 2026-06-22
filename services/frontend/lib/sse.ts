@@ -6,7 +6,7 @@
 // These functions are pure: no React state, no module-scoped mutation.
 // Tests live alongside in `lib/__tests__/sse.test.ts`.
 
-import type { ErrorCode, Message, ToolCall } from '@/types/chat';
+import type { ChatErrorCode, ErrorCode, Message, ToolCall } from '@/types/chat';
 
 const SSE_DATA_PREFIX = 'data: ';
 
@@ -89,17 +89,18 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
   }
 
   if (type === 'error') {
-    // Mirrors the server-side `api.chat.stream_error_wrapper` template
-    // (pkg/i18n/catalog_*.go) so the inline live render matches what the user
-    // sees after a chat reload. Without this case the orchestrator's
-    // {type:'error', content:'...'} frame is silently dropped on the live
-    // stream while the persisted copy still surfaces on reload — exactly the
-    // "error visible only after refresh" symptom.
-    const raw = (event.content as string | undefined) ?? '';
-    if (!raw) return { ...msg, status: 'done' };
+    // Stamp the machine-readable code + raw detail on the message instead of
+    // splicing the raw Go error string into the rendered content. MessageBubble
+    // localizes by code (lib/chatError.ts → chat.streamError.*) and keeps the
+    // raw detail for an optional diagnostics affordance only. A missing code
+    // still surfaces a generic localized line, never `[Error: ...]`.
+    const code = (event.code as ChatErrorCode | undefined) || undefined;
+    const detail = (event.content as string | undefined) || undefined;
+    if (!code && !detail) return { ...msg, status: 'done' };
     return {
       ...msg,
-      content: msg.content + (msg.content ? '\n\n' : '') + `[Error: ${raw}]`,
+      errorCode: code,
+      errorDetail: detail,
       status: 'done',
     };
   }

@@ -35,25 +35,27 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 	ch := make(chan Event, 32)
 
 	if o.pendingRepo == nil {
+		slog.ErrorContext(ctx, "resume: HITL not configured but resume requested", "batch_id", req.BatchID)
 		go func() {
 			defer close(ch)
-			ch <- Event{Type: EventError, Content: "HITL not configured"}
+			ch <- Event{Type: EventError, Code: "internal_error", Content: friendlyInternalErrorMessage(ctx)}
 		}()
 		return ch, nil
 	}
 
 	batch, err := o.pendingRepo.GetByBatchID(ctx, req.BatchID)
 	if err != nil {
+		slog.ErrorContext(ctx, "resume: approval batch not found", "error", err, "batch_id", req.BatchID)
 		go func() {
 			defer close(ch)
-			ch <- Event{Type: EventError, Content: fmt.Sprintf("batch not found: %v", err)}
+			ch <- Event{Type: EventError, Code: "internal_error", Content: friendlyInternalErrorMessage(ctx)}
 		}()
 		return ch, nil
 	}
 	if batch.Status == "expired" {
 		go func() {
 			defer close(ch)
-			ch <- Event{Type: EventError, Content: "approval_expired"}
+			ch <- Event{Type: EventError, Code: "approval_expired", Content: friendlyApprovalExpiredMessage(ctx)}
 		}()
 		return ch, nil
 	}
@@ -118,7 +120,8 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.PendingToolCallBatch, req ResumeRequest, out chan<- Event) {
 	snap, err := decodeSnapshot(batch.ModelMessages)
 	if err != nil {
-		out <- Event{Type: EventError, Content: fmt.Sprintf("corrupt snapshot: %v", err)}
+		slog.ErrorContext(ctx, "resume: corrupt pause snapshot", "error", err, "batch_id", batch.ID)
+		out <- Event{Type: EventError, Code: "internal_error", Content: friendlyInternalErrorMessage(ctx)}
 		return
 	}
 	if snap.Legacy {

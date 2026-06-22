@@ -16,7 +16,7 @@
 import { Pencil } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import type { ToolCall } from '@/types/chat';
+import type { ErrorCode, ToolCall } from '@/types/chat';
 import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +31,22 @@ const POLICY_REJECT_REASON_KEYS: Record<string, string> = {
   policy_forbidden: 'policyForbiddenReason',
   policy_revoked: 'policyRevokedReason',
 };
+
+// Typed tool-error classifiers (pkg/a2a.CodedError → tool_result.code) → their
+// i18n key under chat.toolCard.errorSummary. The headline is always localized;
+// the raw `tool.error` string is relegated to the expandable details. Unknown
+// or missing codes resolve to the generic `errorFallback` line.
+const TOOL_ERROR_SUMMARY_KEYS: Record<ErrorCode, string> = {
+  integration_token_invalid: 'errorTokenInvalid',
+  rate_limit_exceeded: 'errorRateLimit',
+  transient: 'errorTransient',
+  channel_not_found: 'errorNotFound',
+  media_too_large: 'errorMedia',
+};
+
+function toolErrorSummaryKey(code: ErrorCode | undefined): string {
+  return (code && TOOL_ERROR_SUMMARY_KEYS[code]) || 'errorFallback';
+}
 
 export function ToolCard({ tool }: { tool: ToolCall }) {
   const tCard = useTranslations('chat.toolCard');
@@ -123,7 +139,17 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
       {tool.result && summarizeResult(tCard, tool.name, tool.result) && (
         <p className="text-xs text-ink-soft">{summarizeResult(tCard, tool.name, tool.result)}</p>
       )}
-      {tool.error && <p className="text-xs text-[var(--ov-danger)]">{tool.error}</p>}
+      {tool.error && (
+        <div className="text-xs text-[var(--ov-danger)]">
+          <p>{tCard(toolErrorSummaryKey(tool.code))}</p>
+          <details className="mt-0.5">
+            <summary className="cursor-pointer text-ink-soft">{tCard('errorDetailsLabel')}</summary>
+            <p className="mt-0.5 whitespace-pre-wrap break-words font-mono text-ink-soft">
+              {tool.error}
+            </p>
+          </details>
+        </div>
+      )}
       {tool.status === 'rejected' && tool.rejectReason && (
         <p className="text-xs italic text-muted-foreground">
           {policyReasonKey

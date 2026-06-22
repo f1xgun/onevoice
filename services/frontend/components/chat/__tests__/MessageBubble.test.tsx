@@ -48,4 +48,19 @@ describe('MessageBubble — typing / working indicator', () => {
     );
     expect(screen.queryByText(TYPING_CAPTION)).not.toBeInTheDocument();
   });
+
+  it('renders a localized error notice (not [Error: ...]) when the turn ended on an error frame', () => {
+    render(
+      <MessageBubble
+        message={assistant({
+          status: 'done',
+          content: '',
+          errorCode: 'max_iterations',
+          errorDetail: 'max iterations (10) reached',
+        })}
+      />
+    );
+    expect(screen.getByText(/слишком сложным/)).toBeInTheDocument();
+    expect(screen.queryByText(/\[Error:/)).not.toBeInTheDocument();
+  });
 });

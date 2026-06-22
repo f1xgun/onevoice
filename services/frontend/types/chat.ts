@@ -35,12 +35,38 @@ export interface ToolCall {
   displayNameKey?: string;
 }
 
+/**
+ * Machine-readable codes carried on stream-level `error` SSE frames
+ * (orchestrator step.go / resume.go). The frontend localizes by code and
+ * never surfaces the raw Go error string as the headline. Unknown codes fall
+ * through to the generic localized fallback. Open set on the wire — keep `string`
+ * compatibility by treating any other value as the fallback.
+ */
+export type ChatErrorCode =
+  | 'max_iterations'
+  | 'internal_error'
+  | 'conversation_token_cap'
+  | 'daily_spend_exceeded'
+  | 'rate_limit_unavailable'
+  | 'rate_limit_exceeded'
+  | 'approval_expired';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   toolCalls?: ToolCall[];
   status?: 'streaming' | 'done';
+  /**
+   * Machine-readable code stamped when the turn ended on a stream-level error
+   * frame. Drives the localized error line in MessageBubble. Absent on success.
+   */
+  errorCode?: ChatErrorCode;
+  /**
+   * Raw orchestrator-supplied error text. Kept ONLY for an optional diagnostics
+   * affordance — never rendered as the primary user-facing message.
+   */
+  errorDetail?: string;
 }
 
 // ---------- HITL pending-approval contract ----------

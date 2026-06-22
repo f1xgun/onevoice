@@ -19,6 +19,7 @@ import Markdown from 'react-markdown';
 import { useTranslations } from 'next-intl';
 import { ToolCallsBlock } from './ToolCallsBlock';
 import { TypingIndicator } from './TypingIndicator';
+import { StreamErrorNotice } from './StreamErrorNotice';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import type { Message } from '@/types/chat';
 
@@ -27,9 +28,10 @@ export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
   const hasContent = !!message.content;
   const hasToolCalls = (message.toolCalls?.length ?? 0) > 0;
+  const hasError = !!message.errorCode || !!message.errorDetail;
   const isStreaming = message.status === 'streaming';
   const isStreamingEmpty = isStreaming && !hasContent;
-  const isDoneEmpty = message.status === 'done' && !hasContent;
+  const isDoneEmpty = message.status === 'done' && !hasContent && !hasError;
   // Once tokens or a tool call have rendered, the empty-bubble dots are gone —
   // so without this footer the indicator would vanish during the wait for the
   // next LLM iteration and the operator can't tell OneVoice is still working.
@@ -66,6 +68,7 @@ export function MessageBubble({ message }: { message: Message }) {
           </div>
         )}
         {hasToolCalls && <ToolCallsBlock toolCalls={message.toolCalls!} />}
+        {hasError && <StreamErrorNotice code={message.errorCode} detail={message.errorDetail} />}
         {showWorkingFooter && (
           <TypingIndicator label={tWindow('typingAria')} className="mt-2 pl-1" />
         )}
