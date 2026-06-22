@@ -306,6 +306,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
 				ToolResult:         result,
 				ToolError:          errStr,
+				Code:               a2a.CodeOf(execErr),
 			})
 		}(call)
 	}

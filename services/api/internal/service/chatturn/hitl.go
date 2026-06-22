@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
@@ -173,7 +174,7 @@ func (t *Turn) streamResume(
 		t.sseInlineError(w, "no_active_approval_for_conversation")
 		return OutcomeInlineError, nil
 	}
-	return t.runResumeStream(ctx, w, conversationID, activeMsg, batchID, nil)
+	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batchID, nil)
 }
 
 // ResumeApproved is the primary approve→resume path (POST /chat/{id}/resume).
@@ -203,7 +204,7 @@ func (t *Turn) ResumeApproved(
 		t.sseInlineError(w, "no_active_approval_for_conversation")
 		return OutcomeInlineError, nil
 	}
-	return t.runResumeStream(ctx, w, conversationID, activeMsg, batchID, body)
+	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batchID, body)
 }
 
 // runResumeStream is the shared resume core for both the rejoin (streamResume)
@@ -216,6 +217,7 @@ func (t *Turn) runResumeStream(
 	w http.ResponseWriter,
 	conversationID string,
 	activeMsg *domain.Message,
+	businessID string,
 	batchID string,
 	body []byte,
 ) (TurnOutcome, error) {
@@ -227,6 +229,16 @@ func (t *Turn) runResumeStream(
 	for i, tc := range msg.ToolCalls {
 		callIdx[tc.ID] = i
 	}
+
+	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), streamBudget)
+	if corrID := logger.CorrelationIDFromContext(ctx); corrID != "" {
+		taskOpsCtx = logger.WithCorrelationID(taskOpsCtx, corrID)
+	}
+	defer cancelTaskOps()
+
+	idMap := make(map[string]string)
+	var recCalls []domain.ToolCall
+	var recResults []domain.ToolResult
 
 	var terminated, fireAutoTitle bool
 	var rePause *sse.Event
@@ -244,6 +256,13 @@ func (t *Turn) runResumeStream(
 			switch ev.Type {
 			case "text":
 				postText.WriteString(ev.Content)
+			case "tool_call":
+				recCalls = append(recCalls, domain.ToolCall{
+					ID:        ev.ToolCallID,
+					Name:      ev.ToolName,
+					Arguments: ev.ToolArgs,
+				})
+				t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
 			case "tool_approval_required":
 				evCopy := ev
 				rePause = &evCopy
@@ -254,12 +273,14 @@ func (t *Turn) runResumeStream(
 				} else {
 					content = map[string]interface{}{"raw": ev.ToolResult}
 				}
-				msg.ToolResults = append(msg.ToolResults, domain.ToolResult{
+				tr := domain.ToolResult{
 					ToolCallID: ev.ToolCallID,
 					Content:    content,
 					IsError:    ev.ToolError != "",
 					Code:       ev.Code,
-				})
+				}
+				msg.ToolResults = append(msg.ToolResults, tr)
+				recResults = append(recResults, tr)
 				if idx, ok := callIdx[ev.ToolCallID]; ok {
 					if ev.ToolError != "" {
 						msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
@@ -267,17 +288,18 @@ func (t *Turn) runResumeStream(
 						msg.ToolCalls[idx].Status = domain.ToolCallStatusApproved
 					}
 				}
+				t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, ev.Code, idMap)
 			case "tool_rejected":
 				if idx, ok := callIdx[ev.ToolCallID]; ok {
 					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 				}
 			case sseEventError:
 				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
-				t.persistResumeDone(ctx, &msg)
+				t.persistResumeDone(ctx, &msg, businessID, recCalls, recResults)
 				terminated = true
 			case "done":
 				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
-				t.persistResumeDone(ctx, &msg)
+				t.persistResumeDone(ctx, &msg, businessID, recCalls, recResults)
 				fireAutoTitle = true
 				terminated = true
 			}
@@ -354,13 +376,19 @@ func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Messa
 	return OutcomePauseHITL
 }
 
-// persistResumeDone writes the assistant message at resume terminal events.
-// Uses persistContext (NOT request ctx — that ctx is canceled when the SSE stream closes).
-func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message) {
+// persistResumeDone writes the assistant message at resume terminal events and
+// records the posts/reviews produced by the approved tools — the resume path is
+// where manual-floor publishing tools actually execute, so this is the only
+// place those records can be created. Uses persistContext (NOT request ctx —
+// that ctx is canceled when the SSE stream closes).
+func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message, businessID string, toolCalls []domain.ToolCall, toolResults []domain.ToolResult) {
 	saveCtx, cancel := t.persistContext(parentCtx)
 	defer cancel()
 	if err := t.deps.Messages.Update(saveCtx, msg); err != nil {
 		slog.WarnContext(saveCtx, "chatturn: resume: failed to persist completed message",
 			"error", err, "message_id", msg.ID)
+	}
+	if t.deps.Posts != nil || t.deps.Reviews != nil {
+		t.recordPostsAndReviews(saveCtx, businessID, toolCalls, toolResults)
 	}
 }

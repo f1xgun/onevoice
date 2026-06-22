@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
@@ -423,6 +425,91 @@ func TestResume_MixedRejectAndApprove_BothProcessed(t *testing.T) {
 	rejects := findEvents(evts, orchestrator.EventToolRejected)
 	require.Len(t, rejects, 1)
 	assert.Equal(t, "nope", rejects[0].Content)
+}
+
+// resultOrErrExecutor returns a fixed (result, err) pair on every dispatch.
+// Used to drive the resume tool_result code-stamping tests: an *a2a.CodedError
+// returned here must surface on the emitted EventToolResult.Code.
+type resultOrErrExecutor struct {
+	result interface{}
+	err    error
+}
+
+func (e *resultOrErrExecutor) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	return e.ExecuteWithApproval(ctx, args, "")
+}
+
+func (e *resultOrErrExecutor) ExecuteWithApproval(_ context.Context, _ map[string]interface{}, _ string) (interface{}, error) {
+	return e.result, e.err
+}
+
+var _ toolregistry.ApprovalExecutor = (*resultOrErrExecutor)(nil)
+
+// registryWithExecutor registers toolName at the given floor backed by exec.
+func registryWithExecutor(toolName string, floor domain.ToolFloor, exec toolregistry.Executor) *toolregistry.Registry {
+	reg := toolregistry.NewRegistry()
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: toolName, Description: "d", Parameters: map[string]interface{}{}},
+	}, Floor: floor, EditableFields: []string{"text"}}, exec)
+	return reg
+}
+
+// TestResume_ToolResult_StampsCodeFromCodedError — when an approved tool's
+// executor returns an *a2a.CodedError, the resume EventToolResult must carry
+// the classifier code so the api proxy flips the integration to token_expired
+// and the FE renders the reconnect badge. Before the fix the resume path
+// dropped Code (the fresh path already set it), so the badge never fired.
+func TestResume_ToolResult_StampsCodeFromCodedError(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	exec := &resultOrErrExecutor{
+		err: a2a.NewCodedError("integration_token_invalid", errors.New("Unauthorized: bot kicked")),
+	}
+	reg := registryWithExecutor("coded_tool", domain.ToolFloorManual, exec)
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-coded", []domain.PendingCall{
+		{CallID: "c-coded", ToolName: "coded_tool", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
+	})
+	repo.store["batch-coded"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-coded"})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+	results := findEvents(evts, orchestrator.EventToolResult)
+	require.Len(t, results, 1)
+	assert.Equal(t, "integration_token_invalid", results[0].Code,
+		"resume tool_result must stamp the CodedError classifier code")
+	assert.NotEmpty(t, results[0].ToolError, "a coded error must also carry a human-readable ToolError")
+}
+
+// TestResume_ToolResult_SuccessHasEmptyCode — a successful approved tool emits
+// a tool_result with no Code, so the api proxy never spuriously flips token
+// health on a healthy publish.
+func TestResume_ToolResult_SuccessHasEmptyCode(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	exec := &resultOrErrExecutor{result: map[string]interface{}{"ok": true}}
+	reg := registryWithExecutor("ok_tool", domain.ToolFloorManual, exec)
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-ok", []domain.PendingCall{
+		{CallID: "c-ok", ToolName: "ok_tool", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
+	})
+	repo.store["batch-ok"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-ok"})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+	results := findEvents(evts, orchestrator.EventToolResult)
+	require.Len(t, results, 1)
+	assert.Empty(t, results[0].Code, "successful resume tool_result must have no classifier code")
+	assert.Empty(t, results[0].ToolError, "successful resume tool_result must have no error")
 }
 
 // --- Supporting mock executor that tracks dispatch count without
