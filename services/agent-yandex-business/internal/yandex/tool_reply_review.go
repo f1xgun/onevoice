@@ -4,11 +4,30 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/playwright-community/playwright-go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
+
+// validateReviewID rejects review_id values that could break out of the
+// single-quoted CSS attribute selector below (or otherwise mis-target a
+// different card). Yandex review ids are opaque tokens — they never contain
+// whitespace, quotes, backquotes, backslashes or control characters — so this
+// is an identity check for any legitimate value while neutralizing a
+// prompt-injected / hallucinated argument that reaches us through the tool
+// call. The value originates from a scraped data-review-id attribute relayed
+// via the LLM, whose context includes untrusted review text.
+func validateReviewID(reviewID string) error {
+	for _, r := range reviewID {
+		if unicode.IsControl(r) || unicode.IsSpace(r) ||
+			r == '\'' || r == '"' || r == '`' || r == '\\' {
+			return a2a.NewNonRetryableError(fmt.Errorf("review_id contains an illegal character"))
+		}
+	}
+	return nil
+}
 
 // replyConfirmTimeoutMs bounds how long we wait for the posted reply to surface
 // under its review card before treating the submit as failed. Yandex.Business
@@ -21,6 +40,9 @@ const replyConfirmTimeoutMs = 10000
 func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text string) error {
 	if reviewID == "" {
 		return a2a.NewNonRetryableError(fmt.Errorf("review_id is required"))
+	}
+	if err := validateReviewID(reviewID); err != nil {
+		return err
 	}
 	if text == "" {
 		return a2a.NewNonRetryableError(fmt.Errorf("reply text is required"))

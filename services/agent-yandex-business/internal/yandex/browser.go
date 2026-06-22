@@ -54,15 +54,28 @@ const screenshotDirPerm = 0o750
 
 // screenshotMode reads SCREENSHOT_MODE on each call. Unknown values fall back
 // to off — the safest default whenever the env contract is violated.
+//
+// full writes FullPage, PII-bearing PNGs to /tmp with no TTL sweeper, so it is
+// forced off in production regardless of the operator's setting: an unbounded
+// PII-at-rest store fails 152-FZ data-minimisation. tmpfs (TTL + 0o750 dir)
+// stays available as the sanctioned production diagnostic mode.
 func screenshotMode() ScreenshotMode {
+	mode := ScreenshotOff
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("SCREENSHOT_MODE"))) {
 	case "tmpfs":
-		return ScreenshotTmpfs
+		mode = ScreenshotTmpfs
 	case "full":
-		return ScreenshotFull
-	default:
+		mode = ScreenshotFull
+	}
+	if mode == ScreenshotFull && isProductionEnv() {
 		return ScreenshotOff
 	}
+	return mode
+}
+
+// isProductionEnv reports whether the agent is running under APP_ENV=production.
+func isProductionEnv() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
 }
 
 // captureScreenshot writes a screenshot of the current page under a label.
