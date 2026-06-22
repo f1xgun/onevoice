@@ -508,3 +508,35 @@ func TestConfigInternalACL_EmptyObjectFailsLoud(t *testing.T) {
 	assert.Contains(t, err.Error(), "ONEVOICE_INTERNAL_ACL_JSON")
 	assert.Contains(t, err.Error(), "at least one")
 }
+
+func TestConfigIsProduction(t *testing.T) {
+	tests := []struct {
+		appEnv string
+		want   bool
+	}{
+		{"production", true},
+		{"Production", true},
+		{"  production  ", true},
+		{"staging", false},
+		{"development", false},
+		{"", false},
+		{"prod", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.appEnv, func(t *testing.T) {
+			cfg := &config.Config{AppEnv: tt.appEnv}
+			assert.Equal(t, tt.want, cfg.IsProduction())
+		})
+	}
+}
+
+func TestConfigLoad_PopulatesAppEnv(t *testing.T) {
+	minTestEnv(t)
+	setValidLegal(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", canonicalACLJSON)
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "production", cfg.AppEnv)
+	assert.True(t, cfg.IsProduction())
+}

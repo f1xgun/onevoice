@@ -83,7 +83,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	wire.StartRetentionSweep(ctx, handles.PG, repos.AuditLog)
 	wire.StartIntegrationsPurge(ctx, handles.PG, repos.Integration)
 
-	emailSender := wire.BuildEmailSender(log, cfg)
+	emailSender, err := wire.BuildEmailSender(log, cfg)
+	if err != nil {
+		return err
+	}
 	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
 
 	if svcs.AccountDeletion != nil {

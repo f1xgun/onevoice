@@ -234,6 +234,31 @@ func TestEmailOutbox_DrainPending_LimitRespected(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestEmailOutbox_CountPending(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM email_outbox WHERE status = 'pending'`).
+		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(7))
+
+	n, err := repo.CountPending(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 7, n)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestEmailOutbox_CountPending_QueryError(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM email_outbox`).
+		WillReturnError(pgx.ErrTxClosed)
+
+	_, err := repo.CountPending(ctx)
+	require.Error(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestEmailOutbox_MarkSent(t *testing.T) {
 	mock, repo := newEmailOutboxRepoMock(t)
 	ctx := context.Background()

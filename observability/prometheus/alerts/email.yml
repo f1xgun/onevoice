@@ -1,0 +1,29 @@
+groups:
+  - name: email
+    rules:
+      - alert: EmailOutboxBacklogGrowing
+        expr: outbox_pending_rows > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Email outbox backlog sustained above 100 pending rows"
+          description: "outbox_pending_rows has stayed above 100 for 15m — the worker is falling behind or the Sender is wedged. Check api logs for email_outbox errors and Unisender reachability. See docs/runbook/observability.md."
+
+      - alert: EmailDeadLetterRate
+        expr: increase(emails_dead_lettered_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Email dead-letters rising (>5/h)"
+          description: "More than 5 emails were marked permanently failed in the last hour. Transactional mail (verify/reset/invite) is being lost — investigate Unisender responses in the last_error column. See docs/runbook/observability.md."
+
+      - alert: EmailDroppedInProduction
+        expr: increase(emails_sent_total{result="noop_dropped"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Transactional email dropped by NoopSender"
+          description: "emails_sent_total{result=\"noop_dropped\"} is rising — a NoopSender is draining the outbox and silently discarding mail. Production should never run NoopSender; verify UNISENDER_API_KEY and UNISENDER_FROM_EMAIL are set. See docs/runbook/observability.md."
