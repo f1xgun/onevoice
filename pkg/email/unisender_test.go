@@ -173,10 +173,10 @@ func TestUnisenderSender_ContextCancel(t *testing.T) {
 
 	_, err := sender.Send(ctx, Message{To: "a@b.c", Subject: "s", BodyText: "t"})
 	if err == nil {
-		t.Fatal("Send: expected error on cancelled ctx, got nil")
+		t.Fatal("Send: expected error on canceled ctx, got nil")
 	}
 	if !errors.Is(err, ErrTransient) {
-		t.Fatalf("Send: expected ErrTransient on cancelled ctx, got %v", err)
+		t.Fatalf("Send: expected ErrTransient on canceled ctx, got %v", err)
 	}
 }
 
