@@ -277,7 +277,7 @@ func TestConfig_LocalFallbackWindow_Default(t *testing.T) {
 func TestConfig_ToolExecTimeout_Default(t *testing.T) {
 	cfg, err := requireLoad(t)
 	require.NoError(t, err)
-	assert.Equal(t, 60*time.Second, cfg.ToolExecTimeout)
+	assert.Equal(t, 180*time.Second, cfg.ToolExecTimeout)
 }
 
 func TestConfig_ToolExecTimeout_EnvOverride(t *testing.T) {
@@ -293,7 +293,7 @@ func TestConfig_ToolExecTimeout_InvalidKeepsDefault(t *testing.T) {
 	t.Setenv("TOOL_EXEC_TIMEOUT", "not-a-duration")
 	cfg, err := requireLoad(t)
 	require.NoError(t, err)
-	assert.Equal(t, 60*time.Second, cfg.ToolExecTimeout)
+	assert.Equal(t, 180*time.Second, cfg.ToolExecTimeout)
 }
 
 // ---------------------------------------------------------------------

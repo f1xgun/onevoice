@@ -14,8 +14,11 @@ const defaultShutdownTimeout = 30 * time.Second
 // defaultToolExecTimeout bounds a single tool call when TOOL_EXEC_TIMEOUT is
 // unset. A platform agent that hangs (stuck RPA page, unanswered NATS request)
 // must not pin an agent-loop iteration open indefinitely, so an empty env still
-// gets a finite per-call deadline.
-const defaultToolExecTimeout = 60 * time.Second
+// gets a finite per-call deadline. The floor is set above the verified Yandex
+// RPA path, whose own internal waits (pool-slot acquire + page nav + hydrate)
+// plus retry backoff legitimately sum past a minute — a tighter default would
+// time out calls that previously succeeded.
+const defaultToolExecTimeout = 180 * time.Second
 
 // defaultAPIInternalURL is the in-cluster mTLS endpoint dialed for internal API calls.
 const defaultAPIInternalURL = "https://api:8443"
