@@ -258,9 +258,12 @@ func (h *Handler) replyToComment(ctx context.Context, req a2a.ToolRequest) (*a2a
 	case string:
 		parsed, err := strconv.Atoi(v)
 		if err != nil {
-			return nil, fmt.Errorf("telegram: invalid message_id %q: %w", v, err)
+			return nil, a2a.NewNonRetryableError(fmt.Errorf("telegram: invalid message_id %q: %w", v, err))
 		}
 		messageID = parsed
+	}
+	if messageID <= 0 {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("telegram: message_id is required and must be > 0"))
 	}
 
 	slog.Info("telegram agent: reply_to_comment", "chat_id", chatIDStr, "message_id", messageID, "text_len", len(text))

@@ -46,10 +46,14 @@ func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, ext
 
 // fakeSender records the last message sent.
 type fakeSender struct {
-	sentMessage  string
-	sentChat     string
-	sentPhotoURL string
-	sentCaption  string
+	sentMessage    string
+	sentChat       string
+	sentPhotoURL   string
+	sentCaption    string
+	replyCalled    bool
+	replyChat      string
+	replyMessageID int
+	replyText      string
 }
 
 func (f *fakeSender) SendMessage(chat, text string) error {
@@ -65,7 +69,13 @@ func (f *fakeSender) SendPhoto(chat, photoURL, caption string) error {
 	return nil
 }
 
-func (f *fakeSender) SendReply(_ string, _ int, _ string) error { return nil }
+func (f *fakeSender) SendReply(chat string, messageID int, text string) error {
+	f.replyCalled = true
+	f.replyChat = chat
+	f.replyMessageID = messageID
+	f.replyText = text
+	return nil
+}
 func (f *fakeSender) GetReviews(_ int) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{}, nil
 }
@@ -202,6 +212,58 @@ func TestHandler_UnknownTool_ReturnsError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown tool")
+}
+
+// TestHandler_ReplyToComment_MissingMessageID_Rejected proves a missing or
+// non-numeric message_id fails fast with a non-retryable error instead of
+// silently replying to message 0. Mirrors the VK agent's guard.
+func TestHandler_ReplyToComment_MissingMessageID_Rejected(t *testing.T) {
+	cases := []struct {
+		name string
+		args map[string]interface{}
+	}{
+		{name: "missing", args: map[string]interface{}{"text": "hi", "channel_id": "-100123"}},
+		{name: "zero", args: map[string]interface{}{"text": "hi", "channel_id": "-100123", "message_id": float64(0)}},
+		{name: "negative", args: map[string]interface{}{"text": "hi", "channel_id": "-100123", "message_id": float64(-5)}},
+		{name: "non-numeric string", args: map[string]interface{}{"text": "hi", "channel_id": "-100123", "message_id": "abc"}},
+		{name: "wrong type", args: map[string]interface{}{"text": "hi", "channel_id": "-100123", "message_id": true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fetcher := &fakeTokenFetcher{token: "tok"}
+			sender := &fakeSender{}
+			h := newHandlerWithSender(fetcher, sender)
+
+			_, err := h.Handle(context.Background(), a2a.ToolRequest{
+				Tool:       tools.TelegramReplyToComment,
+				BusinessID: "biz-1",
+				Args:       tc.args,
+			})
+
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "invalid message_id must be non-retryable")
+			assert.False(t, sender.replyCalled, "SendReply must NOT be called with an invalid message_id")
+		})
+	}
+}
+
+func TestHandler_ReplyToComment_ValidMessageID_Replies(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "tok", externalID: "-1009999"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramReplyToComment,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "thanks", "channel_id": "-1009999", "message_id": float64(42)},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.True(t, sender.replyCalled)
+	assert.Equal(t, 42, sender.replyMessageID)
+	assert.Equal(t, "thanks", sender.replyText)
 }
 
 // errSender is a Sender that always returns a configured error.
