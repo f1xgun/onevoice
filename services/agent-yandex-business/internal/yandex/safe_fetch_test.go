@@ -28,6 +28,7 @@ func TestValidatePhotoURL(t *testing.T) {
 		{name: "private 10/8 rejected", rawURL: "https://10.0.0.5/photo.jpg", wantErr: true},
 		{name: "private 172.16/12 rejected", rawURL: "https://172.16.0.1/photo.jpg", wantErr: true},
 		{name: "private 192.168/16 rejected", rawURL: "https://192.168.1.1/photo.jpg", wantErr: true},
+		{name: "cgnat 100.64/10 rejected", rawURL: "https://100.64.0.1/photo.jpg", wantErr: true},
 		{name: "unique local ipv6 rejected", rawURL: "https://[fc00::1]/photo.jpg", wantErr: true},
 		{name: "link-local ipv6 rejected", rawURL: "https://[fe80::1]/photo.jpg", wantErr: true},
 		{name: "unparseable url rejected", rawURL: "https://exa mple.com/photo.jpg", wantErr: true},

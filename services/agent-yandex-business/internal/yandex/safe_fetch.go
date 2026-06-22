@@ -39,17 +39,35 @@ func validatePhotoURL(rawURL string) error {
 	return nil
 }
 
+// cgnatRange is RFC 6598 shared address space (100.64.0.0/10). Go's
+// net.IP.IsPrivate predates RFC 6598 and excludes it, but NAT/cloud
+// environments route internal services through this range, so it must be
+// screened alongside RFC1918.
+var cgnatRange = mustCIDR("100.64.0.0/10")
+
+// mustCIDR parses a static CIDR at package-init; it panics on a malformed
+// constant, which is a programming error, not runtime input.
+func mustCIDR(s string) *net.IPNet {
+	_, network, err := net.ParseCIDR(s)
+	if err != nil {
+		panic("safe_fetch: invalid CIDR " + s + ": " + err.Error())
+	}
+	return network
+}
+
 // isDisallowedIP reports whether ip belongs to a range the RPA worker must
 // never connect to: loopback, link-local (incl. the cloud metadata endpoint),
-// private (RFC1918 / RFC4193), unspecified, or multicast. It is the single
-// source of truth for both URL-literal screening and connect-time screening.
+// private (RFC1918 / RFC4193), CGNAT shared space (RFC 6598), unspecified, or
+// multicast. It is the single source of truth for both URL-literal screening
+// and connect-time screening.
 func isDisallowedIP(ip net.IP) bool {
 	if ip.IsLoopback() ||
 		ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() ||
 		ip.IsMulticast() ||
 		ip.IsUnspecified() ||
-		ip.IsPrivate() {
+		ip.IsPrivate() ||
+		cgnatRange.Contains(ip) {
 		return true
 	}
 	return false
