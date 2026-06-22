@@ -360,6 +360,18 @@ services:
     networks:
       - onevoice-network
     restart: unless-stopped
+    # Defence-in-depth for the headless-browser worker: it navigates
+    # attacker-influenced content (review text, remote photos) with the
+    # Chromium sandbox off (--no-sandbox), so shrink the blast radius of a
+    # renderer compromise. A headless Chromium launched with --no-sandbox
+    # needs no Linux capabilities, so drop them all, and block privilege
+    # escalation through setuid binaries. Running non-root, a read-only
+    # rootfs, and re-enabling the sandbox each require a live browser
+    # smoke-test and are handled separately.
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
 
   # LLM Orchestrator
   orchestrator:
