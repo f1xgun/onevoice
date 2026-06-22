@@ -125,6 +125,7 @@ func (t *Turn) onToolResult(
 	businessID string,
 	toolCallID string,
 	content map[string]interface{},
+	toolArgs map[string]interface{},
 	toolError string,
 	toolErrorCode string,
 	idMap map[string]string,
@@ -174,7 +175,8 @@ func (t *Turn) onToolResult(
 	}
 
 	if flipTokenStatus {
-		t.markIntegrationTokenExpired(ctx, businessID, fresh.Platform)
+		externalID := externalIDFromToolArgs(fresh.Platform, toolArgs)
+		t.markIntegrationTokenExpired(ctx, businessID, fresh.Platform, externalID)
 	}
 	if t.deps.TaskHub != nil {
 		t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
@@ -186,10 +188,12 @@ func (t *Turn) onToolResult(
 // status to token_expired on this code so the dashboard prompts a reconnect.
 const integrationTokenInvalidCode = "integration_token_invalid"
 
-// markIntegrationTokenExpired flips the integration status for the platform that
-// produced a rejected-token tool result. Best-effort: a parse or write failure
-// is logged and never fails the turn.
-func (t *Turn) markIntegrationTokenExpired(ctx context.Context, businessID, platform string) {
+// markIntegrationTokenExpired flips the integration status for the channel that
+// produced a rejected-token tool result. externalID scopes the flip to the one
+// failing integration; when it is empty (the tool call did not carry an
+// identifier) every active integration for the platform is flipped. Best-effort:
+// a parse or write failure is logged and never fails the turn.
+func (t *Turn) markIntegrationTokenExpired(ctx context.Context, businessID, platform, externalID string) {
 	if platform == "" {
 		return
 	}
@@ -199,10 +203,34 @@ func (t *Turn) markIntegrationTokenExpired(ctx context.Context, businessID, plat
 			"business_id", businessID, "error", err)
 		return
 	}
-	if err := t.deps.Integrations.MarkTokenExpired(ctx, bizUUID, platform); err != nil {
+	if err := t.deps.Integrations.MarkTokenExpired(ctx, bizUUID, platform, externalID); err != nil {
 		slog.WarnContext(ctx, "chatturn: failed to mark integration token expired",
-			"business_id", businessID, "platform", platform, "error", err)
+			"business_id", businessID, "platform", platform, "external_id", externalID, "error", err)
 	}
+}
+
+// tokenExpiryExternalIDFields maps a platform to the tool-call argument that
+// carries the integration's external_id. The agents accept these as the channel
+// / community selector and resolve the same external_id from them; reusing the
+// mapping here scopes a token-expiry flip to the integration the failing call
+// targeted. Platforms whose calls carry no per-integration identifier (RPA-based
+// Yandex.Business, Google Business) are absent, so their flips stay platform-wide.
+var tokenExpiryExternalIDFields = map[string]string{
+	a2a.AgentTelegram: "channel_id",
+	a2a.AgentVK:       "group_id",
+}
+
+// externalIDFromToolArgs returns the failing integration's external_id taken
+// from the tool-call arguments, or "" when the platform has no identifier field
+// or the LLM omitted it (in which case the caller falls back to a platform-wide
+// flip).
+func externalIDFromToolArgs(platform string, toolArgs map[string]interface{}) string {
+	field, ok := tokenExpiryExternalIDFields[platform]
+	if !ok {
+		return ""
+	}
+	id, _ := toolArgs[field].(string)
+	return id
 }
 
 // recordPostsAndReviews walks the accumulated ToolCalls / ToolResults after

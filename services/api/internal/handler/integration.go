@@ -19,7 +19,7 @@ type IntegrationService interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
 	GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
 	Delete(ctx context.Context, integrationID uuid.UUID, actorID uuid.UUID) error
-	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform string) error
+	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform, externalID string) error
 }
 
 // IntegrationHandler handles integration endpoints
