@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -37,6 +38,12 @@ const (
 	httpReadTimeout      = 15 * time.Second
 	redisPingTimeout     = 3 * time.Second
 )
+
+// errDegradedRateLimiter is the readiness-check error surfaced on /health/ready
+// when the orchestrator boots without the LLM cost guard (no REDIS_URL). It
+// marks the service degraded so an operator probe and dashboards can see that
+// daily-spend / per-business caps are not enforced.
+var errDegradedRateLimiter = errors.New("rate limiter disabled: REDIS_URL unset — LLM cost guards inactive")
 
 // newRedisClient builds a *redis.Client from a connection string and verifies
 // connectivity with a short Ping. Returns an error on dial / auth failure so
@@ -84,8 +91,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	log.Info("billing client wired", "url", cfg.APIInternalURL)
 
+	rlDecision, err := cfg.RateLimiterGate()
+	if err != nil {
+		return err
+	}
+
 	routerOpts := []llm.RouterOption{llm.WithBilling(billingHTTP)}
-	if cfg.RedisURL != "" {
+	if rlDecision.Enabled {
 		rdb, redisErr := newRedisClient(ctx, cfg.RedisURL)
 		if redisErr != nil {
 			return fmt.Errorf("redis: %w", redisErr)
@@ -100,8 +112,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 			"free_tier_daily_spend_usd", cfg.FreeTierDailySpendUSD,
 		)
 	} else {
-		log.Warn("rate limiter disabled: REDIS_URL is unset — cost guards inactive")
+		log.Warn("rate limiter disabled: REDIS_URL is unset — LLM cost guards inactive, third-party spend is unbounded")
 	}
+	metrics.SetRateLimiterEnabled(rlDecision.Enabled)
 
 	router, err := wire.LLMRouter(cfg, log, routerOpts...)
 	if err != nil {
@@ -130,9 +143,15 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
 	health.RegisterDefaultChecks(hc, nil, mongoDB.Client(), nil, nc)
+	if rlDecision.Degraded {
+		hc.AddCheck("rate_limiter", func(context.Context) error {
+			return errDegradedRateLimiter
+		})
+	}
 
 	orch := orchestrator.NewWithHITL(router, registry, pendingRepo, orchestrator.Options{
 		MaxIterations:         cfg.MaxIterations,
+		ToolExecTimeout:       cfg.ToolExecTimeout,
 		ConversationInputCap:  cfg.ConversationInputCap,
 		ConversationOutputCap: cfg.ConversationOutputCap,
 	})

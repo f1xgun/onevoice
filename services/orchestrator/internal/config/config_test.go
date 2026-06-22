@@ -270,3 +270,70 @@ func TestConfig_LocalFallbackWindow_Default(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 30*time.Second, cfg.LocalFallbackWindow)
 }
+
+// TestConfig_ToolExecTimeout_Default pins the bounded-by-default contract: an
+// empty TOOL_EXEC_TIMEOUT must still produce a finite per-tool deadline so a
+// hung platform agent cannot pin an agent-loop iteration open indefinitely.
+func TestConfig_ToolExecTimeout_Default(t *testing.T) {
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 180*time.Second, cfg.ToolExecTimeout)
+}
+
+func TestConfig_ToolExecTimeout_EnvOverride(t *testing.T) {
+	t.Setenv("TOOL_EXEC_TIMEOUT", "15s")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 15*time.Second, cfg.ToolExecTimeout)
+}
+
+// TestConfig_ToolExecTimeout_InvalidKeepsDefault proves an unparseable value
+// falls back to the compiled default rather than disabling the deadline.
+func TestConfig_ToolExecTimeout_InvalidKeepsDefault(t *testing.T) {
+	t.Setenv("TOOL_EXEC_TIMEOUT", "not-a-duration")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 180*time.Second, cfg.ToolExecTimeout)
+}
+
+// ---------------------------------------------------------------------
+// Rate-limiter boot-gate tests
+// ---------------------------------------------------------------------
+
+func TestRateLimiterGate_RedisPresent_Enabled(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	cfg := &config.Config{RedisURL: "redis://localhost:6379"}
+	dec, err := cfg.RateLimiterGate()
+	require.NoError(t, err)
+	assert.True(t, dec.Enabled)
+	assert.False(t, dec.Degraded)
+}
+
+func TestRateLimiterGate_ProdNoRedis_NoEscapeHatch_Errors(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("ALLOW_NO_RATE_LIMIT", "")
+	cfg := &config.Config{RedisURL: ""}
+	_, err := cfg.RateLimiterGate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "REDIS_URL")
+}
+
+func TestRateLimiterGate_ProdNoRedis_EscapeHatch_Degraded(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("ALLOW_NO_RATE_LIMIT", "true")
+	cfg := &config.Config{RedisURL: ""}
+	dec, err := cfg.RateLimiterGate()
+	require.NoError(t, err)
+	assert.False(t, dec.Enabled)
+	assert.True(t, dec.Degraded)
+}
+
+func TestRateLimiterGate_DevNoRedis_Degraded(t *testing.T) {
+	t.Setenv("APP_ENV", "")
+	t.Setenv("ALLOW_NO_RATE_LIMIT", "")
+	cfg := &config.Config{RedisURL: ""}
+	dec, err := cfg.RateLimiterGate()
+	require.NoError(t, err)
+	assert.False(t, dec.Enabled)
+	assert.True(t, dec.Degraded)
+}

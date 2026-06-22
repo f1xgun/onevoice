@@ -13,3 +13,23 @@ groups:
         annotations:
           summary: "LLM provider {{ $labels.provider }} error rate > 10%"
           description: "Provider {{ $labels.provider }} error rate exceeded 10% for 5m. See docs/runbook/observability.md."
+
+      - alert: LLMDailySpendBlockedSpike
+        expr: |
+          sum(rate(llm_daily_spend_blocked_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM requests blocked by daily-spend cap"
+          description: "Chat requests are being blocked because a per-business daily spend cap was reached. Review tier limits or investigate runaway usage. See docs/runbook/observability.md."
+
+      - alert: LLMRateLimiterDisabled
+        expr: |
+          max(rate_limiter_enabled) < 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "LLM cost-guard rate limiter is disabled"
+          description: "rate_limiter_enabled is 0 — the orchestrator is running without a daily-spend / per-business cap, so third-party LLM spend is unbounded. Set REDIS_URL. See docs/runbook/observability.md."

@@ -41,7 +41,7 @@ disabling a guard.
 | Field | Env | Default | Range / Semantic |
 |---|---|---|---|
 | `MaxIterations` | `MAX_ITERATIONS` | `10` | Maximum LLM agent-loop iterations per turn. Soft sanity cap on runaway tool loops. |
-| `ToolExecTimeout` | `TOOL_EXEC_TIMEOUT` | `0` (disabled) | Bounds a single tool call. Zero disables the per-tool deadline — the request context still governs overall cancellation. |
+| `ToolExecTimeout` | `TOOL_EXEC_TIMEOUT` | `180s` | Bounds a single tool call (applied in both `executeOne` and the HITL resume dispatch). Unset falls back to the 180s default, set above the verified Yandex RPA path's internal waits + retry backoff. Set `0` to disable the per-tool deadline and let the request context govern cancellation. |
 
 ### Cost guards
 
