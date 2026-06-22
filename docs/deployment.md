@@ -97,7 +97,7 @@ openssl rand -base64 48     # JWT_SECRET (≥ 32 chars)
 openssl rand -hex 16        # ENCRYPTION_KEY (exactly 32 bytes — 16 hex bytes = 32 ASCII chars)
 openssl rand -base64 24     # MINIO_ROOT_USER
 openssl rand -base64 24     # MINIO_ROOT_PASSWORD
-openssl rand -base64 24     # POSTGRES_PASSWORD (optional but recommended)
+openssl rand -base64 24     # POSTGRES_PASSWORD (REQUIRED — compose aborts if unset)
 ```
 
 ### Required values from external services
@@ -223,6 +223,48 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api orch
 ```
 
 Boot order: `postgres / mongodb / redis / nats / minio` → `migrate` (one-shot) → `minio-init` (one-shot) → `api / orchestrator / agent-*` → `frontend` → `nginx + certbot`.
+
+---
+
+## 3a. Network exposure baseline
+
+Only nginx must be reachable from the internet. Everything else — the API,
+the orchestrator, and all five datastores (PostgreSQL, MongoDB, Redis, NATS,
+MinIO) — talks over the internal `onevoice-network` and must **never** be
+bound to the VM's public IP. Default credentials on a publicly reachable
+datastore is direct data exfiltration (dialogs, audit trail, uploaded media,
+integration tokens).
+
+Two layers enforce this:
+
+1. **Compose (modes B / C).** `docker-compose.prod.yml` removes the host
+   port mappings the base file declares for the datastores, the api, and the
+   orchestrator (`ports: !reset []`). After `up -d`, confirm nothing but
+   nginx publishes a host port:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+   # The PORTS column should show host bindings (0.0.0.0:...) ONLY for nginx.
+   sudo ss -tlnp | grep -E ':(5432|27017|6379|4222|8222|9000|9001|8080|8090|8443)\b' || echo "OK: no datastore/app port on the host"
+   ```
+
+   > **Mode A** (bare `docker compose up`, no prod overlay) keeps the host
+   > mappings for local convenience — do not run mode A on an
+   > internet-facing VM with the firewall open. Use modes B / C in
+   > production, or close every port except 22 / 80 / 443 (next point).
+
+2. **Firewall (all modes, defense in depth).** Even with the compose
+   overlay, keep inbound TCP restricted to `22` (SSH), `80`, and `443`. On
+   Yandex Cloud the **security group** filters first — `ufw` alone is not
+   enough (see §0a). Verify the host firewall:
+
+   ```bash
+   sudo ufw status verbose      # 22/80/443 ALLOW, default deny incoming
+   ```
+
+Required datastore credentials back this up: the base compose now fails fast
+if `POSTGRES_PASSWORD`, `MINIO_ROOT_USER`, or `MINIO_ROOT_PASSWORD` is unset,
+so a deploy can never silently fall back to `postgres` / `minioadmin`.
 
 ---
 
