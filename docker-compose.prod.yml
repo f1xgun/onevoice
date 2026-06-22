@@ -15,6 +15,28 @@
 # After that, `docker compose up -d` is enough.
 
 services:
+  # Network exposure baseline: only nginx (80/443) is published to the host
+  # in production. The datastores and the api/orchestrator HTTP ports are
+  # reachable container-to-container on the onevoice-network only — never on
+  # the VM's public IP. `ports: !reset []` drops the host mappings the base
+  # compose declares (it does NOT close the container ports, so internal
+  # service discovery keeps working). Requires Compose v2.24.4+ for the
+  # !reset / !override merge tags.
+  postgres:
+    ports: !reset []
+
+  mongodb:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  nats:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
   nginx:
     image: nginx:alpine
     container_name: onevoice-nginx
@@ -127,6 +149,9 @@ services:
   #     left without checks; production overlay fills them in so
   #     Docker can restart unhealthy containers). ---
   api:
+    # Drop the base 8080/8443 host mappings — the api is reached only via
+    # nginx in prod. (8443 is the internal mTLS port; never expose it.)
+    ports: !reset []
     healthcheck:
       test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8080/health/live"]
       interval: 15s
@@ -135,6 +160,9 @@ services:
       start_period: 30s
 
   orchestrator:
+    # Drop the base 8090 host mapping — orchestrator is reached over the
+    # internal network only.
+    ports: !reset []
     healthcheck:
       test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8090/health/live"]
       interval: 15s
