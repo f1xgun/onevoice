@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -181,4 +182,182 @@ func TestResumeApproved_NoActiveMessage_InlineError(t *testing.T) {
 	assert.Equal(t, OutcomeInlineError, outcome)
 	assert.Contains(t, rr.Body.String(), "no_active_approval_for_conversation")
 	assert.Nil(t, msgRepo.updated)
+}
+
+// TestResumeApproved_RecordsPostsOnDone — the resume path is where manual-floor
+// publishing tools actually execute, so it is the only place a Post record can
+// be created. The orchestrator SSE emits tool_call(create_post) → tool_result
+// (success) → done; the resume must record exactly one Post and drive the
+// AgentTask lifecycle (one Create at running, one Update at done). Before the
+// fix the resume path proxied these frames straight to the browser without the
+// postal hooks, so the publish vanished from the feed and the Tasks page.
+func TestResumeApproved_RecordsPostsOnDone(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_a","tool_name":"yandex_business__create_post","tool_args":{"text":"hello world"}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_a","result":{"ok":true}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer orch.Close()
+
+	businessID := uuid.New().String()
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_a", Name: "yandex_business__create_post", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	posts := &fakePostRepo{}
+	tasks := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "yandex_business"}
+	turn := New(Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  resumeStubInteg{},
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages:      msgRepo,
+		Posts:         posts,
+		AgentTasks:    tasks,
+		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+			ID: "batch-1", ConversationID: "conv-1", BusinessID: businessID,
+		}},
+		Orch: orchestratorclient.New(orch.URL, http.DefaultClient),
+	})
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-1", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomeRejoinedResume, outcome)
+
+	require.Len(t, posts.created, 1, "approved create_post must record exactly one Post")
+	assert.Equal(t, "hello world", posts.created[0].Content)
+	assert.Equal(t, businessID, posts.created[0].BusinessID)
+	_, hasYandex := posts.created[0].PlatformResults["yandex_business"]
+	assert.True(t, hasYandex, "post recorded under the yandex_business platform")
+
+	require.Len(t, tasks.created, 1, "one AgentTask created in running state")
+	assert.Equal(t, "running", tasks.created[0].Status)
+	require.Len(t, tasks.updated, 1, "one AgentTask transitioned to done")
+	assert.Equal(t, "done", tasks.updated[0].Status)
+}
+
+// TestResumeApproved_FlipsTokenExpiredOnCodedError — when an approved tool's
+// resume result carries code:"integration_token_invalid", the resume path must
+// flip the integration to token_expired so the dashboard prompts a reconnect.
+// Before the fix the resume tool_result skipped onToolResult entirely, so the
+// reconnect badge never fired on the manual-approve floor.
+func TestResumeApproved_FlipsTokenExpiredOnCodedError(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_a","tool_name":"telegram__send_channel_post","tool_args":{"text":"hi"}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_a","result":{"error":"Unauthorized: bot kicked"},"error":"telegram: Unauthorized: bot kicked","code":"integration_token_invalid"}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer orch.Close()
+
+	businessID := uuid.New()
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_a", Name: "telegram__send_channel_post", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	integ := &fakeIntegrations{}
+	tasks := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "telegram"}
+	turn := New(Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  integ,
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages:      msgRepo,
+		AgentTasks:    tasks,
+		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+			ID: "batch-1", ConversationID: "conv-1", BusinessID: businessID.String(),
+		}},
+		Orch: orchestratorclient.New(orch.URL, http.DefaultClient),
+	})
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-1", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomeRejoinedResume, outcome)
+
+	require.Len(t, integ.marked, 1, "MarkTokenExpired must fire once on integration_token_invalid")
+	assert.Equal(t, businessID, integ.marked[0].businessID)
+	assert.Equal(t, "telegram", integ.marked[0].platform)
+}
+
+// TestResumeApproved_RecordsOnlyOnDone_NotOnRePause — when the resume loop
+// re-pauses on the next manual-floor tool (sequential fan-out), the approved
+// tool's result must NOT yet be recorded as a Post: posts are recorded only via
+// persistResumeDone on a terminal event. The re-pause keeps the message active
+// (so the next approve finds it) without double-recording the first tool.
+func TestResumeApproved_RecordsOnlyOnDone_NotOnRePause(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_yandex","tool_name":"yandex_business__create_post","tool_args":{"text":"ya"}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_yandex","result":{"ok":true}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_approval_required","batch_id":"batch-tg","calls":[{"call_id":"tc_tg","tool_name":"telegram__send_channel_post","args":{"text":"hi"}}]}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer orch.Close()
+
+	businessID := uuid.New().String()
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_yandex", Name: "yandex_business__create_post", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	posts := &fakePostRepo{}
+	tasks := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "yandex_business"}
+	turn := New(Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  resumeStubInteg{},
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages:      msgRepo,
+		Posts:         posts,
+		AgentTasks:    tasks,
+		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+			ID: "batch-yandex", ConversationID: "conv-1", BusinessID: businessID,
+		}},
+		Orch: orchestratorclient.New(orch.URL, http.DefaultClient),
+	})
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-yandex", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomePauseHITL, outcome, "re-pause must NOT finalize the turn")
+
+	require.NotNil(t, msgRepo.updated, "re-pause MUST persist the still-active message")
+	assert.Equal(t, domain.MessageStatusPendingApproval, msgRepo.updated.Status,
+		"message must stay active so the next approve finds it")
+	assert.Empty(t, posts.created,
+		"posts are recorded only via persistResumeDone — the re-pause path must not record")
 }

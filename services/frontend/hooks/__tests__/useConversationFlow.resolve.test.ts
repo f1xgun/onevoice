@@ -359,6 +359,64 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
     expect(assistants).toHaveLength(1);
     expect(toast.error).not.toHaveBeenCalled();
   });
+
+  it('keeps the next approval card when the resume chain re-pauses (sequential fan-out)', async () => {
+    const fetchMock = vi.fn();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/messages')) {
+        return new Response(JSON.stringify({ messages: [], pendingApprovals: [singleCallBatch] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/resolve')) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      // Resume: the first tool executes, then the chain pauses AGAIN on the next
+      // tool. The card must switch to that batch, not clear (the bug: the resume
+      // consumer dropped tool_approval_required and the chain looked dead-ended).
+      return mockSSEResponse([
+        sseLine({
+          type: 'tool_result',
+          tool_call_id: 'srv-1',
+          tool_name: 'yandex_business__update_hours',
+          result: { ok: true },
+        }),
+        sseLine({
+          type: 'tool_approval_required',
+          batch_id: 'batch-next',
+          calls: [
+            {
+              call_id: 'call-next-1',
+              tool_name: 'telegram__send_channel_post',
+              args: { text: 'announcement' },
+              editable_fields: [],
+              floor: 'manual',
+            },
+          ],
+        }),
+      ]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-resolve-1' }), {
+      wrapper: makeQCWrapper(),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
+
+    await act(async () => {
+      await result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
+    });
+
+    expect(result.current.pendingApproval).not.toBeNull();
+    expect(result.current.pendingApproval!.batchId).toBe('batch-next');
+    expect(result.current.pendingApproval!.calls[0].toolName).toBe('telegram__send_channel_post');
+  });
 });
 
 describe('useConversationFlow.resolveApproval — error branches', () => {
