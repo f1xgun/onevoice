@@ -3,8 +3,6 @@ package yandex
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"time"
 
@@ -51,17 +49,9 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 		}
 		humanDelay()
 
-		httpResp, err := http.Get(photoURL) //nolint:gosec // URL comes from LLM/user, external fetch is intentional
+		body, err := bb.downloadPhoto(ctx, photoURL)
 		if err != nil {
-			return fmt.Errorf("download photo from %s: %w", photoURL, err)
-		}
-		body, err := io.ReadAll(httpResp.Body)
-		_ = httpResp.Body.Close()
-		if err != nil {
-			return fmt.Errorf("read photo body: %w", err)
-		}
-		if len(body) == 0 {
-			return fmt.Errorf("downloaded empty file from %s", photoURL)
+			return err
 		}
 
 		tmpFile := fmt.Sprintf("/tmp/upload_%d.jpg", time.Now().UnixMilli())
