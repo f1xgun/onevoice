@@ -105,6 +105,12 @@ type Options struct {
 	ConversationInputCap int
 	// ConversationOutputCap is the parallel knob for accumulated output tokens.
 	ConversationOutputCap int
+	// RedactOutboundPDn scrubs third-party personal data from each LLM request
+	// (history, tool results, and per-business prompt blocks) before it leaves
+	// for a possibly non-RU provider. Wired from the inverse of
+	// AllowTransborderLLM in cmd/main.go; the zero value (false) keeps library
+	// callers and tests untouched. See docs/orchestrator/config.md.
+	RedactOutboundPDn bool
 }
 
 // Orchestrator runs the LLM agent loop. See docs/orchestrator/run.md.

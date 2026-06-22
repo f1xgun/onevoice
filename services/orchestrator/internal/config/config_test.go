@@ -271,6 +271,41 @@ func TestConfig_LocalFallbackWindow_Default(t *testing.T) {
 	assert.Equal(t, 30*time.Second, cfg.LocalFallbackWindow)
 }
 
+// TestConfig_AllowTransborderLLM_DefaultFalse pins the compliant-safe default:
+// unset means outbound personal-data redaction stays ON (the orchestrator wires
+// RedactOutboundPDn from the inverse of this flag).
+func TestConfig_AllowTransborderLLM_DefaultFalse(t *testing.T) {
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.False(t, cfg.AllowTransborderLLM)
+}
+
+func TestConfig_AllowTransborderLLM_EnvTrue(t *testing.T) {
+	for _, v := range []string{"true", "1", "TRUE"} {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv("ALLOW_TRANSBORDER_LLM", v)
+			cfg, err := requireLoad(t)
+			require.NoError(t, err)
+			assert.True(t, cfg.AllowTransborderLLM)
+		})
+	}
+}
+
+func TestConfig_AllowTransborderLLM_EnvFalse(t *testing.T) {
+	t.Setenv("ALLOW_TRANSBORDER_LLM", "false")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.False(t, cfg.AllowTransborderLLM)
+}
+
+func TestConfig_AllowTransborderLLM_InvalidFailsLoud(t *testing.T) {
+	t.Setenv("ALLOW_TRANSBORDER_LLM", "maybe")
+	_, err := requireLoad(t)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ALLOW_TRANSBORDER_LLM")
+	assert.Contains(t, err.Error(), `"maybe"`)
+}
+
 // TestConfig_ToolExecTimeout_Default pins the bounded-by-default contract: an
 // empty TOOL_EXEC_TIMEOUT must still produce a finite per-tool deadline so a
 // hung platform agent cannot pin an agent-loop iteration open indefinitely.

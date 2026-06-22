@@ -154,6 +154,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		ToolExecTimeout:       cfg.ToolExecTimeout,
 		ConversationInputCap:  cfg.ConversationInputCap,
 		ConversationOutputCap: cfg.ConversationOutputCap,
+		RedactOutboundPDn:     !cfg.AllowTransborderLLM,
 	})
 	handlers := wire.Handlers(orch, registry, router, cfg)
 
