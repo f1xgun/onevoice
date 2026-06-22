@@ -212,6 +212,27 @@ func (t *Turn) ResumeApproved(
 // resume SSE while accumulating tool results onto activeMsg via OnEvent, then
 // persists the finalized message on the terminal event (or via the post-stream
 // fallback). See docs/services/chatturn-hitl.md.
+// resumeToolArgs returns the arguments of the tool_call matching toolCallID
+// during a resume stream, so onToolResult can scope a token_expired flip to the
+// failing integration's external_id. The approved (paused) tool's call lives in
+// the persisted message's ToolCalls, indexed by callIdx; tools emitted fresh on
+// resume live in recCalls. Returns nil when neither carries the id, in which
+// case the flip falls back to platform-wide scoping.
+func resumeToolArgs(toolCallID string, callIdx map[string]int, persisted, fresh []domain.ToolCall) map[string]interface{} {
+	if toolCallID == "" {
+		return nil
+	}
+	if idx, ok := callIdx[toolCallID]; ok && idx >= 0 && idx < len(persisted) {
+		return persisted[idx].Arguments
+	}
+	for i := range fresh {
+		if fresh[i].ID == toolCallID {
+			return fresh[i].Arguments
+		}
+	}
+	return nil
+}
+
 func (t *Turn) runResumeStream(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -288,7 +309,8 @@ func (t *Turn) runResumeStream(
 						msg.ToolCalls[idx].Status = domain.ToolCallStatusApproved
 					}
 				}
-				t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, ev.Code, idMap)
+				toolArgs := resumeToolArgs(ev.ToolCallID, callIdx, msg.ToolCalls, recCalls)
+				t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, toolArgs, ev.ToolError, ev.Code, idMap)
 			case "tool_rejected":
 				if idx, ok := callIdx[ev.ToolCallID]; ok {
 					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
