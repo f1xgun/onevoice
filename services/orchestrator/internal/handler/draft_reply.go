@@ -14,6 +14,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/security"
 )
 
 // LLM tuning for the review-draft handler. 400 tokens caps a draft reply at
@@ -38,14 +39,22 @@ type DraftChatter interface {
 //
 // Path convention follows /internal/* (see internal_tools.go) — cluster-only.
 type DraftReplyHandler struct {
-	chatter DraftChatter
-	model   string
+	chatter   DraftChatter
+	model     string
+	redactPDn bool
 }
 
 // NewDraftReplyHandler constructs the handler. chatter is *llm.Router in
 // production and a fake in tests; model must match a registered model.
-func NewDraftReplyHandler(chatter DraftChatter, model string) *DraftReplyHandler {
-	return &DraftReplyHandler{chatter: chatter, model: model}
+//
+// redactPDn scrubs third-party personal data (phones, emails, card/passport/INN
+// numbers) from the review text, few-shot examples, and business block before
+// they reach a (possibly non-RU) LLM provider — the second outbound LLM ingress
+// alongside the agent loop's applyOutboundRedaction. It is set to
+// !cfg.AllowTransborderLLM so the operator opts out only with a legal basis for
+// transborder personal-data transfer or when inference is RU/self-hosted.
+func NewDraftReplyHandler(chatter DraftChatter, model string, redactPDn bool) *DraftReplyHandler {
+	return &DraftReplyHandler{chatter: chatter, model: model, redactPDn: redactPDn}
 }
 
 // DraftReplyExample is one (review → owner reply) pair shown to the LLM as
@@ -95,6 +104,9 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	tag := i18n.LocaleFromContext(r.Context())
 	messages := buildDraftReplyPrompt(req, tag)
+	if h.redactPDn {
+		redactDraftMessages(messages)
+	}
 
 	bizID := uuid.Nil
 	if req.BusinessID != "" {
@@ -138,6 +150,19 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+// redactDraftMessages scrubs third-party personal data from every message in
+// place before the request leaves for the LLM. Every content string is covered
+// uniformly: the system block (business phone/email embedded in the
+// description), the few-shot review/reply pairs, and the final review text —
+// each is a verbatim copy of customer- or owner-authored content. The slice is
+// freshly built by buildDraftReplyPrompt on each request, so in-place mutation
+// is safe (no shared backing array, unlike the agent loop's redactRequestPDn).
+func redactDraftMessages(msgs []llm.Message) {
+	for i := range msgs {
+		msgs[i].Content = security.RedactPII(msgs[i].Content)
+	}
 }
 
 // buildDraftReplyPrompt composes the [system, few-shot..., user] message list.

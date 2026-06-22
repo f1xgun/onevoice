@@ -39,6 +39,6 @@ func Handlers(orch *orchestrator.Orchestrator, registry *toolregistry.Registry, 
 		Resume:     handler.NewResumeHandler(orch, cfg.LLMModel),
 		Tools:      handler.NewInternalToolsHandler(registry),
 		ToolsAll:   handler.NewInternalToolsAllHandler(registry),
-		DraftReply: handler.NewDraftReplyHandler(router, cfg.DraftReplyModel),
+		DraftReply: handler.NewDraftReplyHandler(router, cfg.DraftReplyModel, !cfg.AllowTransborderLLM),
 	}
 }

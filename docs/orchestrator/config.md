@@ -80,7 +80,7 @@ The redaction chokepoint lives in `internal/orchestrator/redact.go` (`applyOutbo
 
 It never touches block 1 (the locale-fixed platform prefix that anchors the provider cache prefix), and it works on a copy so the persisted HITL pause snapshot keeps the original, un-redacted bytes for the approval card and audit. `RedactPII` matches email / RU phone / IBAN / RU passport / INN / Luhn-valid card numbers; it does **not** recognize free-form physical addresses or person names, so the business `Адрес` line is preserved (lower-risk owner data, frequently load-bearing for the assistant). Set `ALLOW_TRANSBORDER_LLM=true` only with a documented legal basis for transborder transfer, or when inference is pinned to RU / self-hosted endpoints.
 
-> Out of scope for this knob (separate ingress): the standalone `/internal/draft-reply` handler also sends review text to the LLM and is not yet covered.
+The same `ALLOW_TRANSBORDER_LLM` knob also gates the second outbound LLM ingress — the standalone `/internal/draft-reply` handler (`internal/handler/draft_reply.go`), which sends review text + few-shot examples + the business block to the LLM. `wire/handlers.go` wires `NewDraftReplyHandler(..., !cfg.AllowTransborderLLM)`, so the flag is all-or-nothing across both ingresses: when `false` (default) the handler scrubs every outbound message via `redactDraftMessages` (the same `RedactPII`) before the provider call. The third ingress, the API auto-titler, redacts unconditionally regardless of this flag (see `docs/services/titler.md`).
 
 ### Storage / message bus
 
