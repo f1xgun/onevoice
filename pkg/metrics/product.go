@@ -59,7 +59,7 @@ func IncHITLDecision(decision string) {
 	switch decision {
 	case "approve", "edit", "reject":
 	default:
-		decision = "other"
+		decision = labelOther
 	}
 	hitlDecisionsTotal.WithLabelValues(decision).Inc()
 }

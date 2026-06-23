@@ -135,6 +135,11 @@ func NewMongoPoolMonitor() *event.PoolMonitor {
 	}
 }
 
+// labelOther is the shared catch-all label value for whitelist-collapse
+// counters (unknown mongo op, unknown HITL decision). Centralized so the
+// bounded "other" bucket is one constant rather than a repeated literal.
+const labelOther = "other"
+
 // allowedMongoOps caps the `op` label cardinality to a fixed, documented
 // allowlist. Unknown ops collapse to "other" in normalizeMongoOp.
 var allowedMongoOps = map[string]struct{}{
@@ -151,7 +156,7 @@ func normalizeMongoOp(op string) string {
 	if _, ok := allowedMongoOps[op]; ok {
 		return op
 	}
-	return "other"
+	return labelOther
 }
 
 // NewMongoCommandMonitor returns an *event.CommandMonitor that observes

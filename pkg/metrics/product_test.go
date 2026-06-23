@@ -48,10 +48,10 @@ func TestIncHITLDecision_OnlyIncrementsSingleLabel(t *testing.T) {
 // unvalidated upstream action string must land in the bounded "other"
 // bucket and must NOT create a new series for the raw value.
 func TestIncHITLDecision_CollapsesUnknown(t *testing.T) {
-	beforeOther := testutil.ToFloat64(hitlDecisionsTotal.WithLabelValues("other"))
+	beforeOther := testutil.ToFloat64(hitlDecisionsTotal.WithLabelValues(labelOther))
 	IncHITLDecision("frobnicate")
 	IncHITLDecision("")
-	afterOther := testutil.ToFloat64(hitlDecisionsTotal.WithLabelValues("other"))
+	afterOther := testutil.ToFloat64(hitlDecisionsTotal.WithLabelValues(labelOther))
 	require.InDelta(t, beforeOther+2, afterOther, 0.0001, "unknown decisions must increment 'other'")
 
 	families, err := prometheus.DefaultGatherer.Gather()
