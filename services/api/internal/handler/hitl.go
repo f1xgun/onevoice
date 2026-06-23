@@ -175,6 +175,15 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 		return
 	}
 
+	var errAction *service.ErrHITLInvalidAction
+	if errors.As(err, &errAction) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":  "invalid_action",
+			"action": errAction.Action,
+		})
+		return
+	}
+
 	switch {
 	case errors.Is(err, service.ErrHITLBatchNotFound):
 		writeJSONError(w, http.StatusNotFound, "batch not found")

@@ -518,6 +518,39 @@ func TestResolve_RejectReasonTooLong_Returns400(t *testing.T) {
 	}
 }
 
+// TestResolve_InvalidAction_Returns400 exercises the full handler path: the
+// resolve body is decoded with a bare json.Decoder (the oneof binding tag never
+// runs), so an unknown action must be rejected by the service and mapped to 400
+// with the offending value echoed back.
+func TestResolve_InvalidAction_Returns400(t *testing.T) {
+	biz := &domain.Business{ID: uuid.New()}
+	pr := newFakeHITLPendingRepo()
+	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
+	})
+	h := buildHITLHandler(t, pr, biz, nil, "")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"decisions": []map[string]interface{}{
+			{"id": "tc_a", "action": "yolo"},
+		},
+	})
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, rec.Body.String())
+	}
+	if resp["error"] != "invalid_action" {
+		t.Errorf("error = %v, want invalid_action: %v", resp["error"], resp)
+	}
+	if resp["action"] != "yolo" {
+		t.Errorf("action = %v, want yolo: %v", resp["action"], resp)
+	}
+}
+
 // TestResolve_ConcurrentResolve_ExactlyOneWins_OtherGets409 — MANDATORY
 // anti-footgun #5 test. sync.WaitGroup + two concurrent requests; asserts
 // exactly one 200 and one 409 with the correct body shape.

@@ -377,6 +377,73 @@ func TestHITLService_Resolve_RejectReasonTooLong_Returns400(t *testing.T) {
 	}
 }
 
+// TestHITLService_Resolve_InvalidAction_Returns400 guards the resolve handler's
+// validation gap: the wire body is decoded with a bare json.Decoder (no
+// validator), so a per-call action outside {approve, edit, reject} reaches the
+// service. Resolve must reject it with ErrHITLInvalidAction BEFORE the batch is
+// transitioned, so the batch stays pending and the caller can retry.
+func TestHITLService_Resolve_InvalidAction_Returns400(t *testing.T) {
+	bizID := uuid.New().String()
+	pr := newStubPendingRepo()
+	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
+	})
+	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
+
+	_, err := svc.Resolve(context.Background(), service.ResolveInput{
+		ConversationID:  "conv-1",
+		BatchID:         "batch-1",
+		ActorUserID:     uuid.New().String(),
+		ActorBusinessID: bizID,
+		Decisions: []service.DecisionInput{
+			{ID: "tc_a", Action: "yolo"},
+		},
+	})
+
+	var aerr *service.ErrHITLInvalidAction
+	if !errors.As(err, &aerr) {
+		t.Fatalf("want ErrHITLInvalidAction, got %v", err)
+	}
+	if aerr.Action != "yolo" {
+		t.Errorf("ErrHITLInvalidAction.Action = %q, want %q", aerr.Action, "yolo")
+	}
+	if pr.ResolvingCounter != 0 {
+		t.Errorf("batch transitioned %d times; invalid action must not consume the batch", pr.ResolvingCounter)
+	}
+	if pr.RecordedDecisions != nil {
+		t.Errorf("RecordDecisions called with %v; invalid action must not record decisions", pr.RecordedDecisions)
+	}
+}
+
+// TestHITLService_Resolve_EmptyAction_Returns400 covers the omitted-action case
+// (action == ""), which the same default branch must reject.
+func TestHITLService_Resolve_EmptyAction_Returns400(t *testing.T) {
+	bizID := uuid.New().String()
+	pr := newStubPendingRepo()
+	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
+	})
+	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
+
+	_, err := svc.Resolve(context.Background(), service.ResolveInput{
+		ConversationID:  "conv-1",
+		BatchID:         "batch-1",
+		ActorUserID:     uuid.New().String(),
+		ActorBusinessID: bizID,
+		Decisions: []service.DecisionInput{
+			{ID: "tc_a", Action: ""},
+		},
+	})
+
+	var aerr *service.ErrHITLInvalidAction
+	if !errors.As(err, &aerr) {
+		t.Fatalf("want ErrHITLInvalidAction, got %v", err)
+	}
+	if pr.ResolvingCounter != 0 {
+		t.Errorf("batch transitioned %d times; empty action must not consume the batch", pr.ResolvingCounter)
+	}
+}
+
 // TestHITLService_Resolve_ConcurrentResolve_ExactlyOneWins_OtherGets409 is
 // the MANDATORY anti-footgun #5 test. Two goroutines fire Resolve concurrently
 // on the same batch — exactly one must get 200 (nil error) and the other must

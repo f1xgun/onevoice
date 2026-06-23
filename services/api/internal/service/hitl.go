@@ -57,6 +57,26 @@ func (e *ErrHITLRejectReasonTooLong) Error() string {
 	return fmt.Sprintf("hitl: reject_reason too long (max %d, got %d)", e.Max, e.Got)
 }
 
+// Decision action values accepted in the resolve body. The wire shape
+// (openapi.HITLDecisionInput) carries a oneof binding tag, but the resolve
+// handler decodes with a bare json.Decoder and never runs the validator, so the
+// service is the single point that enforces the allowed set.
+const (
+	actionApprove = "approve"
+	actionEdit    = "edit"
+	actionReject  = "reject"
+)
+
+// ErrHITLInvalidAction signals a per-call action outside {approve, edit, reject}.
+// Action carries the offending value so the handler can echo it into the 400 body.
+type ErrHITLInvalidAction struct {
+	Action string
+}
+
+func (e *ErrHITLInvalidAction) Error() string {
+	return fmt.Sprintf("hitl: invalid decision action %q", e.Action)
+}
+
 // MaxRejectReasonChars caps the user-supplied reject_reason free-form text.
 // The frontend textarea enforces the same limit.
 const MaxRejectReasonChars = 500
@@ -183,17 +203,22 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 
 	for _, c := range batch.Calls {
 		d := decisionByID[c.CallID]
-		if d.Action == "edit" {
+		switch d.Action {
+		case actionApprove:
+		case actionEdit:
 			editable := s.toolsCache.EditableFields(c.ToolName)
 			if err := tools.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
 				return nil, err
 			}
-		}
-		if d.Action == "reject" && len(d.RejectReason) > MaxRejectReasonChars {
-			return nil, &ErrHITLRejectReasonTooLong{
-				Max: MaxRejectReasonChars,
-				Got: len(d.RejectReason),
+		case actionReject:
+			if len(d.RejectReason) > MaxRejectReasonChars {
+				return nil, &ErrHITLRejectReasonTooLong{
+					Max: MaxRejectReasonChars,
+					Got: len(d.RejectReason),
+				}
 			}
+		default:
+			return nil, &ErrHITLInvalidAction{Action: d.Action}
 		}
 	}
 
@@ -236,15 +261,15 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		finalized[i].EditedArgs = d.EditedArgs
 		finalized[i].RejectReason = d.RejectReason
 
-		if d.Action == "approve" || d.Action == "edit" {
+		if d.Action == actionApprove || d.Action == actionEdit {
 			floor := c.FloorAtPause
 			effective := pkghitl.Resolve(floor, businessApprovals, projectOverrides, c.ToolName)
 			if effective == domain.ToolFloorForbidden {
-				finalized[i].Verdict = "reject"
+				finalized[i].Verdict = actionReject
 				finalized[i].RejectReason = "policy_revoked"
 				result.Decisions = append(result.Decisions, ResolvedCall{
 					ID:     c.CallID,
-					Action: "reject",
+					Action: actionReject,
 					Reason: "policy_revoked",
 				})
 				continue
