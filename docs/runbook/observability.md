@@ -157,6 +157,8 @@ Maps `pkg/metrics/*.go` collectors to the Prometheus metric names that dashboard
 | pkg/metrics/sse.go | `sse_concurrency_inflight` (gauge) | — | Live SSE streams |
 | pkg/metrics/sse.go | `sse_concurrency_blocked_total` | — | SSE rejections due to back-pressure |
 | pkg/metrics/sse.go | `sse_concurrency_rollback_failed_total` | — | SSE cleanup failures |
+| pkg/metrics/sse.go | `orchestrator_streams_inflight` (gauge) | — | In-flight orchestrator SSE streams holding a global concurrency slot (process-wide cap, distinct from the per-user `sse_concurrency_*` on the api) |
+| pkg/metrics/sse.go | `orchestrator_streams_rejected_total` | — | Orchestrator SSE requests rejected with 503 because the global stream cap (`MAX_CONCURRENT_STREAMS`) was full |
 | pkg/metrics/llm.go | `llm_requests_total` | model, provider, status | LLM call count |
 | pkg/metrics/llm.go | `llm_request_duration_seconds` (histogram) | model, provider | Full request duration |
 | pkg/metrics/llm.go | `llm_first_token_latency_seconds` (histogram) | model, provider | Time-to-first-token (stream) |

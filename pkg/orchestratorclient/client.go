@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -88,6 +89,10 @@ type DraftReplyResponse struct {
 // 1 MiB — large tool_result payloads (whole-channel review batches) must fit a single line.
 const sseScannerBufferBytes = 1 << 20
 
+// maxErrorBodyBytes caps how much of a non-200 orchestrator response body is
+// read into the returned error (for logs) — the body is a tiny JSON error.
+const maxErrorBodyBytes = 512
+
 // StreamSSERequest configures a StreamSSE call. See docs/pkg/orchestratorclient.md.
 type StreamSSERequest struct {
 	ConversationID string
@@ -128,15 +133,27 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 		return err
 	}
 
+	verb := "stream chat"
+	if req.BatchID != "" {
+		verb = "stream resume"
+	}
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		verb := "stream chat"
-		if req.BatchID != "" {
-			verb = "stream resume"
-		}
 		return fmt.Errorf("orchestratorclient: %s: %w", verb, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	// A non-200 means the orchestrator rejected the stream before any SSE body
+	// (e.g. a 503 when its global stream-concurrency cap is full, or a 5xx).
+	// Return an error BEFORE committing the 200 status to the client writer, so
+	// the caller maps it to OutcomeOrchestratorUnavailable (a surfaced error)
+	// instead of a silent, successful-looking empty turn.
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		return fmt.Errorf("orchestratorclient: %s: unexpected status %d: %s",
+			verb, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
 
 	req.Writer.Header().Set("Content-Type", "text/event-stream")
 	req.Writer.Header().Set("Cache-Control", "no-cache")

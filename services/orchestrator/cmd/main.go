@@ -30,6 +30,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/mtls"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/streamlimit"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/wire"
 )
 
@@ -184,8 +185,13 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 	r.Use(chimiddleware.Recoverer)
 	r.Use(metrics.HTTPMiddleware)
 
-	r.Post("/chat/{conversationID}", h.Chat.Chat)
-	r.Post("/chat/{conversationID}/resume", h.Resume.Resume)
+	// A single limiter instance shared by both stream routes caps total
+	// concurrent SSE streams this process serves (the api caps per-user; this is
+	// the aggregate backstop). The internal tool/draft routes are not streams
+	// and are intentionally left uncapped.
+	streamLimit := streamlimit.Middleware(cfg.MaxConcurrentStreams)
+	r.With(streamLimit).Post("/chat/{conversationID}", h.Chat.Chat)
+	r.With(streamLimit).Post("/chat/{conversationID}/resume", h.Resume.Resume)
 	r.Get("/internal/tools/names", h.Tools.Names)
 	r.Get("/internal/tools", h.ToolsAll.ServeHTTP)
 	r.Post("/internal/draft-reply", h.DraftReply.ServeHTTP)
