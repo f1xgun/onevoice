@@ -42,12 +42,14 @@ const corsMaxAge = 300
 // router.Setup takes one parameter instead of four. See docs/api/routes.md
 // for the budget rationale per field.
 type RateLimits struct {
-	Register  int
-	Login     int
-	Chat      int
-	HITL      int
-	Consents  int
-	Telemetry int
+	Register    int
+	Login       int
+	Chat        int
+	HITL        int
+	Consents    int
+	Telemetry   int
+	Writes      int
+	Invitations int
 }
 
 // Handlers encapsulates all HTTP handlers consumed by Setup / SetupInternal.
@@ -188,8 +190,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Route("/businesses/{id}", func(r chi.Router) {
 				r.Use(authz.RequireBusinessAccess(authzCache, middleware.GetUserID))
 
+				// Per-user rate limits for state-changing routes. writeLimit
+				// guards routes that trigger external work (integration
+				// connect/refresh, RPA probes, review reply/refresh, business
+				// update); inviteLimit is tighter for email-sending invites.
+				writeLimit := middleware.RateLimitByUser(redisClient, rateLimits.Writes, time.Minute, "writes")
+				inviteLimit := middleware.RateLimitByUser(redisClient, rateLimits.Invitations, time.Minute, "invitations")
+
 				r.Get("/", handlers.Business.GetBusiness)
-				r.Put("/", handlers.Business.UpdateBusiness)
+				r.With(writeLimit).Put("/", handlers.Business.UpdateBusiness)
 				if handlers.BusinessDeletion != nil {
 					r.Delete("/", handlers.BusinessDeletion.Delete)
 					r.Post("/restore", handlers.BusinessDeletion.Restore)
@@ -201,7 +210,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Put("/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
 
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
-				r.Delete("/integrations/{integrationId}", handlers.Integration.DeleteIntegration)
+				r.With(writeLimit).Delete("/integrations/{integrationId}", handlers.Integration.DeleteIntegration)
 
 				r.Get("/integrations/vk/auth-url", handlers.OAuth.GetVKAuthURL)
 				r.Get("/integrations/vk/communities", handlers.OAuth.VKCommunities)
@@ -211,10 +220,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/integrations/google_business/locations", handlers.OAuth.GoogleLocations)
 
 				integWith := func() func(http.Handler) http.Handler {
-					if users == nil {
-						return passThroughMiddleware
+					base := passThroughMiddleware
+					if users != nil {
+						base = middleware.RequireVerifiedEmailDay0(users)
 					}
-					return middleware.RequireVerifiedEmailDay0(users)
+					// Integration-dispatch routes (connect / refresh / probe /
+					// companies) trigger external API calls, token storage, and
+					// RPA browser launches, so they share the per-user write
+					// budget on top of the verified-email gate.
+					return func(next http.Handler) http.Handler { return writeLimit(base(next)) }
 				}()
 				r.With(integWith).Post("/integrations/vk/connect", handlers.Connect.ConnectVK)
 				r.With(integWith).Post("/integrations/vk/{id}/refresh-name", handlers.Connect.RefreshVKCommunityName)
@@ -268,9 +282,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 
 				r.Get("/reviews", handlers.Review.ListReviews)
-				r.Post("/reviews/refresh", handlers.Review.RefreshReviews)
+				r.With(writeLimit).Post("/reviews/refresh", handlers.Review.RefreshReviews)
 				r.Get("/reviews/{id}", handlers.Review.GetReview)
-				r.Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
+				r.With(writeLimit).Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
 
 				r.Get("/posts", handlers.Post.ListPosts)
 				r.Get("/posts/{id}", handlers.Post.GetPost)
@@ -293,13 +307,13 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				if handlers.Invitations != nil {
 					if users != nil {
-						r.With(middleware.RequireVerifiedEmailDay0(users)).
+						r.With(inviteLimit, middleware.RequireVerifiedEmailDay0(users)).
 							Post("/invitations", handlers.Invitations.Create)
 					} else {
-						r.Post("/invitations", handlers.Invitations.Create)
+						r.With(inviteLimit).Post("/invitations", handlers.Invitations.Create)
 					}
 					r.Get("/invitations", handlers.Invitations.ListPending)
-					r.Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
+					r.With(writeLimit).Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
 				}
 
 				if handlers.AuditLog != nil {

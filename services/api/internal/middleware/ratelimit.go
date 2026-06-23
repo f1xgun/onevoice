@@ -89,6 +89,13 @@ func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(
 // route family (e.g. "chat", "invite_accept"). Without this, every consumer of
 // this middleware would share a single user-scoped bucket.
 func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration, scope string) func(http.Handler) http.Handler {
+	if redisClient == nil || limit <= 0 {
+		// No Redis client (tests / unconfigured) or a non-positive limit
+		// (unset budget) → rate limiting is disabled. Pass-through so the
+		// middleware can be applied unconditionally without a nil-deref, and so
+		// a forgotten/zero budget can't silently 429 every request on the route.
+		return func(next http.Handler) http.Handler { return next }
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID, ok := r.Context().Value(UserIDKey).(uuid.UUID)
