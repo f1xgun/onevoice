@@ -43,6 +43,12 @@ disabling a guard.
 | `MaxIterations` | `MAX_ITERATIONS` | `10` | Maximum LLM agent-loop iterations per turn. Soft sanity cap on runaway tool loops. |
 | `ToolExecTimeout` | `TOOL_EXEC_TIMEOUT` | `180s` | Bounds a single tool call (applied in both `executeOne` and the HITL resume dispatch). Unset falls back to the 180s default, set above the verified Yandex RPA path's internal waits + retry backoff. Set `0` to disable the per-tool deadline and let the request context govern cancellation. |
 
+### Platform tools
+
+| Field | Env | Default | Range / Semantic |
+|---|---|---|---|
+| `EnableGoogleBusiness` | `ENABLE_GOOGLE_BUSINESS` | `false` | Registers the Google Business tool set with the registry. Off by default: Google Business is unverified and hidden on the integrations UI, so leaving it on would surface its tools as approvable in Settings → Tools for a platform that can never be connected. Telegram / VK / Yandex.Business always register. **Boot error** on a non-boolean value. |
+
 ### Cost guards
 
 Documented in `.env.example` and `docs/llm-cost-guards.md`; operators tune

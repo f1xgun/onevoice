@@ -103,6 +103,13 @@ type Config struct {
 	// transborder personal-data transfer or inference is routed only to
 	// RU/self-hosted endpoints. See docs/orchestrator/config.md.
 	AllowTransborderLLM bool
+
+	// EnableGoogleBusiness gates registration of the Google Business tool set.
+	// Google Business is not an MVP platform (the agent is unverified and the
+	// platform is hidden on the integrations UI), so its tools are off by
+	// default — otherwise they surface in Settings → Tools as approvable even
+	// though the platform can never be connected.
+	EnableGoogleBusiness bool
 }
 
 // SelfHostedEndpoint holds one self-hosted LLM inference endpoint.
@@ -212,6 +219,15 @@ func Load() (*Config, error) {
 		allowTransborderLLM = b
 	}
 
+	enableGoogleBusiness := false
+	if v := os.Getenv("ENABLE_GOOGLE_BUSINESS"); v != "" {
+		b, perr := strconv.ParseBool(v)
+		if perr != nil {
+			return nil, fmt.Errorf("ENABLE_GOOGLE_BUSINESS must be a boolean, got %q: %w", v, perr)
+		}
+		enableGoogleBusiness = b
+	}
+
 	return &Config{
 		Port:               getEnv("PORT", "8090"),
 		LLMModel:           model,
@@ -243,6 +259,7 @@ func Load() (*Config, error) {
 		LocalFallbackRequestsPerHour: localFallbackRequestsPerHour,
 		LocalFallbackWindow:          localFallbackWindow,
 		AllowTransborderLLM:          allowTransborderLLM,
+		EnableGoogleBusiness:         enableGoogleBusiness,
 	}, nil
 }
 

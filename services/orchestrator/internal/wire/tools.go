@@ -51,28 +51,34 @@ func Tools(log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natsl
 		return reg, nil, nil
 	}
 
-	RegisterPlatformTools(reg, nc)
+	RegisterPlatformTools(reg, nc, cfg.EnableGoogleBusiness)
 	log.Info("registered platform tools", "nats_url", cfg.NATSUrl)
 	return reg, nc, nil
 }
 
 // RegisterPlatformTools wires NATS executors into the tool registry for each
-// MVP agent. MVP platforms: Telegram (API), VK (API), Yandex.Business (RPA),
-// Google Business (API). Each platform's tool list lives in a sibling
-// tools_{platform}.go file to keep individual files under the 500-LOC
+// platform agent. MVP platforms: Telegram (API), VK (API), Yandex.Business
+// (RPA). Google Business is gated behind enableGoogleBusiness (off by default)
+// because it is unverified and hidden on the integrations UI — registering its
+// tools unconditionally surfaces them as approvable in Settings → Tools for a
+// platform that can never be connected. Each platform's tool list lives in a
+// sibling tools_{platform}.go file to keep individual files under the 500-LOC
 // budget; this dispatcher is the single registration entry point.
 //
 // Floor + EditableFields live on each spec — see toolregistry.ToolSpec for
 // the policy rubric.
-func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
-	agents := []struct {
+func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn, enableGoogleBusiness bool) {
+	type platformAgent struct {
 		id    a2a.AgentID
 		tools []toolregistry.ToolSpec
-	}{
+	}
+	agents := []platformAgent{
 		{id: a2a.AgentTelegram, tools: telegramTools()},
 		{id: a2a.AgentVK, tools: vkTools()},
 		{id: a2a.AgentYandexBusiness, tools: yandexTools()},
-		{id: a2a.AgentGoogleBusiness, tools: googleTools()},
+	}
+	if enableGoogleBusiness {
+		agents = append(agents, platformAgent{id: a2a.AgentGoogleBusiness, tools: googleTools()})
 	}
 
 	conn := natsexec.NewNATSConn(nc)
