@@ -10,6 +10,7 @@ import { useAuthStore } from '@/lib/auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import { conversationsQueryKey } from '@/hooks/useConversations';
 import { API_BASE_URL, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { authFetch } from '@/lib/api/authFetch';
 import { applySSEEvent, consumeSSEStream } from '@/lib/sse';
 import { trackEvent } from '@/lib/telemetry';
 import { useResolveErrorMap } from '@/lib/resolveErrorMap';
@@ -221,11 +222,17 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     };
 
     const load = async (isInitial: boolean): Promise<void> => {
+      // Wait for the access token before the first load; the layout-mount
+      // refresh sets it shortly after mount and the effect re-runs (token is
+      // a dependency). authFetch then handles any mid-session 401 by
+      // refreshing the token and replaying the request.
+      if (!accessToken) {
+        if (isInitial) setIsLoading(false);
+        return;
+      }
       let payload: MessagesPayload | null = null;
       try {
-        const r = await fetch(messagesUrl(activeBusinessId, conversationId), {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const r = await authFetch(messagesUrl(activeBusinessId, conversationId));
         payload = r.ok ? ((await r.json()) as MessagesPayload) : null;
       } catch {
         payload = null;
@@ -383,12 +390,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       sendAbortRef.current = controller;
 
       try {
-        const response = await fetch(chatUrl(activeBusinessId, conversationId), {
+        const response = await authFetch(chatUrl(activeBusinessId, conversationId), {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: text, locale }),
           signal: controller.signal,
         });
@@ -410,7 +414,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         isStreamingRef.current = false;
       }
     },
-    [conversationId, accessToken, activeBusinessId, finalizeStreamingAssistant, tCommon, locale]
+    [conversationId, activeBusinessId, finalizeStreamingAssistant, tCommon, locale]
   );
 
   const stop = useCallback(() => {
@@ -443,14 +447,11 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
       let resolveRes: Response;
       try {
-        resolveRes = await fetch(
+        resolveRes = await authFetch(
           pendingResolveUrl(activeBusinessId, conversationId, pendingApproval.batchId),
           {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ decisions: sanitizedDecisions }),
           }
         );
@@ -490,11 +491,10 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       let sawNextApproval = false;
 
       try {
-        const resumeRes = await fetch(
+        const resumeRes = await authFetch(
           chatResumeUrl(activeBusinessId, conversationId, pendingApproval.batchId),
           {
             method: 'POST',
-            headers: { Authorization: `Bearer ${accessToken}` },
             signal: controller.signal,
           }
         );
@@ -517,7 +517,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     },
     [
       conversationId,
-      accessToken,
       activeBusinessId,
       pendingApproval,
       tCommonErrors,

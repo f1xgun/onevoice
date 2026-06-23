@@ -8,10 +8,10 @@
 //
 // All POSTs include credentials:'include' so the backend's Origin CSRF
 // guard (mirrors user_deletion.go shape per 22-01 SUMMARY line 151)
-// accepts the request. Authorization header comes from the in-memory
-// access token (refreshed by the silent-refresh flow on layout mount).
+// accepts the request. authFetch attaches the in-memory access token and
+// transparently refreshes it on a 401 (shared single-flight).
 
-import { useAuthStore } from '@/lib/auth';
+import { authFetch } from '@/lib/api/authFetch';
 import type { PolicySlug } from '@/lib/legal/versions';
 
 const HTTP_NO_CONTENT = 204;
@@ -43,14 +43,6 @@ export interface ConsentError {
   message?: string;
 }
 
-function authHeaders(extra: HeadersInit = {}): HeadersInit {
-  const token = useAuthStore.getState().accessToken;
-  return {
-    ...extra,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
 /**
  * postReconsent sends POST /api/v1/auth/consents with the per-policy
  * version+sha256 array. Returns void on 204 success. Throws a
@@ -58,9 +50,9 @@ function authHeaders(extra: HeadersInit = {}): HeadersInit {
  * (409 version_mismatch → toast + reload).
  */
 export async function postReconsent(policies: ConsentPolicy[]): Promise<void> {
-  const res = await fetch('/api/v1/auth/consents', {
+  const res = await authFetch('/api/v1/auth/consents', {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ policies }),
   });
@@ -85,9 +77,8 @@ export async function postReconsent(policies: ConsentPolicy[]): Promise<void> {
  * UI-SPEC §F edge case.
  */
 export async function withdrawPDN(): Promise<void> {
-  const res = await fetch('/api/v1/users/me/consents/pdn/withdraw', {
+  const res = await authFetch('/api/v1/users/me/consents/pdn/withdraw', {
     method: 'POST',
-    headers: authHeaders(),
     credentials: 'include',
   });
 
@@ -109,8 +100,7 @@ export async function withdrawPDN(): Promise<void> {
  * Surface F (WithdrawalPanel).
  */
 export async function listMyConsents(): Promise<ConsentRecord[]> {
-  const res = await fetch('/api/v1/users/me/consents', {
-    headers: authHeaders(),
+  const res = await authFetch('/api/v1/users/me/consents', {
     credentials: 'include',
   });
   if (!res.ok) {
