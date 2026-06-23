@@ -104,7 +104,11 @@ func BuildRateLimiter(cfg *config.Config, log *slog.Logger, rdb *redis.Client, s
 
 	opts := []llm.RateLimiterOption{}
 	if spender != nil {
-		opts = append(opts, llm.WithDailySpender(spender))
+		// Cache the per-business reading: the gate consults it once per LLM
+		// iteration (up to MaxIterations per turn), each otherwise an HTTP call
+		// to the api plus a PG SUM. A short TTL keeps the daily cap effective
+		// while collapsing a turn's fan-out to one lookup per business per window.
+		opts = append(opts, llm.WithDailySpender(llm.NewCachedDailySpender(spender, 0)))
 	}
 
 	switch cfg.RedisDownPolicy {
