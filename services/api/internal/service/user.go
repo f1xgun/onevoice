@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/trustelem/zxcvbn"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
@@ -30,6 +31,11 @@ const (
 	// 72 is the bcrypt silent-truncation boundary; 8 is the conventional lower bound.
 	passwordMinLen = 8
 	passwordMaxLen = 72
+	// passwordMinZxcvbnScore is the floor for the zxcvbn strength estimate
+	// (0..4). 2 = "somewhat guessable, protection from throttled online
+	// attack" — adequate given login lockout/captcha, while still rejecting
+	// top-dictionary and keyboard-walk passwords.
+	passwordMinZxcvbnScore = 2
 )
 
 // RegistrationContext carries the per-request context needed by the atomic-Register flow.
@@ -462,13 +468,20 @@ func validateEmail(email string) error {
 	return nil
 }
 
-// validatePassword checks if password meets security requirements
+// validatePassword checks if password meets security requirements: a length
+// band plus a zxcvbn strength floor. A too-short password is reported as
+// ErrPasswordTooWeak so the handlers map it consistently; a too-long password
+// (the frontend zod schema caps at 72, so it is never hit from the UI) keeps
+// its descriptive error since it is not "weak".
 func validatePassword(password string) error {
 	if len(password) < passwordMinLen {
-		return fmt.Errorf("password must be at least %d characters", passwordMinLen)
+		return ErrPasswordTooWeak
 	}
 	if len(password) > passwordMaxLen {
 		return fmt.Errorf("password must be at most %d characters", passwordMaxLen)
+	}
+	if zxcvbn.PasswordStrength(password, nil).Score < passwordMinZxcvbnScore {
+		return ErrPasswordTooWeak
 	}
 	return nil
 }

@@ -313,7 +313,7 @@ func TestPasswordResetService_ConfirmReset_ShortPassword_ReturnsTooWeak_DoesNotC
 
 func TestPasswordResetService_ConfirmReset_EmptyToken_ReturnsInvalid(t *testing.T) {
 	svc := &PasswordResetService{}
-	err := svc.ConfirmReset(context.Background(), "", "newpassword456", "1.2.3.4", "ua")
+	err := svc.ConfirmReset(context.Background(), "", "Zx9!mK7-qP2w", "1.2.3.4", "ua")
 	require.ErrorIs(t, err, ErrResetTokenInvalid)
 }
 

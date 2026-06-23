@@ -1521,7 +1521,7 @@
       "errors": {
         "invalid": "This link is no longer valid. Please request a new one.",
         "expired": "This link has expired. Please request a new one.",
-        "weakPassword": "Password too short — minimum 8 characters.",
+        "weakPassword": "Password is too weak — use at least 8 characters and choose something less predictable.",
         "requestNewCta": "Request a new link"
       }
     },
