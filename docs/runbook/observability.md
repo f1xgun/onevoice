@@ -178,6 +178,9 @@ Maps `pkg/metrics/*.go` collectors to the Prometheus metric names that dashboard
 | pkg/metrics/llm_billing.go | `llm_billing_*` | (existing) | Cost accounting |
 | (Prometheus built-in) | `up` | job, instance | 1 if last scrape succeeded |
 | (pushgateway, Phase 23) | `backup_last_success_timestamp` | (preserved labels) | Unix epoch of last backup success |
+| pkg/metrics/sweepers.go | `sweeper_runs_total` | sweeper, result | Background deletion/warning sweeper passes (sweeper: account_hard_delete, business_hard_delete, deletion_warning; result: ok, error) |
+| pkg/metrics/sweepers.go | `sweeper_items_processed_total` | sweeper | Items acted upon (users/orgs hard-deleted, T-7 warning mails enqueued) |
+| pkg/metrics/sweepers.go | `sweeper_last_success_timestamp` (gauge) | sweeper | Unix epoch of last error-free sweeper pass; seeded at startup so a never-succeeding sweeper still ages past the `*SweeperStalled` threshold |
 
 ### Label discipline
 

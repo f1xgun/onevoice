@@ -21,6 +21,7 @@ rules below.
 | `step`      | RPA step name hard-coded at the call site (`listCompanies`, `getInfo`, `getReviews`, `replyReview`, …)        | finite — never derive from runtime variables                         |
 | `outcome`   | `chatturn.TurnOutcome.String()` set (`done`, `error`, `pause_hitl`, `reemitted_approval`, `rejoined_resume`, `orchestrator_unavailable`, `missing_message`, `business_not_found`, `inline_error`, `unknown`) | closed set — part of the chat-turn observability contract            |
 | `decision`  | `approve`, `edit`, `reject`, `other`                                                                          | closed set — effective HITL verdict; `other` catches any unvalidated action string |
+| `sweeper`   | `account_hard_delete`, `business_hard_delete`, `deletion_warning`                                              | closed set — background-sweeper name, hard-coded at the call site (see sweepers.go) |
 
 ## Banlist (NEVER use as labels)
 

@@ -1,0 +1,89 @@
+groups:
+  - name: sweepers
+    rules:
+      # --- Deletion / warning sweepers (services/api/cmd/main.go) ---
+      # Stall detection uses sweeper_last_success_timestamp, which is seeded at
+      # process start, so a sweeper that never completes a pass still ages past
+      # the threshold and fires (the absent() disjunct covers the sweeper never
+      # being wired at all). Thresholds are ~3 missed ticks.
+
+      - alert: AccountHardDeleteSweeperStalled
+        expr: |
+          (time() - sweeper_last_success_timestamp{sweeper="account_hard_delete"}) > 10800
+            or absent(sweeper_last_success_timestamp{sweeper="account_hard_delete"})
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Account hard-delete sweeper has not succeeded in >3h"
+          description: "The hourly 152-FZ user hard-delete sweeper has not completed an error-free pass in over 3h. Accounts past the 30-day grace are not being purged. Check api logs for 'sweeper failed' (sweeper=account_hard_delete) and PostgreSQL health. See docs/runbook/observability.md."
+
+      - alert: BusinessHardDeleteSweeperStalled
+        expr: |
+          (time() - sweeper_last_success_timestamp{sweeper="business_hard_delete"}) > 10800
+            or absent(sweeper_last_success_timestamp{sweeper="business_hard_delete"})
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Business hard-delete sweeper has not succeeded in >3h"
+          description: "The hourly organization hard-delete sweeper has not completed an error-free pass in over 3h. Organizations past the 30-day grace are not being purged. Check api logs for 'sweeper failed' (sweeper=business_hard_delete) and PostgreSQL health. See docs/runbook/observability.md."
+
+      - alert: DeletionWarningSweeperStalled
+        expr: |
+          (time() - sweeper_last_success_timestamp{sweeper="deletion_warning"}) > 54000
+            or absent(sweeper_last_success_timestamp{sweeper="deletion_warning"})
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "T-7 deletion-warning sweeper has not succeeded in >15h"
+          description: "The 6-hourly T-7 deletion-warning sweeper has not completed an error-free pass in over 15h. Users may reach hard-delete without the mandated 7-day warning email. Check api logs for 'sweeper failed' (sweeper=deletion_warning) and email_outbox health. See docs/runbook/observability.md."
+
+      - alert: SweeperErrors
+        expr: |
+          sum by (sweeper) (increase(sweeper_runs_total{result="error"}[6h])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sweeper {{ $labels.sweeper }} reported errors"
+          description: "Sweeper {{ $labels.sweeper }} returned an error on at least one pass in the last 6h. The sweeper itself retries on the next tick; this warning stays up for the 6h window and clears once no further error occurs. A sustained error rate (the sweeper never succeeds) trips the matching *Stalled critical alert. See docs/runbook/observability.md."
+
+      # --- Retention / purge sweepers (internal/wire) ---
+      # These already emit their own {result=ok|locked|error} counters and sweep
+      # ~60s after startup, so a counter-window check is deploy-safe. A healthy
+      # multi-replica fleet emits ok (lock winner) + locked (losers) every 24h.
+
+      - alert: AuditRetentionSweepStalled
+        expr: |
+          sum(increase(audit_logs_retention_runs_total{result=~"ok|locked"}[50h])) == 0
+            or absent(audit_logs_retention_runs_total{result="ok"})
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit-log retention sweep has not run in >2 days"
+          description: "No audit_logs retention pass (ok or locked) completed across the fleet in 50h. Audit rows past the 365-day retention are not being deleted. Check api logs and the pg_try_advisory_lock path. See docs/runbook/observability.md."
+
+      - alert: IntegrationsPurgeSweepStalled
+        expr: |
+          sum(increase(integrations_purge_runs_total{result=~"ok|locked"}[50h])) == 0
+            or absent(integrations_purge_runs_total{result="ok"})
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Integrations purge sweep has not run in >2 days"
+          description: "No integrations purge pass (ok or locked) completed across the fleet in 50h. Soft-deleted integrations past the 90-day retention are not being hard-deleted. Check api logs and the pg_try_advisory_lock path. See docs/runbook/observability.md."
+
+      - alert: RetentionPurgeSweepErrors
+        expr: |
+          sum(increase(audit_logs_retention_runs_total{result="error"}[26h])) > 0
+            or sum(increase(integrations_purge_runs_total{result="error"}[26h])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Retention/purge sweep reported errors"
+          description: "An audit-retention or integrations-purge pass errored in the last 26h. The sweep retries on the next 24h tick; this warning stays up for the 26h window and clears once no further error occurs. Sustained errors (the sweep never succeeds) trip the matching *Stalled critical alert. See docs/runbook/observability.md."

@@ -15,9 +15,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
-	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/wire"
 )
 
@@ -90,12 +90,15 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
 
 	if svcs.AccountDeletion != nil {
-		go runHardDeleteSweeper(ctx, log, svcs.AccountDeletion)
-		go runDeletionWarningSweeper(ctx, log, svcs.AccountDeletion)
+		metrics.MarkSweeperSuccess(metrics.SweeperAccountHardDelete)
+		metrics.MarkSweeperSuccess(metrics.SweeperDeletionWarning)
+		go runSweeper(ctx, log, metrics.SweeperAccountHardDelete, accountHardDeleteTick, svcs.AccountDeletion.HardDeleteSweeper)
+		go runSweeper(ctx, log, metrics.SweeperDeletionWarning, deletionWarningTick, svcs.AccountDeletion.WarningSweeper)
 	}
 
 	if svcs.BusinessDeletion != nil {
-		go runBusinessHardDeleteSweeper(ctx, log, svcs.BusinessDeletion)
+		metrics.MarkSweeperSuccess(metrics.SweeperBusinessHardDelete)
+		go runSweeper(ctx, log, metrics.SweeperBusinessHardDelete, businessHardDeleteTick, svcs.BusinessDeletion.HardDeleteSweeper)
 	}
 
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)
@@ -199,96 +202,49 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	return nil
 }
 
-// runHardDeleteSweeper —. Hourly cron entry
-// that hard-deletes users whose deletion_requested_at < NOW - 30d.
-// The 30-day grace is forgiving of an hour of cadence imprecision.
-//
-// Each batch is processed in its own service-level TX via FOR UPDATE
-// SKIP LOCKED so concurrent CancelDeletion calls can race-win the row.
-// Per-user errors are logged but do NOT abort the sweeper — the rest
-// of the batch still attempts (T-DEL-12).
-//
-// Lifecycle bound to ctx (signal.NotifyContext-derived) so SIGTERM
-// cancels the ticker cleanly.
-func runHardDeleteSweeper(ctx context.Context, log *slog.Logger, svc *service.AccountDeletionService) {
-	const tickInterval = 1 * time.Hour
-	ticker := time.NewTicker(tickInterval)
-	defer ticker.Stop()
-	log.InfoContext(ctx, "hard delete sweeper: starting", "interval", tickInterval.String())
-	for {
-		select {
-		case <-ctx.Done():
-			log.InfoContext(ctx, "hard delete sweeper: stopping")
-			return
-		case <-ticker.C:
-			processed, err := svc.HardDeleteSweeper(ctx)
-			if err != nil {
-				log.WarnContext(ctx, "hard delete sweeper failed", "err", err)
-				continue
-			}
-			if processed > 0 {
-				log.InfoContext(ctx, "hard delete sweeper completed", "processed", processed)
-			}
-		}
-	}
-}
+// Sweeper cadences. The hard-delete sweepers run hourly — the 30-day grace
+// before a user/org row is purged is forgiving of an hour of imprecision. The
+// deletion-warning sweeper runs every 6h; its 1h-wide T-7 scan window means a
+// warning email is still sent even across a multi-hour sweeper outage. Each
+// sweep is idempotent (hard-deletes use FOR UPDATE SKIP LOCKED; warnings dedupe
+// via ExistsBySubjectAndRecipient).
+const (
+	accountHardDeleteTick  = 1 * time.Hour
+	businessHardDeleteTick = 1 * time.Hour
+	deletionWarningTick    = 6 * time.Hour
+)
 
-// runBusinessHardDeleteSweeper hard-deletes organizations whose
-// deletion_requested_at < NOW - 30d. Hourly cadence (forgiving of an hour of
-// imprecision against the 30-day grace). Each batch runs in its own service-level
-// TX via FOR UPDATE SKIP LOCKED so concurrent CancelDeletion calls can race-win
-// the row. Lifecycle bound to ctx so SIGTERM cancels the ticker cleanly.
-func runBusinessHardDeleteSweeper(ctx context.Context, log *slog.Logger, svc *service.BusinessDeletionService) {
-	const tickInterval = 1 * time.Hour
-	ticker := time.NewTicker(tickInterval)
-	defer ticker.Stop()
-	log.InfoContext(ctx, "business hard delete sweeper: starting", "interval", tickInterval.String())
-	for {
-		select {
-		case <-ctx.Done():
-			log.InfoContext(ctx, "business hard delete sweeper: stopping")
-			return
-		case <-ticker.C:
-			processed, err := svc.HardDeleteSweeper(ctx)
-			if err != nil {
-				log.WarnContext(ctx, "business hard delete sweeper failed", "err", err)
-				continue
-			}
-			if processed > 0 {
-				log.InfoContext(ctx, "business hard delete sweeper completed", "processed", processed)
-			}
-		}
-	}
-}
+// sweeperFunc runs one sweep pass and returns the number of items acted upon.
+// AccountDeletionService.HardDeleteSweeper/WarningSweeper and
+// BusinessDeletionService.HardDeleteSweeper all satisfy it.
+type sweeperFunc func(ctx context.Context) (int, error)
 
-// runDeletionWarningSweeper —. Every 6h
-// it scans the T-7 window (22d23h..23d ago) and enqueues a warning
-// email per user, deduped via ExistsBySubjectAndRecipient. The 1h-wide
-// sweep window with 6h cadence guarantees coverage — no T-7 email
-// missed even with a 5h sweeper outage (T-DEL-08).
-//
-// This sweeper is the safety net for the request-time deferred enqueue
-// (RequestDeletion calls EnqueueDeferred at +23d). If that deferred
-// row is missing (e.g. lost across a cancel→re-request churn), this
-// sweeper recovers within 6 hours.
-func runDeletionWarningSweeper(ctx context.Context, log *slog.Logger, svc *service.AccountDeletionService) {
-	const tickInterval = 6 * time.Hour
-	ticker := time.NewTicker(tickInterval)
+// runSweeper drives a background sweeper: one pass per tick, each observed via
+// the sweeper_* metrics so a wedged compliance-critical job is alertable
+// (sweeper_last_success_timestamp ages past its staleness threshold). Per-pass
+// errors are logged and metric'd but never abort the loop — the next tick
+// retries. Lifecycle is bound to ctx so SIGTERM cancels the ticker cleanly.
+func runSweeper(ctx context.Context, log *slog.Logger, name string, interval time.Duration, fn sweeperFunc) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	log.InfoContext(ctx, "deletion warning sweeper: starting", "interval", tickInterval.String())
+	log.InfoContext(ctx, "sweeper starting", "sweeper", name, "interval", interval.String())
 	for {
 		select {
 		case <-ctx.Done():
-			log.InfoContext(ctx, "deletion warning sweeper: stopping")
+			log.InfoContext(ctx, "sweeper stopping", "sweeper", name)
 			return
 		case <-ticker.C:
-			enqueued, err := svc.WarningSweeper(ctx)
+			n, err := fn(ctx)
 			if err != nil {
-				log.WarnContext(ctx, "deletion warning sweeper failed", "err", err)
+				metrics.IncSweeperRun(name, metrics.SweeperResultError)
+				log.WarnContext(ctx, "sweeper failed", "sweeper", name, "err", err)
 				continue
 			}
-			if enqueued > 0 {
-				log.InfoContext(ctx, "deletion warning sweeper enqueued T-7 mails", "count", enqueued)
+			metrics.IncSweeperRun(name, metrics.SweeperResultOK)
+			metrics.MarkSweeperSuccess(name)
+			if n > 0 {
+				metrics.AddSweeperItems(name, n)
+				log.InfoContext(ctx, "sweeper completed", "sweeper", name, "processed", n)
 			}
 		}
 	}

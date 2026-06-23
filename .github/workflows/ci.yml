@@ -467,7 +467,9 @@ jobs:
                        /o/prometheus/alerts/rpa.yml \
                        /o/prometheus/alerts/dbpool.yml \
                        /o/prometheus/alerts/fleet.yml \
-                       /o/prometheus/alerts/backup.yml
+                       /o/prometheus/alerts/backup.yml \
+                       /o/prometheus/alerts/email.yml \
+                       /o/prometheus/alerts/sweepers.yml
 
       - name: promtool check config
         run: |
