@@ -33,9 +33,14 @@ let inFlightRefresh: Promise<string> | null = null;
 
 // refreshAccessToken POSTs /auth/refresh and updates the auth store with the
 // new access token. Concurrent callers share the single in-flight request,
-// so the refresh cookie is rotated exactly once. On failure it logs out and
-// redirects to /login, then rejects so callers can stop their own work
-// (abort an SSE reconnect loop, surface an error).
+// so the refresh cookie is rotated exactly once. It always rejects on
+// failure so callers can stop their own work (abort an SSE reconnect loop,
+// surface an error), but only logs the user out + redirects to /login when
+// the failure is session-terminal — a 401 from /auth/refresh, i.e. the
+// refresh cookie itself is invalid. A transient failure (network flap, or
+// the backend's 500 on a Redis/DB blip) must NOT log the user out of an
+// otherwise-valid session: the caller fails quietly and retries (e.g. the
+// tasks stream reconnects with backoff).
 export function refreshAccessToken(): Promise<string> {
   if (inFlightRefresh) return inFlightRefresh;
 
@@ -54,9 +59,12 @@ export function refreshAccessToken(): Promise<string> {
       }
       return data.accessToken;
     } catch (err) {
-      useAuthStore.getState().logout();
-      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === HTTP_STATUS.UNAUTHORIZED) {
+        useAuthStore.getState().logout();
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
       }
       throw err;
     } finally {

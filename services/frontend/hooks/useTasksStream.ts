@@ -43,13 +43,17 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
         if (!response.ok || !response.body) {
           throw new Error(`HTTP ${response.status}`);
         }
-        reconnectAttempt = 0;
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
         while (!cancelled) {
           const { done, value } = await reader.read();
           if (done) break;
+          // Receiving any bytes (an event or a heartbeat ping) means the
+          // stream is genuinely live — only now reset the reconnect backoff,
+          // so an accept-then-immediate-drop keeps backing off instead of
+          // hot-looping every 2s.
+          reconnectAttempt = 0;
           buffer += decoder.decode(value, { stream: true });
           const chunks = buffer.split('\n\n');
           buffer = chunks.pop() ?? '';

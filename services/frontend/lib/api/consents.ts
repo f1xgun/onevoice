@@ -2,9 +2,13 @@
 // endpoints (mirrors the shape of lib/api/account.ts).
 //
 // Endpoints (contract):
-// POST /api/v1/auth/consents                        → 204 / 409 / 401 / 423
-// POST /api/v1/users/me/consents/pdn/withdraw       → 204 / 423
+// POST /api/v1/auth/consents                        → 204 / 400 / 409 / 403
+// POST /api/v1/users/me/consents/pdn/withdraw       → 204 / 423 / 403 / 404
 // GET  /api/v1/users/me/consents                    → { consents: ConsentRecord[] }
+//
+// None of these endpoints emits a business-logic 401 — a 401 here only ever
+// comes from the auth middleware (the access token expired), so routing them
+// through authFetch (which refreshes on 401) is safe.
 //
 // All POSTs include credentials:'include' so the backend's Origin CSRF
 // guard (mirrors user_deletion.go shape per 22-01 SUMMARY line 151)

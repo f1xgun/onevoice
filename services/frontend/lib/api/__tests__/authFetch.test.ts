@@ -97,16 +97,31 @@ describe('authFetch', () => {
     expect(h.setAccessToken).not.toHaveBeenCalled();
   });
 
-  it('logs out and returns the original 401 when the refresh fails', async () => {
+  it('logs out and returns the original 401 when the refresh itself 401s (dead cookie)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(resp(401, { code: 'unauthorized' }));
     vi.stubGlobal('fetch', fetchMock);
-    axiosH.post.mockRejectedValue(new Error('refresh failed'));
+    // axios surfaces the /auth/refresh 401 as an error with `response.status`.
+    axiosH.post.mockRejectedValue({ response: { status: 401 } });
 
     const res = await authFetch('/api/v1/x');
 
     expect(res.status).toBe(401);
     expect(h.logout).toHaveBeenCalledTimes(1);
     // No retry — the request was attempted exactly once.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT log out on a transient refresh failure (network / 5xx)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(resp(401, { code: 'unauthorized' }));
+    vi.stubGlobal('fetch', fetchMock);
+    // A backend 500 (Redis/DB blip) — not session-terminal. Also covers a
+    // bare network error (no `response` at all).
+    axiosH.post.mockRejectedValue({ response: { status: 500 } });
+
+    const res = await authFetch('/api/v1/x');
+
+    expect(res.status).toBe(401);
+    expect(h.logout).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
