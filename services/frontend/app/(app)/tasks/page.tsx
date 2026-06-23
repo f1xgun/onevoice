@@ -42,6 +42,7 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyTasks } from '@/components/states';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { cn } from '@/lib/utils';
 
 // Background poll cadence for the tasks list. SSE drives realtime updates;
@@ -58,7 +59,12 @@ export default function TasksPage() {
   const tHeader = useTranslations('tasks');
   const tStats = useTranslations('tasks.stats');
 
-  const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
+  const {
+    data: tasks = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<AgentTask[]>({
     queryKey: QUERY_KEYS.BUSINESS_TASKS(activeBusinessId),
     queryFn: () =>
       bizApi(activeBusinessId!)
@@ -129,7 +135,9 @@ export default function TasksPage() {
 
       {/* Task list */}
       <div className="px-4 pb-16 sm:px-12">
-        {isLoading ? (
+        {isError ? (
+          <ListLoadError onRetry={refetch} />
+        ) : isLoading ? (
           <TaskListSkeleton />
         ) : tasks.length === 0 ? (
           <EmptyTasks />

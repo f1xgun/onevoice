@@ -47,6 +47,7 @@ import {
 import { SkeletonMetricStrip } from '@/components/states';
 import { cn } from '@/lib/utils';
 import { DataTable, type Column } from '@/components/lists/DataTable';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { useDataTableFilters } from '@/hooks/useDataTableFilters';
 import { useDataTableSearch } from '@/hooks/useDataTableSearch';
 import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
@@ -97,7 +98,12 @@ export default function PostsPage() {
     defaultValue: { status: 'all', platform: 'all' },
   });
 
-  const { data: posts = [], isLoading } = useQuery<Post[]>({
+  const {
+    data: posts = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<Post[]>({
     queryKey: ['businesses', activeBusinessId, 'posts', filters.status, filters.platform],
     queryFn: () => {
       const qs = queryString();
@@ -318,17 +324,21 @@ export default function PostsPage() {
             the row scroll horizontally rather than collapsing columns,
             since each (status / platforms / date) carries information the
             operator scans at a glance. */}
-        <DataTable<Post>
-          columns={postColumns}
-          rows={visibleRows}
-          rowKey={(p) => p.id}
-          gridTemplate={POSTS_GRID_TEMPLATE}
-          minWidth={POSTS_MIN_WIDTH}
-          isLoading={isLoading}
-          skeleton={<PostsSkeleton />}
-          empty={<PostsEmpty search={query} onResetSearch={() => setQuery('')} />}
-          expandable={(post) => <ExpandedPanel post={post} />}
-        />
+        {isError ? (
+          <ListLoadError onRetry={refetch} />
+        ) : (
+          <DataTable<Post>
+            columns={postColumns}
+            rows={visibleRows}
+            rowKey={(p) => p.id}
+            gridTemplate={POSTS_GRID_TEMPLATE}
+            minWidth={POSTS_MIN_WIDTH}
+            isLoading={isLoading}
+            skeleton={<PostsSkeleton />}
+            empty={<PostsEmpty search={query} onResetSearch={() => setQuery('')} />}
+            expandable={(post) => <ExpandedPanel post={post} />}
+          />
+        )}
       </div>
     </>
   );

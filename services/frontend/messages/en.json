@@ -263,6 +263,8 @@
     "loading": "Loading…",
     "open": "Open",
     "edit": "Edit",
+    "loadError": "Couldn't load the data. Refresh the page or try again.",
+    "retry": "Retry",
     "toasts": {
       "languageSwitchFailed": "Couldn't switch language — please try again"
     },

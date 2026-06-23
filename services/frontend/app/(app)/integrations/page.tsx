@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyChannels, SkeletonChannels } from '@/components/states';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
@@ -129,7 +130,12 @@ export default function IntegrationsPage() {
     }
   }, [searchParams, qc, activeBusinessId, tIntegrations]);
 
-  const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
+  const {
+    data: integrations = [],
+    isLoading: integrationsLoading,
+    isError: integrationsError,
+    refetch: refetchIntegrations,
+  } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
     queryFn: () =>
       bizApi(activeBusinessId!)
@@ -229,7 +235,11 @@ export default function IntegrationsPage() {
         )}
 
         <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
-        {integrationsLoading ? (
+        {integrationsError ? (
+          <div className="mb-8">
+            <ListLoadError onRetry={refetchIntegrations} />
+          </div>
+        ) : integrationsLoading ? (
           <div className="mb-8">
             <SkeletonChannels count={3} />
           </div>
