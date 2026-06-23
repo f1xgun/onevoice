@@ -336,6 +336,8 @@
     },
     "window": {
       "helpPrompt": "How can I help?",
+      "connectChannelHint": "Connect a channel so I can publish posts, update info, and reply to reviews.",
+      "connectChannel": "Connect a channel",
       "moveError": "Couldn't move the chat",
       "messagePlaceholder": "Type a message…",
       "sendAria": "Send",
