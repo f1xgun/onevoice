@@ -529,6 +529,25 @@ func (c *Config) IsProduction() bool {
 	return strings.EqualFold(strings.TrimSpace(c.AppEnv), "production")
 }
 
+// RequireInternalMTLS returns a fatal boot error when the internal listener —
+// which serves the decrypted-token endpoint — would run over plain HTTP in a
+// context that demands mTLS. mTLS is mandatory in production, and in any
+// deployment that wraps tokens with KMS (a production-grade posture): without
+// it, the platform ACL middleware degrades a missing client cert to the
+// "system" identity, leaving the decrypted-token endpoint reachable over plain
+// HTTP by anyone who can route to the port. tlsConfigured reports whether
+// MaybeServerTLSConfig returned a non-nil *tls.Config. Dev (non-prod, no KMS)
+// is unaffected and may serve the internal listener over plain HTTP.
+func (c *Config) RequireInternalMTLS(tlsConfigured bool) error {
+	if tlsConfigured {
+		return nil
+	}
+	if c.IsProduction() || c.TokenEncryptionKMSKeyID != "" {
+		return fmt.Errorf("internal listener: mTLS is required but not configured — the decrypted-token endpoint must not be served over plain HTTP in production or with KMS enabled; set ONEVOICE_MTLS_ENABLED=true with the mTLS cert paths (run `make mtls-certs`; see docs/security.md)")
+	}
+	return nil
+}
+
 // getEnv returns the env var or defaultValue when unset / empty.
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {

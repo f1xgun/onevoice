@@ -155,6 +155,9 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	if mtlsErr != nil {
 		return fmt.Errorf("internal server tls: %w", mtlsErr)
 	}
+	if err := cfg.RequireInternalMTLS(internalTLS != nil); err != nil {
+		return err
+	}
 	if internalTLS != nil {
 		internalSrv.TLSConfig = internalTLS
 	}
