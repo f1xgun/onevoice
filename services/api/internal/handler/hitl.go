@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -278,6 +279,7 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	// never wrote it back, stranding the message at pending_approval and bricking
 	// the conversation with turn_already_in_progress on the next message.
 	outcome, streamErr := h.resumer.ResumeApproved(r.Context(), w, conversationID, batchID, raw)
+	metrics.IncChatTurn(outcome.String())
 	if outcome == chatturn.OutcomeOrchestratorUnavailable {
 		slog.ErrorContext(r.Context(), "resume: orchestrator request failed", "error", streamErr)
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")

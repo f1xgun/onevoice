@@ -15,6 +15,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/pkg/ssecounter"
@@ -200,6 +201,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	outcome, err := h.turn.Run(r.Context(), w, req, nil)
+	metrics.IncChatTurn(outcome.String())
 	switch outcome {
 	case chatturn.OutcomeMissingMessage:
 		writeJSONError(w, http.StatusBadRequest, "message is required")

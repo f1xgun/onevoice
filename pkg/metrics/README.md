@@ -19,6 +19,8 @@ rules below.
 | `tool_name` | `{platform}__{action}` tool-registry IDs                                                                      | finite (~20)                                                         |
 | `agent_id`  | `telegram`, `vk`, `yandex_business`, `google_business`                                                        | closed set                                                           |
 | `step`      | RPA step name hard-coded at the call site (`listCompanies`, `getInfo`, `getReviews`, `replyReview`, …)        | finite — never derive from runtime variables                         |
+| `outcome`   | `chatturn.TurnOutcome.String()` set (`done`, `error`, `pause_hitl`, `reemitted_approval`, `rejoined_resume`, `orchestrator_unavailable`, `missing_message`, `business_not_found`, `inline_error`) | closed set — part of the chat-turn observability contract            |
+| `decision`  | `approve`, `edit`, `reject`                                                                                   | closed set — effective HITL verdict after policy re-evaluation        |
 
 ## Banlist (NEVER use as labels)
 
