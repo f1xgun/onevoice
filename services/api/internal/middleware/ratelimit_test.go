@@ -454,3 +454,88 @@ func TestRateLimit_RetryAfterHeader(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, retryAfterInt, 0)
 }
+
+func reqWithUser(userID uuid.UUID) *http.Request {
+	req := httptest.NewRequest("POST", "/api/v1/test", http.NoBody)
+	req.RemoteAddr = "192.168.1.1:12345"
+	return req.WithContext(context.WithValue(req.Context(), UserIDKey, userID))
+}
+
+func TestRateLimitByUser_NilRedis_NoOp(t *testing.T) {
+	handler := RateLimitByUser(nil, 1, time.Minute, "writes")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	user := uuid.New()
+	for i := 0; i < 5; i++ {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, reqWithUser(user))
+		assert.Equal(t, http.StatusOK, rr.Code, "nil redis must disable limiting, never 429")
+	}
+}
+
+func TestRateLimitByUser_ZeroLimit_NoOp(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	// A zero (unset/forgotten) budget must NOT 429 everything — it disables the
+	// limiter, the safe failure mode.
+	handler := RateLimitByUser(redisClient, 0, time.Minute, "writes")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	user := uuid.New()
+	for i := 0; i < 5; i++ {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, reqWithUser(user))
+		assert.Equal(t, http.StatusOK, rr.Code, "zero limit must disable limiting, never 429")
+	}
+}
+
+func TestRateLimitByUser_PerUserBucket(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 2
+	handler := RateLimitByUser(redisClient, limit, time.Minute, "writes")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	userA := uuid.New()
+	for i := 0; i < limit; i++ {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, reqWithUser(userA))
+		assert.Equal(t, http.StatusOK, rr.Code)
+	}
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, reqWithUser(userA))
+	assert.Equal(t, http.StatusTooManyRequests, rr.Code, "userA must be throttled past the limit")
+
+	// A different user has an independent bucket.
+	rrB := httptest.NewRecorder()
+	handler.ServeHTTP(rrB, reqWithUser(uuid.New()))
+	assert.Equal(t, http.StatusOK, rrB.Code, "userB must not inherit userA's bucket")
+}
+
+func TestRateLimitByUser_SeparateScopesDoNotShareBucket(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	user := uuid.New()
+	writes := RateLimitByUser(redisClient, 1, time.Minute, "writes")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	invites := RateLimitByUser(redisClient, 1, time.Minute, "invitations")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rrW := httptest.NewRecorder()
+	writes.ServeHTTP(rrW, reqWithUser(user))
+	assert.Equal(t, http.StatusOK, rrW.Code)
+
+	// Same user, different scope → its own bucket, not yet exhausted.
+	rrI := httptest.NewRecorder()
+	invites.ServeHTTP(rrI, reqWithUser(user))
+	assert.Equal(t, http.StatusOK, rrI.Code, "writes and invitations buckets must be independent")
+}

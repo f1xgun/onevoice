@@ -118,12 +118,14 @@ func run(log *slog.Logger, cfg *config.Config) error {
 // that is why it stays in cmd/main.go rather than internal/wire/.
 func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handlers *router.Handlers, hc *health.Checker, svcs *wire.Services, handles *wire.DBHandles, repos *wire.Repos) error {
 	rateLimits := router.RateLimits{
-		Register:  cfg.RateLimitRegister,
-		Login:     cfg.RateLimitLogin,
-		Chat:      cfg.RateLimitChat,
-		HITL:      cfg.RateLimitHITL,
-		Consents:  cfg.RateLimitConsents,
-		Telemetry: cfg.RateLimitTelemetry,
+		Register:    cfg.RateLimitRegister,
+		Login:       cfg.RateLimitLogin,
+		Chat:        cfg.RateLimitChat,
+		HITL:        cfg.RateLimitHITL,
+		Consents:    cfg.RateLimitConsents,
+		Telemetry:   cfg.RateLimitTelemetry,
+		Writes:      cfg.RateLimitWrites,
+		Invitations: cfg.RateLimitInvitations,
 	}
 	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG, svcs.Lockout)
 

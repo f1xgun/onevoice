@@ -144,6 +144,14 @@ type Config struct {
 	RateLimitHITL      int
 	RateLimitConsents  int
 	RateLimitTelemetry int
+	// RateLimitWrites is the shared per-user/minute budget for state-changing
+	// routes that trigger external work (integration connect/refresh, RPA
+	// probes, review reply/refresh, business update). Generous by default;
+	// caps abuse without throttling normal use.
+	RateLimitWrites int
+	// RateLimitInvitations is a tighter per-user/minute budget for creating
+	// member invitations, which send email (amplification vector).
+	RateLimitInvitations int
 
 	ShutdownTimeout time.Duration
 
@@ -278,6 +286,9 @@ func Load() (*Config, error) {
 		RateLimitHITL:      getEnvInt("RATE_LIMIT_HITL", 10),
 		RateLimitConsents:  getEnvInt("RATE_LIMIT_CONSENTS", 10),
 		RateLimitTelemetry: getEnvInt("RATE_LIMIT_TELEMETRY", 60), //nolint:mnd // env-driven default; telemetry batches ~12/min so the cap is generous
+		//nolint:mnd // env-driven default; generous write budget caps abuse without throttling normal use
+		RateLimitWrites:      getEnvInt("RATE_LIMIT_WRITES", 60),
+		RateLimitInvitations: getEnvInt("RATE_LIMIT_INVITATIONS", 10),
 
 		ShutdownTimeout: shutdownTimeout,
 
