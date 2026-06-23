@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/trustelem/zxcvbn"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
@@ -177,6 +178,9 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 // See docs/services/password-reset.md.
 func (s *PasswordResetService) ConfirmReset(ctx context.Context, plaintextToken, newPassword, clientIP, userAgent string) error {
 	if len(newPassword) < resetMinPasswordLen {
+		return ErrPasswordTooWeak
+	}
+	if zxcvbn.PasswordStrength(newPassword, nil).Score < passwordMinZxcvbnScore {
 		return ErrPasswordTooWeak
 	}
 	if plaintextToken == "" {

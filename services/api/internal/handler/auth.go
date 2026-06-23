@@ -248,6 +248,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusConflict, "user already exists")
 			return
 		}
+		if errors.Is(err, service.ErrPasswordTooWeak) {
+			writeJSONCodeError(w, http.StatusBadRequest, "password_too_weak")
+			return
+		}
 		slog.Error("failed to register user", "error", err)
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeRegisterInternal)
 		return
@@ -581,6 +585,10 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, domain.ErrUserNotFound) {
 			writeJSONError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		if errors.Is(err, service.ErrPasswordTooWeak) {
+			writeJSONCodeError(w, http.StatusBadRequest, "password_too_weak")
 			return
 		}
 		slog.Error("failed to change password", "error", err)

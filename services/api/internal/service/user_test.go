@@ -145,7 +145,7 @@ func TestUserService_Register(t *testing.T) {
 		}
 
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
-		user, err := svc.Register(ctx, "test@example.com", "password123")
+		user, err := svc.Register(ctx, "test@example.com", "Zx9!mK7-qP2w")
 
 		require.NoError(t, err)
 		assert.NotNil(t, user)
@@ -155,8 +155,8 @@ func TestUserService_Register(t *testing.T) {
 
 		assert.NotNil(t, createdUser)
 		assert.NotEmpty(t, createdUser.PasswordHash)
-		assert.NotEqual(t, "password123", createdUser.PasswordHash)
-		err = bcrypt.CompareHashAndPassword([]byte(createdUser.PasswordHash), []byte("password123"))
+		assert.NotEqual(t, "Zx9!mK7-qP2w", createdUser.PasswordHash)
+		err = bcrypt.CompareHashAndPassword([]byte(createdUser.PasswordHash), []byte("Zx9!mK7-qP2w"))
 		assert.NoError(t, err, "password should be correctly hashed")
 	})
 
@@ -212,7 +212,7 @@ func TestUserService_Register(t *testing.T) {
 		}
 
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
-		user, err := svc.Register(ctx, "test@example.com", "password123")
+		user, err := svc.Register(ctx, "test@example.com", "Zx9!mK7-qP2w")
 
 		assert.ErrorIs(t, err, domain.ErrUserExists)
 		assert.Nil(t, user)
@@ -227,7 +227,7 @@ func TestUserService_Register(t *testing.T) {
 		}
 
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
-		user, err := svc.Register(ctx, "test@example.com", "password123")
+		user, err := svc.Register(ctx, "test@example.com", "Zx9!mK7-qP2w")
 
 		assert.Error(t, err)
 		assert.Nil(t, user)
@@ -1052,7 +1052,7 @@ func TestUserService_Register_TxFlow_AtomicSuccess(t *testing.T) {
 
 	svc.(*userService).SetRegisterCollaborators(pool, userExt, consents, verify, nil)
 
-	user, err := svc.Register(ctx, "alice@example.com", "password123")
+	user, err := svc.Register(ctx, "alice@example.com", "Zx9!mK7-qP2w")
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Equal(t, "alice@example.com", user.Email)
@@ -1086,7 +1086,7 @@ func TestUserService_Register_TxFlow_VerifyFailureRollsBack(t *testing.T) {
 
 	svc.(*userService).SetRegisterCollaborators(pool, userExt, consents, verify, nil)
 
-	user, err := svc.Register(ctx, "alice@example.com", "password123")
+	user, err := svc.Register(ctx, "alice@example.com", "Zx9!mK7-qP2w")
 	require.Error(t, err)
 	require.Nil(t, user)
 
@@ -1100,3 +1100,17 @@ func TestUserService_Register_TxFlow_VerifyFailureRollsBack(t *testing.T) {
 type assertSentinel string
 
 func (e assertSentinel) Error() string { return string(e) }
+
+func TestValidatePassword(t *testing.T) {
+	t.Run("weak dictionary password is too weak", func(t *testing.T) {
+		require.ErrorIs(t, validatePassword("password123"), ErrPasswordTooWeak)
+	})
+
+	t.Run("too short is too weak", func(t *testing.T) {
+		require.ErrorIs(t, validatePassword("Ab1!"), ErrPasswordTooWeak)
+	})
+
+	t.Run("strong password passes", func(t *testing.T) {
+		require.NoError(t, validatePassword("Zx9!mK7-qP2w"))
+	})
+}
