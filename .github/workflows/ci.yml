@@ -94,11 +94,13 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: |
             pkg/go.sum
+            pkg/audit/go.sum
             services/api/go.sum
             services/orchestrator/go.sum
             services/agent-telegram/go.sum
             services/agent-vk/go.sum
             services/agent-yandex-business/go.sum
+            services/agent-google-business/go.sum
 
       - name: Lint pkg
         uses: golangci/golangci-lint-action@v7
@@ -151,6 +153,37 @@ jobs:
           version: v2.11
           args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-yandex-business
+        env:
+          GOWORK: "off"
+
+      # Nested Go modules (own go.mod). `go ... ./...` stops at module
+      # boundaries, so the per-module steps above never descend into these —
+      # they would rot unlinted otherwise (a pkg/audit test-arity break once
+      # reached main behind green CI for exactly this reason).
+      - name: Lint pkg-audit
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11
+          args: --config ${{ github.workspace }}/.golangci.yml
+          working-directory: pkg/audit
+        env:
+          GOWORK: "off"
+
+      - name: Lint pkg-email
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11
+          args: --config ${{ github.workspace }}/.golangci.yml
+          working-directory: pkg/email
+        env:
+          GOWORK: "off"
+
+      - name: Lint agent-google-business
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11
+          args: --config ${{ github.workspace }}/.golangci.yml
+          working-directory: services/agent-google-business
         env:
           GOWORK: "off"
 
@@ -211,11 +244,13 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: |
             pkg/go.sum
+            pkg/audit/go.sum
             services/api/go.sum
             services/orchestrator/go.sum
             services/agent-telegram/go.sum
             services/agent-vk/go.sum
             services/agent-yandex-business/go.sum
+            services/agent-google-business/go.sum
 
       # mTLS cert harness — generate ephemeral dev CA + per-service leaf
       # certs into infra/mtls/certs/ so the API + tokenclient mTLS tests
@@ -264,17 +299,40 @@ jobs:
         env:
           GOWORK: "off"
 
+      # Nested Go modules (own go.mod) — see the lint job for why these need
+      # explicit steps. `go test ./...` in pkg/ or services/ never reaches them.
+      - name: Test pkg-audit
+        run: go test -v -race -coverprofile=coverage-pkg-audit.out ./...
+        working-directory: pkg/audit
+        env:
+          GOWORK: "off"
+
+      - name: Test pkg-email
+        run: go test -v -race -coverprofile=coverage-pkg-email.out ./...
+        working-directory: pkg/email
+        env:
+          GOWORK: "off"
+
+      - name: Test agent-google-business
+        run: go test -v -race -coverprofile=coverage-agent-google-business.out ./...
+        working-directory: services/agent-google-business
+        env:
+          GOWORK: "off"
+
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage
           path: |
             pkg/coverage-pkg.out
+            pkg/audit/coverage-pkg-audit.out
+            pkg/email/coverage-pkg-email.out
             services/api/coverage-api.out
             services/orchestrator/coverage-orchestrator.out
             services/agent-telegram/coverage-agent-telegram.out
             services/agent-vk/coverage-agent-vk.out
             services/agent-yandex-business/coverage-agent-yandex-business.out
+            services/agent-google-business/coverage-agent-google-business.out
 
   frontend:
     name: Frontend Build & Test

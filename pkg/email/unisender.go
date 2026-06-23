@@ -112,7 +112,7 @@ type unisenderResponse struct {
 //
 // - Transient: network errors, context cancel, 5xx status, 429 status,
 // body status != "success", malformed 2xx JSON.
-// - Permanent: marshalling errors, 4xx status (except 429).
+// - Permanent: marshaling errors, 4xx status (except 429).
 func (s *UnisenderSender) Send(ctx context.Context, msg Message) (string, error) {
 	reqBody := unisenderRequest{
 		Message: unisenderMessage{
@@ -146,10 +146,10 @@ func (s *UnisenderSender) Send(ctx context.Context, msg Message) (string, error)
 	defer func() { _ = resp.Body.Close() }()
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
-	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+	if resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusTooManyRequests {
 		return "", fmt.Errorf("email: unisender %d: %s: %w", resp.StatusCode, truncate(string(bodyBytes), maxUnisenderBodyLogged), ErrTransient)
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return "", fmt.Errorf("email: unisender %d: %s: %w", resp.StatusCode, truncate(string(bodyBytes), maxUnisenderBodyLogged), ErrPermanent)
 	}
 
