@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
@@ -257,6 +258,10 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 
 	if err := s.pendingRepo.RecordDecisions(ctx, in.BatchID, finalized); err != nil {
 		return nil, fmt.Errorf("record decisions: %w", err)
+	}
+
+	for _, fc := range finalized {
+		metrics.IncHITLDecision(fc.Verdict)
 	}
 
 	return result, nil
