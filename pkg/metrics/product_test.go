@@ -44,6 +44,28 @@ func TestIncHITLDecision_OnlyIncrementsSingleLabel(t *testing.T) {
 	require.InDelta(t, beforeReject, afterReject, 0.0001, "incrementing 'approve' must not affect 'reject'")
 }
 
+// TestIncHITLDecision_CollapsesUnknown guards the cardinality bound: an
+// unvalidated upstream action string must land in the bounded "other"
+// bucket and must NOT create a new series for the raw value.
+func TestIncHITLDecision_CollapsesUnknown(t *testing.T) {
+	beforeOther := testutil.ToFloat64(hitlDecisionsTotal.WithLabelValues("other"))
+	IncHITLDecision("frobnicate")
+	IncHITLDecision("")
+	afterOther := testutil.ToFloat64(hitlDecisionsTotal.WithLabelValues("other"))
+	require.InDelta(t, beforeOther+2, afterOther, 0.0001, "unknown decisions must increment 'other'")
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	mf := findMetric(families, "hitl_decisions_total")
+	require.NotNil(t, mf)
+	for _, m := range mf.GetMetric() {
+		for _, l := range m.GetLabel() {
+			require.NotContains(t, []string{"frobnicate", ""}, l.GetValue(),
+				"raw unknown decision values must never become a series")
+		}
+	}
+}
+
 func TestProductMetricsLabelShape(t *testing.T) {
 	IncChatTurn("done")
 	IncHITLDecision("approve")

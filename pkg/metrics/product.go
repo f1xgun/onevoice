@@ -29,13 +29,19 @@ var chatTurnsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 // persisted, labeled by the EFFECTIVE decision after server-side policy
 // re-evaluation (an approve/edit rewritten to reject by a revoked tool
 // floor counts as "reject"). The "decision" label is the closed set
-// {approve, edit, reject}. Useful for spotting HITL friction (a spike in
-// rejects) and confirming approvals flow.
+// {approve, edit, reject, other}. Useful for spotting HITL friction (a
+// spike in rejects) and confirming approvals flow.
+//
+// "other" is a defensive catch-all (like the mongo `op` whitelist): the
+// resolve endpoint does not currently validate the per-call `action`
+// against the oneof tag, so an arbitrary decision string could otherwise
+// reach this label and explode cardinality. IncHITLDecision collapses
+// anything outside the known set to "other".
 //
 // See pkg/metrics/README.md for the label-cardinality convention.
 var hitlDecisionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "hitl_decisions_total",
-	Help: "HITL approval verdicts persisted, labeled by effective decision {approve|edit|reject}.",
+	Help: "HITL approval verdicts persisted, labeled by effective decision {approve|edit|reject|other}.",
 }, []string{"decision"})
 
 // IncChatTurn increments chat_turns_total for the given outcome. Pass
@@ -46,7 +52,14 @@ func IncChatTurn(outcome string) {
 }
 
 // IncHITLDecision increments hitl_decisions_total for the given effective
-// decision. decision must be one of "approve", "edit", "reject".
+// decision. Anything outside the closed set {approve, edit, reject} is
+// collapsed to "other" so an unvalidated upstream action string cannot
+// explode label cardinality.
 func IncHITLDecision(decision string) {
+	switch decision {
+	case "approve", "edit", "reject":
+	default:
+		decision = "other"
+	}
 	hitlDecisionsTotal.WithLabelValues(decision).Inc()
 }
