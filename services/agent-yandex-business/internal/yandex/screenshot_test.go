@@ -76,6 +76,7 @@ func TestScreenshotMode_Tmpfs(t *testing.T) {
 }
 
 func TestScreenshotMode_Full(t *testing.T) {
+	t.Setenv("APP_ENV", "")
 	t.Setenv("SCREENSHOT_MODE", "full")
 
 	if got := screenshotMode(); got != ScreenshotFull {
@@ -97,9 +98,35 @@ func TestScreenshotMode_Full(t *testing.T) {
 }
 
 func TestScreenshotMode_CaseInsensitive(t *testing.T) {
+	t.Setenv("APP_ENV", "")
 	t.Setenv("SCREENSHOT_MODE", "  Full  ")
 	if got := screenshotMode(); got != ScreenshotFull {
 		t.Fatalf("mixed-case + whitespace value must normalise, got %q", got)
+	}
+}
+
+func TestScreenshotMode_FullForcedOffInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("SCREENSHOT_MODE", "full")
+	if got := screenshotMode(); got != ScreenshotOff {
+		t.Fatalf("full must be forced off in production, got %q", got)
+	}
+
+	page := newMockPage("https://yandex.example/")
+	path, err := captureScreenshot(page, "x")
+	if err != nil {
+		t.Fatalf("captureScreenshot after force-off: %v", err)
+	}
+	if path != "" || len(page.screenshotPaths) != 0 {
+		t.Fatalf("forced-off full must not write a screenshot, got path=%q paths=%v", path, page.screenshotPaths)
+	}
+}
+
+func TestScreenshotMode_TmpfsAllowedInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("SCREENSHOT_MODE", "tmpfs")
+	if got := screenshotMode(); got != ScreenshotTmpfs {
+		t.Fatalf("tmpfs stays the sanctioned production mode, got %q", got)
 	}
 }
 
@@ -208,6 +235,7 @@ func TestScreenshotMode_Constants(t *testing.T) {
 		t.Fatalf("ScreenshotMode constants drifted: off=%q tmpfs=%q full=%q",
 			ScreenshotOff, ScreenshotTmpfs, ScreenshotFull)
 	}
+	t.Setenv("APP_ENV", "")
 	t.Setenv("SCREENSHOT_MODE", "full")
 	if !strings.EqualFold(string(screenshotMode()), "full") {
 		t.Fatalf("screenshotMode does not re-read env on each call")

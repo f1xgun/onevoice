@@ -48,10 +48,8 @@ func run() error {
 	yandex.StartScreenshotSweeper(sweeperCtx, slog.Default())
 
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {
-		mode := strings.ToLower(strings.TrimSpace(os.Getenv("SCREENSHOT_MODE")))
-		if mode != "" && mode != "off" {
-			slog.Warn("screenshot mode is not off in production — PII risk",
-				"SCREENSHOT_MODE", mode)
+		if strings.ToLower(strings.TrimSpace(os.Getenv("SCREENSHOT_MODE"))) == "full" {
+			slog.Warn("SCREENSHOT_MODE=full is forced off in production (unbounded PII-at-rest in /tmp); set SCREENSHOT_MODE=tmpfs for TTL-bounded diagnostics")
 		}
 	}
 
