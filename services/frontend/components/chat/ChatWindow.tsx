@@ -9,6 +9,7 @@ import { ChatHeader } from './ChatHeader';
 import { MessageBubble } from './MessageBubble';
 import { ProjectChip } from './ProjectChip';
 import { ProjectPickerChip } from './ProjectPickerChip';
+import { ConnectChannelHint, shouldPromptConnectChannel } from './ConnectChannelHint';
 import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { ProcessingApprovalBanner } from './ProcessingApprovalBanner';
@@ -22,6 +23,7 @@ import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversat
 import { useDefaultQuickActions } from '@/lib/quick-actions';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
 import type { Conversation } from '@/lib/conversations';
@@ -79,6 +81,29 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     currentProject?.quickActions && currentProject.quickActions.length > 0
       ? currentProject.quickActions
       : defaultQuickActions;
+
+  // Shares the NavRail integrations query (same key → warm cache, no extra
+  // fetch). With no connected channel the quick-action chips fire a tool-less
+  // LLM turn that silently no-ops, so we swap them for a connect nudge — but
+  // only on a SUCCESSFUL load, so a user with channels never sees a flash of
+  // the nudge while loading, and a transient /integrations error fails open to
+  // the chips rather than a possibly-wrong dead-end (isSuccess, not
+  // !isPlaceholderData: the latter also flips false on an error with no data).
+  const { data: integrations = [], isSuccess: integrationsLoaded } = useQuery<
+    { platform: string; status: string }[]
+  >({
+    queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get(BIZ_API_PATHS.INTEGRATIONS.ROOT)
+        .then(
+          (r) => (Array.isArray(r.data) ? r.data : []) as { platform: string; status: string }[]
+        ),
+    enabled: !!activeBusinessId,
+    retry: false,
+    placeholderData: [],
+  });
+  const showConnectHint = shouldPromptConnectChannel(integrations, integrationsLoaded);
 
   const showEmptyState = messages.length === 0 && !isLoading;
 
@@ -163,19 +188,23 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
               onChange={handlePickerChange}
             />
             <p className="text-lg text-ink-soft">{tChat('helpPrompt')}</p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {quickActions.map((action) => (
-                <button
-                  key={action}
-                  type="button"
-                  onClick={() => sendMessage(action)}
-                  disabled={composerDisabled}
-                  className="rounded-full border border-line bg-paper-raised px-4 py-2 text-sm text-ink-mid transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {action}
-                </button>
-              ))}
-            </div>
+            {showConnectHint ? (
+              <ConnectChannelHint />
+            ) : (
+              <div className="flex flex-wrap justify-center gap-2">
+                {quickActions.map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    onClick={() => sendMessage(action)}
+                    disabled={composerDisabled}
+                    className="rounded-full border border-line bg-paper-raised px-4 py-2 text-sm text-ink-mid transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
