@@ -5,6 +5,7 @@
 // POST   /api/v1/users/me/restore  (no body)   → 204 / 403 / 404 / 410
 
 import { useAuthStore } from '@/lib/auth';
+import { authFetch } from '@/lib/api/authFetch';
 
 const HTTP_OK = 200;
 const HTTP_NO_CONTENT = 204;
@@ -29,6 +30,13 @@ export interface DeletionAccountError {
  * deleteAccount sends DELETE /api/v1/users/me with the password. Returns
  * void on 204 success. Throws a DeletionAccountError with `code` /
  * `status` / payload on failure so the caller can branch by code.
+ *
+ * Stays on raw fetch (not authFetch): this endpoint returns 401
+ * `password_invalid` for a wrong password, so a 401 here is NOT a
+ * session-expiry signal — routing it through authFetch would fire a
+ * needless token refresh on every wrong password (and could log the user
+ * out on a flaky refresh). The access token is fresh anyway: the user is
+ * actively typing into the confirm-password modal.
  */
 export async function deleteAccount(password: string): Promise<void> {
   const token = useAuthStore.getState().accessToken;
@@ -61,12 +69,8 @@ export async function deleteAccount(password: string): Promise<void> {
  * non-204 with the same shape as deleteAccount.
  */
 export async function restoreAccount(): Promise<void> {
-  const token = useAuthStore.getState().accessToken;
-  const res = await fetch('/api/v1/users/me/restore', {
+  const res = await authFetch('/api/v1/users/me/restore', {
     method: 'POST',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
     credentials: 'include',
   });
 

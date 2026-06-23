@@ -3,7 +3,7 @@
 // DELETE /api/v1/businesses/{id}          → 204 / 403 / 404 / 423
 // POST   /api/v1/businesses/{id}/restore  → 204 / 403 / 404 / 410
 
-import { useAuthStore } from '@/lib/auth';
+import { authFetch } from '@/lib/api/authFetch';
 
 const HTTP_NO_CONTENT = 204;
 
@@ -22,12 +22,8 @@ export interface BusinessDeletionError {
  * so the caller can branch by code (mirrors lib/api/account.ts).
  */
 export async function deleteBusiness(businessId: string): Promise<void> {
-  const token = useAuthStore.getState().accessToken;
-  const res = await fetch(`/api/v1/businesses/${businessId}`, {
+  const res = await authFetch(`/api/v1/businesses/${businessId}`, {
     method: 'DELETE',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
     credentials: 'include',
   });
 
@@ -50,12 +46,8 @@ export async function deleteBusiness(businessId: string): Promise<void> {
  * as deleteBusiness.
  */
 export async function restoreBusiness(businessId: string): Promise<void> {
-  const token = useAuthStore.getState().accessToken;
-  const res = await fetch(`/api/v1/businesses/${businessId}/restore`, {
+  const res = await authFetch(`/api/v1/businesses/${businessId}/restore`, {
     method: 'POST',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
     credentials: 'include',
   });
 

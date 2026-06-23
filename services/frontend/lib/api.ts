@@ -1,10 +1,10 @@
 import axios from 'axios';
 import { createTranslator } from 'next-intl';
 import { toast } from 'sonner';
-import { API_BASE_URL, API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { API_BASE_URL, API_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from './auth';
-import type { User } from './auth';
+import { refreshAccessToken } from '@/lib/api/authFetch';
 import { useBusinessStore } from '@/lib/stores/business';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
@@ -56,15 +56,10 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401: try refresh once, then logout
-let refreshing = false;
-let queue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => void }> = [];
-
-interface RefreshResponse {
-  user: User;
-  accessToken: string;
-}
-
+// On 401: refresh once via the shared single-flight (refreshAccessToken,
+// shared with authFetch so the refresh cookie is rotated exactly once),
+// then replay the request. A failed refresh logs out + redirects to /login
+// inside refreshAccessToken, so here we just reject.
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -102,46 +97,14 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (refreshing) {
-      return new Promise((resolve, reject) => {
-        queue.push({ resolve, reject });
-      }).then((token) => {
-        original.headers.Authorization = `Bearer ${token}`;
-        return api(original);
-      });
-    }
-
     original._retry = true;
-    refreshing = true;
 
     try {
-      const { data } = await axios.post<RefreshResponse>(
-        API_STREAM_PATHS.AUTH_REFRESH,
-        {},
-        { withCredentials: true }
-      );
-      if (!data.accessToken) throw new Error('invalid refresh response');
-      const { accessToken, user } = data;
-
-      if (user) {
-        useAuthStore.getState().setAuth(user, accessToken);
-      } else {
-        useAuthStore.getState().setAccessToken(accessToken);
-      }
-
-      queue.forEach(({ resolve }) => resolve(accessToken));
-      queue = [];
-
+      const accessToken = await refreshAccessToken();
       original.headers.Authorization = `Bearer ${accessToken}`;
       return api(original);
     } catch {
-      queue.forEach(({ reject }) => reject(error));
-      queue = [];
-      useAuthStore.getState().logout();
-      window.location.href = '/login';
       return Promise.reject(error);
-    } finally {
-      refreshing = false;
     }
   }
 );
