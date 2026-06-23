@@ -25,6 +25,12 @@ const reviewSyncBatchSize = 50
 // single sync fetch.
 const reviewSyncDispatchTimeout = 60 * time.Second
 
+// reviewSyncConcurrency bounds how many (business, platform) pairs SyncAll syncs
+// at once. Kept small so a fleet-wide tick spreads load across the platform
+// agents (the Yandex RPA agent especially) rather than dispatching every pair
+// simultaneously.
+const reviewSyncConcurrency = 4
+
 // reviewToolByPlatform maps a platform ID to the tool name that returns
 // review/comment-like entries. Not every platform follows the __get_reviews
 // suffix — VK uses __get_comments because wall.getComments is the native VK
@@ -114,24 +120,41 @@ func (s *ReviewSyncer) SyncAll(ctx context.Context) error {
 		return fmt.Errorf("list integrations: %w", err)
 	}
 
-	type key struct{ businessID, platform string }
+	type key struct {
+		businessID uuid.UUID
+		platform   string
+	}
 	seen := make(map[key]bool, len(integrations))
-
+	pairs := make([]key, 0, len(integrations))
 	for _, integ := range integrations {
-		k := key{integ.BusinessID.String(), integ.Platform}
+		k := key{businessID: integ.BusinessID, platform: integ.Platform}
 		if seen[k] {
 			continue
 		}
 		seen[k] = true
-
-		if err := s.syncOne(ctx, integ.BusinessID, integ.Platform); err != nil {
-			slog.Error("review sync: error syncing integration",
-				"business_id", integ.BusinessID,
-				"platform", integ.Platform,
-				"error", err,
-			)
-		}
+		pairs = append(pairs, k)
 	}
+
+	// Sync the unique pairs concurrently, bounded so a fleet-wide tick never
+	// fans out an unbounded burst of NATS dispatches at the platform agents.
+	sem := make(chan struct{}, reviewSyncConcurrency)
+	var wg sync.WaitGroup
+	for _, p := range pairs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(k key) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := s.syncOne(ctx, k.businessID, k.platform); err != nil {
+				slog.Error("review sync: error syncing integration",
+					"business_id", k.businessID,
+					"platform", k.platform,
+					"error", err,
+				)
+			}
+		}(p)
+	}
+	wg.Wait()
 	return nil
 }
 
@@ -198,9 +221,7 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		return nil
 	}
 
-	upsertCtx, upsertCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer upsertCancel()
-
+	reviews := make([]*domain.Review, 0, len(reviewsList))
 	for _, r := range reviewsList {
 		m, ok := r.(map[string]interface{})
 		if !ok {
@@ -210,14 +231,19 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		if review.ExternalID == "" {
 			continue
 		}
-		if err := s.reviewRepo.Upsert(upsertCtx, review); err != nil {
-			slog.Error("review sync: upsert failed",
-				"business_id", businessID,
-				"platform", platform,
-				"external_id", review.ExternalID,
-				"error", err,
-			)
-		}
+		reviews = append(reviews, review)
+	}
+
+	upsertCtx, upsertCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer upsertCancel()
+
+	if err := s.reviewRepo.BulkUpsert(upsertCtx, reviews); err != nil {
+		slog.Error("review sync: bulk upsert failed",
+			"business_id", businessID,
+			"platform", platform,
+			"count", len(reviews),
+			"error", err,
+		)
 	}
 
 	if s.drafter != nil {

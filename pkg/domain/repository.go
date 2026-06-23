@@ -287,6 +287,10 @@ type ReviewRepository interface {
 	UpdateReply(ctx context.Context, id, replyText, replyStatus string) error
 	Upsert(ctx context.Context, review *Review) error
 
+	// BulkUpsert upserts many reviews in a single round-trip (used by the sync
+	// path, which otherwise fired one UpdateOne per fetched review).
+	BulkUpsert(ctx context.Context, reviews []*Review) error
+
 	// ListPendingWithoutDraft excludes status="generating" so concurrent passes don't double-call the LLM.
 	ListPendingWithoutDraft(ctx context.Context, businessID, platform string, limit int) ([]Review, error)
 
