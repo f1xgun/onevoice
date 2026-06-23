@@ -530,6 +530,35 @@ func TestConfigIsProduction(t *testing.T) {
 	}
 }
 
+func TestRequireInternalMTLS(t *testing.T) {
+	tests := []struct {
+		name          string
+		appEnv        string
+		kmsKeyID      string
+		tlsConfigured bool
+		wantErr       bool
+	}{
+		{name: "tls configured in prod is fine", appEnv: "production", tlsConfigured: true, wantErr: false},
+		{name: "tls configured with kms is fine", kmsKeyID: "kms-key-1", tlsConfigured: true, wantErr: false},
+		{name: "prod without tls is rejected", appEnv: "production", tlsConfigured: false, wantErr: true},
+		{name: "kms without tls is rejected", kmsKeyID: "kms-key-1", tlsConfigured: false, wantErr: true},
+		{name: "prod+kms without tls is rejected", appEnv: "production", kmsKeyID: "kms-key-1", tlsConfigured: false, wantErr: true},
+		{name: "dev without tls or kms is allowed", appEnv: "development", tlsConfigured: false, wantErr: false},
+		{name: "empty env without tls or kms is allowed", appEnv: "", tlsConfigured: false, wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{AppEnv: tt.appEnv, TokenEncryptionKMSKeyID: tt.kmsKeyID}
+			err := cfg.RequireInternalMTLS(tt.tlsConfigured)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfigLoad_PopulatesAppEnv(t *testing.T) {
 	minTestEnv(t)
 	setValidLegal(t)
