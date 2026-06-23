@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -50,7 +51,18 @@ func Run(cfg RunConfig) error {
 	}
 
 	transport := a2a.NewNATSTransport(nc)
-	ag := a2a.NewAgent(cfg.AgentID, transport, cfg.Exec)
+
+	// A2A_MAX_CONCURRENT overrides the per-agent handler concurrency cap; unset
+	// keeps a2a.NewAgent's default, a non-positive value disables the cap.
+	var agentOpts []a2a.Option
+	if v := GetEnv("A2A_MAX_CONCURRENT", ""); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			agentOpts = append(agentOpts, a2a.WithMaxConcurrent(n))
+		} else {
+			slog.Warn("invalid A2A_MAX_CONCURRENT, using default", "value", v, "error", err)
+		}
+	}
+	ag := a2a.NewAgent(cfg.AgentID, transport, cfg.Exec, agentOpts...)
 
 	healthSrv := serveHealth(nc, cfg.HealthPort)
 

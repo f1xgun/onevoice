@@ -8,7 +8,16 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
+
+// defaultMaxConcurrent bounds how many incoming messages an agent handles at
+// once when no explicit cap is given. Each handler runs a real platform action
+// (an RPA browser session, a platform API call), so an unbounded fan-out under
+// a NATS burst could exhaust the agent process; the cap sheds the burst into
+// NATS backpressure instead. Generous — the orchestrator already bounds the
+// upstream stream count, so this is a defense-in-depth backstop.
+const defaultMaxConcurrent = 64
 
 // Transport abstracts the NATS connection for testability.
 type Transport interface {
@@ -42,21 +51,60 @@ type Agent struct {
 	transport Transport
 	exec      Exec
 	wg        sync.WaitGroup
+	// sem bounds concurrent message handlers; nil means unbounded.
+	sem chan struct{}
 }
 
-// NewAgent creates a new Agent.
-func NewAgent(id AgentID, transport Transport, exec Exec) *Agent {
-	return &Agent{id: id, transport: transport, exec: exec}
+// Option configures an Agent at construction.
+type Option func(*Agent)
+
+// WithMaxConcurrent bounds the number of messages an agent handles concurrently.
+// n <= 0 disables the bound (unbounded fan-out). When no option is supplied,
+// defaultMaxConcurrent applies.
+func WithMaxConcurrent(n int) Option {
+	return func(a *Agent) {
+		if n > 0 {
+			a.sem = make(chan struct{}, n)
+		} else {
+			a.sem = nil
+		}
+	}
+}
+
+// NewAgent creates a new Agent. By default it caps concurrent handlers at
+// defaultMaxConcurrent; pass WithMaxConcurrent to override (or disable).
+func NewAgent(id AgentID, transport Transport, exec Exec, opts ...Option) *Agent {
+	a := &Agent{
+		id:        id,
+		transport: transport,
+		exec:      exec,
+		sem:       make(chan struct{}, defaultMaxConcurrent),
+	}
+	for _, o := range opts {
+		o(a)
+	}
+	return a
 }
 
 // Start subscribes to the agent's NATS subject and begins processing requests.
-// It returns immediately; processing happens in goroutines spawned per message.
+// It returns immediately; processing happens in goroutines spawned per message,
+// bounded by the concurrency cap. Acquiring the slot in the subscribe callback
+// (before spawning) means a saturated agent applies NATS backpressure rather
+// than spawning unbounded goroutines.
 func (a *Agent) Start(ctx context.Context) error {
 	subject := Subject(a.id)
 	return a.transport.Subscribe(subject, func(subj, reply string, data []byte) {
+		if a.sem != nil {
+			a.sem <- struct{}{}
+		}
 		a.wg.Add(1)
+		metrics.A2AHandlersInflight.Inc()
 		go func() {
 			defer a.wg.Done()
+			defer metrics.A2AHandlersInflight.Dec()
+			if a.sem != nil {
+				defer func() { <-a.sem }()
+			}
 			a.handle(ctx, reply, data)
 		}()
 	})

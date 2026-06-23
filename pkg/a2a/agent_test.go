@@ -84,6 +84,81 @@ func TestAgent_DispatchesToHandler(t *testing.T) {
 	}
 }
 
+func TestAgent_BoundsConcurrentHandlers(t *testing.T) {
+	transport := &fakeTransport{}
+	var inflight atomic.Int32
+	started := make(chan struct{}, 8)
+	release := make(chan struct{})
+
+	handler := a2a.Exec(func(_ context.Context, _ a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		inflight.Add(1)
+		started <- struct{}{}
+		<-release
+		inflight.Add(-1)
+		return &a2a.ToolResponse{Success: true}, nil
+	})
+
+	agent := a2a.NewAgent(a2a.AgentTelegram, transport, handler, a2a.WithMaxConcurrent(1))
+	require.NoError(t, agent.Start(context.Background()))
+	data, _ := json.Marshal(a2a.ToolRequest{TaskID: "t1"})
+
+	// First message takes the single slot; its handler blocks.
+	transport.Trigger("tasks.telegram", "", data)
+	<-started
+
+	// Second Trigger blocks in the subscribe callback acquiring the held slot.
+	secondReturned := make(chan struct{})
+	go func() {
+		transport.Trigger("tasks.telegram", "", data)
+		close(secondReturned)
+	}()
+
+	// The second handler must NOT start while the slot is held.
+	select {
+	case <-started:
+		t.Fatal("second handler started while the slot was held — cap not enforced")
+	case <-time.After(50 * time.Millisecond):
+	}
+	assert.EqualValues(t, 1, inflight.Load())
+
+	// Release handler 1 → slot frees → the second handler runs.
+	release <- struct{}{}
+	<-started
+	<-secondReturned
+	assert.EqualValues(t, 1, inflight.Load())
+	release <- struct{}{}
+}
+
+func TestAgent_UnboundedWhenMaxNonPositive(t *testing.T) {
+	transport := &fakeTransport{}
+	started := make(chan struct{}, 8)
+	release := make(chan struct{})
+
+	handler := a2a.Exec(func(_ context.Context, _ a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		started <- struct{}{}
+		<-release
+		return &a2a.ToolResponse{Success: true}, nil
+	})
+
+	agent := a2a.NewAgent(a2a.AgentTelegram, transport, handler, a2a.WithMaxConcurrent(0))
+	require.NoError(t, agent.Start(context.Background()))
+	data, _ := json.Marshal(a2a.ToolRequest{TaskID: "t1"})
+
+	// With the cap disabled, all five handlers start concurrently (no slot gate).
+	const n = 5
+	for i := 0; i < n; i++ {
+		transport.Trigger("tasks.telegram", "", data)
+	}
+	for i := 0; i < n; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("a handler did not start — unexpected bound when cap disabled")
+		}
+	}
+	close(release)
+}
+
 func TestAgent_HandlerError_ReturnsErrorResponse(t *testing.T) {
 	transport := &fakeTransport{}
 	replyCh := make(chan []byte, 1)
