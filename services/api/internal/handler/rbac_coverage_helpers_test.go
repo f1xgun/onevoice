@@ -40,6 +40,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/hitlstore"
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
@@ -116,7 +117,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 		RateLimitHITL:      100,
 	}
 
-	pendingRepo := repository.NewPendingToolCallRepository(mongodb)
+	pendingRepo := hitlstore.NewPendingToolCallRepository(mongodb)
 
 	enc, err := buildTestEncryptor(t, encKey)
 	require.NoError(t, err)
@@ -146,8 +147,9 @@ func setupTestEnv(t *testing.T) *testEnv {
 			HITL:     cfg.RateLimitHITL,
 		},
 		svcs.AuthzCache,
-		nil,
-		nil,
+		nil, // users (UserLookup)
+		nil, // pgPool
+		nil, // lock — all nil-tolerant per router.Setup's contract
 	)
 
 	return &testEnv{
@@ -206,7 +208,7 @@ func setupTestEnvWithTTL(t *testing.T, ttl time.Duration) *testEnv {
 
 	enc, err := buildTestEncryptor(t, encKey)
 	require.NoError(t, err)
-	pendingRepo2 := repository.NewPendingToolCallRepository(mongodb)
+	pendingRepo2 := hitlstore.NewPendingToolCallRepository(mongodb)
 	handles2 := &wire.DBHandles{
 		PG:                  env.pool,
 		Mongo:               mongodb,
@@ -230,6 +232,9 @@ func setupTestEnvWithTTL(t *testing.T, ttl time.Duration) *testEnv {
 			HITL:     cfg.RateLimitHITL,
 		},
 		testCache,
+		nil, // users (UserLookup)
+		nil, // pgPool
+		nil, // lock — all nil-tolerant per router.Setup's contract
 	)
 
 	return &testEnv{
@@ -282,7 +287,7 @@ func setupTestEnvWithLoginRateLimit(t *testing.T, limit int) *testEnv {
 
 	enc, err := buildTestEncryptor(t, encKey)
 	require.NoError(t, err)
-	pendingRepo2 := repository.NewPendingToolCallRepository(mongodb)
+	pendingRepo2 := hitlstore.NewPendingToolCallRepository(mongodb)
 	handles2 := &wire.DBHandles{
 		PG:                  env.pool,
 		Mongo:               mongodb,
@@ -306,6 +311,9 @@ func setupTestEnvWithLoginRateLimit(t *testing.T, limit int) *testEnv {
 			HITL:     cfg.RateLimitHITL,
 		},
 		svcs2.AuthzCache,
+		nil, // users (UserLookup)
+		nil, // pgPool
+		nil, // lock — all nil-tolerant per router.Setup's contract
 	)
 
 	return &testEnv{

@@ -275,6 +275,17 @@ jobs:
         env:
           GOWORK: "off"
 
+      # The //go:build integration tests need live datastores, so they are NOT
+      # run here — but the default `go test` above never compiles them either,
+      # which let signature drift (a moved constructor, a router.Setup arity
+      # change) rot the suite until `make integration-tests` was run. Type-check
+      # them with `go vet -tags integration` so the build can't break unseen.
+      - name: Vet api integration build
+        run: go vet -tags integration ./...
+        working-directory: services/api
+        env:
+          GOWORK: "off"
+
       - name: Test orchestrator
         run: go test -v -race -coverprofile=coverage-orchestrator.out ./...
         working-directory: services/orchestrator
