@@ -81,11 +81,9 @@ func reviewUpsert(review *domain.Review) (filter, update bson.M) {
 	}
 
 	setFields := bson.M{
-		"author_name":  review.AuthorName,
-		"rating":       review.Rating,
-		"text":         review.Text,
-		"reply_status": review.ReplyStatus,
-		"created_at":   review.CreatedAt,
+		"author_name": review.AuthorName,
+		"rating":      review.Rating,
+		"text":        review.Text,
 	}
 	if review.ReplyText != "" {
 		setFields["reply_text"] = review.ReplyText
@@ -93,20 +91,38 @@ func reviewUpsert(review *domain.Review) (filter, update bson.M) {
 	if len(review.PlatformMeta) > 0 {
 		setFields["platform_meta"] = review.PlatformMeta
 	}
+	// reply_status is locally managed: an operator reply sets it to 'replied'
+	// (and $unset's the draft fields). A platform sync re-emits every fetched
+	// item as 'pending', so letting a sync $set reply_status would downgrade an
+	// already-answered review back to 'pending' — re-surfacing it in the UI and
+	// re-triggering the AI drafter every cycle. Only carry it forward when the
+	// incoming value is 'replied' (the platform's own client echoed a reply, as
+	// VK does); otherwise stamp it once on insert so a fresh review starts
+	// 'pending'.
+	if review.ReplyStatus == domain.ReviewReplyStatusReplied {
+		setFields["reply_status"] = review.ReplyStatus
+	}
 
 	filter = bson.M{
 		"business_id": review.BusinessID,
 		"platform":    review.Platform,
 		"external_id": review.ExternalID,
 	}
+	insertFields := bson.M{
+		"_id":         id,
+		"business_id": review.BusinessID,
+		"platform":    review.Platform,
+		"external_id": review.ExternalID,
+		// created_at must never mutate after first insert, so it lives in
+		// $setOnInsert rather than $set.
+		"created_at": review.CreatedAt,
+	}
+	if _, set := setFields["reply_status"]; !set {
+		insertFields["reply_status"] = review.ReplyStatus
+	}
 	update = bson.M{
-		"$set": setFields,
-		"$setOnInsert": bson.M{
-			"_id":         id,
-			"business_id": review.BusinessID,
-			"platform":    review.Platform,
-			"external_id": review.ExternalID,
-		},
+		"$set":         setFields,
+		"$setOnInsert": insertFields,
 	}
 	if review.ReplyStatus == domain.ReviewReplyStatusReplied {
 		update["$unset"] = bson.M{

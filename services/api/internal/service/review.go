@@ -134,6 +134,10 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 		return domain.ErrReviewNotFound
 	}
 
+	if review.ReplyStatus == domain.ReviewReplyStatusReplied {
+		return nil
+	}
+
 	dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
 	finalStatus := domain.ReviewReplyStatusReplied
 	if dispatchErr != nil {
@@ -171,8 +175,18 @@ func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.R
 		return nil
 	}
 
-	_, err = dispatchTool(ctx, s.nc, review.Platform, toolName, args, review.BusinessID, s.dispatchTimeout)
+	_, err = dispatchToolWithApproval(ctx, s.nc, review.Platform, toolName, args,
+		review.BusinessID, manualReplyApprovalID(review), s.dispatchTimeout)
 	return err
+}
+
+// manualReplyApprovalID derives a stable HITL dedupe key for a manual review
+// reply. Keyed on the review ID, so an operator's retry after a Mongo blip (the
+// platform post already landed, the status write didn't) re-dispatches the same
+// ApprovalID and the agent returns the cached result instead of posting a
+// second public reply.
+func manualReplyApprovalID(review *domain.Review) string {
+	return "review-reply-" + review.ID
 }
 
 // buildPlatformReply maps a Review + reply text to the platform-agent tool
