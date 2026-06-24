@@ -24,6 +24,34 @@ const (
 	gateTokensMonth = "tokens_month"
 )
 
+// incrWithExpiryScript atomically increments a rate-limit counter and stamps a
+// TTL only when one is missing, in a single round trip. INCRBY creates the key
+// on first use; the conditional PEXPIRE re-stamps the window iff PTTL reports no
+// expiry (PTTL < 0 means the key has no TTL — either freshly created or left
+// TTL-less by an earlier missing expiry). An in-progress window with a live TTL
+// is never touched, so fixed-window semantics are preserved: the window does
+// not slide forward under sustained traffic. A TTL-less key therefore
+// self-heals on the very next request rather than blocking the user forever.
+//
+// KEYS[1] = counter key. ARGV[1] = increment. ARGV[2] = TTL in milliseconds.
+// Returns {count, healed}. healed is 1 only when an ALREADY-EXISTING counter was
+// found without a TTL and re-stamped (count > increment) — i.e. a previously
+// missing expiry was repaired. A brand-new counter (count == increment) is the
+// normal create path and reports healed=0, so the heal signal stays a true
+// degradation indicator rather than firing on every fresh window.
+var incrWithExpiryScript = redis.NewScript(`
+local n = tonumber(ARGV[1])
+local count = redis.call('INCRBY', KEYS[1], n)
+local healed = 0
+if redis.call('PTTL', KEYS[1]) < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[2])
+  if count > n then
+    healed = 1
+  end
+end
+return {count, healed}
+`)
+
 // Limits defines rate limits for a subscription tier
 type Limits struct {
 	RequestsPerMin int     `json:"requests_per_min"` // Max requests per minute (-1 = unlimited)
@@ -209,50 +237,37 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 
 	if limits.RequestsPerMin > 0 {
 		reqKey := fmt.Sprintf("ratelimit:%s:requests:min", userID.String())
-		count, err := rl.redis.Incr(ctx, reqKey).Result()
+		count, err := rl.incrWithExpiry(ctx, reqKey, 1, time.Minute, gateRequestsMin)
 		if err != nil {
 			return rl.handleRedisError(err)
 		}
 
-		if count == 1 {
-			rl.setGateExpiry(ctx, reqKey, time.Minute, gateRequestsMin)
-		}
-
-		if int(count) > limits.RequestsPerMin {
+		if count > int64(limits.RequestsPerMin) {
 			return false, nil
 		}
 	}
 
 	if limits.TokensPerMin > 0 {
 		tokKey := fmt.Sprintf("ratelimit:%s:tokens:min", userID.String())
-		count, err := rl.redis.IncrBy(ctx, tokKey, int64(tokens)).Result()
+		count, err := rl.incrWithExpiry(ctx, tokKey, int64(tokens), time.Minute, gateTokensMin)
 		if err != nil {
 			return rl.handleRedisError(err)
 		}
 
-		if count == int64(tokens) {
-			rl.setGateExpiry(ctx, tokKey, time.Minute, gateTokensMin)
-		}
-
-		if int(count) > limits.TokensPerMin {
+		if count > int64(limits.TokensPerMin) {
 			return false, nil
 		}
 	}
 
 	if limits.TokensPerMonth > 0 {
 		monthKey := fmt.Sprintf("ratelimit:%s:tokens:month:%s", userID.String(), now.Format("2006-01"))
-		count, err := rl.redis.IncrBy(ctx, monthKey, int64(tokens)).Result()
+		endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+		count, err := rl.incrWithExpiry(ctx, monthKey, int64(tokens), endOfMonth.Sub(now), gateTokensMonth)
 		if err != nil {
 			return rl.handleRedisError(err)
 		}
 
-		if count == int64(tokens) {
-			endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-			ttl := endOfMonth.Sub(now)
-			rl.setGateExpiry(ctx, monthKey, ttl, gateTokensMonth)
-		}
-
-		if int(count) > limits.TokensPerMonth {
+		if count > int64(limits.TokensPerMonth) {
 			return false, nil
 		}
 	}
@@ -260,24 +275,40 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 	return true, nil
 }
 
-// setGateExpiry stamps the TTL on a freshly-created rate-limit counter. The
-// EXPIRE follows a successful INCR, so a transient EXPIRE failure would leave
-// the counter without a TTL — it would never reset and the user would be
-// rate-limited until manual Redis cleanup. This degrades gracefully rather
-// than failing the whole CheckLimit (failing closed on a Redis blip would
-// block legitimate traffic): on failure it logs a structured warning and
-// raises metrics.LLMExpireFailure so the TTL-less key is observable, then
-// lets the request through. gate MUST be one of the bounded gate* constants.
-func (rl *RateLimiter) setGateExpiry(ctx context.Context, key string, ttl time.Duration, gate string) {
-	if err := rl.redis.Expire(ctx, key, ttl).Err(); err != nil {
+// incrWithExpiry runs incrWithExpiryScript: it increments the counter and, in
+// the same atomic round trip, re-stamps the TTL only when the key currently has
+// none. This both eliminates the INCR/EXPIRE non-atomicity and self-heals a
+// counter that was left TTL-less by an earlier missing expiry — the next request
+// re-stamps the window, so a transient Redis blip can no longer block a user
+// until manual cleanup. A healthy in-progress window keeps its original expiry
+// (fixed-window semantics preserved).
+//
+// If the script fails, the error is returned to the caller (CheckLimit then
+// applies the configured Redis-down policy — graceful, never fail-closed on a
+// blip). When the script reports that it had to repair an existing TTL-less
+// counter, it raises metrics.LLMExpireFailure and logs a structured warning so
+// the prior degradation stays observable, then lets the request through. gate
+// MUST be one of the bounded gate* constants.
+func (rl *RateLimiter) incrWithExpiry(ctx context.Context, key string, n int64, ttl time.Duration, gate string) (int64, error) {
+	res, err := incrWithExpiryScript.Run(ctx, rl.redis, []string{key}, n, ttl.Milliseconds()).Int64Slice()
+	if err != nil {
+		return 0, err
+	}
+	if len(res) != 2 {
+		return 0, fmt.Errorf("rate-limit script returned %d values, want 2", len(res))
+	}
+	count, healed := res[0], res[1]
+
+	if healed == 1 {
 		metrics.LLMExpireFailure.WithLabelValues(gate).Inc()
-		slog.WarnContext(ctx, "rate-limit counter EXPIRE failed; key has no TTL and will not reset until manual cleanup",
+		slog.WarnContext(ctx, "rate-limit counter was missing its TTL; re-stamped on this request (self-heal) so the user is not blocked until manual cleanup",
 			slog.String("gate", gate),
 			slog.String("key", key),
 			slog.Duration("ttl", ttl),
-			slog.String("error", err.Error()),
 		)
 	}
+
+	return count, nil
 }
 
 // handleRedisError applies the configured Redis-down policy. Records the

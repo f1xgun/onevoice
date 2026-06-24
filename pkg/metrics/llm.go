@@ -101,12 +101,14 @@ var (
 		Help: "Router retry-once outcomes, by result (success, retrying, exhausted, nonretryable) and attempt (first, second).",
 	}, []string{"result", "attempt"})
 
-	// LLMExpireFailure counts every time the rate-limiter creates a per-user
-	// counter via INCR but the follow-up EXPIRE fails. A counter left without
-	// a TTL never resets, so the user would be rate-limited until manual Redis
-	// intervention. The limiter degrades gracefully (the request is allowed —
-	// failing closed on a transient Redis blip would block legitimate traffic)
-	// and raises this counter so an operator can alert on TTL-less keys.
+	// LLMExpireFailure counts every time the rate-limiter finds an existing
+	// per-user counter that has no TTL and re-stamps it (self-heal). The counter
+	// increment + conditional expiry are now a single atomic Lua round trip, so
+	// a TTL-less key is repaired on the very next request rather than blocking
+	// the user until manual Redis intervention. This metric stays as the signal
+	// that such a repair happened (a prior expiry was lost) so an operator can
+	// still alert on the underlying Redis instability; the request itself is
+	// always allowed through.
 	//
 	// `gate` is the closed set of rate-limit windows the limiter maintains:
 	//   requests_min — per-minute request counter
@@ -117,7 +119,7 @@ var (
 	// business_id labels (cardinality blowout + PII). See pkg/metrics/README.md.
 	LLMExpireFailure = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "llm_expire_failure_total",
-		Help: "Rate-limiter EXPIRE failures after counter creation, by gate (requests_min, tokens_min, tokens_month). A TTL-less counter never resets.",
+		Help: "Rate-limiter self-heals of a TTL-less counter, by gate (requests_min, tokens_min, tokens_month). A missing TTL is re-stamped on the next request.",
 	}, []string{"gate"})
 )
 

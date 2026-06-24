@@ -349,71 +349,128 @@ func TestRateLimiter_DailySpenderError_FailsClosed(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------
-// EXPIRE-failure path (TTL-less counter) tests
+// TTL self-heal / fixed-window tests
 // ---------------------------------------------------------------------
 
-// expireFailHook fails only EXPIRE/PEXPIRE commands, letting INCR/INCRBY land
-// against the live miniredis. This reproduces the transient-Redis-blip window
-// where a freshly-created counter would be left without a TTL.
-type expireFailHook struct{ err error }
+// evalFailHook fails only the EVAL/EVALSHA commands that run the atomic
+// rate-limit script, leaving INCR/INCRBY untouched. This reproduces a Redis
+// blip on the counter round trip so the graceful-degradation policy is tested.
+type evalFailHook struct{ err error }
 
-func (h expireFailHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+func (h evalFailHook) DialHook(next redis.DialHook) redis.DialHook { return next }
 
-func (h expireFailHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+func (h evalFailHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
 		switch cmd.Name() {
-		case "expire", "pexpire":
+		case "eval", "evalsha":
 			return h.err
 		}
 		return next(ctx, cmd)
 	}
 }
 
-func (h expireFailHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+func (h evalFailHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
 	return next
 }
 
-// TestRateLimiter_ExpireFailure_DoesNotBlockAndCountsMetric — when the EXPIRE
-// after the first INCR fails, CheckLimit must still allow the request (graceful
-// degradation, not fail-closed) and bump llm_expire_failure_total{gate}.
-func TestRateLimiter_ExpireFailure_DoesNotBlockAndCountsMetric(t *testing.T) {
-	_, rdb := freshRedis(t)
-	rdb.AddHook(expireFailHook{err: errors.New("EXPIRE transient")})
+// TestRateLimiter_TTLSelfHeal_RepairsMissingTTL — a counter left without a TTL
+// (the forever-block scenario) is repaired on the very next request: the key
+// gains a TTL, the request is allowed, llm_expire_failure_total{gate} is bumped,
+// and FastForward past the window proves the key eventually expires (so the
+// user is not blocked forever).
+func TestRateLimiter_TTLSelfHeal_RepairsMissingTTL(t *testing.T) {
+	mr, rdb := freshRedis(t)
+	ctx := context.Background()
 
-	beforeReq := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
-	beforeMin := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_min"))
-	beforeMonth := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_month"))
+	userID := uuid.New()
+	reqKey := "ratelimit:" + userID.String() + ":requests:min"
+
+	require.NoError(t, rdb.Incr(ctx, reqKey).Err())
+	require.Equal(t, time.Duration(0), mr.TTL(reqKey), "precondition: counter has no TTL")
+
+	before := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
-	userID := uuid.New()
+	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", 1)
+	require.NoError(t, err)
+	assert.True(t, allowed, "self-heal must not block the request")
 
-	allowed, err := rl.CheckLimit(context.Background(), userID, uuid.Nil, "free", 100)
-	require.NoError(t, err, "EXPIRE failure must not error CheckLimit")
-	assert.True(t, allowed, "EXPIRE failure must not block the request")
+	assert.Greater(t, mr.TTL(reqKey), time.Duration(0), "TTL must be re-stamped on the next request")
+	assert.Equal(t, before+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min")),
+		"repairing a missing TTL is recorded as a self-heal")
 
-	assert.Equal(t, beforeReq+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min")))
-	assert.Equal(t, beforeMin+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_min")))
-	assert.Equal(t, beforeMonth+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_month")))
+	mr.FastForward(time.Minute + time.Second)
+	exists := rdb.Exists(ctx, reqKey).Val()
+	assert.Equal(t, int64(0), exists, "window must eventually expire — the user is not blocked forever")
 }
 
-// TestRateLimiter_ExpireFailure_OnlyOnCounterCreation — the EXPIRE (and thus
-// the failure metric) is attempted only when the counter is first created, not
-// on every subsequent INCR within the window.
-func TestRateLimiter_ExpireFailure_OnlyOnCounterCreation(t *testing.T) {
-	_, rdb := freshRedis(t)
-	rdb.AddHook(expireFailHook{err: errors.New("EXPIRE transient")})
+// TestRateLimiter_TTLSelfHeal_DoesNotResetExistingWindow — an in-progress window
+// with a live TTL is never re-stamped by subsequent in-window requests, so the
+// fixed-window semantics are preserved (the window does not slide forward under
+// sustained traffic).
+func TestRateLimiter_TTLSelfHeal_DoesNotResetExistingWindow(t *testing.T) {
+	mr, rdb := freshRedis(t)
+	ctx := context.Background()
 
-	beforeReq := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
+	userID := uuid.New()
+	reqKey := "ratelimit:" + userID.String() + ":requests:min"
+
+	require.NoError(t, rdb.Incr(ctx, reqKey).Err())
+	require.NoError(t, rdb.Expire(ctx, reqKey, time.Minute).Err())
+
+	mr.FastForward(40 * time.Second)
+	ttlBefore := mr.TTL(reqKey)
+	require.InDelta(t, (20 * time.Second).Seconds(), ttlBefore.Seconds(), 1, "precondition: ~20s left in window")
+
+	before := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
+	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", 1)
+	require.NoError(t, err)
+	assert.True(t, allowed)
+
+	ttlAfter := mr.TTL(reqKey)
+	assert.LessOrEqual(t, ttlAfter, ttlBefore,
+		"existing window TTL must NOT be extended/reset by an in-window request")
+	assert.Less(t, ttlAfter.Seconds(), (time.Minute).Seconds(),
+		"TTL must not jump back up to the full window")
+	assert.Equal(t, before, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min")),
+		"a healthy window with a live TTL is not a self-heal")
+}
+
+// TestRateLimiter_TTLSelfHeal_NoHealOnFreshCounter — a brand-new counter is the
+// normal create path, not a repair: the TTL is stamped but the self-heal metric
+// is NOT bumped, so the signal stays a true degradation indicator.
+func TestRateLimiter_TTLSelfHeal_NoHealOnFreshCounter(t *testing.T) {
+	mr, rdb := freshRedis(t)
+	ctx := context.Background()
+
+	before := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
 	userID := uuid.New()
+	reqKey := "ratelimit:" + userID.String() + ":requests:min"
 
-	for i := 0; i < 3; i++ {
-		allowed, err := rl.CheckLimit(context.Background(), userID, uuid.Nil, "free", 100)
-		require.NoError(t, err)
-		assert.True(t, allowed)
-	}
+	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", 1)
+	require.NoError(t, err)
+	assert.True(t, allowed)
 
-	assert.Equal(t, beforeReq+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min")),
-		"requests_min EXPIRE is attempted once (on count==1), so only one failure is recorded across three calls")
+	assert.Greater(t, mr.TTL(reqKey), time.Duration(0), "fresh counter still gets a TTL")
+	assert.Equal(t, before, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min")),
+		"creating a fresh window is not a self-heal — metric must not fire")
+}
+
+// TestRateLimiter_ScriptError_GracefulDegradation — when the counter round trip
+// itself fails (Redis blip on EVAL), the limiter applies its Redis-down policy
+// rather than crashing. With the default block policy this surfaces
+// ErrRateLimitUnavailable.
+func TestRateLimiter_ScriptError_GracefulDegradation(t *testing.T) {
+	_, rdb := freshRedis(t)
+	rdb.AddHook(evalFailHook{err: errors.New("EVAL transient")})
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 1)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, llm.ErrRateLimitUnavailable), "got %v", err)
+	assert.False(t, allowed)
 }
