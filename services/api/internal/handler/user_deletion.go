@@ -63,10 +63,22 @@ const soleOwnerCode = openapi.SoleOwnerResponseCode("sole_owner_of_businesses")
 const pendingDeletionCode = openapi.PendingDeletionResponseCode("account_pending_deletion")
 
 // Delete handles DELETE /api/v1/users/me. See <api_contract> in the
-// plan for the canonical response shapes (204 / 401 / 409 / 423).
+// plan for the canonical response shapes (204 / 401 / 403 / 409 / 423).
+//
+// CSRF defense: the Origin header MUST match an allowed CORS origin
+// (mirrors Restore). The endpoint is side-effecting (schedules account
+// deletion) on an ambient cookie/Bearer session, so a CSRF-vulnerable
+// path could trigger deletion from a hostile origin. Origin is set by
+// browsers on every fetch/XHR and cannot be forged by JS in the
+// victim's session.
 func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r)
 	if !ok {
+		return
+	}
+
+	if !h.originAllowed(r.Header.Get("Origin")) {
+		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
 		return
 	}
 
