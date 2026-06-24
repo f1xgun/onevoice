@@ -2,15 +2,50 @@ package chatturn
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
+
+// counterValue reads the current value of a {name, labels} counter series from
+// the default Prometheus gatherer, returning 0 when the series has no samples
+// yet. Used to assert recordPostsAndReviews emits the product metrics.
+func counterValue(t *testing.T, name string, labels map[string]string) float64 {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	for _, mf := range families {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if labelsMatch(m.GetLabel(), labels) {
+				return m.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
+}
+
+func labelsMatch(got []*dto.LabelPair, want map[string]string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, l := range got {
+		if want[l.GetName()] != l.GetValue() {
+			return false
+		}
+	}
+	return true
+}
 
 // fakeIntegrations records MarkTokenExpired calls so the test can assert the
 // token-health flip fires only on integration_token_invalid. The embedded
@@ -353,4 +388,134 @@ func TestRecordPosts_CoversAllPostingTools(t *testing.T) {
 	assert.Equal(t, "published", yandex.Status)
 	_, hasYandex := yandex.PlatformResults["yandex_business"]
 	assert.True(t, hasYandex, "yandex create_post recorded under the yandex_business platform")
+}
+
+// failingPostRepo always returns an error from Create so the test can assert the
+// publish metric is still counted (with result="error" derived from the tool
+// result) even when persistence fails.
+type failingPostRepo struct {
+	domain.PostRepository
+}
+
+func (failingPostRepo) Create(_ context.Context, _ *domain.Post) error {
+	return errors.New("mongo down")
+}
+
+// fakeReviewRepo records Upsert calls and optionally fails them so the test can
+// exercise both the success (replied/pending) and upsert-error metric paths.
+type fakeReviewRepo struct {
+	domain.ReviewRepository
+	fail     bool
+	upserted []domain.Review
+}
+
+func (f *fakeReviewRepo) Upsert(_ context.Context, r *domain.Review) error {
+	if f.fail {
+		return errors.New("mongo down")
+	}
+	f.upserted = append(f.upserted, *r)
+	return nil
+}
+
+// TestRecordPosts_EmitsPublishMetric — a successful publish increments
+// posts_published_total{platform,result} and an errored tool result is counted
+// with result="error" rather than silently dropped.
+func TestRecordPosts_EmitsPublishMetric(t *testing.T) {
+	repo := &fakePostRepo{}
+	turn := &Turn{deps: Deps{Posts: repo}}
+
+	okLabels := map[string]string{"platform": "telegram", "result": "published"}
+	errLabels := map[string]string{"platform": "vk", "result": "error"}
+	beforeOK := counterValue(t, "posts_published_total", okLabels)
+	beforeErr := counterValue(t, "posts_published_total", errLabels)
+
+	toolCalls := []domain.ToolCall{
+		{ID: "c1", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+		{ID: "c2", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "boom"}},
+	}
+	toolResults := []domain.ToolResult{
+		{ToolCallID: "c1"},
+		{ToolCallID: "c2", IsError: true, Content: map[string]interface{}{"error": "rate limited"}},
+	}
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	require.InDelta(t, beforeOK+1, counterValue(t, "posts_published_total", okLabels), 0.0001,
+		"successful publish must increment {telegram,published}")
+	require.InDelta(t, beforeErr+1, counterValue(t, "posts_published_total", errLabels), 0.0001,
+		"errored publish must increment {vk,error}")
+}
+
+// TestRecordPosts_EmitsPublishMetricOnPersistFailure — a Posts.Create failure is
+// a persistence problem, not a publish outcome, so the publish metric is still
+// counted (the post did land on the platform).
+func TestRecordPosts_EmitsPublishMetricOnPersistFailure(t *testing.T) {
+	turn := &Turn{deps: Deps{Posts: failingPostRepo{}}}
+
+	labels := map[string]string{"platform": "yandex_business", "result": "published"}
+	before := counterValue(t, "posts_published_total", labels)
+
+	toolCalls := []domain.ToolCall{
+		{ID: "c1", Name: tools.YandexBusinessCreatePost, Arguments: map[string]interface{}{"text": "ya"}},
+	}
+	toolResults := []domain.ToolResult{{ToolCallID: "c1"}}
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	require.InDelta(t, before+1, counterValue(t, "posts_published_total", labels), 0.0001,
+		"publish metric must fire even when the Post record fails to persist")
+}
+
+// TestRecordReviews_EmitsReplyMetric — each upserted review increments
+// reviews_replied_total with the review's reply state, and an errored
+// get_reviews result is counted with result="error".
+func TestRecordReviews_EmitsReplyMetric(t *testing.T) {
+	repo := &fakeReviewRepo{}
+	turn := &Turn{deps: Deps{Reviews: repo}}
+
+	repliedLabels := map[string]string{"platform": "yandex_business", "result": "replied"}
+	pendingLabels := map[string]string{"platform": "yandex_business", "result": "pending"}
+	errLabels := map[string]string{"platform": "vk", "result": "error"}
+	beforeReplied := counterValue(t, "reviews_replied_total", repliedLabels)
+	beforePending := counterValue(t, "reviews_replied_total", pendingLabels)
+	beforeErr := counterValue(t, "reviews_replied_total", errLabels)
+
+	toolCalls := []domain.ToolCall{
+		{ID: "c1", Name: "yandex_business__get_reviews"},
+		{ID: "c2", Name: "vk__get_reviews"},
+	}
+	toolResults := []domain.ToolResult{
+		{ToolCallID: "c1", Content: map[string]interface{}{"reviews": []interface{}{
+			map[string]interface{}{"id": "r1", "reply": "thanks!"},
+			map[string]interface{}{"id": "r2"},
+		}}},
+		{ToolCallID: "c2", IsError: true, Content: map[string]interface{}{"error": "session expired"}},
+	}
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	require.Len(t, repo.upserted, 2, "both reviews must upsert")
+	require.InDelta(t, beforeReplied+1, counterValue(t, "reviews_replied_total", repliedLabels), 0.0001,
+		"review carrying a reply increments {yandex_business,replied}")
+	require.InDelta(t, beforePending+1, counterValue(t, "reviews_replied_total", pendingLabels), 0.0001,
+		"review without a reply increments {yandex_business,pending}")
+	require.InDelta(t, beforeErr+1, counterValue(t, "reviews_replied_total", errLabels), 0.0001,
+		"errored get_reviews increments {vk,error}")
+}
+
+// TestRecordReviews_EmitsErrorMetricOnUpsertFailure — an Upsert failure is
+// counted with result="error" so a persistence problem is not silently dropped.
+func TestRecordReviews_EmitsErrorMetricOnUpsertFailure(t *testing.T) {
+	turn := &Turn{deps: Deps{Reviews: &fakeReviewRepo{fail: true}}}
+
+	labels := map[string]string{"platform": "yandex_business", "result": "error"}
+	before := counterValue(t, "reviews_replied_total", labels)
+
+	toolCalls := []domain.ToolCall{{ID: "c1", Name: "yandex_business__get_reviews"}}
+	toolResults := []domain.ToolResult{
+		{ToolCallID: "c1", Content: map[string]interface{}{"reviews": []interface{}{
+			map[string]interface{}{"id": "r1", "reply": "thanks!"},
+		}}},
+	}
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	require.InDelta(t, before+1, counterValue(t, "reviews_replied_total", labels), 0.0001,
+		"upsert failure must increment {yandex_business,error}")
 }
