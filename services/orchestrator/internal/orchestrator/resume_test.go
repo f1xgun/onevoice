@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -693,4 +694,66 @@ func TestResume_AccumulatedTokensSurviveJSONRoundTrip(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &env))
 	assert.Equal(t, 12345, env.AccumulatedInputTokens)
 	assert.Equal(t, 6789, env.AccumulatedOutputTokens)
+}
+
+// batchWithUserID builds a single-approved-call batch carrying the given
+// user_id, used to assert the resumed loop threads the user identity into the
+// post-resume LLM request (and thus the router's per-user rate limiter).
+func batchWithUserID(t *testing.T, batchID, userID string) *domain.PendingToolCallBatch {
+	t.Helper()
+	b := batchWithCalls(t, batchID, []domain.PendingCall{
+		{CallID: "c-rl", ToolName: "ok_tool", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
+	})
+	b.UserID = userID
+	return b
+}
+
+// TestResume_ThreadsUserIDIntoLLMRequest — a resumed run MUST carry the same
+// authenticated user id (persisted on the batch at pause time) into the
+// post-resume LLM ChatRequest.UserID. Otherwise UserUUID stays uuid.Nil and the
+// router skips the per-user rate limit / daily-spend guard on every iteration
+// after a HITL approval.
+func TestResume_ThreadsUserIDIntoLLMRequest(t *testing.T) {
+	userID := uuid.New()
+	rec := &capturingLLM{resp: &llm.ChatResponse{Content: "done", FinishReason: "stop"}}
+
+	exec := &resultOrErrExecutor{result: map[string]interface{}{"ok": true}}
+	reg := registryWithExecutor("ok_tool", domain.ToolFloorManual, exec)
+
+	repo := newMockPendingRepo()
+	repo.store["batch-rl"] = batchWithUserID(t, "batch-rl", userID.String())
+
+	orch := orchestrator.NewWithHITL(rec, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-rl"})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := rec.lastRequest(t)
+	assert.Equal(t, userID, got.UserID,
+		"resumed loop must thread batch.UserID into ChatRequest.UserID so the router rate-limits per user")
+	assert.NotEqual(t, uuid.Nil, got.UserID,
+		"resumed LLM request must not carry uuid.Nil — that bypasses the rate limiter")
+}
+
+// TestResume_MalformedUserID_DegradesToNil — a non-UUID persisted user_id must
+// degrade to uuid.Nil rather than panic. This re-enables the router's nil-guard
+// (limiting still applies once a valid id flows) and mirrors the chat handler's
+// conservative parse-failure behavior; it never silently fabricates an id.
+func TestResume_MalformedUserID_DegradesToNil(t *testing.T) {
+	rec := &capturingLLM{resp: &llm.ChatResponse{Content: "done", FinishReason: "stop"}}
+
+	exec := &resultOrErrExecutor{result: map[string]interface{}{"ok": true}}
+	reg := registryWithExecutor("ok_tool", domain.ToolFloorManual, exec)
+
+	repo := newMockPendingRepo()
+	repo.store["batch-bad"] = batchWithUserID(t, "batch-bad", "not-a-uuid")
+
+	orch := orchestrator.NewWithHITL(rec, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-bad"})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := rec.lastRequest(t)
+	assert.Equal(t, uuid.Nil, got.UserID,
+		"malformed batch user_id must degrade to uuid.Nil, not panic or fabricate an id")
 }
