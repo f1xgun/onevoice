@@ -114,6 +114,21 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 	var req ToolRequest
 	if err := json.Unmarshal(data, &req); err != nil {
 		slog.Error("a2a: failed to decode tool request", "agent", a.id, "error", err)
+		if reply == "" {
+			return
+		}
+		respData, err := json.Marshal(&ToolResponse{
+			Success: false,
+			Error:   "agent failed to decode request",
+			Code:    "transient",
+		})
+		if err != nil {
+			slog.Error("a2a: failed to encode decode-failure response", "agent", a.id, "error", err)
+			return
+		}
+		if err := a.transport.Publish(reply, respData); err != nil {
+			slog.Error("a2a: failed to publish decode-failure reply", "agent", a.id, "error", err)
+		}
 		return
 	}
 
@@ -132,7 +147,8 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 	resp, err := a.exec(ctx, req)
 	duration := time.Since(start)
 
-	if err != nil {
+	switch {
+	case err != nil:
 		log.Error("a2a: tool request failed", "error", err, "duration_ms", duration.Milliseconds())
 		resp = &ToolResponse{
 			TaskID:  req.TaskID,
@@ -140,14 +156,32 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 			Error:   err.Error(),
 			Code:    CodeOf(err),
 		}
-	} else {
+	case resp == nil:
+		log.Error("a2a: handler returned nil response and nil error", "duration_ms", duration.Milliseconds())
+		resp = &ToolResponse{
+			TaskID:  req.TaskID,
+			Success: false,
+			Error:   "handler returned nil response and nil error",
+			Code:    "transient",
+		}
+	default:
 		log.Info("a2a: tool request completed", "success", resp.Success, "duration_ms", duration.Milliseconds())
 	}
 
 	respData, err := json.Marshal(resp)
 	if err != nil {
 		log.Error("a2a: failed to encode tool response", "error", err)
-		return
+		fallback := &ToolResponse{
+			TaskID:  req.TaskID,
+			Success: false,
+			Error:   "agent failed to encode tool response",
+			Code:    "transient",
+		}
+		respData, err = json.Marshal(fallback)
+		if err != nil {
+			log.Error("a2a: failed to encode fallback tool response", "error", err)
+			return
+		}
 	}
 
 	if reply != "" {
