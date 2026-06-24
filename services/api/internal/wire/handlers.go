@@ -214,7 +214,11 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	var consentsHandler *handler.ConsentsHandler
 	if svcs.Consent != nil {
-		consentsHandler = handler.NewConsentsHandler(svcs.Consent, repos.UserConsents, cfg.CORSAllowedOrigins)
+		var deletionSvc handler.AccountDeletionServiceAPI
+		if svcs.AccountDeletion != nil {
+			deletionSvc = svcs.AccountDeletion
+		}
+		consentsHandler = handler.NewConsentsHandler(svcs.Consent, deletionSvc, repos.UserConsents, cfg.CORSAllowedOrigins)
 	}
 	if svcs.Consent != nil {
 		authHandler.SetConsentDiffer(svcs.Consent)
