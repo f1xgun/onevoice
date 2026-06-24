@@ -7,6 +7,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/logger"
 )
 
 // persistContext returns the standard 5-second detached context used for
@@ -19,6 +20,9 @@ import (
 func (t *Turn) persistContext(parentCtx context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx = i18n.WithLocale(ctx, i18n.LocaleFromContext(parentCtx))
+	if corrID := logger.CorrelationIDFromContext(parentCtx); corrID != "" {
+		ctx = logger.WithCorrelationID(ctx, corrID)
+	}
 	return ctx, cancel
 }
 
@@ -96,6 +100,9 @@ func (t *Turn) fireAutoTitleIfPending(parentCtx context.Context, conversationID,
 
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(gateCtx))
+	if corrID := logger.CorrelationIDFromContext(gateCtx); corrID != "" {
+		spawnCtx = logger.WithCorrelationID(spawnCtx, corrID)
+	}
 	go t.deps.Titler.GenerateAndSave(spawnCtx, businessID, conversationID, userText, assistantText)
 	go func() {
 		<-spawnCtx.Done()
@@ -140,6 +147,9 @@ func (t *Turn) fireAutoTitleIfPendingResume(parentCtx context.Context, conversat
 	}
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(gateCtx))
+	if corrID := logger.CorrelationIDFromContext(gateCtx); corrID != "" {
+		spawnCtx = logger.WithCorrelationID(spawnCtx, corrID)
+	}
 	go t.deps.Titler.GenerateAndSave(spawnCtx, conv.BusinessID, conversationID, userText, assistantMsg.Content)
 	go func() {
 		<-spawnCtx.Done()

@@ -9,6 +9,8 @@ import (
 	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
@@ -138,4 +140,40 @@ func TestPersistAfterStream_Pause_DedupesCallInBothStreams(t *testing.T) {
 	assert.Equal(t, "toolu_abc", msg.ToolCalls[0].ID)
 	assert.Equal(t, "batch-1-toolu_abc", msg.ToolCalls[0].ApprovalID)
 	assert.Equal(t, domain.ToolCallStatusPending, msg.ToolCalls[0].Status)
+}
+
+// TestPersistContext_PropagatesCorrelationIDAndLocale — the async persist +
+// auto-titler goroutines run on the detached persistContext, so their log
+// lines can only be correlated to the request edge if correlation_id (and
+// locale) ride along. The docstring promises both; assert the value copy.
+func TestPersistContext_PropagatesCorrelationIDAndLocale(t *testing.T) {
+	turn := &Turn{}
+
+	parent := logger.WithCorrelationID(context.Background(), "corr-abc-123")
+	parent = i18n.WithLocale(parent, language.Russian)
+
+	ctx, cancel := turn.persistContext(parent)
+	defer cancel()
+
+	assert.Equal(t, "corr-abc-123", logger.CorrelationIDFromContext(ctx),
+		"persist context must carry the parent's correlation_id")
+	assert.Equal(t, language.Russian, i18n.LocaleFromContext(ctx),
+		"persist context must carry the parent's locale")
+}
+
+// TestPersistContext_DetachesFromParentCancellation — persistContext must NOT
+// inherit the request ctx's cancellation/deadline (that's the whole point: the
+// SSE ctx dies when the user navigates away). Only the values are copied.
+func TestPersistContext_DetachesFromParentCancellation(t *testing.T) {
+	turn := &Turn{}
+
+	parent, parentCancel := context.WithCancel(logger.WithCorrelationID(context.Background(), "corr-detach"))
+	parentCancel()
+
+	ctx, cancel := turn.persistContext(parent)
+	defer cancel()
+
+	require.NoError(t, ctx.Err(), "detached persist context must not be canceled by the parent")
+	assert.Equal(t, "corr-detach", logger.CorrelationIDFromContext(ctx),
+		"values must still be copied off a canceled parent")
 }
