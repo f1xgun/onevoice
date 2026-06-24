@@ -233,6 +233,65 @@ func TestRekeyRow_UpdateFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "db write error")
 }
 
+func TestRekeyRow_UnmappedVersionAborts(t *testing.T) {
+	kFake := kmsfake.New()
+	envV1 := crypto.NewEnvelope(kFake, nil, "key-id", map[string]int16{"1": 1})
+
+	row := newV1Row(t, envV1)
+
+	kFake.RotateToVersion(2)
+	envUnmapped := crypto.NewEnvelope(kFake, nil, "key-id", map[string]int16{"1": 1})
+
+	repo := &fakeRepo{rows: []domain.Integration{row}}
+	r := NewRekeyer(repo, envUnmapped, nil, nil, 2, 100, 1, false, discardLogger())
+
+	err := r.rekeyRow(context.Background(), nil, row)
+	require.Error(t, err, "rekeyRow must abort when KMS version resolves below target")
+	assert.Contains(t, err.Error(), "did not resolve to >= target")
+
+	assert.Equal(t, int16(1), repo.rows[0].KeyVersion,
+		"row must not be written with key_version below target (would re-select forever)")
+
+	n, err := repo.CountRekeyRemaining(context.Background(), 2)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n, "unmapped row would be re-selected on the next batch")
+}
+
+func TestRekeyRunAbortsOnUnmappedVersion(t *testing.T) {
+	kFake := kmsfake.New()
+	envV1 := crypto.NewEnvelope(kFake, nil, "key-id", map[string]int16{"1": 1})
+
+	row := newV1Row(t, envV1)
+
+	kFake.RotateToVersion(2)
+	envUnmapped := crypto.NewEnvelope(kFake, nil, "key-id", map[string]int16{"1": 1})
+
+	updateCount := 0
+	repo := &fakeRepo{
+		rows: []domain.Integration{row},
+		updateFunc: func(_ domain.Integration) error {
+			updateCount++
+			return nil
+		},
+	}
+	r := NewRekeyer(repo, envUnmapped, nil, fakePool{}, 2, 100, 1, false, discardLogger())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "Run must abort instead of looping when KMS version is unmapped")
+		assert.Contains(t, err.Error(), "did not resolve to >= target")
+		assert.Equal(t, 0, updateCount, "no row may be written below target version")
+	case <-ctx.Done():
+		t.Fatal("Run did not return: without the no-progress guard it re-selects key_version=0 rows forever")
+	}
+}
+
 // noopTx is a pgx.Tx stub whose Commit and Rollback are no-ops. All other
 // methods are not exercised by processBatch so they panic to catch misuse.
 type noopTx struct{}
