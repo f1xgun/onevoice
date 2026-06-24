@@ -96,6 +96,9 @@ func (r *titlerConvRepo) UpdateTitleIfPending(_ context.Context, id, title strin
 // Titler tests don't exercise pin lifecycle; stubs return nil.
 func (r *titlerConvRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
 func (r *titlerConvRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
+func (r *titlerConvRepo) BumpLastMessageAt(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
 
 // SearchTitles / ScopedConversationIDs stubs.
 // Titler tests don't exercise the search path; stubs return nil.

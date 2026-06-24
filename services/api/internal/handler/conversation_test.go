@@ -38,8 +38,9 @@ type MockConversationRepository struct {
 	UpdateTitleIfPendingFunc    func(ctx context.Context, id, title string) error
 	TransitionToAutoPendingFunc func(ctx context.Context, id string) error
 	// atomic Pin/Unpin.
-	PinFunc   func(ctx context.Context, id, businessID, userID string) error
-	UnpinFunc func(ctx context.Context, id, businessID, userID string) error
+	PinFunc               func(ctx context.Context, id, businessID, userID string) error
+	UnpinFunc             func(ctx context.Context, id, businessID, userID string) error
+	BumpLastMessageAtFunc func(ctx context.Context, id string, ts time.Time) error
 }
 
 func (m *MockConversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
@@ -111,6 +112,13 @@ func (m *MockConversationRepository) Pin(ctx context.Context, id, businessID, us
 func (m *MockConversationRepository) Unpin(ctx context.Context, id, businessID, userID string) error {
 	if m.UnpinFunc != nil {
 		return m.UnpinFunc(ctx, id, businessID, userID)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) BumpLastMessageAt(ctx context.Context, id string, ts time.Time) error {
+	if m.BumpLastMessageAtFunc != nil {
+		return m.BumpLastMessageAtFunc(ctx, id, ts)
 	}
 	return nil
 }

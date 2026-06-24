@@ -35,6 +35,9 @@ func (r *conversationRepository) Create(ctx context.Context, conv *domain.Conver
 	now := time.Now()
 	conv.CreatedAt = now
 	conv.UpdatedAt = now
+	if conv.LastMessageAt == nil {
+		conv.LastMessageAt = &now
+	}
 
 	_, err := r.collection.InsertOne(ctx, conv)
 	if err != nil {
@@ -313,10 +316,38 @@ func (r *conversationRepository) Unpin(ctx context.Context, id, businessID, user
 	return nil
 }
 
+// BumpLastMessageAt advances last_message_at and updated_at to ts. Called on
+// every message-append path so the recency sort key the search read paths order
+// by stays current. A missing conversation is reported as ErrConversationNotFound
+// so callers can log the (non-fatal) drift without masking a real failure.
+func (r *conversationRepository) BumpLastMessageAt(ctx context.Context, id string, ts time.Time) error {
+	update := bson.M{"$set": bson.M{"last_message_at": ts, "updated_at": ts}}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+	if err != nil {
+		return fmt.Errorf("bump last_message_at: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return domain.ErrConversationNotFound
+	}
+	return nil
+}
+
 // MaxScopedConversations caps the conversation-id allowlist that
 // SearchByConversationIDs receives in phase 2 of the two-phase strategy.
 // Overflow is logged + truncated to the most-recently-active 1000.
 const MaxScopedConversations = 1000
+
+// recencySortKey is the computed field the search read paths sort on. It
+// coalesces last_message_at to created_at so legacy / field-absent documents
+// never sort as BSON null (lowest) and sink/truncate out of the result set.
+const recencySortKey = "_recency"
+
+// recencySortStage materializes recencySortKey via $ifNull so the subsequent
+// $sort can order on a guaranteed-present timestamp. Shared by SearchTitles and
+// ScopedConversationIDs so both read paths coalesce identically.
+var recencySortStage = bson.D{{Key: "$set", Value: bson.M{
+	recencySortKey: bson.M{"$ifNull": bson.A{"$last_message_at", "$created_at"}},
+}}}
 
 // SearchTitles runs an AND-of-prefixes regex query against conversations.title
 // scoped by (user_id, business_id, project_id?) and returns title hits plus
@@ -354,18 +385,21 @@ func (r *conversationRepository) SearchTitles(
 	if projectID != nil {
 		filter["project_id"] = *projectID
 	}
-	opts := options.Find().
-		SetProjection(bson.M{
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: filter}},
+		recencySortStage,
+		{{Key: "$sort", Value: bson.D{{Key: recencySortKey, Value: -1}}}},
+		{{Key: "$limit", Value: int64(limit)}},
+		{{Key: "$project", Value: bson.M{
 			"title":           1,
 			"project_id":      1,
 			"user_id":         1,
 			"business_id":     1,
 			"last_message_at": 1,
-		}).
-		SetSort(bson.D{{Key: "last_message_at", Value: -1}}).
-		SetLimit(int64(limit))
+		}}},
+	}
 
-	cursor, err := r.collection.Find(ctx, filter, opts)
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, nil, fmt.Errorf("search titles: %w", err)
 	}
@@ -400,11 +434,14 @@ func (r *conversationRepository) ScopedConversationIDs(
 	if projectID != nil {
 		filter["project_id"] = *projectID
 	}
-	opts := options.Find().
-		SetProjection(bson.M{"_id": 1}).
-		SetSort(bson.D{{Key: "last_message_at", Value: -1}}).
-		SetLimit(int64(MaxScopedConversations + 1))
-	cursor, err := r.collection.Find(ctx, filter, opts)
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: filter}},
+		recencySortStage,
+		{{Key: "$sort", Value: bson.D{{Key: recencySortKey, Value: -1}}}},
+		{{Key: "$limit", Value: int64(MaxScopedConversations + 1)}},
+		{{Key: "$project", Value: bson.M{"_id": 1}}},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, fmt.Errorf("scoped conversation ids: %w", err)
 	}

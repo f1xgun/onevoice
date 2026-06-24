@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,12 @@ type resumeStubBusiness struct{ BusinessReader }
 type resumeStubInteg struct{ IntegrationLister }
 type resumeStubProject struct{ ProjectReader }
 type resumeStubConv struct{ domain.ConversationRepository }
+
+// BumpLastMessageAt is a no-op override so the resume write-back paths can bump
+// the recency sort key without nil-panicking on the embedded interface.
+func (resumeStubConv) BumpLastMessageAt(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
 
 type resumePendingRepo struct {
 	domain.PendingToolCallRepository

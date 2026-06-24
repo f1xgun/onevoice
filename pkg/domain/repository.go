@@ -214,6 +214,11 @@ type ConversationRepository interface {
 	// Pin scopes by (id, business_id, user_id) — uniform 404 over 403 to avoid existence leak.
 	Pin(ctx context.Context, id, businessID, userID string) error
 	Unpin(ctx context.Context, id, businessID, userID string) error
+	// BumpLastMessageAt advances last_message_at (and updated_at) to ts on every
+	// message-append path so the recency sort key the search read paths order by
+	// stays current — without it, post-backfill conversations are field-absent
+	// and sink/truncate out of the search allowlist.
+	BumpLastMessageAt(ctx context.Context, id string, ts time.Time) error
 	SearchTitles(ctx context.Context, businessID, userID, query string, projectID *string, limit int) ([]ConversationTitleHit, []string, error)
 	ScopedConversationIDs(ctx context.Context, businessID, userID string, projectID *string) ([]string, error)
 	// MongoConversationsCleanup is best-effort post-PG-TX — PG is source of truth.

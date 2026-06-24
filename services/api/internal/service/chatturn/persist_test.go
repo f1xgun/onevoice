@@ -3,6 +3,7 @@ package chatturn
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +27,53 @@ type fakeMessageRepo struct {
 func (f *fakeMessageRepo) Create(_ context.Context, m *domain.Message) error {
 	f.created = append(f.created, *m)
 	return nil
+}
+
+// bumpRecordingConv records BumpLastMessageAt calls so the persist-path tests
+// can assert the recency sort key is advanced on every message append.
+type bumpRecordingConv struct {
+	domain.ConversationRepository
+	bumps []struct {
+		id string
+		ts time.Time
+	}
+}
+
+func (c *bumpRecordingConv) BumpLastMessageAt(_ context.Context, id string, ts time.Time) error {
+	c.bumps = append(c.bumps, struct {
+		id string
+		ts time.Time
+	}{id: id, ts: ts})
+	return nil
+}
+
+// TestPersistPaths_BumpLastMessageAt — every message-append path
+// (user / pause / complete) must advance the conversation's last_message_at so
+// it never sinks/truncates out of the search allowlist. The bump uses the
+// message's own CreatedAt.
+func TestPersistPaths_BumpLastMessageAt(t *testing.T) {
+	cases := []struct {
+		name    string
+		persist func(*Turn, context.Context, *domain.Message) error
+	}{
+		{"user", (*Turn).persistUserMessage},
+		{"pause", (*Turn).persistAssistantPause},
+		{"complete", (*Turn).persistAssistantComplete},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			conv := &bumpRecordingConv{}
+			turn := &Turn{deps: Deps{Messages: &fakeMessageRepo{}, Conversations: conv}}
+			ts := time.Now().Truncate(time.Millisecond)
+			msg := &domain.Message{ConversationID: "conv-bump", CreatedAt: ts}
+
+			require.NoError(t, c.persist(turn, context.Background(), msg))
+
+			require.Len(t, conv.bumps, 1, "append must bump last_message_at exactly once")
+			assert.Equal(t, "conv-bump", conv.bumps[0].id)
+			assert.Equal(t, ts, conv.bumps[0].ts, "bump must use the appended message's CreatedAt")
+		})
+	}
 }
 
 // TestPersistAfterStream_Pause_PersistsApprovalRequiredToolCalls — approval-

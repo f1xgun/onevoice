@@ -95,6 +95,90 @@ func TestConversationRepository_Create(t *testing.T) {
 		assert.True(t, conv.CreatedAt.Before(after) || conv.CreatedAt.Equal(after))
 		assert.Equal(t, conv.CreatedAt, conv.UpdatedAt)
 	})
+
+	// Regression: without the Create-set, last_message_at is field-absent on
+	// every post-backfill conversation, sorting as BSON null (lowest) in the
+	// search read paths' desc sort. New, actively-used conversations then sink
+	// to the bottom and get truncated out of the MaxScopedConversations
+	// allowlist, so message-content search silently never finds them.
+	t.Run("sets last_message_at on create (field present, ~= now)", func(t *testing.T) {
+		before := time.Now()
+		conv := &domain.Conversation{
+			UserID: "user-lma",
+			Title:  "Last Message At Test",
+		}
+
+		err := repo.Create(ctx, conv)
+		require.NoError(t, err)
+		after := time.Now()
+
+		require.NotNil(t, conv.LastMessageAt, "Create must set LastMessageAt on the struct")
+		assert.False(t, conv.LastMessageAt.Before(before))
+		assert.False(t, conv.LastMessageAt.After(after))
+
+		var raw bson.M
+		err = db.Collection("conversations").FindOne(ctx, bson.M{"_id": conv.ID}).Decode(&raw)
+		require.NoError(t, err)
+		v, present := raw["last_message_at"]
+		assert.True(t, present, "last_message_at field must be present (not omitted) on a new doc")
+		assert.NotNil(t, v, "last_message_at must be a real timestamp, not null")
+	})
+
+	t.Run("respects a caller-provided last_message_at", func(t *testing.T) {
+		seeded := time.Now().Add(-72 * time.Hour).UTC().Truncate(time.Millisecond)
+		conv := &domain.Conversation{
+			UserID:        "user-lma-2",
+			Title:         "Seeded",
+			LastMessageAt: &seeded,
+		}
+
+		err := repo.Create(ctx, conv)
+		require.NoError(t, err)
+
+		found, err := repo.GetByID(ctx, conv.ID)
+		require.NoError(t, err)
+		require.NotNil(t, found.LastMessageAt)
+		assert.WithinDuration(t, seeded, *found.LastMessageAt, time.Second,
+			"Create must not overwrite a caller-supplied last_message_at")
+	})
+}
+
+// TestConversationRepository_BumpLastMessageAt covers the per-append bump that
+// keeps the recency sort key current. Without it, every message appended after
+// Create leaves last_message_at frozen at creation time, so recency ordering
+// (and thus the search allowlist) drifts.
+func TestConversationRepository_BumpLastMessageAt(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	t.Run("advances last_message_at and updated_at forward", func(t *testing.T) {
+		conv := &domain.Conversation{
+			UserID: "user-bump",
+			Title:  "Bump Test",
+		}
+		require.NoError(t, repo.Create(ctx, conv))
+		require.NotNil(t, conv.LastMessageAt)
+		origLastMsg := *conv.LastMessageAt
+
+		bumpTo := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Millisecond)
+		require.NoError(t, repo.BumpLastMessageAt(ctx, conv.ID, bumpTo))
+
+		found, err := repo.GetByID(ctx, conv.ID)
+		require.NoError(t, err)
+		require.NotNil(t, found.LastMessageAt)
+		assert.WithinDuration(t, bumpTo, *found.LastMessageAt, time.Second,
+			"BumpLastMessageAt must move last_message_at to the supplied timestamp")
+		assert.True(t, found.LastMessageAt.After(origLastMsg),
+			"bumped last_message_at must be strictly after the create-time value")
+		assert.WithinDuration(t, bumpTo, found.UpdatedAt, time.Second,
+			"BumpLastMessageAt must also bump updated_at")
+	})
+
+	t.Run("returns ErrConversationNotFound for missing id", func(t *testing.T) {
+		err := repo.BumpLastMessageAt(ctx, "nonexistent-id-bump", time.Now())
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+	})
 }
 
 func TestConversationRepository_GetByID(t *testing.T) {
