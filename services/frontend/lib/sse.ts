@@ -136,7 +136,7 @@ export async function consumeSSEStream(
       if (event) onEvent(event);
     }
   }
-  if (buffer.trim()) {
+  if (!signal.aborted && buffer.trim()) {
     const event = parseSSELine(buffer.trim());
     if (event) onEvent(event);
   }

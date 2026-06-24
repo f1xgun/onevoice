@@ -421,6 +421,15 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     sendAbortRef.current?.abort();
   }, []);
 
+  // Abort any in-flight send/resume stream on unmount so detached fetches stop
+  // invoking onEvent (setState) on an unmounted component.
+  useEffect(() => {
+    return () => {
+      sendAbortRef.current?.abort();
+      resumeAbortRef.current?.abort();
+    };
+  }, []);
+
   const resolveApproval = useCallback(
     async (decisions: ApprovalDecision[]) => {
       if (!pendingApproval) return;
