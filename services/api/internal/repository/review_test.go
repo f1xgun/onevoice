@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -56,6 +57,66 @@ func TestReviewRepository_BulkUpsert(t *testing.T) {
 	t.Run("empty slice is a no-op", func(t *testing.T) {
 		require.NoError(t, repo.BulkUpsert(ctx, nil))
 		require.NoError(t, repo.BulkUpsert(ctx, []*domain.Review{}))
+	})
+}
+
+// A platform sync re-emits every fetched item as 'pending'. Once an operator
+// has replied (status 'replied'), a subsequent sync on the same natural key
+// must NOT downgrade the row back to 'pending', and must not mutate created_at.
+func TestReviewRepository_SyncDoesNotDowngradeRepliedStatus(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	biz := uuid.NewString()
+
+	original := &domain.Review{
+		BusinessID:  biz,
+		Platform:    "telegram",
+		ExternalID:  "r-replied",
+		Text:        "great",
+		ReplyText:   "thanks!",
+		ReplyStatus: domain.ReviewReplyStatusReplied,
+		CreatedAt:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+	require.NoError(t, repo.Upsert(ctx, original))
+
+	read := func() bson.M {
+		var got bson.M
+		require.NoError(t, db.Collection("reviews").
+			FindOne(ctx, bson.M{"business_id": biz, "external_id": "r-replied"}).Decode(&got))
+		return got
+	}
+	first := read()
+	require.Equal(t, domain.ReviewReplyStatusReplied, first["reply_status"])
+	createdAt := first["created_at"]
+
+	syncEcho := func(status string) *domain.Review {
+		return &domain.Review{
+			BusinessID:  biz,
+			Platform:    "telegram",
+			ExternalID:  "r-replied",
+			Text:        "great (edited on platform)",
+			ReplyStatus: status,
+			CreatedAt:   time.Date(2030, 9, 9, 9, 9, 9, 0, time.UTC),
+		}
+	}
+
+	t.Run("re-upsert with pending keeps replied", func(t *testing.T) {
+		require.NoError(t, repo.Upsert(ctx, syncEcho(domain.ReviewReplyStatusPending)))
+		got := read()
+		require.Equal(t, domain.ReviewReplyStatusReplied, got["reply_status"],
+			"a pending sync must not downgrade an operator-answered review")
+		require.Equal(t, "great (edited on platform)", got["text"],
+			"genuine content edits still propagate")
+		require.Equal(t, createdAt, got["created_at"], "created_at must never mutate")
+	})
+
+	t.Run("re-upsert via BulkUpsert with empty status keeps replied", func(t *testing.T) {
+		require.NoError(t, repo.BulkUpsert(ctx, []*domain.Review{syncEcho("")}))
+		got := read()
+		require.Equal(t, domain.ReviewReplyStatusReplied, got["reply_status"],
+			"an empty-status sync must not downgrade an operator-answered review")
+		require.Equal(t, createdAt, got["created_at"], "created_at must never mutate")
 	})
 }
 

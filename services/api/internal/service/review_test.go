@@ -1,12 +1,88 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	natslib "github.com/nats-io/nats.go"
+	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
+
+// stubReviewRepo records UpdateReply calls and serves a single review by ID.
+// Only the methods Reply touches are implemented; the rest panic so an
+// unexpected call surfaces loudly.
+type stubReviewRepo struct {
+	domain.ReviewRepository
+	review        *domain.Review
+	updateReplies int
+}
+
+func (s *stubReviewRepo) GetByID(_ context.Context, _ string) (*domain.Review, error) {
+	return s.review, nil
+}
+
+func (s *stubReviewRepo) UpdateReply(_ context.Context, _, _, status string) error {
+	s.updateReplies++
+	s.review.ReplyStatus = status
+	return nil
+}
+
+// capturingRequester records the last A2A ToolRequest sent and replies with a
+// success ToolResponse so dispatchToPlatform sees the post as landed.
+type capturingRequester struct {
+	calls int
+	last  a2a.ToolRequest
+}
+
+func (c *capturingRequester) RequestMsgWithContext(_ context.Context, msg *natslib.Msg) (*natslib.Msg, error) {
+	c.calls++
+	_ = json.Unmarshal(msg.Data, &c.last)
+	resp, _ := json.Marshal(a2a.ToolResponse{TaskID: c.last.TaskID, Success: true})
+	return &natslib.Msg{Data: resp}, nil
+}
+
+func TestReply_ShortCircuitsWhenAlreadyReplied(t *testing.T) {
+	biz := uuid.New()
+	repo := &stubReviewRepo{review: &domain.Review{
+		ID:          "rev-1",
+		BusinessID:  biz.String(),
+		Platform:    a2a.AgentTelegram,
+		ReplyStatus: domain.ReviewReplyStatusReplied,
+	}}
+	nc := &capturingRequester{}
+	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	require.NoError(t, svc.Reply(context.Background(), biz, "rev-1", "повторный ответ"))
+	require.Zero(t, nc.calls, "already-replied review must not re-dispatch to the platform")
+	require.Zero(t, repo.updateReplies, "already-replied review must not re-write status")
+}
+
+func TestReply_ManualDispatchCarriesStableApprovalID(t *testing.T) {
+	biz := uuid.New()
+	review := &domain.Review{
+		ID:           "rev-42",
+		BusinessID:   biz.String(),
+		Platform:     a2a.AgentTelegram,
+		ExternalID:   "-100_7",
+		ReplyStatus:  domain.ReviewReplyStatusPending,
+		PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+	}
+	repo := &stubReviewRepo{review: review}
+	nc := &capturingRequester{}
+	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	require.NoError(t, svc.Reply(context.Background(), biz, "rev-42", "спасибо"))
+	require.Equal(t, 1, nc.calls, "a pending review must dispatch exactly once")
+	require.Equal(t, "review-reply-rev-42", nc.last.ApprovalID,
+		"manual reply must carry a stable ApprovalID so a retry dedupes at the agent")
+}
 
 func TestBuildPlatformReply_VK(t *testing.T) {
 	r := &domain.Review{Platform: a2a.AgentVK, ExternalID: "11_42"}

@@ -16,11 +16,22 @@ import (
 // and returns the decoded response. Preserves the historical error wording so
 // callers can wrap it unchanged. The caller reads resp.Result on success.
 func dispatchTool(ctx context.Context, nc natsRequester, platform, tool string, args map[string]interface{}, businessID string, timeout time.Duration) (a2a.ToolResponse, error) {
+	return dispatchToolWithApproval(ctx, nc, platform, tool, args, businessID, "", timeout)
+}
+
+// dispatchToolWithApproval is dispatchTool with an explicit ApprovalID. A
+// non-empty approvalID makes the request idempotent at the agent: the agent's
+// dedupe gate keys on (business_id, approval_id), so a retry returns the cached
+// result instead of repeating an irreversible side effect (e.g. a public
+// review reply). Pass "" for the auto/sync paths where every dispatch is a
+// distinct call.
+func dispatchToolWithApproval(ctx context.Context, nc natsRequester, platform, tool string, args map[string]interface{}, businessID, approvalID string, timeout time.Duration) (a2a.ToolResponse, error) {
 	req := a2a.ToolRequest{
 		TaskID:     uuid.NewString(),
 		Tool:       tool,
 		Args:       args,
 		BusinessID: businessID,
+		ApprovalID: approvalID,
 	}
 	data, err := json.Marshal(req)
 	if err != nil {
