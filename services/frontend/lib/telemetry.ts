@@ -1,4 +1,5 @@
 import { api } from './api';
+import { useAuthStore } from './auth';
 import { API_BASE_URL, API_PATHS } from '@/lib/constants/apiPaths';
 
 export interface TelemetryEvent {
@@ -79,22 +80,45 @@ export async function flushTelemetry(): Promise<void> {
   } catch {}
 }
 
-// On page hide, flush remaining events via sendBeacon (works during unload)
+/**
+ * Flush buffered events on page hide. Uses fetch with `keepalive` — which, like
+ * sendBeacon, survives unload — but unlike sendBeacon can attach the
+ * Authorization header. `POST /telemetry` is JWT-protected, so a header-less
+ * sendBeacon 401'd and silently dropped every page-hide batch.
+ *
+ * With no access token the events can't be attributed, so the buffer is left
+ * intact for a later authenticated flush rather than dropped.
+ */
+export function flushOnHide(): void {
+  if (buffer.length === 0) return;
+
+  const token = useAuthStore.getState().accessToken;
+  if (!token) return;
+
+  const batch = buffer;
+  buffer = [];
+
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+
+  void fetch(`${API_BASE_URL}${API_PATHS.TELEMETRY}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(batch),
+    keepalive: true,
+    credentials: 'include',
+  }).catch(() => {});
+}
+
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && buffer.length > 0) {
-      const batch = buffer;
-      buffer = [];
-
-      if (flushTimer) {
-        clearTimeout(flushTimer);
-        flushTimer = null;
-      }
-
-      const blob = new Blob([JSON.stringify(batch)], {
-        type: 'application/json',
-      });
-      navigator.sendBeacon(`${API_BASE_URL}${API_PATHS.TELEMETRY}`, blob);
+    if (document.visibilityState === 'hidden') {
+      flushOnHide();
     }
   });
 }
