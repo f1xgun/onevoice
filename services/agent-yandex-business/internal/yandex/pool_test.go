@@ -244,10 +244,17 @@ func newCappedPool(t *testing.T, maxCtx int) (*BrowserPool, *[]*recordingMockCon
 // acquire is a tiny helper that drives getOrCreateContext directly because
 // WithPage requires a real Chromium browser to be set up via ensureBrowser.
 // Cap-eviction logic lives inside getOrCreateContext, so this is the right
-// seam for the unit tests.
+// seam for the unit tests. getOrCreateContext returns the context already
+// marked busy (the acquire side of the WithPage lifecycle); this helper clears
+// busy to model the release WithPage's defer performs, so a plain acquire here
+// behaves like a completed page operation and stays eligible for eviction.
 func acquire(t *testing.T, pool *BrowserPool, businessID string) (*pooledContext, error) {
 	t.Helper()
-	return pool.getOrCreateContext(context.Background(), businessID, "[]")
+	pc, err := pool.getOrCreateContext(context.Background(), businessID, "[]")
+	if pc != nil {
+		pc.busy.Store(false)
+	}
+	return pc, err
 }
 
 func TestBrowserPool_CapEviction_BeyondCap_EvictsLRU(t *testing.T) {
