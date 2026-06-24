@@ -11,6 +11,13 @@ import (
 // defaultShutdownTimeout is the fallback graceful-shutdown budget when SHUTDOWN_TIMEOUT is unset.
 const defaultShutdownTimeout = 30 * time.Second
 
+// defaultMaxConcurrentStreams caps simultaneous SSE chat/resume streams a single
+// orchestrator process will serve. It is a generous overload backstop, not a
+// tuned capacity limit — the api already bounds per-user concurrency, so this
+// only sheds load under a pathological aggregate burst. Set MAX_CONCURRENT_STREAMS
+// to tune, or to <= 0 to disable.
+const defaultMaxConcurrentStreams = 256
+
 // defaultToolExecTimeout bounds a single tool call when TOOL_EXEC_TIMEOUT is
 // unset. A platform agent that hangs (stuck RPA page, unanswered NATS request)
 // must not pin an agent-loop iteration open indefinitely, so an empty env still
@@ -54,8 +61,11 @@ type Config struct {
 	DraftReplyModel string
 	LLMTier         string
 	MaxIterations   int
-	NATSUrl         string
-	ShutdownTimeout time.Duration
+	// MaxConcurrentStreams is the process-wide cap on simultaneous SSE chat +
+	// resume streams. <= 0 disables the cap. Defaults to defaultMaxConcurrentStreams.
+	MaxConcurrentStreams int
+	NATSUrl              string
+	ShutdownTimeout      time.Duration
 	// ToolExecTimeout bounds a single tool call. Defaults to
 	// defaultToolExecTimeout when TOOL_EXEC_TIMEOUT is unset so an empty env
 	// still gets a finite per-call deadline.
@@ -131,6 +141,13 @@ func Load() (*Config, error) {
 	if v := os.Getenv("MAX_ITERATIONS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			maxIter = n
+		}
+	}
+
+	maxStreams := defaultMaxConcurrentStreams
+	if v := os.Getenv("MAX_CONCURRENT_STREAMS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			maxStreams = n
 		}
 	}
 
@@ -229,15 +246,16 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:               getEnv("PORT", "8090"),
-		LLMModel:           model,
-		DraftReplyModel:    draftReplyModel,
-		LLMTier:            getEnv("LLM_TIER", "free"),
-		MaxIterations:      maxIter,
-		NATSUrl:            getEnv("NATS_URL", "nats://localhost:4222"),
-		ShutdownTimeout:    shutdownTimeout,
-		ToolExecTimeout:    toolExecTimeout,
-		HealthCheckTimeout: healthCheckTimeout,
+		Port:                 getEnv("PORT", "8090"),
+		LLMModel:             model,
+		DraftReplyModel:      draftReplyModel,
+		LLMTier:              getEnv("LLM_TIER", "free"),
+		MaxIterations:        maxIter,
+		MaxConcurrentStreams: maxStreams,
+		NATSUrl:              getEnv("NATS_URL", "nats://localhost:4222"),
+		ShutdownTimeout:      shutdownTimeout,
+		ToolExecTimeout:      toolExecTimeout,
+		HealthCheckTimeout:   healthCheckTimeout,
 
 		MongoURI: getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDB:  getEnv("MONGO_DB", "onevoice"),

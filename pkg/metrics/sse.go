@@ -30,3 +30,20 @@ var SSEConcurrencyRollbackFailed = promauto.NewCounterVec(prometheus.CounterOpts
 	Name: "sse_concurrency_rollback_failed_total",
 	Help: "Number of over-cap rollback DECR operations that failed; the counter slot is reclaimed by TTL.",
 }, []string{"tier"})
+
+// OrchestratorStreamsInflight is the orchestrator's process-wide gauge of SSE
+// streams currently holding a GLOBAL concurrency slot. Distinct from the
+// per-user, Redis-backed SSEConcurrency* metrics above (which live on the api):
+// this is a single backstop limit on total concurrent streams a single
+// orchestrator process will serve. No labels — one global capacity signal.
+var OrchestratorStreamsInflight = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "orchestrator_streams_inflight",
+	Help: "Current number of in-flight orchestrator SSE streams holding a global concurrency slot.",
+})
+
+// OrchestratorStreamsRejectedTotal counts orchestrator SSE requests rejected
+// with 503 because the process-wide stream concurrency cap was full.
+var OrchestratorStreamsRejectedTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "orchestrator_streams_rejected_total",
+	Help: "Number of orchestrator SSE requests rejected because the global stream concurrency cap was reached.",
+})

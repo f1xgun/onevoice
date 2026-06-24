@@ -35,6 +35,7 @@ disabling a guard.
 | `Port` | `PORT` | `"8090"` | HTTP listen port. |
 | `ShutdownTimeout` | `SHUTDOWN_TIMEOUT` | `30s` | Graceful-shutdown budget. 30s gives in-flight LLM and tool-dispatch requests time to drain before SIGKILL. |
 | `HealthCheckTimeout` | `HEALTH_CHECK_TIMEOUT` | `2s` | Per-dep timeout inside `/health/ready`. Checks run concurrently in `pkg/health.ReadyHandler`, so the wall-clock budget is `max` (not sum). Defensive default + clamp so an operator typo (or zero/negative explicit value) can't disable the safety net. Matches the API service's `HealthCheckTimeout` semantics. |
+| `MaxConcurrentStreams` | `MAX_CONCURRENT_STREAMS` | `256` | Process-wide cap on simultaneous SSE streams (`POST /chat` + `/chat/{id}/resume`), enforced by `internal/streamlimit`. Over-cap requests get `503 {"error":"stream_capacity_exceeded"}`. A generous aggregate backstop — the API already bounds per-user concurrency (`pkg/ssecounter`); this only sheds load under a pathological total burst. Set `0` (or negative) to disable. Observed via `orchestrator_streams_inflight` + `orchestrator_streams_rejected_total`. |
 
 ### Agent loop
 

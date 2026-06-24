@@ -205,6 +205,36 @@ func TestStreamSSE_FreshChat_ForwardsBytesAndSetsSSEHeaders(t *testing.T) {
 	}
 }
 
+func TestStreamSSE_Non200_ReturnsErrorWithoutCommitting200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"stream_capacity_exceeded"}`))
+	}))
+	defer srv.Close()
+
+	rec := newRecordingFlusher()
+	err := New(srv.URL, srv.Client()).StreamSSE(context.Background(), StreamSSERequest{
+		ConversationID: "conv-1",
+		Body:           []byte(`{"message":"hi"}`),
+		Writer:         rec,
+	})
+	if err == nil {
+		t.Fatal("StreamSSE: want error on non-200, got nil")
+	}
+	// The error carries the "stream chat" verb (so chatturn maps it to
+	// OutcomeOrchestratorUnavailable), the status, and the body for logs.
+	for _, want := range []string{"stream chat", "503", "stream_capacity_exceeded"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
+	}
+	// Must NOT have committed a 200 to the client writer — otherwise the caller
+	// can't surface the failure.
+	if rec.status == http.StatusOK {
+		t.Error("must not write 200 to the client on a non-200 upstream")
+	}
+}
+
 func TestStreamSSE_ResumePath_SetsBatchIDQuery(t *testing.T) {
 	var gotPath, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
