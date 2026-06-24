@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -36,6 +37,9 @@ func (s *stubConversationRepo) TransitionToAutoPending(_ context.Context, _ stri
 // Stub returns nil so the constructor test stays scope-agnostic.
 func (s *stubConversationRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
 func (s *stubConversationRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
+func (s *stubConversationRepo) BumpLastMessageAt(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
 
 // SearchTitles / ScopedConversationIDs stubs.
 // Return nil so the constructor test stays scope-agnostic.

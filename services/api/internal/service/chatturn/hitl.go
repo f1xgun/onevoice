@@ -107,6 +107,7 @@ func (t *Turn) finalizeStranded(parentCtx context.Context, msg *domain.Message) 
 		slog.WarnContext(saveCtx, "chatturn: failed to finalize stranded message",
 			"error", err, "message_id", msg.ID)
 	}
+	t.bumpLastMessageAtNow(saveCtx, healed.ConversationID)
 }
 
 // reemitApprovalEvent writes a tool_approval_required SSE event from the persisted batch (no orch hop).
@@ -387,6 +388,7 @@ func (t *Turn) runResumeStream(
 		slog.ErrorContext(saveCtx, "chatturn: resume: failed to persist partial message (self-heal will retry on next request)",
 			"error", err, "message_id", msg.ID, "conversation_id", conversationID, "status", msg.Status)
 	}
+	t.bumpLastMessageAtNow(saveCtx, conversationID)
 	return OutcomeRejoinedResume, nil
 }
 
@@ -425,6 +427,7 @@ func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Messa
 		slog.ErrorContext(saveCtx, "chatturn: resume: failed to persist re-paused message (message stays active; next approve/heal will recover)",
 			"error", err, "message_id", msg.ID, "conversation_id", msg.ConversationID)
 	}
+	t.bumpLastMessageAtNow(saveCtx, msg.ConversationID)
 	return OutcomePauseHITL
 }
 
@@ -441,6 +444,7 @@ func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message,
 		slog.ErrorContext(saveCtx, "chatturn: resume: failed to persist completed message (self-heal will retry on next request)",
 			"error", err, "message_id", msg.ID, "conversation_id", msg.ConversationID, "status", msg.Status)
 	}
+	t.bumpLastMessageAtNow(saveCtx, msg.ConversationID)
 	if t.deps.Posts != nil || t.deps.Reviews != nil {
 		t.recordPostsAndReviews(saveCtx, businessID, toolCalls, toolResults)
 	}

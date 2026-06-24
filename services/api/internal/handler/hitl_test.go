@@ -225,6 +225,9 @@ func (c *hitlConvRepo) TransitionToAutoPending(_ context.Context, _ string) erro
 // HITL tests don't exercise pin lifecycle; stubs return nil.
 func (c *hitlConvRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
 func (c *hitlConvRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
+func (c *hitlConvRepo) BumpLastMessageAt(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
 
 // SearchTitles / ScopedConversationIDs stubs.
 // HITL tests don't exercise the search path.

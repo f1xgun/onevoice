@@ -31,6 +31,13 @@ type stubConversationRepo struct {
 		ProjectID *string
 	}
 
+	// BumpCalls captures every BumpLastMessageAt call so MoveToProject can
+	// assert the system-note append bumps the recency sort key.
+	BumpCalls []struct {
+		ID string
+		TS time.Time
+	}
+
 	// Forced failures.
 	GetByIDErr               error
 	UpdateProjectAssignErr   error
@@ -82,6 +89,15 @@ func (s *stubConversationRepo) UpdateTitleIfPending(_ context.Context, _, _ stri
 func (s *stubConversationRepo) TransitionToAutoPending(_ context.Context, _ string) error { return nil }
 func (s *stubConversationRepo) Pin(_ context.Context, _, _, _ string) error               { return nil }
 func (s *stubConversationRepo) Unpin(_ context.Context, _, _, _ string) error             { return nil }
+func (s *stubConversationRepo) BumpLastMessageAt(_ context.Context, id string, ts time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.BumpCalls = append(s.BumpCalls, struct {
+		ID string
+		TS time.Time
+	}{ID: id, TS: ts})
+	return nil
+}
 func (s *stubConversationRepo) SearchTitles(_ context.Context, _, _, _ string, _ *string, _ int) ([]domain.ConversationTitleHit, []string, error) {
 	return nil, nil, nil
 }
@@ -311,6 +327,12 @@ func TestMoveToProject_HappyPath_WithProject(t *testing.T) {
 	assert.Equal(t, "system", msg.Created[0].Role)
 	assert.Contains(t, msg.Created[0].Content, "Marketing",
 		"system note must include resolved project name; got: %s", msg.Created[0].Content)
+
+	require.Len(t, conv.BumpCalls, 1,
+		"appending the move system note must bump last_message_at exactly once")
+	assert.Equal(t, convID, conv.BumpCalls[0].ID)
+	assert.Equal(t, msg.Created[0].CreatedAt, conv.BumpCalls[0].TS,
+		"bump must use the appended note's timestamp")
 }
 
 // TestMoveToProject_HappyPath_NoProject covers the move-to-"no project"

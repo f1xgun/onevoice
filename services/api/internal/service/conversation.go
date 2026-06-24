@@ -130,6 +130,10 @@ func (s *ConversationService) MoveToProject(
 		slog.WarnContext(ctx, "MoveToProject: failed to append system note",
 			"error", err, "conversation_id", conversationID)
 	}
+	if err := s.convRepo.BumpLastMessageAt(ctx, conversationID, note.CreatedAt); err != nil {
+		slog.WarnContext(ctx, "MoveToProject: failed to bump last_message_at",
+			"error", err, "conversation_id", conversationID)
+	}
 
 	updated, err := s.convRepo.GetByID(ctx, conversationID)
 	if err != nil {

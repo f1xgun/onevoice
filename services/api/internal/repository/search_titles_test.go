@@ -33,6 +33,70 @@ func insertConvForSearch(t *testing.T, db *mongo.Database, businessID, userID st
 	return id
 }
 
+// insertConvNoLastMsg inserts a conversation document WITHOUT a last_message_at
+// field — the post-backfill / field-absent shape this bug produced. created_at
+// is the doc's only recency timestamp, so the coalesce sort must fall back to it.
+func insertConvNoLastMsg(t *testing.T, db *mongo.Database, businessID, userID, title string, createdAt time.Time) string {
+	t.Helper()
+	id := bson.NewObjectID().Hex()
+	doc := bson.M{
+		"_id":         id,
+		"user_id":     userID,
+		"business_id": businessID,
+		"project_id":  nil,
+		"title":       title,
+		"created_at":  createdAt,
+		"updated_at":  createdAt,
+	}
+	_, err := db.Collection("conversations").InsertOne(context.Background(), doc)
+	require.NoError(t, err)
+	return id
+}
+
+// TestScopedConversationIDs_CoalescesMissingLastMessageAt — a brand-new
+// conversation whose last_message_at field is ABSENT (created just now) must
+// sort AHEAD of an old conversation whose last_message_at is set to an old
+// timestamp. Without the $ifNull coalesce to created_at, the field-absent doc
+// sorts as BSON null (lowest) and sinks below — exactly the truncation that
+// dropped new conversations out of the search allowlist.
+func TestScopedConversationIDs_CoalescesMissingLastMessageAt(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	repo := NewConversationRepository(db).(*conversationRepository)
+
+	now := time.Now().UTC()
+	oldWithField := insertConvForSearch(t, db, "biz-c", "user-c", nil, "old backfilled", now.Add(-30*24*time.Hour))
+	newNoField := insertConvNoLastMsg(t, db, "biz-c", "user-c", "brand new", now)
+
+	ids, err := repo.ScopedConversationIDs(ctx, "biz-c", "user-c", nil)
+	require.NoError(t, err)
+	require.Len(t, ids, 2)
+	assert.Equal(t, newNoField, ids[0],
+		"field-absent-but-recent conversation must sort first via $ifNull(created_at)")
+	assert.Equal(t, oldWithField, ids[1])
+}
+
+// TestSearchTitles_CoalescesMissingLastMessageAt — same coalesce guarantee for
+// the title search read path: a field-absent recent conversation must rank
+// ahead of an old conversation carrying an explicit last_message_at.
+func TestSearchTitles_CoalescesMissingLastMessageAt(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, EnsureSearchIndexes(ctx, db))
+	repo := NewConversationRepository(db).(*conversationRepository)
+
+	now := time.Now().UTC()
+	oldWithField := insertConvForSearch(t, db, "biz-t", "user-t", nil, "инвойс старый", now.Add(-30*24*time.Hour))
+	newNoField := insertConvNoLastMsg(t, db, "biz-t", "user-t", "инвойс новый", now)
+
+	_, ids, err := repo.SearchTitles(ctx, "biz-t", "user-t", "инвойс", nil, 20)
+	require.NoError(t, err)
+	require.Len(t, ids, 2)
+	assert.Equal(t, newNoField, ids[0],
+		"field-absent-but-recent title hit must sort first via $ifNull(created_at)")
+	assert.Equal(t, oldWithField, ids[1])
+}
+
 // TestSearchTitles_RejectsEmptyScope — defense-in-depth (Pitfalls §19,
 // T-19-CROSS-TENANT). Empty businessID OR userID MUST return ErrInvalidScope
 // without invoking Mongo.

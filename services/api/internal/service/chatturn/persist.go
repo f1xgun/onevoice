@@ -31,21 +31,59 @@ func (t *Turn) persistContext(parentCtx context.Context) (context.Context, conte
 // failing to persist the user's question is a non-fatal observability gap,
 // not a request failure.
 func (t *Turn) persistUserMessage(ctx context.Context, msg *domain.Message) error {
-	return t.deps.Messages.Create(ctx, msg)
+	err := t.deps.Messages.Create(ctx, msg)
+	t.bumpLastMessageAt(ctx, msg)
+	return err
 }
 
 // persistAssistantPause writes the assistant Message at the
 // tool_approval_required pause point. Status=PendingApproval; ToolCalls
 // already carry ApprovalID=<batch>-<call> + Status=Pending.
 func (t *Turn) persistAssistantPause(ctx context.Context, msg *domain.Message) error {
-	return t.deps.Messages.Create(ctx, msg)
+	err := t.deps.Messages.Create(ctx, msg)
+	t.bumpLastMessageAt(ctx, msg)
+	return err
 }
 
 // persistAssistantComplete writes the assistant Message at done / error. The
 // caller has already merged streamErrContent into msg.Content via the i18n
 // wrapper so chat history renders in the writer's language forever.
 func (t *Turn) persistAssistantComplete(ctx context.Context, msg *domain.Message) error {
-	return t.deps.Messages.Create(ctx, msg)
+	err := t.deps.Messages.Create(ctx, msg)
+	t.bumpLastMessageAt(ctx, msg)
+	return err
+}
+
+// bumpLastMessageAt advances the conversation's recency sort key to the just-
+// appended message's timestamp. Best-effort: a failure is a non-fatal recency
+// drift (the next append retries), so it is logged, never surfaced to the
+// caller. Skips work when the message carries no usable timestamp.
+func (t *Turn) bumpLastMessageAt(ctx context.Context, msg *domain.Message) {
+	if t.deps.Conversations == nil || msg == nil || msg.ConversationID == "" {
+		return
+	}
+	ts := msg.CreatedAt
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	if err := t.deps.Conversations.BumpLastMessageAt(ctx, msg.ConversationID, ts); err != nil {
+		slog.WarnContext(ctx, "chatturn: failed to bump last_message_at",
+			"error", err, "conversation_id", msg.ConversationID)
+	}
+}
+
+// bumpLastMessageAtNow advances the conversation's recency sort key to now. The
+// resume write-back paths mutate a message that was created on an earlier turn,
+// so they bump with the resume timestamp (not the stale message CreatedAt).
+// Best-effort: a failure is a non-fatal recency drift, logged not surfaced.
+func (t *Turn) bumpLastMessageAtNow(ctx context.Context, conversationID string) {
+	if t.deps.Conversations == nil || conversationID == "" {
+		return
+	}
+	if err := t.deps.Conversations.BumpLastMessageAt(ctx, conversationID, time.Now()); err != nil {
+		slog.WarnContext(ctx, "chatturn: failed to bump last_message_at",
+			"error", err, "conversation_id", conversationID)
+	}
 }
 
 // fireAutoTitleIfPending re-reads the conversation AFTER messageRepo.Create
