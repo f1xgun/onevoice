@@ -1,7 +1,9 @@
 package telegram
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/safefetch"
 )
 
 // newMockTelegramServer creates a mock Telegram Bot API server.
@@ -121,12 +125,25 @@ func TestSendMessage_APIError(t *testing.T) {
 	assert.Contains(t, err.Error(), "chat not found")
 }
 
+// stubFetcher swaps photoFetcher for the test and restores it on cleanup.
+func stubFetcher(t *testing.T, fn fetcherFunc) {
+	t.Helper()
+	orig := photoFetcher
+	photoFetcher = fn
+	t.Cleanup(func() { photoFetcher = orig })
+}
+
+// fetcherFunc adapts a function to the imageFetcher interface.
+type fetcherFunc func(ctx context.Context, rawURL string) ([]byte, string, error)
+
+func (f fetcherFunc) Get(ctx context.Context, rawURL string) (body []byte, contentType string, err error) {
+	return f(ctx, rawURL)
+}
+
 func TestSendPhoto_Success(t *testing.T) {
-	photoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write([]byte("fake-jpeg-data"))
-	}))
-	defer photoSrv.Close()
+	stubFetcher(t, func(_ context.Context, _ string) ([]byte, string, error) {
+		return []byte("fake-jpeg-data"), "image/jpeg", nil
+	})
 
 	var capturedPath string
 	var capturedContentType string
@@ -147,12 +164,7 @@ func TestSendPhoto_Success(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-
-	origClient := photoHTTPClient
-	photoHTTPClient = photoSrv.Client()
-	t.Cleanup(func() { photoHTTPClient = origClient })
-
-	err := bot.SendPhoto("-1001234567890", photoSrv.URL+"/image.jpg", "Nice pic!")
+	err := bot.SendPhoto("-1001234567890", "https://images.example.test/image.jpg", "Nice pic!")
 
 	require.NoError(t, err)
 	assert.Contains(t, capturedPath, "/sendPhoto")
@@ -160,10 +172,9 @@ func TestSendPhoto_Success(t *testing.T) {
 }
 
 func TestSendPhoto_DownloadFails(t *testing.T) {
-	photoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.NotFound(w, r)
-	}))
-	defer photoSrv.Close()
+	stubFetcher(t, func(_ context.Context, _ string) ([]byte, string, error) {
+		return nil, "", fmt.Errorf("status 404")
+	})
 
 	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("should not call Telegram API when photo download fails")
@@ -171,12 +182,7 @@ func TestSendPhoto_DownloadFails(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-
-	origClient := photoHTTPClient
-	photoHTTPClient = photoSrv.Client()
-	t.Cleanup(func() { photoHTTPClient = origClient })
-
-	err := bot.SendPhoto("-1001234567890", photoSrv.URL+"/missing.jpg", "caption")
+	err := bot.SendPhoto("-1001234567890", "https://images.example.test/missing.jpg", "caption")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "download photo")
@@ -193,6 +199,31 @@ func TestSendPhoto_InvalidURL(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "download photo")
+}
+
+// TestSendPhoto_RejectsSSRF asserts the real safefetch guard blocks
+// LLM-supplied internal/non-https photo URLs before any download or Telegram
+// API call happens. The mock Telegram handler fails the test if reached.
+func TestSendPhoto_RejectsSSRF(t *testing.T) {
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not call Telegram API when photo URL is blocked by SSRF guard")
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+	disallowed := []string{
+		"http://example.com/photo.jpg",
+		"https://127.0.0.1/photo.jpg",
+		"https://169.254.169.254/latest/meta-data",
+		"https://10.0.0.1/photo.jpg",
+		"https://[::1]/photo.jpg",
+	}
+	for _, raw := range disallowed {
+		err := bot.SendPhoto("-1001234567890", raw, "caption")
+		require.Error(t, err, "SendPhoto(%q) must be rejected", raw)
+		require.ErrorIs(t, err, safefetch.ErrUnsafeURL, "SendPhoto(%q) must fail closed with ErrUnsafeURL", raw)
+		assert.Contains(t, err.Error(), "download photo")
+	}
 }
 
 func TestGetReviews_SkipsMessageWithNilChat(t *testing.T) {
