@@ -67,6 +67,7 @@ func deleteAccountReq(t *testing.T, token, password string) *http.Response {
 	req, _ := http.NewRequest(http.MethodDelete, baseURL+"/api/v1/users/me", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Origin", baseURL)
 	resp, err := httpClient.Do(req)
 	require.NoError(t, err)
 	return resp
