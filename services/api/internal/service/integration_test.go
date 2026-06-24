@@ -16,6 +16,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
+	"github.com/f1xgun/onevoice/pkg/crypto/kmsfake"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -146,6 +147,13 @@ func testEncryptor(t *testing.T) *crypto.Encryptor {
 func testEnvelope(t *testing.T, enc *crypto.Encryptor) *crypto.Envelope {
 	t.Helper()
 	return crypto.NewEnvelope(nil, enc, "", nil)
+}
+
+// testKMSEnvelope builds an Envelope backed by the in-memory fake KMS, the
+// production envelope-encryption path where each row carries a wrapped DEK.
+func testKMSEnvelope(t *testing.T) *crypto.Envelope {
+	t.Helper()
+	return crypto.NewEnvelope(kmsfake.New(), nil, "test-kms-key-id", map[string]int16{"1": 1})
 }
 
 func TestIntegrationService_ListByBusinessID(t *testing.T) {
@@ -1490,4 +1498,83 @@ func TestGetDecryptedToken_MetricOnSuccessNotOnAuditFailure(t *testing.T) {
 		after := testutil.ToFloat64(metrics.IntegrationTokenDecryptedCounter("vk", "api.internal"))
 		assert.InDelta(t, before, after, 0.0001, "metric must not increment when audit fails")
 	})
+}
+
+// TestGetDecryptedToken_RefreshEmptyRefresh_KMS_NoDEKMismatch is a regression
+// guard for the envelope DEK-mismatch bug: on a routine refresh Google returns a
+// new access token but an EMPTY refresh token. EncryptForRow mints a brand-new
+// per-row DEK, so every carried-forward field (refresh AND user token) must be
+// re-sealed under that DEK; leaving any field sealed under the old DEK bricks the
+// integration on the next decrypt. The integration must survive two refresh
+// cycles with all fields still decryptable.
+func TestGetDecryptedToken_RefreshEmptyRefresh_KMS_NoDEKMismatch(t *testing.T) {
+	ctx := context.Background()
+	env := testKMSEnvelope(t)
+
+	businessID := uuid.New()
+	integrationID := uuid.New()
+	platform := "google_business"
+	externalID := "locations/4242"
+
+	refreshPlain := "the_refresh_token"
+	userPlain := "the_vk_user_token"
+
+	pts := [][]byte{[]byte("expired_access"), []byte(refreshPlain), []byte(userPlain)}
+	cts, wrapped, ver, fp, err := env.EncryptForRow(ctx, integrationID, platform, pts)
+	require.NoError(t, err)
+
+	past := time.Now().Add(-1 * time.Hour)
+	future := time.Now().Add(1 * time.Hour)
+	row := &domain.Integration{
+		ID:                       integrationID,
+		BusinessID:               businessID,
+		Platform:                 platform,
+		ExternalID:               externalID,
+		Status:                   "active",
+		EncryptedAccessToken:     cts[0],
+		EncryptedRefreshToken:    cts[1],
+		EncryptedUserToken:       cts[2],
+		WrappedDEK:               wrapped,
+		KeyVersion:               ver,
+		EncryptionKeyFingerprint: fp,
+		UserTokenExpiresAt:       &future,
+		TokenExpiresAt:           &past,
+	}
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			return row, nil
+		},
+		getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Integration, error) {
+			return row, nil
+		},
+		updateFunc: func(_ context.Context, i *domain.Integration) error {
+			row = i
+			return nil
+		},
+	}
+
+	refresher := &mockTokenRefresher{
+		refreshFunc: func(_ context.Context, rt string) (string, string, int64, error) {
+			assert.Equal(t, refreshPlain, rt, "refresher must receive the carried-forward refresh token")
+			return "new_access_" + uuid.NewString(), "", 3600, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, env, nil, refresher, audit.Nop())
+
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
+	require.NoError(t, err, "first refresh must not brick the integration via DEK mismatch")
+	require.NotNil(t, resp)
+	assert.NotEmpty(t, resp.AccessToken)
+	assert.Equal(t, userPlain, resp.UserToken, "user token must survive the re-seal under the new DEK")
+
+	row.TokenExpiresAt = &past
+
+	resp2, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID, "test")
+	require.NoError(t, err, "second refresh cycle must still decrypt — integration not bricked")
+	require.NotNil(t, resp2)
+	assert.NotEmpty(t, resp2.AccessToken)
+	assert.Equal(t, userPlain, resp2.UserToken)
+	assert.Equal(t, 2, refresher.callCount)
 }
