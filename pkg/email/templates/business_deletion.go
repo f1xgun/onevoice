@@ -2,6 +2,7 @@ package templates
 
 import (
 	"fmt"
+	"html"
 	"time"
 )
 
@@ -78,6 +79,7 @@ https://onevoice.app/business
 // strip <style>).
 func BusinessDeletionConfirmationHTML(locale, name string, deletionAt time.Time) string {
 	date := fmtDeletionDate(locale, deletionAt)
+	name = html.EscapeString(name)
 	if localeEN(locale) {
 		return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en"><body style="background:#F5E9D9;color:#2C2520;font-family:Arial,sans-serif;padding:32px;">
@@ -151,6 +153,7 @@ https://onevoice.app/business
 // Inline Linen palette per the email-rendering convention.
 func BusinessDeletionT7WarningHTML(locale, name string, deletionAt time.Time) string {
 	date := fmtDeletionDate(locale, deletionAt)
+	name = html.EscapeString(name)
 	if localeEN(locale) {
 		return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en"><body style="background:#F5E9D9;color:#2C2520;font-family:Arial,sans-serif;padding:32px;">
