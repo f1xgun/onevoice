@@ -15,7 +15,7 @@ rules below.
 | `status`    | `ok`, `error` plus per-collector tags                                                                         | finite                                                               |
 | `subject`   | `tasks.telegram`, `tasks.vk`, `tasks.yandex_business`, `tasks.google_business`, `_INBOX`                      | `_INBOX.*` reply subjects collapse to `_INBOX` via CollapseSubject   |
 | `job`       | scrape job name from prometheus.yml                                                                           | finite                                                               |
-| `service`   | `api`, `orchestrator`, `agent-telegram`, `agent-vk`, `agent-yandex-business`, `agent-google-business`         | closed set                                                           |
+| `service`   | `api`, `orchestrator`, `agent-telegram`, `agent-vk`, `agent-yandex-business`, `agent-google-business`         | closed set. On `app_errors_total` only `api` / `orchestrator` are emitted; any other value collapses to `unknown` via `IncAppError` |
 | `tool_name` | `{platform}__{action}` tool-registry IDs                                                                      | finite (~20)                                                         |
 | `agent_id`  | `telegram`, `vk`, `yandex_business`, `google_business`                                                        | closed set                                                           |
 | `step`      | RPA step name hard-coded at the call site (`listCompanies`, `getInfo`, `getReviews`, `replyReview`, …)        | finite — never derive from runtime variables                         |

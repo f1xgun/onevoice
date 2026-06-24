@@ -10,6 +10,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// Service names — the bounded value set for the {service} label on
+// appErrorsTotal. Each is hard-coded at the call site (the panic-recovery
+// middleware in each binary); never derive from a runtime variable. See
+// pkg/metrics/README.md for the label-cardinality rules.
+const (
+	ServiceAPI          = "api"
+	ServiceOrchestrator = "orchestrator"
+)
+
 var (
 	httpRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_requests_total",
@@ -21,7 +30,28 @@ var (
 		Help:    "HTTP request duration in seconds.",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"method", "path", "status"})
+
+	// appErrorsTotal counts unrecovered panics caught by the per-service
+	// panic-recovery middleware, labeled by {service}. A non-zero rate means
+	// a request handler panicked — always a bug worth paging on. Cardinality
+	// is fixed at the closed {api, orchestrator} set via IncAppError.
+	appErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "app_errors_total",
+		Help: "Unrecovered panics caught by the recovery middleware, labeled by {service}.",
+	}, []string{"service"})
 )
+
+// IncAppError records one recovered panic for service. service must be one of
+// the bounded ServiceAPI / ServiceOrchestrator constants; any other value is
+// normalized to "unknown" so a stray caller can never explode label cardinality.
+func IncAppError(service string) {
+	switch service {
+	case ServiceAPI, ServiceOrchestrator:
+	default:
+		service = "unknown"
+	}
+	appErrorsTotal.WithLabelValues(service).Inc()
+}
 
 // responseWriter wraps http.ResponseWriter to capture the status code.
 type responseWriter struct {

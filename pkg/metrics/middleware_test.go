@@ -127,3 +127,30 @@ func TestHTTPMiddleware_UsesRoutePattern(t *testing.T) {
 		t.Fatal("path label should be route pattern '/items/{id}', not raw URL '/items/123'")
 	}
 }
+
+func TestIncAppError_NormalizesUnknownService(t *testing.T) {
+	const hostile = "'; DROP TABLE x; --"
+	IncAppError(ServiceAPI)
+	IncAppError(ServiceOrchestrator)
+	IncAppError(hostile)
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	mf := findMetric(families, "app_errors_total")
+	if mf == nil {
+		t.Fatal("app_errors_total metric family not found")
+	}
+
+	for _, service := range []string{ServiceAPI, ServiceOrchestrator, "unknown"} {
+		if findSample(mf, map[string]string{"service": service}) == nil {
+			t.Errorf("expected app_errors_total sample for service=%q", service)
+		}
+	}
+
+	if findSample(mf, map[string]string{"service": hostile}) != nil {
+		t.Error("hostile service value must collapse to 'unknown', not create a raw label series")
+	}
+}

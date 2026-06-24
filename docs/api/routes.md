@@ -133,7 +133,7 @@ Single chokepoint: `authz.RequireBusinessAccess(authzCache, GetUserID)` parses a
 
 ### Outside `/api/v1`
 
-- `GET /metrics` — Prometheus.
+- `GET /metrics` — Prometheus. Mounted on the main listener (`PORT`, default `8080`) but **not reachable from the public internet**: nginx proxies only `/api/v1`, `/media`, `/health`, and `/` — `/metrics` is intentionally excluded (`nginx/nginx.conf.template`). Prometheus scrapes it directly over the compose network (`api:8080/metrics`, `observability/prometheus/prometheus.yml`). It is deliberately **not** moved to the mTLS internal listener (`INTERNAL_PORT`, default `8443`) because Prometheus has no client cert provisioned; relocating it behind mTLS requires that provisioning decision first.
 - `GET /health/live`, `GET /health/ready`, `GET /health` (backward-compat alias for live).
 
 ## Internal mux: `/internal/v1/...` (mTLS only)

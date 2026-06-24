@@ -1,0 +1,12 @@
+groups:
+  - name: errors
+    rules:
+      - alert: AppPanicDetected
+        expr: |
+          sum by (service) (rate(app_errors_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} recovered from a panic"
+          description: "app_errors_total is rising for {{ $labels.service }} — a request handler panicked and was caught by the recovery middleware. Every panic is a bug returning a 500 to a client; check the service logs for the 'recovered from panic' entry (with stack + correlation_id). See docs/runbook/observability.md."

@@ -24,12 +24,13 @@ require (
 	github.com/nats-io/nats.go v1.49.0
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/pashagolub/pgxmock/v4 v4.9.0
-	github.com/yandex-cloud/go-genproto v0.46.0
-	github.com/yandex-cloud/go-sdk v0.31.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_model v0.6.2
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/stretchr/testify v1.11.1
 	github.com/trustelem/zxcvbn v1.0.1
+	github.com/yandex-cloud/go-genproto v0.46.0
+	github.com/yandex-cloud/go-sdk v0.31.0
 	go.mongodb.org/mongo-driver v1.17.9
 	go.mongodb.org/mongo-driver/v2 v2.5.0
 	golang.org/x/crypto v0.50.0
@@ -47,10 +48,10 @@ require (
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
+	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.1 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -72,7 +73,6 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/rs/xid v1.6.0 // indirect

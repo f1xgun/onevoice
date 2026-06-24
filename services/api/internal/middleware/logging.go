@@ -17,6 +17,20 @@ import (
 // makes the token unreachable for any handler later in the chain.
 const resetConfirmPathFragment = "/auth/password-reset/confirm"
 
+// statusServerErrorMin is the lowest 5xx status. Responses at or above it log
+// the access line at Error so server faults surface above the Info request
+// noise; 4xx client errors stay at Info (a 401/404 is routine, not a fault).
+const statusServerErrorMin = 500
+
+// completedLevel maps a response status to the access-log level: 5xx → Error,
+// everything else → Info.
+func completedLevel(status int) slog.Level {
+	if status >= statusServerErrorMin {
+		return slog.LevelError
+	}
+	return slog.LevelInfo
+}
+
 // responseWriter wraps http.ResponseWriter to capture status code
 type responseWriter struct {
 	http.ResponseWriter
@@ -51,8 +65,9 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				r.URL.RawQuery = ""
 			}
 			start := time.Now()
+			ctx := r.Context()
 
-			logger.Info("request started",
+			logger.InfoContext(ctx, "request started",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("remote_addr", r.RemoteAddr),
@@ -64,7 +79,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			duration := time.Since(start)
 
-			logger.Info("request completed",
+			logger.LogAttrs(ctx, completedLevel(wrapped.status), "request completed",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", wrapped.status),
