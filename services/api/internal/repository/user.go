@@ -58,6 +58,11 @@ func (a *UserResetExtAdapter) GetByEmail(ctx context.Context, email string) (*do
 	return a.inner.GetByEmail(ctx, email)
 }
 
+// GetByEmailIncludingDeleted delegates to the inner concrete repo.
+func (a *UserResetExtAdapter) GetByEmailIncludingDeleted(ctx context.Context, email string) (*domain.User, error) {
+	return a.inner.GetByEmailIncludingDeleted(ctx, email)
+}
+
 // GetByID delegates to the inner concrete repo; consumed by callers that
 // must load user state (email_verified, email) before mutating.
 func (a *UserResetExtAdapter) GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
@@ -301,14 +306,34 @@ func (r *userRepository) GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx
 // `deleted_at IS NULL` so soft-deleted accounts don't bleed into reads.
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "name", "password_hash", "preferred_locale",
-			"COALESCE(email_verified, FALSE) AS email_verified",
-			"email_verified_at",
-			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
-			"created_at", "updated_at").
+		Select(userColumns...).
 		From("users").
 		Where(squirrel.Eq{"email": email}).
 		Where("deleted_at IS NULL").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+
+	user, err := scanUser(r.pool.QueryRow(ctx, sql, args...))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("query user: %w", err)
+	}
+
+	return &user, nil
+}
+
+// GetByEmailIncludingDeleted is the same SELECT as GetByEmail minus the
+// `deleted_at IS NULL` filter; lets the login path read a soft-deleted user
+// so an account still inside the restore grace window can authenticate.
+func (r *userRepository) GetByEmailIncludingDeleted(ctx context.Context, email string) (*domain.User, error) {
+	sql, args, err := r.sb.
+		Select(userColumns...).
+		From("users").
+		Where(squirrel.Eq{"email": email}).
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)

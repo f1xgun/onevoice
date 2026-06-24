@@ -37,8 +37,6 @@ const (
 	// PublicURL, not a hardcoded host.
 	resetConfirmURLPath = "/auth/password-reset/confirm"
 	resetEmailSubject   = "Восстановление пароля — OneVoice"
-	// SCAN batch — 256 balances roundtrips vs per-page work (Redis recommends 100-1000).
-	resetRefreshScanBatch int64 = 256
 )
 
 // Service-level sentinels exposed for the handler error mapping.
@@ -250,41 +248,11 @@ func (s *PasswordResetService) bumpRateLimit(ctx context.Context, emailAddr stri
 	return count > resetRateLimitMax
 }
 
-// wipeRefreshTokens deletes every refresh-token Redis key whose value is the target userID.
-// Uses SCAN (not KEYS — KEYS blocks Redis in production). See docs/services/password-reset.md.
+// wipeRefreshTokens deletes every refresh-token Redis key whose value is the
+// target userID, invalidating all outstanding sessions after a password reset.
+// Delegates to the shared SCAN/Get/Del helper. See docs/services/password-reset.md.
 func (s *PasswordResetService) wipeRefreshTokens(ctx context.Context, userID uuid.UUID) error {
-	target := userID.String()
-	var cursor uint64
-	var toDelete []string
-	for {
-		keys, next, err := s.redis.Scan(ctx, cursor, refreshTokenKeyPrefix+"*", resetRefreshScanBatch).Result()
-		if err != nil {
-			return fmt.Errorf("scan: %w", err)
-		}
-		for _, k := range keys {
-			val, err := s.redis.Get(ctx, k).Result()
-			if errors.Is(err, redis.Nil) {
-				continue
-			}
-			if err != nil {
-				return fmt.Errorf("get %s: %w", k, err)
-			}
-			if val == target {
-				toDelete = append(toDelete, k)
-			}
-		}
-		cursor = next
-		if cursor == 0 {
-			break
-		}
-	}
-	if len(toDelete) == 0 {
-		return nil
-	}
-	if err := s.redis.Del(ctx, toDelete...).Err(); err != nil {
-		return fmt.Errorf("del: %w", err)
-	}
-	return nil
+	return wipeRefreshTokensForUser(ctx, s.redis, userID)
 }
 
 // audit fires a fire-and-forget audit row; details are pre-marshaled to json.RawMessage at this boundary.

@@ -206,6 +206,12 @@ func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*dom
 	return nil, errors.New("not implemented")
 }
 
+// GetByEmailIncludingDeleted stub — members/invitations handler tests don't
+// exercise the login soft-delete path; returns "not implemented" like GetByEmail.
+func (m *MockUserRepository) GetByEmailIncludingDeleted(ctx context.Context, email string) (*domain.User, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (m *MockUserRepository) Update(ctx context.Context, user *domain.User) error {
 	return errors.New("not implemented")
 }

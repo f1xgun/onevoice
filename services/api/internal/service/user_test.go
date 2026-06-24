@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -36,17 +37,22 @@ func (m *mockUserRepository) Create(ctx context.Context, user *domain.User) erro
 	return nil
 }
 
+// GetByID mirrors the real repo's `deleted_at IS NULL` filter: a soft-deleted
+// row returned by getByIDFunc surfaces as ErrUserNotFound, so the deletion-aware
+// code paths are genuinely exercised (and revert-proofed) against the mock.
 func (m *mockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	if m.getByIDFunc != nil {
-		return m.getByIDFunc(ctx, id)
+		u, err := m.getByIDFunc(ctx, id)
+		if err == nil && u != nil && u.DeletedAt != nil {
+			return nil, domain.ErrUserNotFound
+		}
+		return u, err
 	}
 	return nil, domain.ErrUserNotFound
 }
 
-// GetByIDIncludingDeleted satisfies the widened
-// domain.UserRepository interface. Reuses getByIDFunc when set so the
-// existing test cases continue to drive both the soft-delete-filtered
-// and the deletion-aware code paths.
+// GetByIDIncludingDeleted satisfies the widened domain.UserRepository
+// interface and, unlike GetByID, returns soft-deleted rows verbatim.
 func (m *mockUserRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(ctx, id)
@@ -54,7 +60,22 @@ func (m *mockUserRepository) GetByIDIncludingDeleted(ctx context.Context, id uui
 	return nil, domain.ErrUserNotFound
 }
 
+// GetByEmail mirrors the real repo's `deleted_at IS NULL` filter: a soft-deleted
+// row returned by getByEmailFunc surfaces as ErrUserNotFound.
 func (m *mockUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	if m.getByEmailFunc != nil {
+		u, err := m.getByEmailFunc(ctx, email)
+		if err == nil && u != nil && u.DeletedAt != nil {
+			return nil, domain.ErrUserNotFound
+		}
+		return u, err
+	}
+	return nil, domain.ErrUserNotFound
+}
+
+// GetByEmailIncludingDeleted satisfies the widened domain.UserRepository
+// interface and, unlike GetByEmail, returns soft-deleted rows verbatim.
+func (m *mockUserRepository) GetByEmailIncludingDeleted(ctx context.Context, email string) (*domain.User, error) {
 	if m.getByEmailFunc != nil {
 		return m.getByEmailFunc(ctx, email)
 	}
@@ -1113,4 +1134,183 @@ func TestValidatePassword(t *testing.T) {
 	t.Run("strong password passes", func(t *testing.T) {
 		require.NoError(t, validatePassword("Zx9!mK7-qP2w"))
 	})
+}
+
+// signRefreshToken mints a signed refresh token and seeds its Redis binding so
+// RefreshToken's GetDel rotation finds it. Mirrors the inline setup the older
+// RefreshToken cases repeat.
+func signRefreshToken(t *testing.T, ctx context.Context, rdb *redis.Client, jwtSecret string, userID uuid.UUID) string {
+	t.Helper()
+	tokenID := uuid.New()
+	claims := &auth.RefreshTokenClaims{
+		UserID:  userID,
+		TokenID: tokenID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    auth.TokenIssuer,
+			Audience:  jwt.ClaimStrings{auth.TokenAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(jwtSecret))
+	require.NoError(t, err)
+	require.NoError(t, rdb.Set(ctx, refreshTokenKeyPrefix+tokenID.String(), userID.String(), 7*24*time.Hour).Err())
+	return signed
+}
+
+// TestUserService_DeletionAwareTokenMinting is the Bug A regression: a user who
+// requested deletion (deleted_at set) but is still inside the restore grace
+// window must be able to mint a fresh access token via RefreshToken AND log in,
+// so the auth-gated restore endpoint stays reachable. A user PAST the grace
+// boundary (purge-eligible) must still be rejected.
+//
+// Fail-on-revert: switching RefreshToken back to GetByID (or Login back to
+// GetByEmail) makes the within-grace sub-tests fail with ErrUserNotFound /
+// ErrInvalidCredentials, because those getters filter `deleted_at IS NULL`.
+func TestUserService_DeletionAwareTokenMinting(t *testing.T) {
+	ctx := context.Background()
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
+
+	withinGrace := time.Now().Add(-time.Duration(deletionGraceDays-1) * 24 * time.Hour)
+	pastGrace := time.Now().Add(-time.Duration(deletionGraceDays+1) * 24 * time.Hour)
+	deletedNow := time.Now()
+
+	newSoftDeleted := func(requestedAt time.Time) *domain.User {
+		passwordHash, err := bcrypt.GenerateFromPassword([]byte("Zx9!mK7-qP2w"), bcrypt.DefaultCost)
+		require.NoError(t, err)
+		return &domain.User{
+			ID:                  uuid.New(),
+			Email:               "pending@example.com",
+			PasswordHash:        string(passwordHash),
+			DeletedAt:           &deletedNow,
+			DeletionRequestedAt: &requestedAt,
+		}
+	}
+
+	t.Run("RefreshToken within grace mints fresh token", func(t *testing.T) {
+		redisClient, _ := setupRedis(t)
+		user := newSoftDeleted(withinGrace)
+		repo := &mockUserRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.User, error) {
+				require.Equal(t, user.ID, id)
+				return user, nil
+			},
+		}
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+
+		refreshToken := signRefreshToken(t, ctx, redisClient, jwtSecret, user.ID)
+		got, accessToken, newRefresh, err := svc.RefreshToken(ctx, refreshToken)
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, user.ID, got.ID)
+		assert.NotEmpty(t, accessToken)
+		assert.NotEmpty(t, newRefresh)
+	})
+
+	t.Run("RefreshToken past grace is rejected", func(t *testing.T) {
+		redisClient, _ := setupRedis(t)
+		user := newSoftDeleted(pastGrace)
+		repo := &mockUserRepository{
+			getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.User, error) {
+				return user, nil
+			},
+		}
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+
+		refreshToken := signRefreshToken(t, ctx, redisClient, jwtSecret, user.ID)
+		got, accessToken, newRefresh, err := svc.RefreshToken(ctx, refreshToken)
+
+		assert.ErrorIs(t, err, domain.ErrUserNotFound)
+		assert.Nil(t, got)
+		assert.Empty(t, accessToken)
+		assert.Empty(t, newRefresh)
+	})
+
+	t.Run("Login within grace authenticates so restore is reachable", func(t *testing.T) {
+		redisClient, _ := setupRedis(t)
+		user := newSoftDeleted(withinGrace)
+		repo := &mockUserRepository{
+			getByEmailFunc: func(_ context.Context, email string) (*domain.User, error) {
+				require.Equal(t, user.Email, email)
+				return user, nil
+			},
+		}
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+
+		got, accessToken, refreshToken, err := svc.Login(ctx, user.Email, "Zx9!mK7-qP2w")
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, user.ID, got.ID)
+		assert.NotEmpty(t, accessToken)
+		assert.NotEmpty(t, refreshToken)
+	})
+
+	t.Run("Login past grace is rejected as invalid credentials", func(t *testing.T) {
+		redisClient, _ := setupRedis(t)
+		user := newSoftDeleted(pastGrace)
+		repo := &mockUserRepository{
+			getByEmailFunc: func(_ context.Context, _ string) (*domain.User, error) {
+				return user, nil
+			},
+		}
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+
+		got, accessToken, refreshToken, err := svc.Login(ctx, user.Email, "Zx9!mK7-qP2w")
+
+		assert.ErrorIs(t, err, domain.ErrInvalidCredentials)
+		assert.Nil(t, got)
+		assert.Empty(t, accessToken)
+		assert.Empty(t, refreshToken)
+	})
+}
+
+// TestUserService_ChangePassword_WipesRefreshTokens is the Bug B regression:
+// a successful password change must invalidate every outstanding refresh token
+// for that user (mirroring the password-reset flow), so an attacker-held token
+// cannot keep minting access tokens up to its 7-day TTL. The other user's
+// tokens must survive.
+//
+// Fail-on-revert: removing the wipeRefreshTokensForUser call from ChangePassword
+// leaves the seeded keys in Redis and this test fails.
+func TestUserService_ChangePassword_WipesRefreshTokens(t *testing.T) {
+	ctx := context.Background()
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
+	redisClient, _ := setupRedis(t)
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("Zx9!mK7-qP2w"), bcrypt.DefaultCost)
+	require.NoError(t, err)
+
+	userID := uuid.New()
+	otherID := uuid.New()
+	user := &domain.User{ID: userID, Email: "user@example.com", PasswordHash: string(passwordHash)}
+
+	repo := &mockUserRepository{
+		getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.User, error) {
+			if id == userID {
+				return user, nil
+			}
+			return nil, domain.ErrUserNotFound
+		},
+		updateFunc: func(_ context.Context, _ *domain.User) error { return nil },
+	}
+	svc, _ := NewUserService(repo, redisClient, jwtSecret)
+
+	for i := 0; i < 3; i++ {
+		require.NoError(t, redisClient.Set(ctx,
+			fmt.Sprintf("%st-%d", refreshTokenKeyPrefix, i), userID.String(), time.Hour).Err())
+	}
+	require.NoError(t, redisClient.Set(ctx,
+		refreshTokenKeyPrefix+"o-0", otherID.String(), time.Hour).Err())
+
+	require.NoError(t, svc.ChangePassword(ctx, userID, "Zx9!mK7-qP2w", "Qw8#vR2-nL5t"))
+
+	for i := 0; i < 3; i++ {
+		_, gerr := redisClient.Get(ctx, fmt.Sprintf("%st-%d", refreshTokenKeyPrefix, i)).Result()
+		require.ErrorIs(t, gerr, redis.Nil, "changed user's refresh tokens must be wiped")
+	}
+	val, gerr := redisClient.Get(ctx, refreshTokenKeyPrefix+"o-0").Result()
+	require.NoError(t, gerr)
+	require.Equal(t, otherID.String(), val, "other user's refresh token must survive")
 }
