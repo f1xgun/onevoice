@@ -317,6 +317,36 @@ func TestAgent_MarshalFailure_PublishesFallback(t *testing.T) {
 	}
 }
 
+func TestAgent_DecodeFailure_PublishesFailure(t *testing.T) {
+	transport := &fakeTransport{}
+	replyCh := make(chan []byte, 1)
+
+	handler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		return &a2a.ToolResponse{TaskID: req.TaskID, Success: true}, nil
+	})
+
+	agent := a2a.NewAgent(a2a.AgentTelegram, transport, handler)
+	require.NoError(t, agent.Start(context.Background()))
+
+	transport.publishFn = func(_ string, d []byte) error {
+		replyCh <- d
+		return nil
+	}
+
+	transport.Trigger("tasks.telegram", "_INBOX.decode", []byte("{not valid json"))
+
+	select {
+	case replyData := <-replyCh:
+		var resp a2a.ToolResponse
+		require.NoError(t, json.Unmarshal(replyData, &resp))
+		assert.False(t, resp.Success)
+		assert.NotEmpty(t, resp.Error)
+		assert.Equal(t, "transient", resp.Code)
+	case <-time.After(time.Second):
+		t.Fatal("no reply published after request decode failure — caller would hang to timeout")
+	}
+}
+
 func TestAgent_Stop_NoInflight(t *testing.T) {
 	transport := &fakeTransport{}
 	handler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {

@@ -114,6 +114,21 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 	var req ToolRequest
 	if err := json.Unmarshal(data, &req); err != nil {
 		slog.Error("a2a: failed to decode tool request", "agent", a.id, "error", err)
+		if reply == "" {
+			return
+		}
+		respData, err := json.Marshal(&ToolResponse{
+			Success: false,
+			Error:   "agent failed to decode request",
+			Code:    "transient",
+		})
+		if err != nil {
+			slog.Error("a2a: failed to encode decode-failure response", "agent", a.id, "error", err)
+			return
+		}
+		if err := a.transport.Publish(reply, respData); err != nil {
+			slog.Error("a2a: failed to publish decode-failure reply", "agent", a.id, "error", err)
+		}
 		return
 	}
 
