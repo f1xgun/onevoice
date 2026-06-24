@@ -225,19 +225,46 @@ func (r *businessRepository) Update(ctx context.Context, business *domain.Busine
 	return nil
 }
 
-// GetByIDIncludingDeleted is the same SELECT as GetByID minus the
-// `deleted_at IS NULL` filter; lets the deletion-aware code path read the
-// deletion state of a soft-deleted organization (grace banner, restore).
-func (r *businessRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
-	sql, args, err := r.sb.
+// includingDeletedSQL builds the SELECT-by-id query (no `deleted_at IS NULL`
+// filter) shared by the pool-based and tx-based deletion-aware reads so the
+// column list never drifts between them.
+func (r *businessRepository) includingDeletedSQL(id uuid.UUID) (sql string, args []any, err error) {
+	return r.sb.
 		Select(businessColumns...).
 		From("businesses").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
+}
+
+// GetByIDIncludingDeleted is the same SELECT as GetByID minus the
+// `deleted_at IS NULL` filter; lets the deletion-aware code path read the
+// deletion state of a soft-deleted organization (grace banner, restore).
+func (r *businessRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	sql, args, err := r.includingDeletedSQL(id)
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 	business, err := scanBusiness(r.pool.QueryRow(ctx, sql, args...))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrBusinessNotFound
+		}
+		return nil, fmt.Errorf("query business: %w", err)
+	}
+	return &business, nil
+}
+
+// GetByIDIncludingDeletedInTx is GetByIDIncludingDeleted reading through the
+// caller-supplied tx instead of the pool, so the hard-delete sweeper observes
+// the same snapshot under which it enumerated and locked the row — closing the
+// time-of-check/time-of-use gap where a cancellation committed between
+// enumeration and the read could be missed.
+func (r *businessRepository) GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*domain.Business, error) {
+	sql, args, err := r.includingDeletedSQL(id)
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+	business, err := scanBusiness(tx.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrBusinessNotFound
@@ -378,6 +405,11 @@ func NewBusinessDeletionExtAdapter(pool *pgxpool.Pool) *BusinessDeletionExtAdapt
 // GetByIDIncludingDeleted delegates to the inner concrete repo.
 func (a *BusinessDeletionExtAdapter) GetByIDIncludingDeleted(ctx context.Context, businessID uuid.UUID) (*domain.Business, error) {
 	return a.inner.GetByIDIncludingDeleted(ctx, businessID)
+}
+
+// GetByIDIncludingDeletedInTx delegates to the inner concrete repo.
+func (a *BusinessDeletionExtAdapter) GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) (*domain.Business, error) {
+	return a.inner.GetByIDIncludingDeletedInTx(ctx, tx, businessID)
 }
 
 // RequestDeletionInTx delegates to the inner concrete repo.

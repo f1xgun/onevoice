@@ -5,7 +5,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
+
+// The production adapter must satisfy AccountDeletionUserRepo, including the
+// tx-aware read the sweeper now uses. A compile-time check so a signature
+// drift between the interface and the adapter fails the build, not at runtime.
+var _ AccountDeletionUserRepo = (*repository.UserResetExtAdapter)(nil)
 
 // TestErrSoleOwnerBusinesses_Error verifies the error message includes
 // the count — used by structured logging at the handler.

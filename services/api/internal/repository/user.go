@@ -70,6 +70,12 @@ func (a *UserResetExtAdapter) GetByIDIncludingDeleted(ctx context.Context, userI
 	return a.inner.GetByIDIncludingDeleted(ctx, userID)
 }
 
+// GetByIDIncludingDeletedInTx delegates to the inner concrete repo so the
+// hard-delete sweeper can re-read deletion state inside its held tx.
+func (a *UserResetExtAdapter) GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (*domain.User, error) {
+	return a.inner.GetByIDIncludingDeletedInTx(ctx, tx, userID)
+}
+
 // RequestDeletionInTx delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	return a.inner.RequestDeletionInTx(ctx, tx, userID)
@@ -179,6 +185,17 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 	return nil
 }
 
+// userColumns is the canonical select order shared by the Get paths and
+// EnumerateUpcomingDeletions. `email_verified` is COALESCE-wrapped so a NULL
+// column reads as FALSE.
+var userColumns = []string{
+	"id", "email", "name", "password_hash", "preferred_locale",
+	"COALESCE(email_verified, FALSE) AS email_verified",
+	"email_verified_at",
+	"deleted_at", "deletion_requested_at", "deletion_canceled_at",
+	"created_at", "updated_at",
+}
+
 // scanUser maps one users row into a domain.User in the canonical select
 // order shared by the Get paths and EnumerateUpcomingDeletions.
 func scanUser(row scanner) (domain.User, error) {
@@ -205,11 +222,7 @@ func scanUser(row scanner) (domain.User, error) {
 // deletion-aware callers use GetByIDIncludingDeleted.
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "name", "password_hash", "preferred_locale",
-			"COALESCE(email_verified, FALSE) AS email_verified",
-			"email_verified_at",
-			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
-			"created_at", "updated_at").
+		Select(userColumns...).
 		From("users").
 		Where(squirrel.Eq{"id": id}).
 		Where("deleted_at IS NULL").
@@ -229,24 +242,49 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 	return &user, nil
 }
 
+// includingDeletedSQL builds the SELECT-by-id query (no `deleted_at IS NULL`
+// filter) shared by the pool-based and tx-based deletion-aware reads so the
+// column list never drifts between them.
+func (r *userRepository) includingDeletedSQL(id uuid.UUID) (sql string, args []any, err error) {
+	return r.sb.
+		Select(userColumns...).
+		From("users").
+		Where(squirrel.Eq{"id": id}).
+		ToSql()
+}
+
 // GetByIDIncludingDeleted is the same SELECT as GetByID minus the
 // `deleted_at IS NULL` filter; lets callers read the account-deletion state
 // of a soft-deleted user (grace banner, restore endpoint).
 func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
-	sql, args, err := r.sb.
-		Select("id", "email", "name", "password_hash", "preferred_locale",
-			"COALESCE(email_verified, FALSE) AS email_verified",
-			"email_verified_at",
-			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
-			"created_at", "updated_at").
-		From("users").
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
+	sql, args, err := r.includingDeletedSQL(id)
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	user, err := scanUser(r.pool.QueryRow(ctx, sql, args...))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("query user: %w", err)
+	}
+
+	return &user, nil
+}
+
+// GetByIDIncludingDeletedInTx is GetByIDIncludingDeleted reading through the
+// caller-supplied tx instead of the pool, so the hard-delete sweeper observes
+// the same snapshot under which it enumerated and locked the row — closing the
+// time-of-check/time-of-use gap where a cancellation committed between
+// enumeration and the read could be missed.
+func (r *userRepository) GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*domain.User, error) {
+	sql, args, err := r.includingDeletedSQL(id)
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+
+	user, err := scanUser(tx.QueryRow(ctx, sql, args...))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrUserNotFound

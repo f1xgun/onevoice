@@ -78,6 +78,39 @@ func TestBusinessRepository_GetByIDIncludingDeleted_NoFilter(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx asserts the
+// sweeper's deletion-aware read runs through the held tx (begin → query in the
+// ordered mock queue) and surfaces a cancellation that is visible only inside
+// that tx. This closes the TOCTOU gap: a row canceled after enumeration is read
+// with DeletionCanceledAt set, so the sweeper skips it.
+func TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx(t *testing.T) {
+	ctx := context.Background()
+	r, mock := newTestBusinessRepo(t)
+	id := uuid.New()
+	canceledAt := time.Now()
+
+	mock.ExpectBegin()
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	rows := businessRowValues(id)
+	rows[10] = &canceledAt
+	rows[11] = &canceledAt
+
+	mock.ExpectQuery("SELECT .* FROM businesses WHERE id =").
+		WithArgs(id.String()).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "name", "category", "address", "phone", "website", "description",
+			"logo_url", "settings", "deleted_at", "deletion_requested_at",
+			"deletion_canceled_at", "created_at", "updated_at",
+		}).AddRow(rows...))
+
+	got, err := r.GetByIDIncludingDeletedInTx(ctx, tx, id)
+	require.NoError(t, err)
+	require.NotNil(t, got.DeletionCanceledAt, "cancellation must be visible inside the held tx")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestBusinessRepository_RequestDeletionInTx_AlreadyPending verifies the
 // classify-read maps an existing deletion_requested_at to the pending sentinel.
 func TestBusinessRepository_RequestDeletionInTx_AlreadyPending(t *testing.T) {

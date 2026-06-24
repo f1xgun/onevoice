@@ -63,6 +63,7 @@ func (e *ErrSoleOwnerBusinesses) Error() string {
 // *repository.UserResetExtAdapter.
 type AccountDeletionUserRepo interface {
 	GetByIDIncludingDeleted(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (*domain.User, error)
 	RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
 	CancelDeletion(ctx context.Context, userID uuid.UUID, graceDays int) (bool, error)
 	EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error)
@@ -287,7 +288,7 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 	}
 	var purged []purgedPair
 	for _, uid := range userIDs {
-		user, err := s.users.GetByIDIncludingDeleted(ctx, uid)
+		user, err := s.users.GetByIDIncludingDeletedInTx(ctx, tx, uid)
 		if err != nil {
 			slog.WarnContext(ctx, "hard delete sweeper: get user failed", "userID", uid, "err", err)
 			continue
