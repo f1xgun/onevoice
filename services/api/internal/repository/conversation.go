@@ -220,6 +220,13 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 			},
 			Options: options.Index().SetName("conversations_user_biz_proj_pinned_recency"),
 		},
+		{
+			Keys: bson.D{
+				{Key: "user_id", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("conversations_user_created_desc"),
+		},
 	}
 	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
 		if mongo.IsDuplicateKeyError(err) {

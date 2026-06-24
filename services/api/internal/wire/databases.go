@@ -170,6 +170,24 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	indexesCancelReviews()
 
+	indexesCtxMessages, indexesCancelMessages := context.WithTimeout(ctx, startupTimeout)
+	if err := repository.EnsureMessageIndexes(indexesCtxMessages, h.Mongo); err != nil {
+		indexesCancelMessages()
+		slog.ErrorContext(indexesCtxMessages, "failed to ensure message indexes", "error", err)
+		h.Close()
+		return nil, fmt.Errorf("wire: ensure message indexes: %w", err)
+	}
+	indexesCancelMessages()
+
+	indexesCtxAgentTasks, indexesCancelAgentTasks := context.WithTimeout(ctx, startupTimeout)
+	if err := repository.EnsureAgentTaskIndexes(indexesCtxAgentTasks, h.Mongo); err != nil {
+		indexesCancelAgentTasks()
+		slog.ErrorContext(indexesCtxAgentTasks, "failed to ensure agent task indexes", "error", err)
+		h.Close()
+		return nil, fmt.Errorf("wire: ensure agent task indexes: %w", err)
+	}
+	indexesCancelAgentTasks()
+
 	indexesCtx3, indexesCancel3 := context.WithTimeout(ctx, startupSearchIndexTimeout)
 	if err := repository.EnsureSearchIndexes(indexesCtx3, h.Mongo); err != nil {
 		indexesCancel3()

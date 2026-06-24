@@ -121,3 +121,20 @@ func TestAgentTaskRepository_Find_Queryable_ByErrorCode(t *testing.T) {
 	require.Len(t, out, 1)
 	assert.Equal(t, matching.ID, out[0].ID)
 }
+
+func TestEnsureAgentTaskIndexes_Idempotent(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+
+	require.NoError(t, EnsureAgentTaskIndexes(ctx, db), "first call")
+	require.NoError(t, EnsureAgentTaskIndexes(ctx, db), "second call (idempotent)")
+
+	specs, err := db.Collection("agent_tasks").Indexes().ListSpecifications(ctx)
+	require.NoError(t, err)
+	names := map[string]bool{}
+	for _, s := range specs {
+		names[s.Name] = true
+	}
+	assert.True(t, names["agent_tasks_business_created_desc"],
+		"named index agent_tasks_business_created_desc must exist")
+}

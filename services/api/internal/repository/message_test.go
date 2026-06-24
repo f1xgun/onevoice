@@ -383,3 +383,22 @@ func TestMessageRepository_Update(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrMessageNotFound)
 	})
 }
+
+func TestEnsureMessageIndexes_Idempotent(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+
+	require.NoError(t, EnsureMessageIndexes(ctx, db), "first call")
+	require.NoError(t, EnsureMessageIndexes(ctx, db), "second call (idempotent)")
+
+	specs, err := db.Collection("messages").Indexes().ListSpecifications(ctx)
+	require.NoError(t, err)
+	names := map[string]bool{}
+	for _, s := range specs {
+		names[s.Name] = true
+	}
+	assert.True(t, names["messages_conversation_created"],
+		"named index messages_conversation_created must exist")
+	assert.True(t, names["messages_conversation_role_status_created_desc"],
+		"named index messages_conversation_role_status_created_desc must exist")
+}
