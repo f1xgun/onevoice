@@ -255,10 +255,11 @@ func (r *businessRepository) GetByIDIncludingDeleted(ctx context.Context, id uui
 }
 
 // GetByIDIncludingDeletedInTx is GetByIDIncludingDeleted reading through the
-// caller-supplied tx instead of the pool, so the hard-delete sweeper observes
-// the same snapshot under which it enumerated and locked the row — closing the
-// time-of-check/time-of-use gap where a cancellation committed between
-// enumeration and the read could be missed.
+// caller-supplied tx instead of the pool, so the hard-delete sweeper's
+// deletion_canceled_at re-check runs on the same connection/snapshot as the
+// subsequent delete (consistency-by-construction). Defense-in-depth: the
+// re-check no longer depends on the enumeration query continuing to hold its
+// FOR UPDATE locks to be correct.
 func (r *businessRepository) GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*domain.Business, error) {
 	sql, args, err := r.includingDeletedSQL(id)
 	if err != nil {

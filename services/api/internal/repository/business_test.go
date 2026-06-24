@@ -79,25 +79,32 @@ func TestBusinessRepository_GetByIDIncludingDeleted_NoFilter(t *testing.T) {
 }
 
 // TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx asserts the
-// sweeper's deletion-aware read runs through the held tx (begin → query in the
-// ordered mock queue) and surfaces a cancellation that is visible only inside
-// that tx. This closes the TOCTOU gap: a row canceled after enumeration is read
-// with DeletionCanceledAt set, so the sweeper skips it.
+// deletion-aware read routes through the caller-supplied tx, not r.pool. The
+// repository's pool and the tx are SEPARATE mocks: the query expectation lives
+// only on txMock, while poolMock has none. A regression to r.pool.QueryRow
+// would hit poolMock (no expectation) and fail. It also surfaces a cancellation
+// visible inside that tx, so the sweeper's re-check skips the hard delete.
 func TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx(t *testing.T) {
 	ctx := context.Background()
-	r, mock := newTestBusinessRepo(t)
+
+	poolMock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	txMock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+
+	r := &businessRepository{pool: poolMock, sb: newStatementBuilder()}
 	id := uuid.New()
 	canceledAt := time.Now()
 
-	mock.ExpectBegin()
-	tx, err := mock.Begin(ctx)
+	txMock.ExpectBegin()
+	tx, err := txMock.Begin(ctx)
 	require.NoError(t, err)
 
 	rows := businessRowValues(id)
 	rows[10] = &canceledAt
 	rows[11] = &canceledAt
 
-	mock.ExpectQuery("SELECT .* FROM businesses WHERE id =").
+	txMock.ExpectQuery("SELECT .* FROM businesses WHERE id =").
 		WithArgs(id.String()).
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "name", "category", "address", "phone", "website", "description",
@@ -108,7 +115,8 @@ func TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx(t *testing.T) 
 	got, err := r.GetByIDIncludingDeletedInTx(ctx, tx, id)
 	require.NoError(t, err)
 	require.NotNil(t, got.DeletionCanceledAt, "cancellation must be visible inside the held tx")
-	require.NoError(t, mock.ExpectationsWereMet())
+	require.NoError(t, txMock.ExpectationsWereMet())
+	require.NoError(t, poolMock.ExpectationsWereMet(), "read must not touch the pool")
 }
 
 // TestBusinessRepository_RequestDeletionInTx_AlreadyPending verifies the

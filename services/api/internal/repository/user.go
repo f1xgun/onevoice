@@ -16,10 +16,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// userRepository persists users in PostgreSQL.
+// userRepository persists users in PostgreSQL. pool is the package-local
+// pgxPool interface (pool.go) so unit tests can pass a pgxmock pool.
 // See docs/api/repositories/user.md.
 type userRepository struct {
-	pool *pgxpool.Pool
+	pool pgxPool
 	sb   squirrel.StatementBuilderType
 }
 
@@ -274,10 +275,11 @@ func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UU
 }
 
 // GetByIDIncludingDeletedInTx is GetByIDIncludingDeleted reading through the
-// caller-supplied tx instead of the pool, so the hard-delete sweeper observes
-// the same snapshot under which it enumerated and locked the row — closing the
-// time-of-check/time-of-use gap where a cancellation committed between
-// enumeration and the read could be missed.
+// caller-supplied tx instead of the pool, so the hard-delete sweeper's
+// deletion_canceled_at re-check runs on the same connection/snapshot as the
+// subsequent delete (consistency-by-construction). Defense-in-depth: the
+// re-check no longer depends on the enumeration query continuing to hold its
+// FOR UPDATE locks to be correct.
 func (r *userRepository) GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.includingDeletedSQL(id)
 	if err != nil {

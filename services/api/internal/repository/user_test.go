@@ -15,18 +15,21 @@ func TestUserRepository(t *testing.T) {
 	assert.True(t, true, "Basic test passes")
 }
 
-// newTestUserRepoForTx returns a userRepository wired only with the statement
-// builder. The in-tx read never touches r.pool (it issues tx.QueryRow), so the
-// concrete pool is left nil; the returned mock supplies the tx.
-func newTestUserRepoForTx(t *testing.T) (*userRepository, pgxmock.PgxPoolIface) {
+// newTestUserRepoForTx returns a userRepository wired to poolMock and a SEPARATE
+// txMock. The in-tx read must route through the caller-supplied tx (txMock); the
+// pool gets no query expectation, so a regression to r.pool.QueryRow hits
+// poolMock (no expectation) and fails the test.
+func newTestUserRepoForTx(t *testing.T) (repo *userRepository, poolMock, txMock pgxmock.PgxPoolIface) {
 	t.Helper()
-	mockPool, err := pgxmock.NewPool()
+	poolMock, err := pgxmock.NewPool()
 	require.NoError(t, err)
-	repo := &userRepository{
-		pool: nil,
+	txMock, err = pgxmock.NewPool()
+	require.NoError(t, err)
+	repo = &userRepository{
+		pool: poolMock,
 		sb:   newStatementBuilder(),
 	}
-	return repo, mockPool
+	return repo, poolMock, txMock
 }
 
 func userColumnNames() []string {
@@ -49,31 +52,33 @@ func userRowValues(id uuid.UUID) []any {
 }
 
 // TestUserRepository_GetByIDIncludingDeletedInTx_ReadsOnTx asserts the
-// account-deletion sweeper's deletion-aware read runs through the held tx
-// (begin → query in the ordered mock queue) and surfaces a cancellation that
-// is visible only inside that tx. This closes the TOCTOU gap: a user canceled
-// after enumeration is read with DeletionCanceledAt set, so the sweeper skips
-// the hard delete.
+// account-deletion sweeper's deletion-aware read routes through the
+// caller-supplied tx, not r.pool. The repository's pool and the tx are SEPARATE
+// mocks: the query expectation lives only on txMock, while poolMock has none. A
+// regression to r.pool.QueryRow would hit poolMock (no expectation) and fail. It
+// also surfaces a cancellation visible inside that tx, so the sweeper's re-check
+// skips the hard delete.
 func TestUserRepository_GetByIDIncludingDeletedInTx_ReadsOnTx(t *testing.T) {
 	ctx := context.Background()
-	r, mock := newTestUserRepoForTx(t)
+	r, poolMock, txMock := newTestUserRepoForTx(t)
 	id := uuid.New()
 	canceledAt := time.Now()
 
-	mock.ExpectBegin()
-	tx, err := mock.Begin(ctx)
+	txMock.ExpectBegin()
+	tx, err := txMock.Begin(ctx)
 	require.NoError(t, err)
 
 	rows := userRowValues(id)
 	rows[8] = &canceledAt
 	rows[9] = &canceledAt
 
-	mock.ExpectQuery("SELECT .* FROM users WHERE id =").
+	txMock.ExpectQuery("SELECT .* FROM users WHERE id =").
 		WithArgs(id.String()).
 		WillReturnRows(pgxmock.NewRows(userColumnNames()).AddRow(rows...))
 
 	got, err := r.GetByIDIncludingDeletedInTx(ctx, tx, id)
 	require.NoError(t, err)
 	require.NotNil(t, got.DeletionCanceledAt, "cancellation must be visible inside the held tx")
-	require.NoError(t, mock.ExpectationsWereMet())
+	require.NoError(t, txMock.ExpectationsWereMet())
+	require.NoError(t, poolMock.ExpectationsWereMet(), "read must not touch the pool")
 }
