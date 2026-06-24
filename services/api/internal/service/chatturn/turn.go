@@ -42,7 +42,17 @@ type Deps struct {
 	Orch    *orchestratorclient.Client
 	Titler  Titler       // nil → auto-title disabled
 	Audit   audit.Logger // nil → RPA mutation audit disabled
+
+	// HistoryLimit caps how many prior messages are loaded into the LLM
+	// context per turn. A non-positive value falls back to
+	// defaultHistoryLimit so a struct-literal construction (tests) stays safe.
+	HistoryLimit int
 }
+
+// defaultHistoryLimit is the fallback chat-history fetch limit when Deps
+// supplies a non-positive HistoryLimit. Mirrors the API config default; the
+// operator-facing knob lives in services/api/internal/config (MESSAGE_HISTORY_LIMIT).
+const defaultHistoryLimit = 100
 
 // Turn is the chat-turn lifecycle: one HTTP request, one Run call, one
 // terminal TurnOutcome. The struct is stateless across calls — Run owns the
@@ -77,6 +87,9 @@ func New(deps Deps) *Turn {
 	}
 	if deps.Orch == nil {
 		panic("chatturn.New: Orch cannot be nil")
+	}
+	if deps.HistoryLimit <= 0 {
+		deps.HistoryLimit = defaultHistoryLimit
 	}
 	return &Turn{deps: deps}
 }

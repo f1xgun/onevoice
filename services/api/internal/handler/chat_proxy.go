@@ -29,6 +29,11 @@ import (
 // package so router + tests can keep using handler.ResumeBatchHeader.
 const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 
+// defaultHistoryLimit is the fallback chat-history fetch limit when a handler
+// is constructed without a configured limit (struct-literal test path). The
+// operator-facing knob lives in config (MESSAGE_HISTORY_LIMIT).
+const defaultHistoryLimit = 100
+
 // ChatProxyHandler is a thin HTTP-facade over chatturn.Turn — parses, gates,
 // maps TurnOutcome to HTTP. See docs/api/handlers/chat-proxy.md.
 //
@@ -38,6 +43,11 @@ const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 type ChatProxyHandler struct {
 	turn        *chatturn.Turn
 	messageRepo domain.MessageRepository
+
+	// historyLimit caps how many prior messages loadHistory fetches. Mirrors
+	// the value threaded into chatturn.Deps so the legacy struct-literal test
+	// path stays consistent with the production lifecycle.
+	historyLimit int
 
 	// sseCounter caps in-flight SSE streams per user; nil disables the gate.
 	sseCounter *ssecounter.Counter
@@ -106,6 +116,7 @@ func NewChatProxyHandler(
 	orchClient *orchestratorclient.Client,
 	titler *service.Titler,
 	auditLogger audit.Logger,
+	historyLimit int,
 ) *ChatProxyHandler {
 	if projectService == nil {
 		panic("NewChatProxyHandler: projectService cannot be nil")
@@ -138,11 +149,13 @@ func NewChatProxyHandler(
 		Orch:          orchClient,
 		Titler:        titlerImpl,
 		Audit:         auditLogger,
+		HistoryLimit:  historyLimit,
 	})
 
 	return &ChatProxyHandler{
-		turn:        turn,
-		messageRepo: messageRepo,
+		turn:         turn,
+		messageRepo:  messageRepo,
+		historyLimit: historyLimit,
 	}
 }
 
@@ -232,7 +245,11 @@ func resolveTurnLocale(ctx context.Context, bodyLocale *string) language.Tag {
 
 // loadHistory loads conversation history through the message repository.
 func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID string) []map[string]string {
-	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, 100, 0)
+	limit := h.historyLimit
+	if limit <= 0 {
+		limit = defaultHistoryLimit
+	}
+	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, limit, 0)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to load conversation history", "error", err)
 		return nil

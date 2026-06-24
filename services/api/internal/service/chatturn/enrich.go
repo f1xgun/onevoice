@@ -145,7 +145,7 @@ func (t *Turn) resolveProject(ctx context.Context, businessID uuid.UUID, convers
 // which permanently bricks the conversation. Drop the bad turn from history
 // rather than poisoning future requests.
 func (t *Turn) loadHistory(ctx context.Context, conversationID string) []map[string]string {
-	msgs, err := t.deps.Messages.ListByConversationID(ctx, conversationID, 100, 0)
+	msgs, err := t.deps.Messages.ListByConversationID(ctx, conversationID, t.deps.HistoryLimit, 0)
 	if err != nil {
 		slog.ErrorContext(ctx, "chatturn: failed to load conversation history", "error", err)
 		return nil
