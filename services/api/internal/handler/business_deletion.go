@@ -49,10 +49,20 @@ func NewBusinessDeletionHandler(svc BusinessDeletionServiceAPI, allowedOrigins [
 const businessPendingDeletionCode = openapi.PendingDeletionResponseCode("business_pending_deletion")
 
 // Delete handles DELETE /api/v1/businesses/{id}. Response codes:
-// 204 / 403 not-owner / 404 not-found / 423 already-pending.
+// 204 / 403 not-owner|origin / 404 not-found / 423 already-pending.
+//
+// CSRF defense: the Origin header MUST match an allowed CORS origin
+// (mirrors Restore). The endpoint is side-effecting (schedules business
+// deletion), so a CSRF-vulnerable path could trigger deletion from a
+// hostile origin.
 func (h *BusinessDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	bc, ok := businessContext(w, r, "DeleteBusiness")
 	if !ok {
+		return
+	}
+
+	if !h.originAllowed(r.Header.Get("Origin")) {
+		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
 		return
 	}
 

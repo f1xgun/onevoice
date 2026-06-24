@@ -47,14 +47,30 @@ func newBizDeletionReq(t *testing.T, method, path, origin string) *http.Request 
 func TestBusinessDeletion_Delete_Success204(t *testing.T) {
 	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{}, []string{"https://app.test"})
 	w := httptest.NewRecorder()
-	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", ""))
+	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", "https://app.test"))
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
-func TestBusinessDeletion_Delete_NotOwner403(t *testing.T) {
-	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{requestErr: domain.ErrNotBusinessOwner}, nil)
+func TestBusinessDeletion_Delete_OriginNotAllowed403(t *testing.T) {
+	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{}, []string{"https://app.test"})
+	w := httptest.NewRecorder()
+	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", "https://evil.test"))
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "origin_not_allowed")
+}
+
+func TestBusinessDeletion_Delete_MissingOrigin403(t *testing.T) {
+	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{}, []string{"https://app.test"})
 	w := httptest.NewRecorder()
 	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", ""))
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "origin_not_allowed")
+}
+
+func TestBusinessDeletion_Delete_NotOwner403(t *testing.T) {
+	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{requestErr: domain.ErrNotBusinessOwner}, []string{"https://app.test"})
+	w := httptest.NewRecorder()
+	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", "https://app.test"))
 	require.Equal(t, http.StatusForbidden, w.Code)
 	require.Contains(t, w.Body.String(), "not_organization_owner")
 }
@@ -64,18 +80,18 @@ func TestBusinessDeletion_Delete_AlreadyPending423(t *testing.T) {
 	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{
 		requestErr:  domain.ErrBusinessDeletionAlreadyPending,
 		scheduledAt: at,
-	}, nil)
+	}, []string{"https://app.test"})
 	w := httptest.NewRecorder()
-	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", ""))
+	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", "https://app.test"))
 	require.Equal(t, http.StatusLocked, w.Code)
 	require.Contains(t, w.Body.String(), "business_pending_deletion")
 	require.Contains(t, w.Body.String(), "/business")
 }
 
 func TestBusinessDeletion_Delete_NotFound404(t *testing.T) {
-	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{requestErr: domain.ErrBusinessNotFound}, nil)
+	h := NewBusinessDeletionHandler(&fakeBusinessDeletionService{requestErr: domain.ErrBusinessNotFound}, []string{"https://app.test"})
 	w := httptest.NewRecorder()
-	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", ""))
+	h.Delete(w, newBizDeletionReq(t, http.MethodDelete, "/businesses/x", "https://app.test"))
 	require.Equal(t, http.StatusNotFound, w.Code)
 }
 
