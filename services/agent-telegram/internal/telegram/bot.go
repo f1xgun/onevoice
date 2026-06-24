@@ -1,10 +1,9 @@
 package telegram
 
 import (
-	"crypto/tls"
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"path"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/f1xgun/onevoice/pkg/netdial"
+	"github.com/f1xgun/onevoice/pkg/safefetch"
 )
 
 // telegramAPIClient is the HTTP client backing the Bot API calls. It pins
@@ -26,15 +26,20 @@ var telegramAPIClient = &http.Client{
 	Transport: &http.Transport{DialContext: netdial.TCP4DialContext},
 }
 
-// photoHTTPClient is used for downloading images from user-provided URLs.
-// TLS verification is skipped because external image URLs may use self-signed
-// or corp-CA certificates not present in the container trust store. It also
-// pins IPv4 for the same no-IPv6 reason as telegramAPIClient.
-var photoHTTPClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext:     netdial.TCP4DialContext,
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: intentional, external image hosts may use self-signed certs
-	},
+// photoFetcher downloads images from user-provided (LLM-supplied) URLs with
+// SSRF protection: the URL is validated (https-only, no internal addresses) and
+// dialed through a screened client before any bytes are read, so a
+// prompt-injected internal address cannot be reached. Full TLS verification
+// applies. IPv4 is forced for the same no-IPv6 reason as telegramAPIClient.
+var photoFetcher imageFetcher = safefetch.New(safefetch.Options{
+	ForceIPv4: true,
+})
+
+// imageFetcher downloads a validated image URL and returns the bytes plus the
+// response Content-Type. *safefetch.Fetcher satisfies it; tests substitute a
+// stub so the SSRF guard does not block loopback test servers.
+type imageFetcher interface {
+	Get(ctx context.Context, rawURL string) (body []byte, contentType string, err error)
 }
 
 // Bot wraps the Telegram Bot API client.
@@ -133,18 +138,9 @@ func newTextMessage(chat, text string) tgbotapi.MessageConfig {
 // SendPhoto downloads the image from photoURL and sends it to Telegram as file
 // bytes, avoiding Telegram-server-side URL fetching failures.
 func (b *Bot) SendPhoto(chat, photoURL, caption string) error {
-	resp, err := photoHTTPClient.Get(photoURL)
+	data, _, err := photoFetcher.Get(context.Background(), photoURL)
 	if err != nil {
 		return fmt.Errorf("download photo: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download photo: HTTP %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read photo body: %w", err)
 	}
 
 	name := path.Base(photoURL)

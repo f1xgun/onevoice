@@ -1,16 +1,35 @@
 package vk
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
 	"golang.org/x/time/rate"
+
+	"github.com/f1xgun/onevoice/pkg/safefetch"
 )
+
+// imageFetcher downloads a validated image URL and returns the bytes plus the
+// response Content-Type. *safefetch.Fetcher satisfies it; tests substitute a
+// stub so the SSRF guard does not block loopback test servers.
+type imageFetcher interface {
+	Get(ctx context.Context, rawURL string) (body []byte, contentType string, err error)
+}
+
+// photoFetcher downloads caller-supplied image URLs with SSRF protection: the
+// URL is an LLM tool argument, so it is validated (https-only, no internal
+// addresses) and dialed through a screened client before the bytes are read.
+// IPv4 is forced because the Yandex Cloud VMs the agent runs on have no IPv6
+// route.
+var photoFetcher imageFetcher = safefetch.New(safefetch.Options{
+	Timeout:   vkHTTPTimeout,
+	ForceIPv4: true,
+})
 
 // vkMentionRe matches the VK auto-prepended reply mention markup:
 //
@@ -83,17 +102,10 @@ func (c *Client) PostPhoto(groupID, photoURL, caption string) (int64, error) {
 	if err := c.wait(); err != nil {
 		return 0, err
 	}
-	httpClient := &http.Client{Timeout: vkHTTPTimeout}
-	resp, err := httpClient.Get(photoURL)
+	imageBytes, ct, err := photoFetcher.Get(context.Background(), photoURL)
 	if err != nil {
 		return 0, fmt.Errorf("vk: download image: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("vk: download image: status %d", resp.StatusCode)
-	}
-	ct := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "image/") {
 		return 0, fmt.Errorf("vk: unexpected content-type %q, expected image/*", ct)
 	}
@@ -104,7 +116,7 @@ func (c *Client) PostPhoto(groupID, photoURL, caption string) (int64, error) {
 		return 0, fmt.Errorf("vk: invalid group_id %q: %w", groupID, err)
 	}
 
-	photos, err := c.vk.UploadGroupWallPhoto(groupIDInt, resp.Body)
+	photos, err := c.vk.UploadGroupWallPhoto(groupIDInt, bytes.NewReader(imageBytes))
 	if err != nil {
 		return 0, fmt.Errorf("vk photos.saveWallPhoto: %w", err)
 	}

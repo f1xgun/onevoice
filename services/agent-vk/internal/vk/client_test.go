@@ -1,9 +1,9 @@
 package vk_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/safefetch"
 	"github.com/f1xgun/onevoice/services/agent-vk/internal/vk"
 )
 
@@ -232,37 +233,49 @@ func TestClient_PostPhoto_Success(t *testing.T) {
 	srv := newMockVKServer()
 	defer srv.Close()
 
-	imgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		png1x1 := []byte{
-			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00,
-			0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-			0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde,
-			0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63,
-			0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21,
-			0xbc, 0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
-			0x42, 0x60, 0x82,
-		}
-		_, _ = w.Write(png1x1)
-	}))
-	defer imgServer.Close()
+	png1x1 := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00,
+		0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+		0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde,
+		0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63,
+		0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21,
+		0xbc, 0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+		0x42, 0x60, 0x82,
+	}
+	restore := vk.SetPhotoFetcher(func(_ context.Context, _ string) ([]byte, string, error) {
+		return png1x1, "image/png", nil
+	})
+	defer restore()
 
 	c := newClient(srv)
-	postID, err := c.PostPhoto("-123456", imgServer.URL+"/image.png", "My caption")
+	postID, err := c.PostPhoto("-123456", "https://images.example.test/image.png", "My caption")
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(12345), postID)
 }
 
-func TestClient_PostPhoto_InvalidURL(t *testing.T) {
+// TestClient_PostPhoto_RejectsSSRF asserts the SSRF guard blocks an
+// LLM-supplied internal/non-https URL before any outbound request is made and
+// before the VK API is touched. fetchCalled stays false because validation
+// happens inside safefetch ahead of the dial.
+func TestClient_PostPhoto_RejectsSSRF(t *testing.T) {
 	srv := newMockVKServer()
 	defer srv.Close()
 
+	disallowed := []string{
+		"http://example.com/photo.png", // non-https
+		"https://127.0.0.1/photo.png",  // loopback
+		"https://169.254.169.254/x",    // cloud metadata
+		"https://10.0.0.1/photo.png",   // RFC1918
+		"https://[::1]/photo.png",      // ipv6 loopback
+	}
 	c := newClient(srv)
-	_, err := c.PostPhoto("-123456", "http://127.0.0.1:1/nonexistent.png", "caption")
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "download image")
+	for _, raw := range disallowed {
+		_, err := c.PostPhoto("-123456", raw, "caption")
+		require.Error(t, err, "PostPhoto(%q) must be rejected", raw)
+		require.ErrorIs(t, err, safefetch.ErrUnsafeURL, "PostPhoto(%q) must fail closed with ErrUnsafeURL", raw)
+		assert.Contains(t, err.Error(), "download image")
+	}
 }
 
 func TestClient_SchedulePost_Success(t *testing.T) {
@@ -510,15 +523,13 @@ func TestClient_PostPhoto_InvalidGroupID(t *testing.T) {
 	srv := newMockVKServer()
 	defer srv.Close()
 
-	imgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write([]byte{0x89, 0x50, 0x4e, 0x47})
-		_, _ = io.WriteString(w, "fake")
-	}))
-	defer imgServer.Close()
+	restore := vk.SetPhotoFetcher(func(_ context.Context, _ string) ([]byte, string, error) {
+		return []byte{0x89, 0x50, 0x4e, 0x47}, "image/png", nil
+	})
+	defer restore()
 
 	c := newClient(srv)
-	_, err := c.PostPhoto("not-a-number", imgServer.URL+"/img.png", "cap")
+	_, err := c.PostPhoto("not-a-number", "https://images.example.test/img.png", "cap")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid group_id")
