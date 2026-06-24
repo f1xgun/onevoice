@@ -347,3 +347,73 @@ func TestRateLimiter_DailySpenderError_FailsClosed(t *testing.T) {
 		assert.NotContains(t, k, "ratelimit:"+userID.String())
 	}
 }
+
+// ---------------------------------------------------------------------
+// EXPIRE-failure path (TTL-less counter) tests
+// ---------------------------------------------------------------------
+
+// expireFailHook fails only EXPIRE/PEXPIRE commands, letting INCR/INCRBY land
+// against the live miniredis. This reproduces the transient-Redis-blip window
+// where a freshly-created counter would be left without a TTL.
+type expireFailHook struct{ err error }
+
+func (h expireFailHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h expireFailHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		switch cmd.Name() {
+		case "expire", "pexpire":
+			return h.err
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h expireFailHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+// TestRateLimiter_ExpireFailure_DoesNotBlockAndCountsMetric — when the EXPIRE
+// after the first INCR fails, CheckLimit must still allow the request (graceful
+// degradation, not fail-closed) and bump llm_expire_failure_total{gate}.
+func TestRateLimiter_ExpireFailure_DoesNotBlockAndCountsMetric(t *testing.T) {
+	_, rdb := freshRedis(t)
+	rdb.AddHook(expireFailHook{err: errors.New("EXPIRE transient")})
+
+	beforeReq := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
+	beforeMin := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_min"))
+	beforeMonth := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_month"))
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
+	userID := uuid.New()
+
+	allowed, err := rl.CheckLimit(context.Background(), userID, uuid.Nil, "free", 100)
+	require.NoError(t, err, "EXPIRE failure must not error CheckLimit")
+	assert.True(t, allowed, "EXPIRE failure must not block the request")
+
+	assert.Equal(t, beforeReq+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min")))
+	assert.Equal(t, beforeMin+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_min")))
+	assert.Equal(t, beforeMonth+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("tokens_month")))
+}
+
+// TestRateLimiter_ExpireFailure_OnlyOnCounterCreation — the EXPIRE (and thus
+// the failure metric) is attempted only when the counter is first created, not
+// on every subsequent INCR within the window.
+func TestRateLimiter_ExpireFailure_OnlyOnCounterCreation(t *testing.T) {
+	_, rdb := freshRedis(t)
+	rdb.AddHook(expireFailHook{err: errors.New("EXPIRE transient")})
+
+	beforeReq := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
+	userID := uuid.New()
+
+	for i := 0; i < 3; i++ {
+		allowed, err := rl.CheckLimit(context.Background(), userID, uuid.Nil, "free", 100)
+		require.NoError(t, err)
+		assert.True(t, allowed)
+	}
+
+	assert.Equal(t, beforeReq+1, testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min")),
+		"requests_min EXPIRE is attempted once (on count==1), so only one failure is recorded across three calls")
+}

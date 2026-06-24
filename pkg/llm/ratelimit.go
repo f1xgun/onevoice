@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -12,6 +13,15 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/f1xgun/onevoice/pkg/metrics"
+)
+
+// Rate-limit gate identifiers. These are the bounded label set for
+// metrics.LLMExpireFailure — keep them in lockstep with the `gate` allowlist
+// in pkg/metrics/README.md. Never derive a gate label from a runtime value.
+const (
+	gateRequestsMin = "requests_min"
+	gateTokensMin   = "tokens_min"
+	gateTokensMonth = "tokens_month"
 )
 
 // Limits defines rate limits for a subscription tier
@@ -205,7 +215,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		}
 
 		if count == 1 {
-			rl.redis.Expire(ctx, reqKey, time.Minute)
+			rl.setGateExpiry(ctx, reqKey, time.Minute, gateRequestsMin)
 		}
 
 		if int(count) > limits.RequestsPerMin {
@@ -221,7 +231,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		}
 
 		if count == int64(tokens) {
-			rl.redis.Expire(ctx, tokKey, time.Minute)
+			rl.setGateExpiry(ctx, tokKey, time.Minute, gateTokensMin)
 		}
 
 		if int(count) > limits.TokensPerMin {
@@ -239,7 +249,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		if count == int64(tokens) {
 			endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 			ttl := endOfMonth.Sub(now)
-			rl.redis.Expire(ctx, monthKey, ttl)
+			rl.setGateExpiry(ctx, monthKey, ttl, gateTokensMonth)
 		}
 
 		if int(count) > limits.TokensPerMonth {
@@ -248,6 +258,26 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 	}
 
 	return true, nil
+}
+
+// setGateExpiry stamps the TTL on a freshly-created rate-limit counter. The
+// EXPIRE follows a successful INCR, so a transient EXPIRE failure would leave
+// the counter without a TTL — it would never reset and the user would be
+// rate-limited until manual Redis cleanup. This degrades gracefully rather
+// than failing the whole CheckLimit (failing closed on a Redis blip would
+// block legitimate traffic): on failure it logs a structured warning and
+// raises metrics.LLMExpireFailure so the TTL-less key is observable, then
+// lets the request through. gate MUST be one of the bounded gate* constants.
+func (rl *RateLimiter) setGateExpiry(ctx context.Context, key string, ttl time.Duration, gate string) {
+	if err := rl.redis.Expire(ctx, key, ttl).Err(); err != nil {
+		metrics.LLMExpireFailure.WithLabelValues(gate).Inc()
+		slog.WarnContext(ctx, "rate-limit counter EXPIRE failed; key has no TTL and will not reset until manual cleanup",
+			slog.String("gate", gate),
+			slog.String("key", key),
+			slog.Duration("ttl", ttl),
+			slog.String("error", err.Error()),
+		)
+	}
 }
 
 // handleRedisError applies the configured Redis-down policy. Records the

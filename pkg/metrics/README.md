@@ -23,6 +23,7 @@ rules below.
 | `decision`  | `approve`, `edit`, `reject`, `other`                                                                          | closed set — effective HITL verdict; `other` catches any unvalidated action string |
 | `sweeper`   | `account_hard_delete`, `business_hard_delete`, `deletion_warning`                                              | closed set — background-sweeper name, hard-coded at the call site (see sweepers.go) |
 | `platform`  | `telegram`, `vk`, `yandex_business`, `google_business`, `other`                                                | closed AgentID set on `posts_published_total` / `reviews_replied_total`; unknown collapses to `other` via `normalizeMetricPlatform` |
+| `gate`      | `requests_min`, `tokens_min`, `tokens_month`                                                                    | closed rate-limit window set on `llm_expire_failure_total`; hard-coded at each call site                                            |
 
 ## Banlist (NEVER use as labels)
 

@@ -52,8 +52,13 @@ var metricsMaxEntries = 1000
 var nowFunc = time.Now
 
 // defaultSelector is the production Selector. See docs/pkg/llm.md.
+//
+// mu guards both the metrics map AND the mutable scoring fields that Record
+// mirrors onto each *ModelProviderEntry (HealthStatus / AvgLatencyMs /
+// LastCheckedAt). buildCandidates reads those same fields while sorting, so it
+// holds an RLock — otherwise a concurrent Record write tears the read.
 type defaultSelector struct {
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	registry  *Registry
 	providers map[string]Provider
 	metrics   map[string]*providerMetrics // key: provider + ":" + model
@@ -117,6 +122,8 @@ func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Can
 		return nil
 	}
 
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	sort.SliceStable(out, func(i, j int) bool {
 		hi := out[i].Entry.HealthStatus == HealthStatusHealthy
 		hj := out[j].Entry.HealthStatus == HealthStatusHealthy

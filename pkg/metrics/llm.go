@@ -100,6 +100,25 @@ var (
 		Name: "llm_router_retry_total",
 		Help: "Router retry-once outcomes, by result (success, retrying, exhausted, nonretryable) and attempt (first, second).",
 	}, []string{"result", "attempt"})
+
+	// LLMExpireFailure counts every time the rate-limiter creates a per-user
+	// counter via INCR but the follow-up EXPIRE fails. A counter left without
+	// a TTL never resets, so the user would be rate-limited until manual Redis
+	// intervention. The limiter degrades gracefully (the request is allowed —
+	// failing closed on a transient Redis blip would block legitimate traffic)
+	// and raises this counter so an operator can alert on TTL-less keys.
+	//
+	// `gate` is the closed set of rate-limit windows the limiter maintains:
+	//   requests_min — per-minute request counter
+	//   tokens_min   — per-minute token counter
+	//   tokens_month — per-month token counter
+	//
+	// SECURITY: `gate` MUST stay in that 3-value set; do NOT add user_id /
+	// business_id labels (cardinality blowout + PII). See pkg/metrics/README.md.
+	LLMExpireFailure = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "llm_expire_failure_total",
+		Help: "Rate-limiter EXPIRE failures after counter creation, by gate (requests_min, tokens_min, tokens_month). A TTL-less counter never resets.",
+	}, []string{"gate"})
 )
 
 // RecordLLMRequest records a completed LLM request.
