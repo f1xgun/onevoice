@@ -48,6 +48,9 @@ func (f *fakeReviewRepo) UpdateReply(context.Context, string, string, string) er
 func (f *fakeReviewRepo) Upsert(context.Context, *domain.Review) error {
 	panic("unused")
 }
+func (f *fakeReviewRepo) BulkUpsert(context.Context, []*domain.Review) error {
+	panic("unused")
+}
 
 func (f *fakeReviewRepo) ListPendingWithoutDraft(_ context.Context, _, _ string, _ int) ([]domain.Review, error) {
 	f.mu.Lock()

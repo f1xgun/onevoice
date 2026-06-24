@@ -71,11 +71,10 @@ func (r *reviewRepository) GetByID(ctx context.Context, id string) (*domain.Revi
 	return &review, nil
 }
 
-func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) error {
-	if review.ExternalID == "" {
-		return fmt.Errorf("upsert review: external_id is required")
-	}
-
+// reviewUpsert builds the (filter, update) pair that upserts one review on its
+// natural key (business_id, platform, external_id). Shared by Upsert and
+// BulkUpsert so the persisted document shape stays identical across both paths.
+func reviewUpsert(review *domain.Review) (filter, update bson.M) {
 	id := review.ID
 	if id == "" {
 		id = uuid.NewString()
@@ -95,12 +94,12 @@ func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) er
 		setFields["platform_meta"] = review.PlatformMeta
 	}
 
-	filter := bson.M{
+	filter = bson.M{
 		"business_id": review.BusinessID,
 		"platform":    review.Platform,
 		"external_id": review.ExternalID,
 	}
-	update := bson.M{
+	update = bson.M{
 		"$set": setFields,
 		"$setOnInsert": bson.M{
 			"_id":         id,
@@ -117,10 +116,65 @@ func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) er
 			"draft_error":        "",
 		}
 	}
+	return filter, update
+}
 
-	_, err := r.collection.UpdateOne(ctx, filter, update, options.UpdateOne().SetUpsert(true))
-	if err != nil {
+func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) error {
+	if review.ExternalID == "" {
+		return fmt.Errorf("upsert review: external_id is required")
+	}
+	filter, update := reviewUpsert(review)
+	if _, err := r.collection.UpdateOne(ctx, filter, update, options.UpdateOne().SetUpsert(true)); err != nil {
 		return fmt.Errorf("upsert review: %w", err)
+	}
+	return nil
+}
+
+// BulkUpsert upserts every review with a non-empty external_id in a single
+// unordered BulkWrite — one round-trip instead of one UpdateOne per review.
+// Unordered so a single failing model does not abort the rest of the batch.
+func (r *reviewRepository) BulkUpsert(ctx context.Context, reviews []*domain.Review) error {
+	models := make([]mongo.WriteModel, 0, len(reviews))
+	for _, review := range reviews {
+		if review.ExternalID == "" {
+			continue
+		}
+		filter, update := reviewUpsert(review)
+		models = append(models, mongo.NewUpdateOneModel().
+			SetFilter(filter).
+			SetUpdate(update).
+			SetUpsert(true))
+	}
+	if len(models) == 0 {
+		return nil
+	}
+	if _, err := r.collection.BulkWrite(ctx, models, options.BulkWrite().SetOrdered(false)); err != nil {
+		return fmt.Errorf("bulk upsert reviews: %w", err)
+	}
+	return nil
+}
+
+// EnsureReviewIndexes creates the reviews collection's compound index on the
+// upsert natural key idempotently at API startup, so each upsert (and each
+// BulkWrite model) is an indexed lookup rather than a collection scan. The
+// index is non-unique: it is a query accelerator, not a constraint — the sync
+// path dedupes by the same key, and a unique index could fail to build on a
+// collection that predates it and already holds duplicates.
+func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
+	coll := db.Collection("reviews")
+	model := mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "business_id", Value: 1},
+			{Key: "platform", Value: 1},
+			{Key: "external_id", Value: 1},
+		},
+		Options: options.Index().SetName("reviews_business_platform_external"),
+	}
+	if _, err := coll.Indexes().CreateOne(ctx, model); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil
+		}
+		return fmt.Errorf("ensure review indexes: %w", err)
 	}
 	return nil
 }
