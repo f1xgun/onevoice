@@ -116,7 +116,12 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
 
   useEffect(() => {
     dispatch({ type: 'reset', drafts: initialDrafts(batch) });
-  }, [batch.batchId, batch]);
+    // Keyed on batchId identity only: a fresh `batch` object reference with the
+    // same batchId (e.g. an unrelated token-refresh re-render upstream) must NOT
+    // wipe the operator's staged decisions. The closure still reads the latest
+    // `batch` when it does run on a genuine batch swap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.batchId]);
 
   const allDecided = drafts.every((d) => d.decision !== 'undecided');
 

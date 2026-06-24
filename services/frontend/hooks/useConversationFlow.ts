@@ -181,6 +181,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const isStreamingRef = useRef(false);
+  const streamingConversationIdRef = useRef<string | null>(null);
   const isResolvingRef = useRef(false);
   const turnPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -189,7 +190,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const locale = useLocale();
   const { resolveError, resumeStreamError } = useResolveErrorMap();
 
-  const accessToken = useAuthStore((s) => s.accessToken);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const sendAbortRef = useRef<AbortController | null>(null);
   const resumeAbortRef = useRef<AbortController | null>(null);
@@ -214,6 +214,18 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     setIsLoading(true);
     setAwaitingTurn(false);
 
+    // A real conversation switch (the App Router reuses this hook instance across
+    // /chat/[id] navigations, so no unmount fires) while a send is streaming for
+    // a DIFFERENT conversation: abort the orphaned stream and clear streaming
+    // state so its in-flight SSE events can't bleed into the new conversation and
+    // so the load below isn't short-circuited by the streaming guard.
+    if (isStreamingRef.current && streamingConversationIdRef.current !== conversationId) {
+      sendAbortRef.current?.abort();
+      isStreamingRef.current = false;
+      streamingConversationIdRef.current = null;
+      setIsStreaming(false);
+    }
+
     const clearPoll = () => {
       if (turnPollRef.current) {
         clearTimeout(turnPollRef.current);
@@ -222,11 +234,11 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     };
 
     const load = async (isInitial: boolean): Promise<void> => {
-      // Wait for the access token before the first load; the layout-mount
-      // refresh sets it shortly after mount and the effect re-runs (token is
-      // a dependency). authFetch then handles any mid-session 401 by
-      // refreshing the token and replaying the request.
-      if (!accessToken) {
+      // Wait for the access token before the first load. The token is read
+      // from the store at call time (not via the effect deps) so a mid-session
+      // token rotation never re-runs this effect and clobbers a live stream.
+      // authFetch handles any mid-session 401 by refreshing and replaying.
+      if (!useAuthStore.getState().accessToken) {
         if (isInitial) setIsLoading(false);
         return;
       }
@@ -238,11 +250,16 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         payload = null;
       }
       if (cancelled) return;
-      // A live send took over (only possible via a race) — let the SSE stream
-      // own message state instead of clobbering it with the persisted list.
-      if (!isInitial && isStreamingRef.current) {
+      // A live stream owns message state for ITS conversation — never clobber it
+      // with the persisted list. This short-circuits an initial-load re-run (e.g.
+      // a token rotation re-firing the effect) while the same conversation is
+      // streaming. A re-run for a DIFFERENT conversation is a real switch (the
+      // App Router reuses this instance across /chat/[id] navigations), so the
+      // old stream is aborted above and we fall through to load the new history.
+      if (isStreamingRef.current && streamingConversationIdRef.current === conversationId) {
         clearPoll();
         setAwaitingTurn(false);
+        if (isInitial) setIsLoading(false);
         return;
       }
 
@@ -303,7 +320,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       cancelled = true;
       clearPoll();
     };
-  }, [conversationId, accessToken, activeBusinessId, queryClient]);
+  }, [conversationId, activeBusinessId, queryClient]);
 
   const handleChatSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
@@ -381,6 +398,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       ]);
       setIsStreaming(true);
       isStreamingRef.current = true;
+      streamingConversationIdRef.current = conversationId;
 
       trackEvent('chat_send', 'send_message', {
         metadata: { conversationId: conversationId ?? '' },
@@ -409,9 +427,15 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           ];
         });
       } finally {
-        finalizeStreamingAssistant();
-        setIsStreaming(false);
-        isStreamingRef.current = false;
+        // Only clear streaming state if this send still owns it. A conversation
+        // switch may have already aborted this send and handed ownership to a
+        // newer send; don't stomp the newer stream's flags from this finally.
+        if (sendAbortRef.current === controller) {
+          finalizeStreamingAssistant();
+          setIsStreaming(false);
+          isStreamingRef.current = false;
+          streamingConversationIdRef.current = null;
+        }
       }
     },
     [conversationId, activeBusinessId, finalizeStreamingAssistant, tCommon, locale]
