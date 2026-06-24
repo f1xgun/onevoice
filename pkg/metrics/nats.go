@@ -57,6 +57,28 @@ var A2AHandlersInflight = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Current number of in-flight a2a message handlers in this agent process (concurrency slots held when a cap is set).",
 })
 
+// a2aHandlerPanicsTotal counts panics recovered at the a2a message-handler
+// boundary, labeled by {agent_id}. A non-zero rate means a handler/SDK/RPA path
+// panicked on an incoming request — always a bug worth paging on. Cardinality
+// is fixed at the closed agent_id set (telegram, vk, yandex_business,
+// google_business) via IncA2AHandlerPanic; see pkg/metrics/README.md.
+var a2aHandlerPanicsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "a2a_handler_panics_total",
+	Help: "Panics recovered at the a2a message-handler boundary, labeled by {agent_id}.",
+}, []string{"agent_id"})
+
+// IncA2AHandlerPanic records one recovered handler panic for agentID. agentID
+// must be one of the closed AgentID set; any other value is normalized to
+// "unknown" so a stray caller can never explode label cardinality.
+func IncA2AHandlerPanic(agentID string) {
+	switch agentID {
+	case "telegram", "vk", "yandex_business", "google_business":
+	default:
+		agentID = "unknown"
+	}
+	a2aHandlerPanicsTotal.WithLabelValues(agentID).Inc()
+}
+
 // RecordNATSPublish records a single NATS publish attempt.
 func RecordNATSPublish(subject, result string, duration time.Duration) {
 	s := CollapseSubject(subject)

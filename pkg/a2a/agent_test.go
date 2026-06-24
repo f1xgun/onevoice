@@ -347,6 +347,42 @@ func TestAgent_DecodeFailure_PublishesFailure(t *testing.T) {
 	}
 }
 
+func TestAgent_HandlerPanic_RecoversAndPublishesTransient(t *testing.T) {
+	transport := &fakeTransport{}
+	replyCh := make(chan []byte, 1)
+
+	handler := a2a.Exec(func(_ context.Context, _ a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		panic("boom")
+	})
+
+	agent := a2a.NewAgent(a2a.AgentTelegram, transport, handler)
+	require.NoError(t, agent.Start(context.Background()))
+
+	transport.publishFn = func(_ string, d []byte) error {
+		replyCh <- d
+		return nil
+	}
+
+	req := a2a.ToolRequest{TaskID: "t-panic", Tool: "telegram__send_channel_post"}
+	data, _ := json.Marshal(req)
+	transport.Trigger("tasks.telegram", "_INBOX.panic", data)
+
+	select {
+	case replyData := <-replyCh:
+		var resp a2a.ToolResponse
+		require.NoError(t, json.Unmarshal(replyData, &resp))
+		assert.False(t, resp.Success)
+		assert.Equal(t, "t-panic", resp.TaskID)
+		assert.Equal(t, "transient", resp.Code)
+		assert.NotEmpty(t, resp.Error)
+	case <-time.After(time.Second):
+		t.Fatal("no reply published after handler panic — caller would hang to the full deadline")
+	}
+
+	// The agent must still serve other in-flight requests after recovering.
+	agent.Stop()
+}
+
 func TestAgent_Stop_NoInflight(t *testing.T) {
 	transport := &fakeTransport{}
 	handler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
