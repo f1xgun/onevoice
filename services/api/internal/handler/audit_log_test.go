@@ -5,8 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"testing"
 	"time"
 
@@ -477,4 +483,76 @@ func TestAuditLogHandler_RepoSatisfiesAuditLogLister(t *testing.T) {
 	repo := repository.NewAuditLogRepository(mockPool)
 	_, ok := repo.(AuditLogLister)
 	require.True(t, ok, "NewAuditLogRepository must return a value satisfying handler.AuditLogLister")
+}
+
+// --- drift guard: knownActions vs pkg/audit/actions.go ---
+
+// auditActionConstantValues parses pkg/audit/actions.go and returns the string
+// value of every Action* constant. Reading the source (rather than a curated
+// list) means a new constant is detected automatically, so the drift guard
+// below cannot be defeated by forgetting to update a second list.
+func auditActionConstantValues(t *testing.T) []string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	require.True(t, ok, "runtime.Caller must resolve the test file path")
+	srcPath := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "pkg", "audit", "actions.go")
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, srcPath, nil, 0)
+	require.NoError(t, err, "parse pkg/audit/actions.go")
+
+	var values []string
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if i >= len(vs.Values) {
+					continue
+				}
+				lit, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(lit.Value)
+				require.NoError(t, err, "unquote %s", name.Name)
+				values = append(values, v)
+			}
+		}
+	}
+	require.NotEmpty(t, values, "expected to find Action* constants in actions.go")
+	return values
+}
+
+// Every audit action constant defined in pkg/audit/actions.go must be accepted
+// by the ?action= validator (knownActions), so no emitted action is silently
+// rejected with 400 or made unfilterable. Intentionally default-hidden noise
+// actions (token_decrypted) are still validatable — they live in knownActions
+// too — so this guard treats them no differently.
+func TestKnownActions_CoversEveryAuditConstant(t *testing.T) {
+	t.Parallel()
+	for _, action := range auditActionConstantValues(t) {
+		_, ok := knownActions[action]
+		assert.Truef(t, ok, "audit action %q is defined in pkg/audit/actions.go but missing from knownActions", action)
+	}
+}
+
+// The reverse direction: knownActions must not contain stale entries that no
+// longer correspond to a real constant (e.g. a renamed or removed action).
+func TestKnownActions_HasNoStaleEntries(t *testing.T) {
+	t.Parallel()
+	defined := make(map[string]struct{})
+	for _, action := range auditActionConstantValues(t) {
+		defined[action] = struct{}{}
+	}
+	for action := range knownActions {
+		_, ok := defined[action]
+		assert.Truef(t, ok, "knownActions entry %q has no matching constant in pkg/audit/actions.go", action)
+	}
 }

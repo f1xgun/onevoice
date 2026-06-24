@@ -6,6 +6,7 @@
 export type AuditCategory =
   | 'rbac'
   | 'auth'
+  | 'account'
   | 'integration'
   | 'business'
   | 'project'
@@ -57,6 +58,21 @@ export const AUDIT_ACTIONS = [
   'auth.logout',
   'auth.password_changed',
   'auth.user_registered',
+  'auth.password_reset_requested',
+  'auth.password_reset_completed',
+  'auth.password_reset_request_unknown_email',
+  'auth.email_verification_link_viewed',
+  'auth.email_verified',
+  'auth.email_changed_before_verify',
+  'auth.consent_recorded',
+  'auth.consent_reconsent_required',
+  'auth.consent_reconsented',
+  'auth.consent_withdrawn',
+  'auth.consent_policy_version_bumped',
+  'account.deletion_requested',
+  'account.deletion_canceled',
+  'account.sole_owner_blocked',
+  'account.user_self_deleted',
   'integration.connected',
   'integration.disconnected',
   'integration.token_rotated',
