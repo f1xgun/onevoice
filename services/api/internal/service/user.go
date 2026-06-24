@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -24,6 +25,9 @@ const (
 	AccessTokenExpiry     = 15 * time.Minute
 	RefreshTokenExpiry    = 7 * 24 * time.Hour
 	refreshTokenKeyPrefix = "onevoice:auth:refresh_token:" //nolint:gosec // not a credential, just a Redis key prefix
+	// refreshTokenScanBatch is the SCAN page size for the refresh-token wipe —
+	// 256 balances roundtrips vs per-page work (Redis recommends 100-1000).
+	refreshTokenScanBatch int64 = 256
 )
 
 // User credential validation thresholds. See docs/services/user.md.
@@ -250,11 +254,29 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 	return s.Register(ctx, email, password)
 }
 
-// Login authenticates user and issues access and refresh tokens
+// purgeEligible reports whether a soft-deleted user has passed the restore
+// grace window and is now eligible for hard-delete by the sweeper. Such a user
+// must be rejected on the token-minting paths; a user still inside the grace
+// window is treated as authenticatable so they can reach the restore endpoint.
+func purgeEligible(user *domain.User) bool {
+	if user.DeletionRequestedAt == nil || user.DeletionCanceledAt != nil {
+		return false
+	}
+	graceEnd := user.DeletionRequestedAt.Add(time.Duration(deletionGraceDays) * 24 * time.Hour)
+	return !time.Now().Before(graceEnd)
+}
+
+// Login authenticates user and issues access and refresh tokens. The lookup is
+// deletion-aware so a soft-deleted user still inside the restore grace window
+// can authenticate to reach the restore endpoint; a purge-eligible (past-grace)
+// account is rejected as if not found.
 func (s *userService) Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error) {
-	user, err = s.repo.GetByEmail(ctx, email)
+	user, err = s.repo.GetByEmailIncludingDeleted(ctx, email)
 	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
 		return nil, "", "", fmt.Errorf("get user: %w", err)
+	}
+	if user != nil && purgeEligible(user) {
+		user = nil
 	}
 
 	dummyHash := "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
@@ -320,12 +342,15 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 		return nil, "", "", domain.ErrInvalidToken
 	}
 
-	user, err = s.repo.GetByID(ctx, claims.UserID)
+	user, err = s.repo.GetByIDIncludingDeleted(ctx, claims.UserID)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
 			return nil, "", "", err
 		}
 		return nil, "", "", fmt.Errorf("get user: %w", err)
+	}
+	if purgeEligible(user) {
+		return nil, "", "", domain.ErrUserNotFound
 	}
 
 	accessToken, err = generateAccessToken(user, s.jwtSecret)
@@ -442,6 +467,49 @@ func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, curr
 		return fmt.Errorf("update user: %w", err)
 	}
 
+	if err := wipeRefreshTokensForUser(ctx, s.redis, userID); err != nil {
+		slog.ErrorContext(ctx, "change password: wipe refresh tokens", "error", err, "user_id", userID)
+	}
+
+	return nil
+}
+
+// wipeRefreshTokensForUser deletes every refresh-token Redis key whose value is
+// the target userID. Uses SCAN (not KEYS — KEYS blocks Redis in production).
+// Shared by the password-change and password-reset flows so a credential
+// rotation invalidates every outstanding session regardless of entry point.
+func wipeRefreshTokensForUser(ctx context.Context, rdb *redis.Client, userID uuid.UUID) error {
+	target := userID.String()
+	var cursor uint64
+	var toDelete []string
+	for {
+		keys, next, err := rdb.Scan(ctx, cursor, refreshTokenKeyPrefix+"*", refreshTokenScanBatch).Result()
+		if err != nil {
+			return fmt.Errorf("scan: %w", err)
+		}
+		for _, k := range keys {
+			val, err := rdb.Get(ctx, k).Result()
+			if errors.Is(err, redis.Nil) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("get %s: %w", k, err)
+			}
+			if val == target {
+				toDelete = append(toDelete, k)
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	if len(toDelete) == 0 {
+		return nil
+	}
+	if err := rdb.Del(ctx, toDelete...).Err(); err != nil {
+		return fmt.Errorf("del: %w", err)
+	}
 	return nil
 }
 

@@ -17,7 +17,11 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	// GetByIDIncludingDeleted is the explicit opt-out used by /auth/me grace-window restore.
 	GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*User, error)
+	// GetByEmail filters deleted_at IS NULL — soft-deleted rows surface as ErrUserNotFound.
 	GetByEmail(ctx context.Context, email string) (*User, error)
+	// GetByEmailIncludingDeleted is the explicit opt-out used by the login path so a
+	// soft-deleted user still inside the restore grace window can authenticate.
+	GetByEmailIncludingDeleted(ctx context.Context, email string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
 	// UpdateName sets users.name. Caller trims/validates; ErrUserNotFound when no row.
