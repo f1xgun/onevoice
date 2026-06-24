@@ -3,7 +3,7 @@
 //
 // Endpoints (contract):
 // POST /api/v1/auth/consents                        → 204 / 400 / 409 / 403
-// POST /api/v1/users/me/consents/pdn/withdraw       → 204 / 423 / 403 / 404
+// POST /api/v1/users/me/consents/pdn/withdraw       → 200 / 423 / 403 / 404
 // GET  /api/v1/users/me/consents                    → { consents: ConsentRecord[] }
 //
 // None of these endpoints emits a business-logic 401 — a 401 here only ever
