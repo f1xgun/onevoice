@@ -137,18 +137,20 @@ kubectl -n onevoice-prod rollout restart deployment/api
 **Phase 30 deliverable:** `cmd/rekey` — выполняет zero-downtime re-encryption с dual-decrypt window.
 
 ```bash
-# Phase 30 forward reference — экспозиция:
+# Перед запуском: TOKEN_ENCRYPTION_KMS_VERSION_MAP должен содержать активную
+# версию KMS-ключа (формат "<versionID>=<int16>"), иначе rekey прерывается с
+# ошибкой, т.к. key_version не может быть записан >= target-version.
 go run ./services/api/cmd/rekey \
-    --old-key-env LEGACY_ENCRYPTION_KEY \
-    --new-key-env ENCRYPTION_KEY \
-    --batch-size 100 \
+    --target-version 2 \
+    --batch 100 \
+    --concurrency 4 \
     --dry-run=false
 
-# Job iterates over integration table, decrypts with LEGACY_ENCRYPTION_KEY,
-# re-encrypts with ENCRYPTION_KEY (envelope encryption: encrypts a fresh
-# per-row DEK with the KMS master key, then encrypts the token with the DEK).
-# Atomically updates the row + a `key_version` column so concurrent reads
-# stay correct during the rolling rekey.
+# Job iterates over the integrations table, decrypts each row (legacy AES via
+# ENCRYPTION_KEY, or the previous envelope DEK via KMS), then re-encrypts with
+# envelope encryption: a fresh per-row DEK is wrapped by the KMS master key and
+# the token is sealed with that DEK. Atomically updates the row + its
+# `key_version` column so concurrent reads stay correct during the rolling rekey.
 ```
 
 **Pre-Phase-30 fallback (v1.5):** автоматизированной re-encryption нет; операционно процесс выглядит так:

@@ -228,6 +228,10 @@ func (r *Rekeyer) rekeyRow(ctx context.Context, tx pgx.Tx, row domain.Integratio
 		return fmt.Errorf("rekey: re-encrypt id=%s: %w", row.ID, err)
 	}
 
+	if keyVersion < r.targetVersion {
+		return fmt.Errorf("rekey: KMS version did not resolve to >= target (%d); set TOKEN_ENCRYPTION_KMS_VERSION_MAP for the active KMS version (row id=%s)", r.targetVersion, row.ID)
+	}
+
 	updated := domain.Integration{
 		ID:                       row.ID,
 		EncryptedAccessToken:     ciphertexts[0],
