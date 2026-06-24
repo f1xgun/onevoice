@@ -44,6 +44,31 @@ var hitlDecisionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "HITL approval verdicts persisted, labeled by effective decision {approve|edit|reject|other}.",
 }, []string{"decision"})
 
+// resumePersistFailuresTotal counts hard Message.Update failures on the HITL
+// resume persistence paths. A failure here does not strand the conversation —
+// the self-heal gate (gateHealStranded → finalizeStranded) retries the
+// write-back on the next request because the un-persisted Complete status
+// leaves the DB row active — but it was previously logged at warn and was
+// otherwise invisible. This counter makes the silent failure alertable.
+//
+// The "path" label is the closed set {partial, repause, done} naming the three
+// resume persist call sites; ResumePersistFailure collapses anything else to
+// "other" so an unexpected caller cannot explode label cardinality.
+//
+// See pkg/metrics/README.md for the label-cardinality convention.
+var resumePersistFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "chatturn_resume_persist_failures_total",
+	Help: "HITL resume Message.Update failures, labeled by path {partial|repause|done}. Recovered by the self-heal gate; surfaced here for alerting.",
+}, []string{"path"})
+
+// allowedResumePersistPaths caps the resume-persist `path` label to the three
+// known call sites. Anything outside collapses to labelOther.
+var allowedResumePersistPaths = map[string]struct{}{
+	"partial": {},
+	"repause": {},
+	"done":    {},
+}
+
 // postsPublishedTotal counts publish attempts for content the agents push to a
 // platform, as the Post record is written after the SSE stream ends. It is the
 // product-level view of "how much is being posted, and how often does a publish
@@ -141,6 +166,17 @@ func IncReviewsReplied(platform, result string) {
 		result = labelOther
 	}
 	reviewsRepliedTotal.WithLabelValues(normalizeMetricPlatform(platform), result).Inc()
+}
+
+// ResumePersistFailure increments chatturn_resume_persist_failures_total for
+// the given resume persist path. Anything outside the closed set
+// {partial, repause, done} is collapsed to "other" so an unexpected caller
+// cannot explode label cardinality.
+func ResumePersistFailure(path string) {
+	if _, ok := allowedResumePersistPaths[path]; !ok {
+		path = labelOther
+	}
+	resumePersistFailuresTotal.WithLabelValues(path).Inc()
 }
 
 // IncHITLDecision increments hitl_decisions_total for the given effective
