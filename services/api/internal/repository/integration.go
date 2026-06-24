@@ -160,6 +160,10 @@ func (r *integrationRepository) ListByBusinessID(ctx context.Context, businessID
 	})
 }
 
+// Update persists the mutable columns of an active integration. The WHERE
+// guards on deleted_at IS NULL like the rest of the repo, so a soft-deleted
+// (or absent) row affects zero rows and returns ErrIntegrationNotFound rather
+// than resurrecting a tombstoned integration via a stale object.
 func (r *integrationRepository) Update(ctx context.Context, integration *domain.Integration) error {
 	integration.UpdatedAt = time.Now()
 
@@ -177,7 +181,7 @@ func (r *integrationRepository) Update(ctx context.Context, integration *domain.
 		Set("key_version", integration.KeyVersion).
 		Set("encryption_key_fingerprint", integration.EncryptionKeyFingerprint).
 		Set("updated_at", integration.UpdatedAt).
-		Where(squirrel.Eq{"id": integration.ID}).
+		Where(squirrel.Eq{"id": integration.ID, "deleted_at": nil}).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build update: %w", err)
