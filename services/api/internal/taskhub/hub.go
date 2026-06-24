@@ -74,16 +74,16 @@ func (h *Hub) Subscribe(businessID string) (events <-chan Event, unsub func()) {
 // Publish sends an event to all subscribers of businessID. The call never
 // blocks — if a subscriber's buffer is full, the event is dropped for that
 // subscriber and a warning is logged. Slow clients must reconcile via REST.
+//
+// The read lock is held across the sends. The sends are non-blocking (the
+// default branch), so the publisher never blocks while holding the lock, and
+// a concurrent unsub (which needs the write lock) cannot close a subscriber's
+// channel mid-send.
 func (h *Hub) Publish(businessID string, ev Event) {
 	h.mu.RLock()
-	set := h.subs[businessID]
-	targets := make([]*subscription, 0, len(set))
-	for s := range set {
-		targets = append(targets, s)
-	}
-	h.mu.RUnlock()
+	defer h.mu.RUnlock()
 
-	for _, s := range targets {
+	for s := range h.subs[businessID] {
 		select {
 		case s.ch <- ev:
 		default:

@@ -118,3 +118,57 @@ func TestHub_PublishNoSubscribersIsNoop(t *testing.T) {
 	h := taskhub.New()
 	h.Publish("never-subscribed", taskhub.Event{Kind: taskhub.KindCreated})
 }
+
+// TestHub_ConcurrentPublishUnsubNoPanic exercises the race between Publish
+// sending to a subscriber channel and unsub closing it. If Publish snapshots
+// the subscriber set and sends after releasing the lock, a concurrent unsub
+// can close a channel still referenced by the send, causing a "send on closed
+// channel" panic. Holding the read lock across the sends prevents this.
+func TestHub_ConcurrentPublishUnsubNoPanic(t *testing.T) {
+	const (
+		businessID  = "biz-race"
+		publishers  = 8
+		subscribers = 8
+		cycles      = 3000
+	)
+	h := taskhub.New()
+
+	stop := make(chan struct{})
+
+	var pubWG sync.WaitGroup
+	for p := 0; p < publishers; p++ {
+		pubWG.Add(1)
+		go func() {
+			defer pubWG.Done()
+			ev := taskhub.Event{Kind: taskhub.KindUpdated, Task: domain.AgentTask{ID: "t"}}
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					h.Publish(businessID, ev)
+				}
+			}
+		}()
+	}
+
+	var subWG sync.WaitGroup
+	for s := 0; s < subscribers; s++ {
+		subWG.Add(1)
+		go func() {
+			defer subWG.Done()
+			for i := 0; i < cycles; i++ {
+				ch, unsub := h.Subscribe(businessID)
+				select {
+				case <-ch:
+				default:
+				}
+				unsub()
+			}
+		}()
+	}
+
+	subWG.Wait()
+	close(stop)
+	pubWG.Wait()
+}
