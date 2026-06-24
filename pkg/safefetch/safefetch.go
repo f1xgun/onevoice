@@ -47,6 +47,12 @@ const (
 // screened alongside RFC1918.
 var cgnatRange = mustCIDR("100.64.0.0/10")
 
+// thisHostRange is the RFC 1122 "this host on this network" block
+// (0.0.0.0/8). net.IP.IsUnspecified only matches 0.0.0.0 exactly, but on
+// Linux any 0.x.x.x address routes to loopback, so e.g. https://0.0.0.1/ is a
+// real SSRF-to-localhost vector and the whole /8 must be screened.
+var thisHostRange = mustCIDR("0.0.0.0/8")
+
 // mustCIDR parses a static CIDR at package-init; it panics on a malformed
 // constant, which is a programming error, not runtime input.
 func mustCIDR(s string) *net.IPNet {
@@ -59,9 +65,10 @@ func mustCIDR(s string) *net.IPNet {
 
 // isDisallowedIP reports whether ip belongs to a range the worker must never
 // connect to: loopback, link-local (incl. the cloud metadata endpoint),
-// private (RFC1918 / RFC4193), CGNAT shared space (RFC 6598), unspecified, or
-// multicast. It is the single source of truth for both URL-literal screening
-// and connect-time screening.
+// private (RFC1918 / RFC4193), CGNAT shared space (RFC 6598), the 0.0.0.0/8
+// this-host block (loopback-routed on Linux), unspecified, or multicast. It is
+// the single source of truth for both URL-literal screening and connect-time
+// screening.
 func isDisallowedIP(ip net.IP) bool {
 	return ip.IsLoopback() ||
 		ip.IsLinkLocalUnicast() ||
@@ -69,7 +76,8 @@ func isDisallowedIP(ip net.IP) bool {
 		ip.IsMulticast() ||
 		ip.IsUnspecified() ||
 		ip.IsPrivate() ||
-		cgnatRange.Contains(ip)
+		cgnatRange.Contains(ip) ||
+		thisHostRange.Contains(ip)
 }
 
 // ValidateURL parses rawURL and enforces the scheme/host policy for an
@@ -130,12 +138,6 @@ type Options struct {
 	// have no IPv6 route, so leaving the default network can hang on AAAA
 	// records until timeout.
 	ForceIPv4 bool
-	// InsecureSkipVerify disables TLS certificate verification. External image
-	// hosts sometimes serve self-signed or corp-CA certificates absent from the
-	// container trust store. SSRF protection does not depend on TLS verification
-	// — the IP screen runs regardless — so callers may opt in without weakening
-	// the disallow-list guarantee.
-	InsecureSkipVerify bool
 }
 
 // Fetcher performs SSRF-safe HTTPS fetches. Construct it with New and reuse it;
@@ -171,9 +173,6 @@ func New(opts Options) *Fetcher {
 		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
 			return dialer.DialContext(ctx, network, addr)
 		},
-	}
-	if opts.InsecureSkipVerify {
-		transport.TLSClientConfig = newInsecureTLSConfig()
 	}
 
 	client := &http.Client{

@@ -3,6 +3,8 @@ package safefetch
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
@@ -30,6 +32,8 @@ func TestValidateURL(t *testing.T) {
 		{name: "private 172.16/12 rejected", rawURL: "https://172.16.0.1/photo.jpg", wantErr: true},
 		{name: "private 192.168/16 rejected", rawURL: "https://192.168.1.1/photo.jpg", wantErr: true},
 		{name: "cgnat 100.64/10 rejected", rawURL: "https://100.64.0.1/photo.jpg", wantErr: true},
+		{name: "this-host 0.0.0.1 rejected", rawURL: "https://0.0.0.1/photo.jpg", wantErr: true},
+		{name: "this-host 0.10.0.1 mid-range rejected", rawURL: "https://0.10.0.1/photo.jpg", wantErr: true},
 		{name: "unique local ipv6 rejected", rawURL: "https://[fc00::1]/photo.jpg", wantErr: true},
 		{name: "link-local ipv6 rejected", rawURL: "https://[fe80::1]/photo.jpg", wantErr: true},
 		{name: "unparseable url rejected", rawURL: "https://exa mple.com/photo.jpg", wantErr: true},
@@ -116,7 +120,7 @@ func TestGetScreensResolvedHostnameEndToEnd(t *testing.T) {
 	}
 
 	target := "https://localtest.me:" + port + "/secret"
-	_, _, err = New(Options{InsecureSkipVerify: true}).Get(context.Background(), target)
+	_, _, err = New(Options{}).Get(context.Background(), target)
 	if err == nil {
 		t.Fatal("expected Get to refuse a hostname resolving to loopback")
 	}
@@ -130,7 +134,12 @@ func TestGetRevalidatesRedirect(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := New(Options{InsecureSkipVerify: true})
+	f := New(Options{})
+	if transport, ok := f.client.Transport.(*http.Transport); ok {
+		transport.TLSClientConfig = testServerTLSConfig(srv)
+	} else {
+		t.Fatalf("unexpected transport type %T", f.client.Transport)
+	}
 	_, _, err := f.Get(context.Background(), srv.URL)
 	if err == nil {
 		t.Fatal("expected Get to reject a redirect to a loopback address")
@@ -193,21 +202,36 @@ func TestGetCapsBodySize(t *testing.T) {
 // server's loopback listener, so tests can assert ValidateURL/body behavior
 // against a public-looking hostname without tripping the IP screen on the
 // listener itself. The screen is exercised separately in the resolved-peer and
-// redirect tests.
+// redirect tests. The test server's self-signed certificate is trusted via a
+// dedicated cert pool rather than disabling verification, so the production
+// fetcher keeps full TLS verification.
 func newFetcherDialingTo(t *testing.T, srv *httptest.Server) *Fetcher {
 	t.Helper()
 	srvURL, err := url.Parse(srv.URL)
 	if err != nil {
 		t.Fatalf("parse server url: %v", err)
 	}
-	f := New(Options{InsecureSkipVerify: true})
+	f := New(Options{})
 	transport, ok := f.client.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("unexpected transport type %T", f.client.Transport)
 	}
+	transport.TLSClientConfig = testServerTLSConfig(srv)
 	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		var d net.Dialer
 		return d.DialContext(ctx, network, srvURL.Host)
 	}
 	return f
+}
+
+// testServerTLSConfig returns a *tls.Config that trusts the given httptest TLS
+// server's self-signed certificate. Tests use this to exercise the real fetcher
+// (with verification enabled) against a loopback test server instead of
+// disabling certificate verification. ServerName is pinned to a name the
+// httptest certificate covers (example.com) because requests target a different
+// public-looking hostname than the cert's SAN.
+func testServerTLSConfig(srv *httptest.Server) *tls.Config {
+	pool := x509.NewCertPool()
+	pool.AddCert(srv.Certificate())
+	return &tls.Config{RootCAs: pool, ServerName: "example.com", MinVersion: tls.VersionTLS12}
 }

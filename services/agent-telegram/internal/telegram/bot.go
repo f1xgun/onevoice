@@ -29,14 +29,10 @@ var telegramAPIClient = &http.Client{
 // photoFetcher downloads images from user-provided (LLM-supplied) URLs with
 // SSRF protection: the URL is validated (https-only, no internal addresses) and
 // dialed through a screened client before any bytes are read, so a
-// prompt-injected internal address cannot be reached. TLS verification is
-// skipped because external image URLs may use self-signed or corp-CA
-// certificates not present in the container trust store; the IP disallow-list
-// is independent of TLS trust. IPv4 is forced for the same no-IPv6 reason as
-// telegramAPIClient.
+// prompt-injected internal address cannot be reached. Full TLS verification
+// applies. IPv4 is forced for the same no-IPv6 reason as telegramAPIClient.
 var photoFetcher imageFetcher = safefetch.New(safefetch.Options{
-	ForceIPv4:          true,
-	InsecureSkipVerify: true,
+	ForceIPv4: true,
 })
 
 // imageFetcher downloads a validated image URL and returns the bytes plus the
