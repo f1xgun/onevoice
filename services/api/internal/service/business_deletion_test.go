@@ -11,7 +11,13 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
+
+// The production adapter must satisfy BusinessDeletionRepo, including the
+// tx-aware read the sweeper now uses. A compile-time check so a signature
+// drift between the interface and the adapter fails the build, not at runtime.
+var _ BusinessDeletionRepo = (*repository.BusinessDeletionExtAdapter)(nil)
 
 // fakeBusinessDeletionRepo is an in-memory BusinessDeletionRepo double. It
 // avoids the pool by exercising only requireOwner + the non-tx CancelDeletion
@@ -26,6 +32,13 @@ type fakeBusinessDeletionRepo struct {
 }
 
 func (f *fakeBusinessDeletionRepo) GetByIDIncludingDeleted(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.business, nil
+}
+
+func (f *fakeBusinessDeletionRepo) GetByIDIncludingDeletedInTx(_ context.Context, _ pgx.Tx, _ uuid.UUID) (*domain.Business, error) {
 	if f.getErr != nil {
 		return nil, f.getErr
 	}

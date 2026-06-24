@@ -22,6 +22,7 @@ import (
 // substitute a double; production wires *repository.BusinessDeletionExtAdapter.
 type BusinessDeletionRepo interface {
 	GetByIDIncludingDeleted(ctx context.Context, businessID uuid.UUID) (*domain.Business, error)
+	GetByIDIncludingDeletedInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) (*domain.Business, error)
 	RequestDeletionInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) error
 	CancelDeletion(ctx context.Context, businessID uuid.UUID, graceDays int) (bool, error)
 	EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error)
@@ -248,7 +249,7 @@ func (s *BusinessDeletionService) HardDeleteSweeper(ctx context.Context) (int, e
 	}
 	var purged []purgedPair
 	for _, bid := range businessIDs {
-		business, err := s.businesses.GetByIDIncludingDeleted(ctx, bid)
+		business, err := s.businesses.GetByIDIncludingDeletedInTx(ctx, tx, bid)
 		if err != nil {
 			slog.WarnContext(ctx, "business hard delete sweeper: get business failed", "businessID", bid, "err", err)
 			continue

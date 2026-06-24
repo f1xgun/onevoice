@@ -78,6 +78,47 @@ func TestBusinessRepository_GetByIDIncludingDeleted_NoFilter(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx asserts the
+// deletion-aware read routes through the caller-supplied tx, not r.pool. The
+// repository's pool and the tx are SEPARATE mocks: the query expectation lives
+// only on txMock, while poolMock has none. A regression to r.pool.QueryRow
+// would hit poolMock (no expectation) and fail. It also surfaces a cancellation
+// visible inside that tx, so the sweeper's re-check skips the hard delete.
+func TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx(t *testing.T) {
+	ctx := context.Background()
+
+	poolMock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	txMock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+
+	r := &businessRepository{pool: poolMock, sb: newStatementBuilder()}
+	id := uuid.New()
+	canceledAt := time.Now()
+
+	txMock.ExpectBegin()
+	tx, err := txMock.Begin(ctx)
+	require.NoError(t, err)
+
+	rows := businessRowValues(id)
+	rows[10] = &canceledAt
+	rows[11] = &canceledAt
+
+	txMock.ExpectQuery("SELECT .* FROM businesses WHERE id =").
+		WithArgs(id.String()).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "name", "category", "address", "phone", "website", "description",
+			"logo_url", "settings", "deleted_at", "deletion_requested_at",
+			"deletion_canceled_at", "created_at", "updated_at",
+		}).AddRow(rows...))
+
+	got, err := r.GetByIDIncludingDeletedInTx(ctx, tx, id)
+	require.NoError(t, err)
+	require.NotNil(t, got.DeletionCanceledAt, "cancellation must be visible inside the held tx")
+	require.NoError(t, txMock.ExpectationsWereMet())
+	require.NoError(t, poolMock.ExpectationsWereMet(), "read must not touch the pool")
+}
+
 // TestBusinessRepository_RequestDeletionInTx_AlreadyPending verifies the
 // classify-read maps an existing deletion_requested_at to the pending sentinel.
 func TestBusinessRepository_RequestDeletionInTx_AlreadyPending(t *testing.T) {
