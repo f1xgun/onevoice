@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -112,6 +113,8 @@ func (a *Agent) Start(ctx context.Context) error {
 
 func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 	var req ToolRequest
+	defer a.recoverHandler(ctx, reply, &req)
+
 	if err := json.Unmarshal(data, &req); err != nil {
 		slog.Error("a2a: failed to decode tool request", "agent", a.id, "error", err)
 		if reply == "" {
@@ -188,6 +191,45 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 		if err := a.transport.Publish(reply, respData); err != nil {
 			log.Error("a2a: failed to publish reply", "error", err)
 		}
+	}
+}
+
+// recoverHandler converts a panic in the handler/exec chain into a fail-fast
+// transient reply so the requester never waits out its full deadline on a
+// process that would otherwise have crashed. It must run as the first deferred
+// call in handle so it sees panics from json.Unmarshal, exec, and the reply
+// marshal/publish path alike. The agent keeps serving every other in-flight
+// request — recover, never re-panic.
+func (a *Agent) recoverHandler(ctx context.Context, reply string, req *ToolRequest) {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	metrics.IncA2AHandlerPanic(a.id)
+
+	log := slog.With("agent", a.id, "panic", r, "stack", string(debug.Stack()))
+	if corrID := logger.CorrelationIDFromContext(ctx); corrID != "" {
+		log = log.With("correlation_id", corrID)
+	}
+	log.Error("a2a: recovered panic in tool handler")
+
+	if reply == "" {
+		return
+	}
+
+	respData, err := json.Marshal(&ToolResponse{
+		TaskID:  req.TaskID,
+		Success: false,
+		Error:   "agent panic",
+		Code:    "transient",
+	})
+	if err != nil {
+		log.Error("a2a: failed to encode panic-recovery response", "error", err)
+		return
+	}
+	if err := a.transport.Publish(reply, respData); err != nil {
+		log.Error("a2a: failed to publish panic-recovery reply", "error", err)
 	}
 }
 
