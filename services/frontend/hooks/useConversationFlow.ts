@@ -189,7 +189,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const locale = useLocale();
   const { resolveError, resumeStreamError } = useResolveErrorMap();
 
-  const accessToken = useAuthStore((s) => s.accessToken);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const sendAbortRef = useRef<AbortController | null>(null);
   const resumeAbortRef = useRef<AbortController | null>(null);
@@ -222,11 +221,11 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     };
 
     const load = async (isInitial: boolean): Promise<void> => {
-      // Wait for the access token before the first load; the layout-mount
-      // refresh sets it shortly after mount and the effect re-runs (token is
-      // a dependency). authFetch then handles any mid-session 401 by
-      // refreshing the token and replaying the request.
-      if (!accessToken) {
+      // Wait for the access token before the first load. The token is read
+      // from the store at call time (not via the effect deps) so a mid-session
+      // token rotation never re-runs this effect and clobbers a live stream.
+      // authFetch handles any mid-session 401 by refreshing and replaying.
+      if (!useAuthStore.getState().accessToken) {
         if (isInitial) setIsLoading(false);
         return;
       }
@@ -238,11 +237,14 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         payload = null;
       }
       if (cancelled) return;
-      // A live send took over (only possible via a race) — let the SSE stream
-      // own message state instead of clobbering it with the persisted list.
-      if (!isInitial && isStreamingRef.current) {
+      // A live stream owns message state — never clobber it with the persisted
+      // list. This also short-circuits an initial-load re-run (e.g. a token
+      // rotation re-firing the effect) mid-stream: the only legitimate
+      // first-mount load runs before any send, when isStreamingRef is false.
+      if (isStreamingRef.current) {
         clearPoll();
         setAwaitingTurn(false);
+        if (isInitial) setIsLoading(false);
         return;
       }
 
@@ -303,7 +305,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       cancelled = true;
       clearPoll();
     };
-  }, [conversationId, accessToken, activeBusinessId, queryClient]);
+  }, [conversationId, activeBusinessId, queryClient]);
 
   const handleChatSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
