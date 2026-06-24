@@ -18,6 +18,7 @@ func newMockBrowserPool(page *mockPage) *BrowserPool {
 	p := &BrowserPool{
 		maxIdle:   defaultMaxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	p.withPageFn = func(_ context.Context, _, _ string, fn func(playwright.Page) error) error {
 		return fn(page)

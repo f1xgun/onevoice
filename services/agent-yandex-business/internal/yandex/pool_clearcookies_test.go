@@ -64,6 +64,7 @@ func newClearCookiesPool(t *testing.T, maxCtx int) (*BrowserPool, *[]*clearCooki
 	pool := &BrowserPool{
 		maxIdle:     defaultMaxIdle,
 		stopEvict:   make(chan struct{}),
+		contexts:    make(map[string]*pooledContext),
 		maxContexts: maxCtx,
 	}
 	pool.newContextFn = func() (playwright.BrowserContext, error) {
@@ -159,23 +160,24 @@ func TestEvictLoop_ClearsCookies(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   1 * time.Millisecond,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
 	mc := &clearCookiesMockContext{}
 	pc := &pooledContext{cookies: "secret", ctx: mc}
 	pc.lastUsed.Store(time.Now().Add(-1 * time.Second).UnixMilli())
-	pool.contexts.Store("biz-1", pc)
+	pool.contextsTest().Store("biz-1", pc)
 	metrics.BrowserPoolContexts.Inc()
 
 	now := time.Now().UnixMilli()
-	pool.contexts.Range(func(key, value any) bool {
-		pc := value.(*pooledContext)
+	pool.contextsTest().Range(func(key string, value *pooledContext) bool {
+		pc := value
 		if now-pc.lastUsed.Load() > pool.maxIdle.Milliseconds() {
 			if pc.busy.Load() {
 				return true
 			}
-			pool.contexts.Delete(key)
+			pool.contextsTest().Delete(key)
 			metrics.BrowserPoolEvictions.WithLabelValues("idle").Inc()
 			metrics.BrowserPoolContexts.Dec()
 			closePooledContext(pc)
@@ -198,7 +200,7 @@ func TestClose_ClearsAllCookies(t *testing.T) {
 	mcs := make([]*clearCookiesMockContext, 0, 4)
 	for _, id := range []string{"biz-1", "biz-2", "biz-3", "biz-4"} {
 		mc := &clearCookiesMockContext{}
-		pool.contexts.Store(id, &pooledContext{cookies: "secret", ctx: mc})
+		pool.contextsTest().Store(id, &pooledContext{cookies: "secret", ctx: mc})
 		mcs = append(mcs, mc)
 	}
 
@@ -265,19 +267,22 @@ func TestGetOrCreateContext_InjectFailure_ClearsCookiesBeforeClose(t *testing.T)
 func TestGetOrCreateContext_LostRace_ClearsCookiesBeforeClose(t *testing.T) {
 	pool, ctxs := newClearCookiesPool(t, 5)
 
-	existing := &pooledContext{ctx: &clearCookiesMockContext{}}
+	raceCookies := `[{"name":"Session_id","value":"abc","domain":".yandex.ru","path":"/"}]`
+	existing := &pooledContext{ctx: &clearCookiesMockContext{}, credHash: credentialHash(raceCookies)}
 	existing.touch()
 
 	pool.newContextFn = func() (playwright.BrowserContext, error) {
-		// Simulate a concurrent acquire winning the LoadOrStore race: the entry
-		// is absent at the initial Load but present by the time LoadOrStore runs.
-		pool.contexts.LoadOrStore("biz-race", existing)
+		// Simulate a concurrent same-credential acquire winning the commit race:
+		// the entry is absent at the initial cache check but present (with the
+		// same credHash) by the time this build reaches the commit critical
+		// section, so the freshly built context is discarded.
+		pool.contextsTest().Store("biz-race", existing)
 		mc := &clearCookiesMockContext{}
 		*ctxs = append(*ctxs, mc)
 		return mc, nil
 	}
 
-	got, err := pool.getOrCreateContext(t.Context(), "biz-race", `[{"name":"Session_id","value":"abc","domain":".yandex.ru","path":"/"}]`)
+	got, err := pool.getOrCreateContext(t.Context(), "biz-race", raceCookies)
 	if err != nil {
 		t.Fatalf("getOrCreateContext: %v", err)
 	}

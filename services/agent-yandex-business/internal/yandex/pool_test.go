@@ -18,19 +18,20 @@ func TestBrowserPool_ContextReuse(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   defaultMaxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
 	cookies := `[{"name":"Session_id","value":"abc","domain":".yandex.ru","path":"/"}]`
 	pc := &pooledContext{cookies: cookies, ctx: &mockBrowserContext{}}
 	pc.touch()
-	pool.contexts.Store("biz-1", pc)
+	pool.contextsTest().Store("biz-1", pc)
 
-	val, ok := pool.contexts.Load("biz-1")
+	val, ok := pool.contextsTest().Load("biz-1")
 	if !ok {
 		t.Fatal("expected context to be found in pool")
 	}
-	if val.(*pooledContext) != pc {
+	if val != pc {
 		t.Fatal("expected same pooledContext instance")
 	}
 }
@@ -39,6 +40,7 @@ func TestBrowserPool_ContextIsolation(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   defaultMaxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
@@ -46,12 +48,12 @@ func TestBrowserPool_ContextIsolation(t *testing.T) {
 	pc1.touch()
 	pc2 := &pooledContext{cookies: "[]", ctx: &mockBrowserContext{}}
 	pc2.touch()
-	pool.contexts.Store("biz-1", pc1)
-	pool.contexts.Store("biz-2", pc2)
+	pool.contextsTest().Store("biz-1", pc1)
+	pool.contextsTest().Store("biz-2", pc2)
 
-	v1, _ := pool.contexts.Load("biz-1")
-	v2, _ := pool.contexts.Load("biz-2")
-	if v1.(*pooledContext) == v2.(*pooledContext) {
+	v1, _ := pool.contextsTest().Load("biz-1")
+	v2, _ := pool.contextsTest().Load("biz-2")
+	if v1 == v2 {
 		t.Fatal("expected different contexts for different business IDs")
 	}
 }
@@ -60,17 +62,18 @@ func TestBrowserPool_EvictContext(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   defaultMaxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
 	mockCtx := &mockBrowserContext{}
 	pc := &pooledContext{cookies: "[]", ctx: mockCtx}
 	pc.touch()
-	pool.contexts.Store("biz-1", pc)
+	pool.contextsTest().Store("biz-1", pc)
 
 	pool.EvictContext("biz-1")
 
-	if _, ok := pool.contexts.Load("biz-1"); ok {
+	if _, ok := pool.contextsTest().Load("biz-1"); ok {
 		t.Fatal("expected context to be evicted")
 	}
 	if !mockCtx.closeCalled {
@@ -82,6 +85,7 @@ func TestBrowserPool_EvictContext_NonExistent(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   defaultMaxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
@@ -110,15 +114,15 @@ func TestBrowserPool_Close_EvictsAllContexts(t *testing.T) {
 	mockCtx2 := &mockBrowserContext{}
 	pc1 := &pooledContext{cookies: "[]", ctx: mockCtx1}
 	pc2 := &pooledContext{cookies: "[]", ctx: mockCtx2}
-	pool.contexts.Store("biz-1", pc1)
-	pool.contexts.Store("biz-2", pc2)
+	pool.contextsTest().Store("biz-1", pc1)
+	pool.contextsTest().Store("biz-2", pc2)
 
 	pool.Close()
 
-	if _, ok := pool.contexts.Load("biz-1"); ok {
+	if _, ok := pool.contextsTest().Load("biz-1"); ok {
 		t.Fatal("expected biz-1 context to be removed on Close")
 	}
-	if _, ok := pool.contexts.Load("biz-2"); ok {
+	if _, ok := pool.contextsTest().Load("biz-2"); ok {
 		t.Fatal("expected biz-2 context to be removed on Close")
 	}
 	if !mockCtx1.closeCalled {
@@ -228,6 +232,7 @@ func newCappedPool(t *testing.T, maxCtx int) (*BrowserPool, *[]*recordingMockCon
 	pool := &BrowserPool{
 		maxIdle:     defaultMaxIdle,
 		stopEvict:   make(chan struct{}),
+		contexts:    make(map[string]*pooledContext),
 		maxContexts: maxCtx,
 	}
 	pool.newContextFn = func() (playwright.BrowserContext, error) {
@@ -283,13 +288,13 @@ func TestBrowserPool_CapEviction_BeyondCap_EvictsLRU(t *testing.T) {
 	if got := testutil.ToFloat64(metrics.BrowserPoolEvictions.WithLabelValues("lru")); got != 1 {
 		t.Fatalf("LRU eviction count after cap-hit = %v, want 1", got)
 	}
-	if _, ok := pool.contexts.Load("biz-A"); ok {
+	if _, ok := pool.contextsTest().Load("biz-A"); ok {
 		t.Fatal("expected biz-A (oldest) to be evicted")
 	}
-	if _, ok := pool.contexts.Load("biz-B"); !ok {
+	if _, ok := pool.contextsTest().Load("biz-B"); !ok {
 		t.Fatal("expected biz-B (newer) to be retained")
 	}
-	if _, ok := pool.contexts.Load("biz-C"); !ok {
+	if _, ok := pool.contextsTest().Load("biz-C"); !ok {
 		t.Fatal("expected biz-C (just acquired) to be present")
 	}
 }
@@ -387,6 +392,7 @@ func TestBrowserPool_IdleEviction_StillWorks(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   1 * time.Millisecond,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
@@ -394,18 +400,18 @@ func TestBrowserPool_IdleEviction_StillWorks(t *testing.T) {
 		mockCtx := &mockBrowserContext{}
 		pc := &pooledContext{cookies: "[]", ctx: mockCtx}
 		pc.lastUsed.Store(time.Now().Add(-1 * time.Second).UnixMilli())
-		pool.contexts.Store(id, pc)
+		pool.contextsTest().Store(id, pc)
 		metrics.BrowserPoolContexts.Inc()
 	}
 
 	now := time.Now().UnixMilli()
-	pool.contexts.Range(func(key, value any) bool {
-		pc := value.(*pooledContext)
+	pool.contextsTest().Range(func(key string, value *pooledContext) bool {
+		pc := value
 		if now-pc.lastUsed.Load() > pool.maxIdle.Milliseconds() {
 			if pc.busy.Load() {
 				return true
 			}
-			pool.contexts.Delete(key)
+			pool.contextsTest().Delete(key)
 			metrics.BrowserPoolEvictions.WithLabelValues("idle").Inc()
 			metrics.BrowserPoolContexts.Dec()
 			_ = pc.ctx.Close()
