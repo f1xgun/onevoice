@@ -181,6 +181,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const isStreamingRef = useRef(false);
+  const streamingConversationIdRef = useRef<string | null>(null);
   const isResolvingRef = useRef(false);
   const turnPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -213,6 +214,18 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     setIsLoading(true);
     setAwaitingTurn(false);
 
+    // A real conversation switch (the App Router reuses this hook instance across
+    // /chat/[id] navigations, so no unmount fires) while a send is streaming for
+    // a DIFFERENT conversation: abort the orphaned stream and clear streaming
+    // state so its in-flight SSE events can't bleed into the new conversation and
+    // so the load below isn't short-circuited by the streaming guard.
+    if (isStreamingRef.current && streamingConversationIdRef.current !== conversationId) {
+      sendAbortRef.current?.abort();
+      isStreamingRef.current = false;
+      streamingConversationIdRef.current = null;
+      setIsStreaming(false);
+    }
+
     const clearPoll = () => {
       if (turnPollRef.current) {
         clearTimeout(turnPollRef.current);
@@ -237,11 +250,13 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         payload = null;
       }
       if (cancelled) return;
-      // A live stream owns message state — never clobber it with the persisted
-      // list. This also short-circuits an initial-load re-run (e.g. a token
-      // rotation re-firing the effect) mid-stream: the only legitimate
-      // first-mount load runs before any send, when isStreamingRef is false.
-      if (isStreamingRef.current) {
+      // A live stream owns message state for ITS conversation — never clobber it
+      // with the persisted list. This short-circuits an initial-load re-run (e.g.
+      // a token rotation re-firing the effect) while the same conversation is
+      // streaming. A re-run for a DIFFERENT conversation is a real switch (the
+      // App Router reuses this instance across /chat/[id] navigations), so the
+      // old stream is aborted above and we fall through to load the new history.
+      if (isStreamingRef.current && streamingConversationIdRef.current === conversationId) {
         clearPoll();
         setAwaitingTurn(false);
         if (isInitial) setIsLoading(false);
@@ -383,6 +398,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       ]);
       setIsStreaming(true);
       isStreamingRef.current = true;
+      streamingConversationIdRef.current = conversationId;
 
       trackEvent('chat_send', 'send_message', {
         metadata: { conversationId: conversationId ?? '' },
@@ -412,8 +428,14 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         });
       } finally {
         finalizeStreamingAssistant();
-        setIsStreaming(false);
-        isStreamingRef.current = false;
+        // Only clear streaming state if this send still owns it. A conversation
+        // switch may have already aborted this send and handed ownership to a
+        // newer send; don't stomp the newer stream's flags from this finally.
+        if (sendAbortRef.current === controller) {
+          setIsStreaming(false);
+          isStreamingRef.current = false;
+          streamingConversationIdRef.current = null;
+        }
       }
     },
     [conversationId, activeBusinessId, finalizeStreamingAssistant, tCommon, locale]
