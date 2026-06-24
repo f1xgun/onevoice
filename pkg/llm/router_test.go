@@ -391,6 +391,85 @@ func TestRouter_RateLimit_BlocksWhenEstimateOverGate(t *testing.T) {
 		"a prompt whose estimate exceeds TokensPerMin must be blocked")
 }
 
+// TestRouter_RateLimit_BlocksWhenSystemBlocksOverGate — the orchestrator carries
+// the bulk of the prompt in SystemBlocks (system/platform/business context), NOT
+// in Messages. A request with tiny Messages but a SystemBlock over TokensPerMin
+// must be blocked. This is the fail-on-revert anchor for the SystemBlocks fix:
+// reverting checkRateLimit to estimateTokens(req.Messages) makes the big
+// SystemBlock invisible to the gate → the request passes → this test fails.
+func TestRouter_RateLimit_BlocksWhenSystemBlocksOverGate(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimiter(limiter),
+	)
+
+	smallUser := uuid.New()
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:        "gpt-4",
+		UserID:       smallUser,
+		Tier:         "free",
+		Messages:     []llm.Message{{Role: "user", Content: "hi"}},
+		SystemBlocks: []llm.SystemBlock{{Text: "you are a helpful assistant"}},
+	})
+	require.NoError(t, err, "a tiny prompt is well under TokensPerMin=5000")
+
+	bigUser := uuid.New()
+	_, err = r.Chat(context.Background(), llm.ChatRequest{
+		Model:    "gpt-4",
+		UserID:   bigUser,
+		Tier:     "free",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}}, // tiny — messages-only would be ~5 tokens
+		SystemBlocks: []llm.SystemBlock{
+			{Text: strings.Repeat("z", 40000)}, // ~10000 est tokens > 5000, lives outside Messages
+		},
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llm.ErrRateLimitExceeded,
+		"a SystemBlocks-heavy prompt whose estimate exceeds TokensPerMin must be blocked")
+}
+
+// TestRouter_RateLimit_BlocksWhenToolsOverGate — same structural lenience, but the
+// bulk lives in the tool catalog (req.Tools), which is also outside Messages.
+func TestRouter_RateLimit_BlocksWhenToolsOverGate(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimiter(limiter),
+	)
+
+	bigUser := uuid.New()
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:    "gpt-4",
+		UserID:   bigUser,
+		Tier:     "free",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+		Tools: []llm.ToolDefinition{{
+			Type: llm.ToolCallTypeFunction,
+			Function: llm.FunctionDefinition{
+				Name:        "telegram__send_channel_post",
+				Description: strings.Repeat("d", 40000), // ~10000 est tokens > 5000
+				Parameters:  map[string]interface{}{"type": "object"},
+			},
+		}},
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llm.ErrRateLimitExceeded,
+		"a Tools-heavy prompt whose estimate exceeds TokensPerMin must be blocked")
+}
+
 // TestRouter_ReconcileTokens_RecordsDelta — after a successful response the
 // router tops up the token counter with max(0, actualTotal - estimate) via the
 // optional TokenRecorder seam, fire-and-forget.

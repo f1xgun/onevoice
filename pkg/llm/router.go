@@ -120,7 +120,7 @@ func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
 	if r.rateLimiter == nil || req.UserID == uuid.Nil {
 		return nil
 	}
-	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), estimateTokens(req.Messages))
+	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), estimateRequestTokens(req))
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (r *Router) reconcileTokens(req ChatRequest, resp *ChatResponse) {
 	if actual == 0 {
 		actual = resp.Usage.InputTokens + resp.Usage.OutputTokens
 	}
-	delta := actual - estimateTokens(req.Messages)
+	delta := actual - estimateRequestTokens(req)
 	if delta <= 0 {
 		return
 	}
