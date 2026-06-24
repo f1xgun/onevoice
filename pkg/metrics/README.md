@@ -11,7 +11,7 @@ rules below.
 | `model`     | known LLM model IDs                                                                                           | finite set per provider                                              |
 | `provider`  | `openrouter`, `openai`, `anthropic`, `selfhosted`                                                             | closed set                                                           |
 | `op`        | `find`, `insert`, `update`, `delete`, `aggregate`, `count`, `findAndModify`, `other`                          | mongo op whitelist; everything else collapses to `other`             |
-| `result`    | `ok`, `error`, `timeout`                                                                                      | closed set                                                           |
+| `result`    | `ok`, `error`, `timeout`; on `posts_published_total`: `published`, `scheduled`, `error`; on `reviews_replied_total`: `replied`, `pending`, `error`; else `other` | closed per-collector set — unknown collapses to `other` (`IncPostsPublished` / `IncReviewsReplied`) |
 | `status`    | `ok`, `error` plus per-collector tags                                                                         | finite                                                               |
 | `subject`   | `tasks.telegram`, `tasks.vk`, `tasks.yandex_business`, `tasks.google_business`, `_INBOX`                      | `_INBOX.*` reply subjects collapse to `_INBOX` via CollapseSubject   |
 | `job`       | scrape job name from prometheus.yml                                                                           | finite                                                               |
@@ -22,6 +22,7 @@ rules below.
 | `outcome`   | `chatturn.TurnOutcome.String()` set (`done`, `error`, `pause_hitl`, `reemitted_approval`, `rejoined_resume`, `orchestrator_unavailable`, `missing_message`, `business_not_found`, `inline_error`, `unknown`) | closed set — part of the chat-turn observability contract            |
 | `decision`  | `approve`, `edit`, `reject`, `other`                                                                          | closed set — effective HITL verdict; `other` catches any unvalidated action string |
 | `sweeper`   | `account_hard_delete`, `business_hard_delete`, `deletion_warning`                                              | closed set — background-sweeper name, hard-coded at the call site (see sweepers.go) |
+| `platform`  | `telegram`, `vk`, `yandex_business`, `google_business`, `other`                                                | closed AgentID set on `posts_published_total` / `reviews_replied_total`; unknown collapses to `other` via `normalizeMetricPlatform` |
 
 ## Banlist (NEVER use as labels)
 

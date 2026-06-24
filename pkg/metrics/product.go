@@ -44,11 +44,103 @@ var hitlDecisionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "HITL approval verdicts persisted, labeled by effective decision {approve|edit|reject|other}.",
 }, []string{"decision"})
 
+// postsPublishedTotal counts publish attempts for content the agents push to a
+// platform, as the Post record is written after the SSE stream ends. It is the
+// product-level view of "how much is being posted, and how often does a publish
+// fail or get deferred". Emitted once per posting tool call that produced a Post
+// record.
+//
+// The "platform" label is the closed AgentID set
+// {telegram, vk, yandex_business, google_business}; "result" is the closed set
+// {published, scheduled, error} mirroring the Post status postal.go writes
+// (immediate publish, delayed publish, failed publish). Both are normalized in
+// IncPostsPublished so an unexpected platform or status cannot explode label
+// cardinality.
+//
+// See pkg/metrics/README.md for the label-cardinality convention.
+var postsPublishedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "posts_published_total",
+	Help: "Post publish attempts, labeled by platform and result {published|scheduled|error}.",
+}, []string{"platform", "result"})
+
+// reviewsRepliedTotal counts review records upserted from a *__get_reviews tool
+// result, labeled by the reply state carried on the review. It is the
+// product-level view of "are fetched reviews carrying a reply, and do upserts
+// fail". Emitted once per upserted review.
+//
+// The "platform" label is the closed AgentID set
+// {telegram, vk, yandex_business, google_business}; "result" is the closed set
+// {replied, pending, error} mirroring domain.ReviewReplyStatus* plus the
+// upsert-failure outcome. Both are normalized in IncReviewsReplied so an
+// unexpected platform or status cannot explode label cardinality.
+//
+// See pkg/metrics/README.md for the label-cardinality convention.
+var reviewsRepliedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "reviews_replied_total",
+	Help: "Review upserts, labeled by platform and reply result {replied|pending|error}.",
+}, []string{"platform", "result"})
+
+// allowedMetricPlatforms caps the `platform` label cardinality to the fixed
+// AgentID allowlist. Anything outside collapses to labelOther in
+// normalizeMetricPlatform.
+var allowedMetricPlatforms = map[string]struct{}{
+	"telegram":        {},
+	"vk":              {},
+	"yandex_business": {},
+	"google_business": {},
+}
+
+// allowedPostResults caps the post `result` label to the statuses postal.go
+// writes onto a Post record. Anything outside collapses to labelOther.
+var allowedPostResults = map[string]struct{}{
+	"published": {},
+	"scheduled": {},
+	"error":     {},
+}
+
+// allowedReviewResults caps the review `result` label to the reply states a
+// review record carries plus the upsert-failure outcome. Anything outside
+// collapses to labelOther.
+var allowedReviewResults = map[string]struct{}{
+	"replied": {},
+	"pending": {},
+	"error":   {},
+}
+
+func normalizeMetricPlatform(platform string) string {
+	if _, ok := allowedMetricPlatforms[platform]; ok {
+		return platform
+	}
+	return labelOther
+}
+
 // IncChatTurn increments chat_turns_total for the given outcome. Pass
 // chatturn.TurnOutcome.String(); any other value still increments but
 // pollutes the bounded label set.
 func IncChatTurn(outcome string) {
 	chatTurnsTotal.WithLabelValues(outcome).Inc()
+}
+
+// IncPostsPublished increments posts_published_total for the given platform and
+// result. Both labels are collapsed to "other" when outside their closed sets
+// (platforms: the AgentID allowlist; results: {published, scheduled, error}) so
+// an unexpected upstream value cannot explode label cardinality.
+func IncPostsPublished(platform, result string) {
+	if _, ok := allowedPostResults[result]; !ok {
+		result = labelOther
+	}
+	postsPublishedTotal.WithLabelValues(normalizeMetricPlatform(platform), result).Inc()
+}
+
+// IncReviewsReplied increments reviews_replied_total for the given platform and
+// result. Both labels are collapsed to "other" when outside their closed sets
+// (platforms: the AgentID allowlist; results: {replied, pending, error}) so an
+// unexpected upstream value cannot explode label cardinality.
+func IncReviewsReplied(platform, result string) {
+	if _, ok := allowedReviewResults[result]; !ok {
+		result = labelOther
+	}
+	reviewsRepliedTotal.WithLabelValues(normalizeMetricPlatform(platform), result).Inc()
 }
 
 // IncHITLDecision increments hitl_decisions_total for the given effective

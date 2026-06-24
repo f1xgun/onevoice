@@ -12,6 +12,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -306,14 +307,12 @@ func (t *Turn) recordPostsAndReviews(
 			if err := t.deps.Posts.Create(ctx, post); err != nil {
 				slog.ErrorContext(ctx, "chatturn: failed to create post record", "tool", tc.Name, "error", err)
 			}
+			metrics.IncPostsPublished(info.platform, status)
 		}
 	}
 
 	if t.deps.Reviews != nil {
 		for _, tr := range toolResults {
-			if tr.IsError {
-				continue
-			}
 			tc, ok := toolCallByID[tr.ToolCallID]
 			if !ok {
 				continue
@@ -322,6 +321,11 @@ func (t *Turn) recordPostsAndReviews(
 				continue
 			}
 			platform := tc.Name[:len(tc.Name)-len("__get_reviews")]
+
+			if tr.IsError {
+				metrics.IncReviewsReplied(platform, domain.ReviewReplyStatusError)
+				continue
+			}
 
 			reviewsRaw, ok := tr.Content["reviews"]
 			if !ok {
@@ -342,7 +346,10 @@ func (t *Turn) recordPostsAndReviews(
 				}
 				if err := t.deps.Reviews.Upsert(ctx, review); err != nil {
 					slog.ErrorContext(ctx, "chatturn: failed to upsert review", "tool", tc.Name, "error", err)
+					metrics.IncReviewsReplied(platform, domain.ReviewReplyStatusError)
+					continue
 				}
+				metrics.IncReviewsReplied(platform, review.ReplyStatus)
 			}
 		}
 	}
