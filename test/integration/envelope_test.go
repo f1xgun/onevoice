@@ -15,11 +15,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/crypto/kmsfake"
 )
 
-// envelopeTestPool opens a pgxpool to TEST_POSTGRES_URL and ensures the
-// integrations table has the phase-30 envelope columns (wrapped_dek,
-// key_version, encryption_key_fingerprint). If those columns are absent the
-// ALTER TABLE is run inline so the test can proceed against a database that
-// only has phase-28 migrations applied.
+// envelopeTestPool opens a pgxpool to TEST_POSTGRES_URL. The integrations table
+// already carries the envelope columns (wrapped_dek, key_version,
+// encryption_key_fingerprint) and deleted_at via the services/api/migrations
+// path that the integration test DB is migrated with, so no inline schema
+// patching is needed.
 func envelopeTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("TEST_POSTGRES_URL")
@@ -32,26 +32,7 @@ func envelopeTestPool(t *testing.T) *pgxpool.Pool {
 	require.NoError(t, err, "connect to test postgres")
 	t.Cleanup(pool.Close)
 
-	ensureEnvelopeColumns(t, pool)
 	return pool
-}
-
-// ensureEnvelopeColumns adds wrapped_dek / key_version / encryption_key_fingerprint
-// to the integrations table when they are missing. This makes the tests
-// runnable against a database that is on an older migration version.
-func ensureEnvelopeColumns(t *testing.T, pool *pgxpool.Pool) {
-	t.Helper()
-	ctx := context.Background()
-	stmts := []string{
-		`ALTER TABLE integrations ADD COLUMN IF NOT EXISTS wrapped_dek BYTEA NULL`,
-		`ALTER TABLE integrations ADD COLUMN IF NOT EXISTS key_version SMALLINT NULL`,
-		`ALTER TABLE integrations ADD COLUMN IF NOT EXISTS encryption_key_fingerprint TEXT NULL`,
-		`ALTER TABLE integrations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL`,
-	}
-	for _, stmt := range stmts {
-		_, err := pool.Exec(ctx, stmt)
-		require.NoError(t, err, "ensure envelope column: %s", stmt)
-	}
 }
 
 // seedBusiness inserts a minimal business row and returns its id.
