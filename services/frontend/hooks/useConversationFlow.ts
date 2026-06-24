@@ -427,11 +427,11 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           ];
         });
       } finally {
-        finalizeStreamingAssistant();
         // Only clear streaming state if this send still owns it. A conversation
         // switch may have already aborted this send and handed ownership to a
         // newer send; don't stomp the newer stream's flags from this finally.
         if (sendAbortRef.current === controller) {
+          finalizeStreamingAssistant();
           setIsStreaming(false);
           isStreamingRef.current = false;
           streamingConversationIdRef.current = null;
