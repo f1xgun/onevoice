@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/google/uuid"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitl"
@@ -114,6 +116,26 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 	return out, nil
 }
 
+// resumeUserUUID parses the persisted batch user id into the uuid.UUID form the
+// LLM router rate-limits on. On an empty or malformed id it logs a structured
+// warning and returns uuid.Nil — mirroring the chat handler's fresh-run path so
+// the router RE-ENABLES limiting rather than silently bypassing it. Without this
+// the resume RunState would carry a zero UserUUID, and router.checkRateLimit
+// skips the per-user request / daily-spend guard whenever UserID == uuid.Nil.
+func resumeUserUUID(ctx context.Context, userID string) uuid.UUID {
+	if userID == "" {
+		slog.WarnContext(ctx, "resume: batch has empty user_id, leaving UserUUID zero (rate limit may not key per-user)")
+		return uuid.Nil
+	}
+	u, err := uuid.Parse(userID)
+	if err != nil {
+		slog.WarnContext(ctx, "resume: malformed user_id on batch, leaving UserUUID zero",
+			"user_id", userID, "error", err)
+		return uuid.Nil
+	}
+	return u
+}
+
 // resumeGoroutine is the body of the spawned resume goroutine. Extracted from
 // Resume so tests can target narrower helpers and the spawn wrapper stays
 // trivially inspectable. See docs/orchestrator/resume.md.
@@ -140,6 +162,7 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		BusinessID:               batch.BusinessID,
 		ProjectID:                batch.ProjectID,
 		UserID:                   batch.UserID,
+		UserUUID:                 resumeUserUUID(ctx, batch.UserID),
 		MessageID:                batch.MessageID,
 		Model:                    req.Model,
 		Tier:                     req.Tier,
