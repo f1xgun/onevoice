@@ -539,3 +539,123 @@ func TestRateLimitByUser_SeparateScopesDoNotShareBucket(t *testing.T) {
 	invites.ServeHTTP(rrI, reqWithUser(user))
 	assert.Equal(t, http.StatusOK, rrI.Code, "writes and invitations buckets must be independent")
 }
+
+// TestRateLimit_SelfHealsMissingTTL reproduces the lost-EXPIRE failure: a
+// counter that ended up with no TTL (transient Redis blip when the key was
+// first created) must get its TTL re-stamped on the very next request, so the
+// caller is never blocked forever. FastForward then proves the repaired window
+// actually expires.
+func TestRateLimit_SelfHealsMissingTTL(t *testing.T) {
+	redisClient, mr := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 5
+	window := time.Minute
+	ip := "192.168.1.1"
+	key := "ratelimit:" + ip + ":/api/v1/test"
+
+	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	doReq := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
+		req.RemoteAddr = ip + ":12345"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr
+	}
+
+	rr := doReq()
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Positive(t, mr.TTL(key).Nanoseconds(), "first request must stamp a TTL")
+
+	// Simulate the bug: the EXPIRE was lost, leaving a TTL-less counter.
+	require.NoError(t, redisClient.Persist(context.Background(), key).Err())
+	require.Equal(t, time.Duration(0), mr.TTL(key), "precondition: counter has no TTL")
+
+	rr = doReq()
+	assert.Equal(t, http.StatusOK, rr.Code, "request must still be served per the count")
+	assert.Positive(t, mr.TTL(key).Nanoseconds(), "next request must re-stamp the missing TTL")
+
+	mr.FastForward(window + time.Second)
+	assert.False(t, mr.Exists(key), "repaired window must eventually expire (no forever-block)")
+}
+
+// TestRateLimitByUser_SelfHealsMissingTTL is the user-scoped twin of
+// TestRateLimit_SelfHealsMissingTTL — covers the second gate site.
+func TestRateLimitByUser_SelfHealsMissingTTL(t *testing.T) {
+	redisClient, mr := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 5
+	window := time.Minute
+	user := uuid.New()
+	key := "ratelimit:user:" + user.String() + ":chat"
+
+	handler := RateLimitByUser(redisClient, limit, window, "chat")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	doReq := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+		req.RemoteAddr = "192.168.1.1:12345"
+		req = req.WithContext(context.WithValue(req.Context(), UserIDKey, user))
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr
+	}
+
+	rr := doReq()
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Positive(t, mr.TTL(key).Nanoseconds(), "first request must stamp a TTL")
+
+	require.NoError(t, redisClient.Persist(context.Background(), key).Err())
+	require.Equal(t, time.Duration(0), mr.TTL(key), "precondition: counter has no TTL")
+
+	rr = doReq()
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Positive(t, mr.TTL(key).Nanoseconds(), "next request must re-stamp the missing TTL")
+
+	mr.FastForward(window + time.Second)
+	assert.False(t, mr.Exists(key), "repaired window must eventually expire")
+}
+
+// TestRateLimit_DoesNotResetLiveWindow guards fixed-window semantics: an
+// in-progress window with a healthy TTL must NOT be extended by subsequent
+// in-window requests. A naive "EXPIRE on every request" would slide the window
+// forward and let a steady stream of requests never reset the counter.
+func TestRateLimit_DoesNotResetLiveWindow(t *testing.T) {
+	redisClient, mr := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 10
+	window := time.Minute
+	ip := "192.168.1.1"
+	key := "ratelimit:" + ip + ":/api/v1/test"
+
+	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	doReq := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
+		req.RemoteAddr = ip + ":12345"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr
+	}
+
+	require.Equal(t, http.StatusOK, doReq().Code)
+	require.Equal(t, window, mr.TTL(key), "fresh window TTL == window")
+
+	mr.FastForward(40 * time.Second)
+	before := mr.TTL(key)
+	require.LessOrEqual(t, before, 20*time.Second, "TTL must have decayed")
+
+	require.Equal(t, http.StatusOK, doReq().Code)
+	after := mr.TTL(key)
+
+	assert.LessOrEqual(t, after, before, "live window must not be extended by an in-window request")
+	assert.Less(t, after, window, "TTL must not jump back to the full window")
+}

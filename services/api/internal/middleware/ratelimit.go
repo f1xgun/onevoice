@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -23,6 +24,34 @@ const (
 	DefaultWindow    = time.Minute // per minute
 )
 
+// incrWithHealScript atomically increments the fixed-window counter and
+// (re-)stamps its TTL only when the key has none (PTTL < 0). Running INCR and
+// the TTL repair in a single Lua round trip closes the window where a separate
+// EXPIRE could be lost to a transient Redis error, which would otherwise leave
+// the counter TTL-less and rate-limit the caller forever. The PTTL guard
+// preserves fixed-window semantics: a live, in-progress window is never
+// extended — only a missing TTL is repaired.
+//
+// KEYS[1] = counter key. ARGV[1] = increment amount. ARGV[2] = window in ms.
+// Returns the post-increment count.
+var incrWithHealScript = redis.NewScript(`
+local n = tonumber(ARGV[1])
+local count = redis.call('INCRBY', KEYS[1], n)
+if redis.call('PTTL', KEYS[1]) < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[2])
+end
+return count
+`)
+
+// incrWithHeal runs incrWithHealScript against client and returns the new
+// counter value. It increments the counter and self-heals a missing TTL in one
+// atomic round trip. A Redis/script error is returned to the caller so the
+// limiter can preserve its fail-open behavior (allow the request rather than
+// block legitimate traffic on a Redis outage).
+func incrWithHeal(ctx context.Context, client *redis.Client, key string, window time.Duration) (int64, error) {
+	return incrWithHealScript.Run(ctx, client, []string{key}, 1, window.Milliseconds()).Int64()
+}
+
 // RateLimit creates a rate limiting middleware using Redis
 // Uses token bucket algorithm with per-IP limiting
 func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(http.Handler) http.Handler {
@@ -38,14 +67,10 @@ func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(
 
 			ctx := r.Context()
 
-			count, err := redisClient.Incr(ctx, key).Result()
+			count, err := incrWithHeal(ctx, redisClient, key, window)
 			if err != nil {
 				next.ServeHTTP(w, r)
 				return
-			}
-
-			if count == 1 {
-				redisClient.Expire(ctx, key, window)
 			}
 
 			ttl, err := redisClient.TTL(ctx, key).Result()
@@ -117,14 +142,10 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration,
 
 			ctx := r.Context()
 
-			count, err := redisClient.Incr(ctx, key).Result()
+			count, err := incrWithHeal(ctx, redisClient, key, window)
 			if err != nil {
 				next.ServeHTTP(w, r)
 				return
-			}
-
-			if count == 1 {
-				redisClient.Expire(ctx, key, window)
 			}
 
 			ttl, err := redisClient.TTL(ctx, key).Result()
