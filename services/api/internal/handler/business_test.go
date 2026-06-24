@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -810,5 +811,113 @@ func TestBusinessHandler_ToolApprovals(t *testing.T) {
 		h.UpdateBusinessToolApprovals(w, req)
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
+// ----- Body / field-size hardening -----
+
+func TestBusinessHandler_BodyAndFieldLimits(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	// over-long Name (>200) must be rejected by the max= validator before any
+	// service call. Revert the `max=200` on UpdateBusinessRequest.Name and this
+	// flips to 200 (the over-long value reaches Update).
+	t.Run("CreateBusiness rejects over-long name with 400", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		longName := strings.Repeat("a", 201)
+		body := `{"name":"` + longName + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/businesses", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
+		req = req.WithContext(ctx)
+		w := httptest.NewRecorder()
+
+		h.CreateBusiness(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "Create")
+	})
+
+	// over-long Description (>2000) must be rejected. Revert the
+	// `max=2000` on Description → flips to 200 (Update gets the bloated value).
+	t.Run("UpdateBusiness rejects over-long description with 400", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		longDesc := strings.Repeat("b", 2001)
+		body := `{"name":"Valid Name","description":"` + longDesc + `"}`
+		req := httptest.NewRequest(http.MethodPut, "/", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateBusiness(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "GetByID")
+		mockSvc.AssertNotCalled(t, "Update")
+	})
+
+	// over-large body must be rejected by MaxBytesReader while the decoder scans
+	// the object. The bulk lives in an unknown field (so the decoder must read
+	// past maxBusinessBodyBytes to finish the value, yet no per-field validator
+	// catches it) — a pass here requires the byte cap, not the field validators.
+	// Revert the `r.Body = http.MaxBytesReader(...)` line in UpdateBusiness and
+	// this flips to a 200 (the oversized body decodes and Update runs).
+	t.Run("UpdateBusiness rejects over-large body with 400", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		// Stubbed so the fail-on-revert path (cap removed) yields a clean 200
+		// rather than a mock panic — the byte cap is what keeps it at 400.
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).
+			Return(&domain.Business{ID: testBusinessID, Name: "Valid Name"}, nil)
+		mockSvc.On("Update", mock.Anything, mock.Anything, mock.Anything).
+			Return(&domain.Business{ID: testBusinessID, Name: "Valid Name"}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		filler := strings.Repeat("z", maxBusinessBodyBytes+1)
+		body := `{"name":"Valid Name","_pad":"` + filler + `"}`
+		req := httptest.NewRequest(http.MethodPut, "/", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateBusiness(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "Update")
+	})
+
+	// over-large schedule blob must be rejected by the settings cap. Revert the
+	// settingsBlobWithinCap guard in UpdateSchedule and this flips to 200
+	// (the multi-KB blob is persisted into Settings).
+	t.Run("UpdateSchedule rejects over-large schedule blob with 400", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
+			ID:       testBusinessID,
+			Name:     "Cafe",
+			Settings: map[string]interface{}{},
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		bigString := strings.Repeat("x", maxSettingsBlobBytes+1)
+		body := `{"schedule":{"note":"` + bigString + `"}}`
+		req := httptest.NewRequest(http.MethodPut, "/schedule", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateSchedule(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "Update")
 	})
 }
