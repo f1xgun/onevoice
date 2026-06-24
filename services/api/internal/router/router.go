@@ -5,6 +5,7 @@
 package router
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -91,8 +92,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
-	r.Use(chimiddleware.Logger)
-	r.Use(chimiddleware.Recoverer)
+	r.Use(middleware.RequestLogger(slog.Default()))
+	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -327,6 +328,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		}
 	})
 
+	// /metrics stays on this listener (PORT, default 8080) rather than the
+	// mTLS internal listener because Prometheus scrapes api:8080/metrics over
+	// the compose network without a client cert (see
+	// observability/prometheus/prometheus.yml). It is NOT reachable from the
+	// public internet: nginx proxies only /api/v1, /media, /health and / —
+	// /metrics is intentionally excluded (see nginx/nginx.conf.template).
+	// Moving it behind mTLS requires provisioning a Prometheus client cert
+	// first; see docs/api/routes.md.
 	r.Handle("/metrics", promhttp.Handler())
 
 	r.Get("/health/live", hc.LiveHandler())
@@ -346,8 +355,8 @@ func SetupInternal(handlers *Handlers, hc *health.Checker, cfg *config.Config) *
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
 	r.Use(i18n.LocaleMiddleware)
-	r.Use(chimiddleware.Logger)
-	r.Use(chimiddleware.Recoverer)
+	r.Use(middleware.RequestLogger(slog.Default()))
+	r.Use(middleware.Recoverer)
 
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequirePlatformACL(cfg.InternalACL, nil))

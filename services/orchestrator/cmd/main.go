@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -162,6 +163,32 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	return runServers(ctx, log, cfg, handlers, hc)
 }
 
+// recoverer replaces chi's Recoverer so a panicking handler is both alertable
+// (app_errors_total{service="orchestrator"}) and logged with the request's
+// correlation_id via slog.ErrorContext. It responds 500 with the same JSON
+// error envelope the orchestrator handlers already emit. http.ErrAbortHandler
+// is re-raised so the stdlib server's abort semantics are preserved.
+func recoverer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				if rec == http.ErrAbortHandler {
+					panic(rec)
+				}
+				metrics.IncAppError(metrics.ServiceOrchestrator)
+				slog.ErrorContext(r.Context(), "recovered from panic",
+					slog.Any("panic", rec),
+					slog.String("method", r.Method),
+					slog.String("path", r.URL.Path),
+					slog.String("stack", string(debug.Stack())),
+				)
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
 // runServers builds the chi router (middleware + routes), starts the
 // http.Server in a goroutine, and waits for either a fatal listen error or
 // signal-driven shutdown. Mirrors the historical lifecycle block at
@@ -182,7 +209,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 	})
 	r.Use(i18n.LocaleMiddleware)
 	r.Use(chimiddleware.Logger)
-	r.Use(chimiddleware.Recoverer)
+	r.Use(recoverer)
 	r.Use(metrics.HTTPMiddleware)
 
 	// A single limiter instance shared by both stream routes caps total

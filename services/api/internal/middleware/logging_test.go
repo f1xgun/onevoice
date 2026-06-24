@@ -9,13 +9,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/f1xgun/onevoice/pkg/logger"
 )
 
 func TestRequestLogger_Success(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 	}))
@@ -41,9 +43,9 @@ func TestRequestLogger_Success(t *testing.T) {
 
 func TestRequestLogger_ErrorStatus(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("not found"))
 	}))
@@ -58,11 +60,60 @@ func TestRequestLogger_ErrorStatus(t *testing.T) {
 	assert.Contains(t, logOutput, `"status":404`)
 }
 
+func TestRequestLogger_ServerErrorLogsAtError(t *testing.T) {
+	var buf bytes.Buffer
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	out := buf.String()
+	assert.Contains(t, out, `"level":"ERROR"`, "5xx access line must log at Error")
+	assert.Contains(t, out, `"status":500`)
+}
+
+func TestRequestLogger_ClientErrorStaysInfo(t *testing.T) {
+	var buf bytes.Buffer
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/unknown", http.NoBody)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	out := buf.String()
+	assert.NotContains(t, out, `"level":"ERROR"`, "4xx is routine — must not log at Error")
+	assert.Contains(t, out, `"status":404`)
+}
+
+func TestRequestLogger_InjectsCorrelationID(t *testing.T) {
+	var buf bytes.Buffer
+	ctxLogger := slog.New(logger.NewContextHandler(slog.NewJSONHandler(&buf, nil)))
+
+	handler := RequestLogger(ctxLogger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	const corrID = "corr-abc-789"
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
+	req = req.WithContext(logger.WithCorrelationID(req.Context(), corrID))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.Contains(t, buf.String(), `"correlation_id":"`+corrID+`"`,
+		"the *Context log variants must let the ContextHandler inject correlation_id")
+}
+
 func TestRequestLogger_PostRequest(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte("created"))
 	}))
@@ -80,9 +131,9 @@ func TestRequestLogger_PostRequest(t *testing.T) {
 
 func TestRequestLogger_ImplicitStatusOK(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
@@ -126,10 +177,10 @@ func TestResponseWriter_WriteWithoutWriteHeader(t *testing.T) {
 // handler in the chain sees.
 func TestRequestLogger_StripsTokenFromConfirmPath(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
 
 	var rawQueryAtHandlerTime string
-	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rawQueryAtHandlerTime = r.URL.RawQuery
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -150,10 +201,10 @@ func TestRequestLogger_StripsTokenFromConfirmPath(t *testing.T) {
 // the downstream handler chain (e.g. cursor pagination on /businesses).
 func TestRequestLogger_PassThroughRawQueryForOtherPaths(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	lg := slog.New(slog.NewJSONHandler(&buf, nil))
 
 	var observedRawQuery string
-	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		observedRawQuery = r.URL.RawQuery
 		w.WriteHeader(http.StatusOK)
 	}))

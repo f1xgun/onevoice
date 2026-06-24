@@ -469,6 +469,7 @@ jobs:
                        /o/prometheus/alerts/fleet.yml \
                        /o/prometheus/alerts/backup.yml \
                        /o/prometheus/alerts/email.yml \
+                       /o/prometheus/alerts/errors.yml \
                        /o/prometheus/alerts/sweepers.yml
 
       - name: promtool check config
