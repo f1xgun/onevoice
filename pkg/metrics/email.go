@@ -50,4 +50,13 @@ var (
 		Name: "outbox_pending_rows",
 		Help: "Current number of email_outbox rows in status='pending'.",
 	})
+
+	// OutboxStrandedSentRows counts deliveries that succeeded at the Sender but
+	// whose 'sent' persist failed, leaving the row in 'pending'. Each one is a
+	// row at risk of being re-sent on a later tick — a duplicate email, since
+	// the provider has no idempotency key. Any non-zero rate warrants a look.
+	OutboxStrandedSentRows = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "outbox_stranded_sent_rows_total",
+		Help: "Sends that succeeded but whose 'sent' persist failed, risking a duplicate re-send.",
+	})
 )
