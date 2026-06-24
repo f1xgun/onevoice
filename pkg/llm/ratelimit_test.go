@@ -3,7 +3,6 @@ package llm_test
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -64,16 +63,8 @@ func TestLimits_IsUnlimited(t *testing.T) {
 }
 
 func TestRateLimiter_CheckLimit(t *testing.T) {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		t.Skip("REDIS_ADDR not set, skipping Redis tests")
-	}
-
 	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
-	defer func() { _ = rdb.Close() }()
-
-	defer func() { _ = rdb.FlushDB(ctx).Err() }()
+	_, rdb := freshRedis(t)
 
 	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
 	userID := uuid.New()
@@ -93,16 +84,13 @@ func TestRateLimiter_CheckLimit(t *testing.T) {
 	assert.False(t, allowed)
 }
 
+// TestRateLimiter_TokenLimit exercises the REAL per-minute token gate (free
+// TokensPerMin=5000): a first turn estimated at 4000 tokens passes, a second at
+// 1500 trips the gate (4000+1500 > 5000). Previously skipped without a live
+// Redis; now miniredis-backed so the token branch actually runs.
 func TestRateLimiter_TokenLimit(t *testing.T) {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		t.Skip("REDIS_ADDR not set")
-	}
-
 	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
-	defer func() { _ = rdb.Close() }()
-	defer func() { _ = rdb.FlushDB(ctx).Err() }()
+	_, rdb := freshRedis(t)
 
 	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
 	userID := uuid.New()
@@ -114,6 +102,88 @@ func TestRateLimiter_TokenLimit(t *testing.T) {
 	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 1500)
 	assert.NoError(t, err)
 	assert.False(t, allowed)
+}
+
+// TestRateLimiter_TokensPerMonth_Accumulates — several requests' estimated
+// tokens add up across the month window and trip TokensPerMonth even though no
+// single request and no single minute window exceeds its gate. Uses a tier with
+// generous per-minute gates so only the month gate can fire.
+func TestRateLimiter_TokensPerMonth_Accumulates(t *testing.T) {
+	ctx := context.Background()
+	_, rdb := freshRedis(t)
+
+	limits := llm.TierLimits{
+		"free": llm.Limits{
+			RequestsPerMin: -1,
+			TokensPerMin:   -1,
+			TokensPerMonth: 1000,
+			DailySpendUSD:  0,
+		},
+	}
+	limiter := llm.NewRateLimiter(rdb, limits)
+	userID := uuid.New()
+
+	for i := 0; i < 3; i++ {
+		allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 300)
+		require.NoError(t, err)
+		assert.True(t, allowed, "request %d (running total %d) is at-or-under the 1000/month cap", i, (i+1)*300)
+	}
+
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 300)
+	require.NoError(t, err)
+	assert.False(t, allowed, "4th request pushes the month total to 1200 > 1000 → blocked")
+}
+
+// TestRateLimiter_RecordTokens_BumpsMonthCounter — RecordTokens adds its delta to
+// the month counter so a later CheckLimit sees the reconciled total. Here a
+// pre-flight estimate of 600 passes, a 500-token reconcile is recorded, and the
+// next 600-token request is blocked because the month total is now 1100 > 1000.
+func TestRateLimiter_RecordTokens_BumpsMonthCounter(t *testing.T) {
+	ctx := context.Background()
+	_, rdb := freshRedis(t)
+
+	limits := llm.TierLimits{
+		"free": llm.Limits{
+			RequestsPerMin: -1,
+			TokensPerMin:   -1,
+			TokensPerMonth: 1000,
+			DailySpendUSD:  0,
+		},
+	}
+	limiter := llm.NewRateLimiter(rdb, limits)
+	userID := uuid.New()
+
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 600)
+	require.NoError(t, err)
+	require.True(t, allowed)
+
+	limiter.RecordTokens(ctx, userID, uuid.Nil, "free", 500)
+
+	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 600)
+	require.NoError(t, err)
+	assert.False(t, allowed, "month total 600+500+600=1700 > 1000 after reconcile → blocked")
+}
+
+// TestRateLimiter_RecordTokens_NeverBlocks — RecordTokens has no return value and
+// must never error/panic, even with a non-positive delta, a nil user, an unknown
+// tier, an unlimited tier, or a closed Redis. The already-completed request can
+// never be failed by the reconcile.
+func TestRateLimiter_RecordTokens_NeverBlocks(t *testing.T) {
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: -1, DialTimeout: 100 * time.Millisecond})
+	t.Cleanup(func() { _ = rdb.Close() })
+	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+
+	assert.NotPanics(t, func() {
+		limiter.RecordTokens(ctx, uuid.New(), uuid.Nil, "free", 0)         // non-positive delta
+		limiter.RecordTokens(ctx, uuid.New(), uuid.Nil, "free", -5)        // negative delta
+		limiter.RecordTokens(ctx, uuid.Nil, uuid.Nil, "free", 100)         // nil user
+		limiter.RecordTokens(ctx, uuid.New(), uuid.Nil, "ghost", 100)      // unknown tier
+		limiter.RecordTokens(ctx, uuid.New(), uuid.Nil, "enterprise", 100) // unlimited tier
+		mr.Close()
+		limiter.RecordTokens(ctx, uuid.New(), uuid.Nil, "free", 100) // Redis down
+	})
 }
 
 // ---------------------------------------------------------------------

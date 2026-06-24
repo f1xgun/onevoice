@@ -27,6 +27,16 @@ type RateLimitChecker interface {
 	CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, tokens int) (bool, error)
 }
 
+// TokenRecorder is the optional post-response reconcile seam. CheckLimit charges
+// the token gates a pre-flight estimate; a checker that also implements this
+// interface gets the true usage delta added best-effort after a successful
+// response (see *RateLimiter.RecordTokens). The router type-asserts its checker
+// to this interface, so checkers that don't implement it (e.g. test fakes)
+// simply skip the reconcile.
+type TokenRecorder interface {
+	RecordTokens(ctx context.Context, userID, businessID uuid.UUID, tier string, deltaTokens int)
+}
+
 // Router brackets every LLM call with rate-limit, billing, metrics, and the
 // one-shot sibling retry, delegating provider choice to a Selector.
 // See docs/pkg/llm.md.
@@ -110,7 +120,7 @@ func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
 	if r.rateLimiter == nil || req.UserID == uuid.Nil {
 		return nil
 	}
-	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), 0)
+	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), estimateRequestTokens(req))
 	if err != nil {
 		return err
 	}
@@ -118,6 +128,34 @@ func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
 		return ErrRateLimitExceeded
 	}
 	return nil
+}
+
+// reconcileTokens best-effort tops up the token rate-limit counter with the
+// difference between the provider's actual usage and the pre-flight estimate
+// charged by checkRateLimit, so the (monthly) budget tracks real consumption.
+//
+// It is fire-and-forget (mirrors logBilling): the request has already succeeded,
+// so the reconcile must NEVER fail or delay it. Skipped entirely when the
+// checker has no daily/token state (no TokenRecorder) or there is no user to
+// attribute. The delta is clamped at zero — the estimate already charged the
+// gate, and an over-estimate must not credit tokens back.
+func (r *Router) reconcileTokens(req ChatRequest, resp *ChatResponse) {
+	if r.rateLimiter == nil || req.UserID == uuid.Nil {
+		return
+	}
+	recorder, ok := r.rateLimiter.(TokenRecorder)
+	if !ok {
+		return
+	}
+	actual := resp.Usage.TotalTokens
+	if actual == 0 {
+		actual = resp.Usage.InputTokens + resp.Usage.OutputTokens
+	}
+	delta := actual - estimateRequestTokens(req)
+	if delta <= 0 {
+		return
+	}
+	go recorder.RecordTokens(context.Background(), req.UserID, req.BusinessID, tierFromRequest(req), delta)
 }
 
 // retryLabel maps an attempt index to the llm_router_retry_total label value.
@@ -177,6 +215,7 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 			if r.billing != nil && req.BusinessID != uuid.Nil {
 				go r.logBilling(context.Background(), req, cand.Entry, resp)
 			}
+			r.reconcileTokens(req, resp)
 			return resp, nil
 		}
 

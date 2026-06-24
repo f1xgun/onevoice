@@ -275,6 +275,44 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 	return true, nil
 }
 
+// RecordTokens best-effort reconciles the per-MONTH token counter against the
+// actual usage the provider reported, AFTER a request has already succeeded.
+//
+// CheckLimit charges the gate a pre-flight ESTIMATE (estimateTokens); the LLM
+// response then carries the true prompt+completion total. RecordTokens adds the
+// non-negative delta so the month budget tracks real consumption rather than the
+// approximation. Callers compute deltaTokens as max(0, actualTotal - estimate)
+// and invoke this fire-and-forget (mirroring the async billing write) — it must
+// NEVER fail or block the request that already completed, so all errors are
+// swallowed here and only surfaced via metrics/logs.
+//
+// Only the MONTH counter is reconciled. The per-MINUTE window is intentionally
+// left alone: a streamed response can outlive its one-minute window, so adding
+// the delta to "this minute" after the fact would charge a window the request no
+// longer belongs to (and may have already rolled over). The minute gate is a
+// burst guard fed by the pre-flight estimate; the month gate is the budget that
+// must stay accurate. deltaTokens <= 0 is a no-op.
+func (rl *RateLimiter) RecordTokens(ctx context.Context, userID, _ uuid.UUID, tier string, deltaTokens int) {
+	if deltaTokens <= 0 || userID == uuid.Nil {
+		return
+	}
+	limits, ok := rl.limits[tier]
+	if !ok || limits.IsUnlimited() || limits.TokensPerMonth <= 0 {
+		return
+	}
+
+	now := time.Now()
+	monthKey := fmt.Sprintf("ratelimit:%s:tokens:month:%s", userID.String(), now.Format("2006-01"))
+	endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := rl.incrWithExpiry(ctx, monthKey, int64(deltaTokens), endOfMonth.Sub(now), gateTokensMonth); err != nil {
+		slog.WarnContext(ctx, "rate-limit token reconcile failed; month counter may under-count this request",
+			slog.String("gate", gateTokensMonth),
+			slog.Int("delta_tokens", deltaTokens),
+			slog.Any("error", err),
+		)
+	}
+}
+
 // incrWithExpiry runs incrWithExpiryScript: it increments the counter and, in
 // the same atomic round trip, re-stamps the TTL only when the key currently has
 // none. This both eliminates the INCR/EXPIRE non-atomicity and self-heals a
