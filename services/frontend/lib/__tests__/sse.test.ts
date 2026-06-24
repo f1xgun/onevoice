@@ -1,6 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { parseSSELine, applySSEEvent } from '../sse';
+import { parseSSELine, applySSEEvent, consumeSSEStream } from '../sse';
 import type { Message } from '@/types/chat';
+
+function streamResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(encoder.encode(c));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  });
+}
+
+describe('consumeSSEStream', () => {
+  it('emits each complete line as a parsed event', async () => {
+    const events: Record<string, unknown>[] = [];
+    const controller = new AbortController();
+    await consumeSSEStream(
+      streamResponse(['data: {"type":"text","content":"hi"}\n', 'data: {"type":"done"}\n']),
+      controller.signal,
+      (e) => events.push(e)
+    );
+    expect(events).toEqual([{ type: 'text', content: 'hi' }, { type: 'done' }]);
+  });
+
+  it('emits a trailing buffered event when the stream is NOT aborted', async () => {
+    const events: Record<string, unknown>[] = [];
+    const controller = new AbortController();
+    await consumeSSEStream(streamResponse(['data: {"type":"done"}']), controller.signal, (e) =>
+      events.push(e)
+    );
+    expect(events).toEqual([{ type: 'done' }]);
+  });
+
+  // The chunk carries one complete line (emitted) followed by a partial
+  // trailing line (no newline → parked in buffer). onEvent aborts after the
+  // complete line, so the loop's `!signal.aborted` check exits with the partial
+  // line still buffered — which must NOT be emitted.
+  it('does NOT emit the trailing buffered event once the signal is aborted mid-stream', async () => {
+    const events: Record<string, unknown>[] = [];
+    const controller = new AbortController();
+    const response = streamResponse([
+      'data: {"type":"text","content":"live"}\ndata: {"type":"text","content":"stale-partial"}',
+    ]);
+
+    await consumeSSEStream(response, controller.signal, (e) => {
+      events.push(e);
+      controller.abort();
+    });
+
+    expect(events).toEqual([{ type: 'text', content: 'live' }]);
+  });
+});
 
 describe('parseSSELine', () => {
   it('returns null for non-data lines', () => {
