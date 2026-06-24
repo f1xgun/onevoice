@@ -89,6 +89,23 @@ func TestBusinessBrowser_ListCompanies_NoCompanies_ReturnsEmpty(t *testing.T) {
 	}
 }
 
+// Test #3b — a malformed Evaluate payload that cannot be decoded into the
+// canonical row shape surfaces as an error rather than a silent empty list.
+func TestBusinessBrowser_ListCompanies_UnmarshalFailure_ReturnsError(t *testing.T) {
+	page := newMockPage("https://yandex.ru/sprav/companies/")
+	page.locators[".CompaniesCompanyRow"] = &mockLocator{}
+	page.evaluateResult = "not-an-array-of-rows"
+
+	bb := businessBrowserOnPage(page, "default")
+	rows, err := bb.ListCompanies(context.Background())
+	if err == nil {
+		t.Fatalf("expected error from undecodable companies payload, got rows=%v", rows)
+	}
+	if !strings.Contains(err.Error(), "companies list") {
+		t.Fatalf("expected wrapped companies-list error, got: %v", err)
+	}
+}
+
 // -----------------------------------------------------------------------------
 // GetReviews tests
 // -----------------------------------------------------------------------------
@@ -403,6 +420,30 @@ func TestBusinessBrowser_UploadPhoto_SetsCategoryAndUploadsFile(t *testing.T) {
 				t.Fatalf("expected SetInputFiles on %s, got none", tc.selector)
 			}
 		})
+	}
+}
+
+// Test #16b — when the crop-save dialog appears but its save Click fails,
+// UploadPhoto surfaces the error instead of reporting a false success.
+func TestBusinessBrowser_UploadPhoto_CropSaveClickFails_ReturnsError(t *testing.T) {
+	const png = "\x89PNG\r\n\x1a\n"
+
+	page := newMockPage("https://yandex.ru/sprav/123/p/edit/photos/")
+	page.locators[".MediaUploadButton-Input"] = &mockLocator{}
+	page.locators["button:has-text('Сохранить')"] = &mockLocator{
+		clickErr: errors.New("crop save click intercepted"),
+	}
+
+	bb := businessBrowserOnPage(page, "123")
+	bb.fetchPhotoFn = func(context.Context, string) ([]byte, error) {
+		return []byte(png), nil
+	}
+	err := bb.UploadPhoto(context.Background(), "https://cdn.example.com/photo.png", "general")
+	if err == nil {
+		t.Fatal("expected error when crop save click fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "crop save") {
+		t.Fatalf("expected wrapped crop save error, got: %v", err)
 	}
 }
 

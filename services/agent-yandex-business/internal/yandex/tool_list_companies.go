@@ -65,9 +65,14 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 			return fmt.Errorf("evaluate companies list: %w", err)
 		}
 
-		b, _ := json.Marshal(raw)
+		b, err := json.Marshal(raw)
+		if err != nil {
+			return fmt.Errorf("marshal companies list: %w", err)
+		}
 		var rows []map[string]interface{}
-		_ = json.Unmarshal(b, &rows)
+		if err := json.Unmarshal(b, &rows); err != nil {
+			return fmt.Errorf("unmarshal companies list: %w", err)
+		}
 		result = rows
 		debugScreenshot(page, "list_companies_done")
 		return nil

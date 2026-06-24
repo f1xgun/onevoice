@@ -74,7 +74,10 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			Timeout: playwright.Float(primaryActionTimeoutMs),
 			State:   playwright.WaitForSelectorStateVisible,
 		}); err == nil {
-			_ = cropSaveBtn.Click()
+			if err := cropSaveBtn.Click(); err != nil {
+				debugScreenshot(page, "photo_crop_save_error")
+				return fmt.Errorf("click crop save button: %w", err)
+			}
 			time.Sleep(3 * time.Second)
 			debugScreenshot(page, "photo_after_crop_save")
 		}
