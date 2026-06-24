@@ -458,3 +458,62 @@ func TestIntegrationRepo_Update_PersistsEnvelopeColumns(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
+
+// TestIntegrationRepo_Update_SoftDeletedReturnsNotFound asserts the WHERE guards
+// on deleted_at IS NULL: a soft-deleted (or absent) row affects zero rows and
+// surfaces ErrIntegrationNotFound instead of resurrecting the tombstoned row.
+// The regexp pins the deleted_at IS NULL predicate, so dropping the guard fails
+// this test.
+func TestIntegrationRepo_Update_SoftDeletedReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	integration := &domain.Integration{
+		ID:                   uuid.New(),
+		Status:               "active",
+		EncryptedAccessToken: []byte("ct"),
+		ExternalID:           "tg_1",
+		Metadata:             map[string]interface{}{},
+	}
+
+	mockPool.ExpectExec(`UPDATE integrations SET.*WHERE.*deleted_at IS NULL`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	err := repo.Update(ctx, integration)
+	require.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_Update_ActiveRowSucceeds confirms the added deleted_at
+// guard does not regress the happy path: an active row still matches and updates.
+func TestIntegrationRepo_Update_ActiveRowSucceeds(t *testing.T) {
+	ctx := context.Background()
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	integration := &domain.Integration{
+		ID:                   uuid.New(),
+		Status:               "active",
+		EncryptedAccessToken: []byte("ct"),
+		ExternalID:           "tg_1",
+		Metadata:             map[string]interface{}{},
+	}
+
+	mockPool.ExpectExec(`UPDATE integrations SET.*WHERE.*deleted_at IS NULL`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err := repo.Update(ctx, integration)
+	require.NoError(t, err)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
