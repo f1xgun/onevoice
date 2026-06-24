@@ -8,6 +8,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,6 +41,49 @@ func (c *countingWriter) LogUsage(_ context.Context, _ *llm.UsageLog) error {
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// captureHandler is a minimal slog.Handler that records every record so tests
+// can assert which messages were emitted at which level. Guarded by a mutex so
+// it stays safe if a future logging path fires from a goroutine.
+type captureHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
+
+// warningsMentioning returns the messages of captured records at WARN level (or
+// above) whose message or attributes reference the given substring.
+func (h *captureHandler) warningsMentioning(needle string) []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []string
+	for _, r := range h.records {
+		if r.Level < slog.LevelWarn {
+			continue
+		}
+		if strings.Contains(r.Message, needle) {
+			out = append(out, r.Message)
+			continue
+		}
+		r.Attrs(func(a slog.Attr) bool {
+			if strings.Contains(a.Value.String(), needle) {
+				out = append(out, r.Message)
+				return false
+			}
+			return true
+		})
+	}
+	return out
 }
 
 // TestLLMRouter_PricesAllConfiguredModels — set LLM_MODEL + DRAFT_REPLY_MODEL
@@ -95,6 +140,49 @@ func TestLLMRouter_UnknownModel_ZeroCost(t *testing.T) {
 	in, out := priceFor("foo/unknown-model")
 	assert.Equal(t, 0.0, in, "unknown model input cost must be 0")
 	assert.Equal(t, 0.0, out, "unknown model output cost must be 0")
+}
+
+// TestLLMRouter_UnknownModel_WarnsRateCardMiss — a model absent from the rate
+// card must produce a WARN at registration naming the model and pointing at
+// docs/llm-pricing.md, so the operator sees that billing will record $0 and the
+// daily-spend gate is inert rather than discovering it by inspecting
+// usage_logs. Removing the warnRateCardMiss call must fail this test.
+func TestLLMRouter_UnknownModel_WarnsRateCardMiss(t *testing.T) {
+	t.Setenv("LLM_MODEL", "foo/unknown-model")
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+
+	capture := &captureHandler{}
+	router, err := LLMRouter(cfg, slog.New(capture))
+	require.NoError(t, err)
+	require.NotNil(t, router)
+
+	warnings := capture.warningsMentioning("foo/unknown-model")
+	require.NotEmpty(t, warnings, "expected a WARN naming the unknown model")
+	assert.NotEmpty(t, capture.warningsMentioning("docs/llm-pricing.md"),
+		"warning must point the operator at the rate-card source")
+}
+
+// TestLLMRouter_KnownModel_NoRateCardWarning — every configured model is in the
+// rate card, so no rate-card-miss warning should fire. Guards against the
+// warning becoming noise that the operator learns to ignore.
+func TestLLMRouter_KnownModel_NoRateCardWarning(t *testing.T) {
+	t.Setenv("LLM_MODEL", "anthropic/claude-sonnet-4-6")
+	t.Setenv("DRAFT_REPLY_MODEL", "anthropic/claude-haiku-4-5")
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+
+	capture := &captureHandler{}
+	router, err := LLMRouter(cfg, slog.New(capture))
+	require.NoError(t, err)
+	require.NotNil(t, router)
+
+	assert.Empty(t, capture.warningsMentioning("docs/llm-pricing.md"),
+		"priced models must not emit a rate-card-miss warning")
 }
 
 // TestLLMRouter_PassesExtraOptions — call LLMRouter with llm.WithBilling
