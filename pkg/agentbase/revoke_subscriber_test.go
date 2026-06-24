@@ -93,6 +93,37 @@ func TestNewRevokeSubscriber_Subject(t *testing.T) {
 	}
 }
 
+func TestWithRevokeHook_FiresForBusinessID(t *testing.T) {
+	var o revokeOptions
+	var evicted []string
+	WithRevokeHook(func(businessID string) {
+		evicted = append(evicted, businessID)
+	})(&o)
+	WithRevokeHook(nil)(&o)
+
+	if len(o.hooks) != 1 {
+		t.Fatalf("expected nil hook to be skipped, got %d hooks", len(o.hooks))
+	}
+
+	var invalidated []invalidateCall
+	invalidate := func(businessID, platform, externalID string) {
+		invalidated = append(invalidated, invalidateCall{businessID, platform, externalID})
+		for _, hook := range o.hooks {
+			hook(businessID)
+		}
+	}
+
+	msg := &natslib.Msg{Subject: "integrations.revoked.yandex_business.biz-77"}
+	handleRevokeMessage(msg, "yandex_business", invalidate, func(string) {}, func(string) {})
+
+	if len(invalidated) != 1 || invalidated[0].businessID != "biz-77" {
+		t.Fatalf("expected token invalidate for biz-77, got %+v", invalidated)
+	}
+	if len(evicted) != 1 || evicted[0] != "biz-77" {
+		t.Fatalf("expected revoke hook to evict biz-77, got %v", evicted)
+	}
+}
+
 func TestRevokeSubscriber_CloseNilSafe(t *testing.T) {
 	var r *RevokeSubscriber
 	if err := r.Close(); err != nil {

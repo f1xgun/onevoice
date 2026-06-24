@@ -60,7 +60,8 @@ func run() error {
 		HealthPort: cfg.HealthPort,
 		Exec:       handler.Handle,
 		OnNATSConn: func(nc *natslib.Conn) (func(), error) {
-			revokeSub, err := agentbase.NewRevokeSubscriber(nc, tc, a2a.AgentYandexBusiness)
+			revokeSub, err := agentbase.NewRevokeSubscriber(nc, tc, a2a.AgentYandexBusiness,
+				agentbase.WithRevokeHook(pool.EvictContext))
 			if err != nil {
 				return nil, fmt.Errorf("revoke subscriber: %w", err)
 			}
