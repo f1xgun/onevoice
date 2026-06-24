@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS integrations (
     status TEXT NOT NULL DEFAULT 'pending',
     encrypted_access_token BYTEA,
     encrypted_refresh_token BYTEA,
-    external_id TEXT,
+    external_id TEXT NOT NULL DEFAULT '',
     metadata JSONB NOT NULL DEFAULT '{}',
     token_expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -12,8 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fingerprintTestPool returns a pool to TEST_POSTGRES_URL and ensures the
-// envelope columns and deleted_at exist on the integrations table.
+// fingerprintTestPool returns a pool to TEST_POSTGRES_URL. The envelope columns
+// and deleted_at are provided by the services/api/migrations path that the
+// integration test DB is migrated with.
 func fingerprintTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("TEST_POSTGRES_URL")
@@ -24,7 +25,6 @@ func fingerprintTestPool(t *testing.T) *pgxpool.Pool {
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err, "connect to test postgres")
 	t.Cleanup(pool.Close)
-	ensureEnvelopeColumns(t, pool)
 	return pool
 }
 
@@ -122,7 +122,6 @@ func TestFingerprintCheckFailsOnMismatch(t *testing.T) {
 			os.Exit(1)
 		}
 		defer pool.Close()
-		ensureEnvelopeColumns(&testing.T{}, pool)
 
 		bizID := uuid.New()
 		_, _ = pool.Exec(ctx, `
@@ -177,9 +176,6 @@ func TestFingerprintCheckSkipsLegacy(t *testing.T) {
 // (deleted_at IS NOT NULL) with a mismatching fingerprint are excluded from
 // the mismatch count. The check must return nil when the only rows with a
 // non-matching fingerprint are soft-deleted.
-//
-// Note: deleted_at on integrations ships in a later migration. This test adds
-// the column inline via ensureEnvelopeColumns if needed.
 func TestFingerprintCheckSkipsSoftDeleted(t *testing.T) {
 	pool := fingerprintTestPool(t)
 	ctx := context.Background()
