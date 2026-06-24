@@ -78,14 +78,14 @@ export function WithdrawalPanel() {
     if (submitting) return;
     setSubmitting(true);
     try {
-      await withdrawPDN();
-      toast.success(tToast('scheduled', { deletionDate: '—' }));
+      const { deletionDate } = await withdrawPDN();
+      toast.success(tToast('scheduled', { deletionDate: formatDate(deletionDate ?? '') }));
       setDialogOpen(false);
       window.location.reload();
     } catch (e) {
       const err = e as ConsentError;
       if (err.status === HTTP_STATUS.LOCKED) {
-        toast.success(tToast('scheduled', { deletionDate: err.deletionDate ?? '—' }));
+        toast.success(tToast('scheduled', { deletionDate: formatDate(err.deletionDate ?? '') }));
         setDialogOpen(false);
         window.location.reload();
         return;

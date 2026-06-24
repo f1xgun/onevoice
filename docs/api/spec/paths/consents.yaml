@@ -82,14 +82,21 @@
     operationId: withdrawPDNConsent
     summary: Withdraw the PDN consent (triggers account deletion).
     description: |
-      Withdrawal of the PDN consent triggers the deletion flow. 423
-      `account_pending_deletion` when the user is already mid-deletion.
+      Withdrawal of the PDN consent triggers the deletion flow. 200
+      returns the scheduled deletion date. 423 `account_pending_deletion`
+      when the user is already mid-deletion (same envelope, same date).
       Origin header required (CSRF defense).
     tags:
     - consents
     responses:
-      '204':
-        description: PDN consent withdrawn; deletion flow started.
+      '200':
+        description: |
+          PDN consent withdrawn; deletion flow started. Body carries the
+          scheduled deletion date (`deletionDate`, RFC3339).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PendingDeletionResponse
       '401':
         description: Unauthorized.
         content:

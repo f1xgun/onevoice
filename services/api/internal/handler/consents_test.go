@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -44,6 +45,25 @@ func (f *fakeConsentsService) WithdrawPDN(_ context.Context, _ uuid.UUID, _, _ s
 	return f.withdrawErr
 }
 
+// fakeAccountDeletion doubles AccountDeletionServiceAPI for the consents
+// handler tests; only GetScheduledDeletionAt is exercised here.
+type fakeAccountDeletion struct {
+	scheduledAt  time.Time
+	scheduledErr error
+}
+
+func (f *fakeAccountDeletion) RequestDeletion(_ context.Context, _ uuid.UUID, _, _, _, _ string) error {
+	return nil
+}
+
+func (f *fakeAccountDeletion) CancelDeletion(_ context.Context, _ uuid.UUID, _, _ string) error {
+	return nil
+}
+
+func (f *fakeAccountDeletion) GetScheduledDeletionAt(_ context.Context, _ uuid.UUID) (time.Time, error) {
+	return f.scheduledAt, f.scheduledErr
+}
+
 // fakeConsentsLister doubles ConsentsListerAPI for ListMine tests.
 type fakeConsentsLister struct {
 	rows []repository.Consent
@@ -66,7 +86,7 @@ func ctxWithUserID(r *http.Request, userID uuid.UUID) *http.Request {
 // TestReconsentHandler_403_OriginNotAllowed asserts that a missing /
 // mismatched Origin header returns 403 origin_not_allowed.
 func TestReconsentHandler_403_OriginNotAllowed(t *testing.T) {
-	h := NewConsentsHandler(&fakeConsentsService{}, &fakeConsentsLister{}, testAllowedOrigins)
+	h := NewConsentsHandler(&fakeConsentsService{}, nil, &fakeConsentsLister{}, testAllowedOrigins)
 	body := `{"policies":[{"slug":"tos","version":"v1.0"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/consents", bytes.NewBufferString(body))
 	req = ctxWithUserID(req, uuid.New())
@@ -80,7 +100,7 @@ func TestReconsentHandler_403_OriginNotAllowed(t *testing.T) {
 // body with only two of three policies returns 400 with the missing
 // slug in `missing`.
 func TestReconsentHandler_400_ConsentRequired_OnMissing(t *testing.T) {
-	h := NewConsentsHandler(&fakeConsentsService{}, &fakeConsentsLister{}, testAllowedOrigins)
+	h := NewConsentsHandler(&fakeConsentsService{}, nil, &fakeConsentsLister{}, testAllowedOrigins)
 	body := `{"policies":[{"slug":"tos","version":"v1.0"},{"slug":"privacy","version":"v1.0"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/consents", bytes.NewBufferString(body))
 	req.Header.Set("Origin", "http://localhost:3000")
@@ -99,7 +119,7 @@ func TestReconsentHandler_400_ConsentRequired_OnMissing(t *testing.T) {
 // with a version_mismatch + currentVersion body.
 func TestReconsentHandler_409_VersionMismatch(t *testing.T) {
 	svc := &fakeConsentsService{reconsentErr: domain.ErrConsentVersionMismatch}
-	h := NewConsentsHandler(svc, &fakeConsentsLister{}, testAllowedOrigins)
+	h := NewConsentsHandler(svc, nil, &fakeConsentsLister{}, testAllowedOrigins)
 	body := `{"policies":[{"slug":"tos","version":"v0.9"},{"slug":"privacy","version":"v0.9"},{"slug":"pdn","version":"v0.9"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/consents", bytes.NewBufferString(body))
 	req.Header.Set("Origin", "http://localhost:3000")
@@ -116,7 +136,7 @@ func TestReconsentHandler_409_VersionMismatch(t *testing.T) {
 // TestReconsentHandler_204_OnSuccess asserts happy path returns 204.
 func TestReconsentHandler_204_OnSuccess(t *testing.T) {
 	svc := &fakeConsentsService{}
-	h := NewConsentsHandler(svc, &fakeConsentsLister{}, testAllowedOrigins)
+	h := NewConsentsHandler(svc, nil, &fakeConsentsLister{}, testAllowedOrigins)
 	body := `{"policies":[{"slug":"tos","version":"v1.0"},{"slug":"privacy","version":"v1.0"},{"slug":"pdn","version":"v1.0"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/consents", bytes.NewBufferString(body))
 	req.Header.Set("Origin", "http://localhost:3000")
@@ -128,37 +148,68 @@ func TestReconsentHandler_204_OnSuccess(t *testing.T) {
 	require.Len(t, svc.lastPolicies, 3)
 }
 
-// TestWithdrawPDNHandler_204OnSuccess asserts happy path returns 204.
-func TestWithdrawPDNHandler_204OnSuccess(t *testing.T) {
+// TestWithdrawPDNHandler_200OnSuccess asserts the happy path returns 200
+// with the real scheduled deletion date in the response envelope.
+func TestWithdrawPDNHandler_200OnSuccess(t *testing.T) {
+	scheduled := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
 	svc := &fakeConsentsService{}
-	h := NewConsentsHandler(svc, &fakeConsentsLister{}, testAllowedOrigins)
+	del := &fakeAccountDeletion{scheduledAt: scheduled}
+	h := NewConsentsHandler(svc, del, &fakeConsentsLister{}, testAllowedOrigins)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/consents/pdn/withdraw", http.NoBody)
 	req.Header.Set("Origin", "http://localhost:3000")
 	req = ctxWithUserID(req, uuid.New())
 	w := httptest.NewRecorder()
 	h.WithdrawPDN(w, req)
-	require.Equal(t, http.StatusNoContent, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 	require.True(t, svc.withdrawCalled)
+	var resp openapi.PendingDeletionResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, "account_pending_deletion", string(resp.Code))
+	require.Equal(t, scheduled.Format(time.RFC3339), resp.DeletionDate)
+	require.NotEqual(t, "—", resp.DeletionDate)
+	require.Equal(t, "/settings/account", resp.RestoreUrl)
+}
+
+// TestWithdrawPDNHandler_200_EmptyDateWhenNoDeletionService asserts the
+// envelope still renders when the deletion service can't resolve a date.
+func TestWithdrawPDNHandler_200_EmptyDateWhenNoDeletionService(t *testing.T) {
+	svc := &fakeConsentsService{}
+	h := NewConsentsHandler(svc, nil, &fakeConsentsLister{}, testAllowedOrigins)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/consents/pdn/withdraw", http.NoBody)
+	req.Header.Set("Origin", "http://localhost:3000")
+	req = ctxWithUserID(req, uuid.New())
+	w := httptest.NewRecorder()
+	h.WithdrawPDN(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp openapi.PendingDeletionResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Empty(t, resp.DeletionDate)
 }
 
 // TestWithdrawPDNHandler_423WhenAlreadyPending asserts that
-// ErrDeletionAlreadyPending → 423 account_pending_deletion envelope.
+// ErrDeletionAlreadyPending → 423 account_pending_deletion envelope
+// carrying the real scheduled deletion date.
 func TestWithdrawPDNHandler_423WhenAlreadyPending(t *testing.T) {
+	scheduled := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
 	svc := &fakeConsentsService{withdrawErr: domain.ErrDeletionAlreadyPending}
-	h := NewConsentsHandler(svc, &fakeConsentsLister{}, testAllowedOrigins)
+	del := &fakeAccountDeletion{scheduledAt: scheduled}
+	h := NewConsentsHandler(svc, del, &fakeConsentsLister{}, testAllowedOrigins)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/consents/pdn/withdraw", http.NoBody)
 	req.Header.Set("Origin", "http://localhost:3000")
 	req = ctxWithUserID(req, uuid.New())
 	w := httptest.NewRecorder()
 	h.WithdrawPDN(w, req)
 	require.Equal(t, http.StatusLocked, w.Code)
-	require.Contains(t, w.Body.String(), `"account_pending_deletion"`)
-	require.Contains(t, w.Body.String(), `"/settings/account"`)
+	var resp openapi.PendingDeletionResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, "account_pending_deletion", string(resp.Code))
+	require.Equal(t, scheduled.Format(time.RFC3339), resp.DeletionDate)
+	require.Equal(t, "/settings/account", resp.RestoreUrl)
 }
 
 // TestWithdrawPDNHandler_403_OriginNotAllowed asserts CSRF guard fires.
 func TestWithdrawPDNHandler_403_OriginNotAllowed(t *testing.T) {
-	h := NewConsentsHandler(&fakeConsentsService{}, &fakeConsentsLister{}, testAllowedOrigins)
+	h := NewConsentsHandler(&fakeConsentsService{}, nil, &fakeConsentsLister{}, testAllowedOrigins)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/consents/pdn/withdraw", http.NoBody)
 	req = ctxWithUserID(req, uuid.New())
 	w := httptest.NewRecorder()
@@ -176,7 +227,7 @@ func TestListMine_Returns200WithRows(t *testing.T) {
 		{UserID: userID, Purpose: "privacy", PolicyVersion: "v1.0", PolicySHA256: "sha-p", AcceptedAt: now},
 		{UserID: userID, Purpose: "pdn", PolicyVersion: "v1.0", PolicySHA256: "sha-d", AcceptedAt: now},
 	}}
-	h := NewConsentsHandler(&fakeConsentsService{}, lister, testAllowedOrigins)
+	h := NewConsentsHandler(&fakeConsentsService{}, nil, lister, testAllowedOrigins)
 	req := httptest.NewRequest(http.MethodGet, "/users/me/consents", http.NoBody)
 	req = ctxWithUserID(req, userID)
 	w := httptest.NewRecorder()

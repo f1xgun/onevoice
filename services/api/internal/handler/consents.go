@@ -23,6 +23,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -54,16 +55,20 @@ type ConsentsListerAPI interface {
 // ConsentsHandler owns the three consent endpoints.
 type ConsentsHandler struct {
 	service        ConsentsServiceAPI
+	deletion       AccountDeletionServiceAPI
 	repo           ConsentsListerAPI
 	allowedOrigins []string
 }
 
 // NewConsentsHandler constructs the consent handler. The
 // allowedOrigins slice is the CORS_ALLOWED_ORIGINS values — used for
-// the Origin-header CSRF check on the two side-effecting endpoints
-func NewConsentsHandler(svc ConsentsServiceAPI, repo ConsentsListerAPI, allowedOrigins []string) *ConsentsHandler {
+// the Origin-header CSRF check on the two side-effecting endpoints.
+// deletion supplies the scheduled deletion timestamp surfaced in the
+// PDN-withdrawal response (shared with UserDeletionHandler).
+func NewConsentsHandler(svc ConsentsServiceAPI, deletion AccountDeletionServiceAPI, repo ConsentsListerAPI, allowedOrigins []string) *ConsentsHandler {
 	return &ConsentsHandler{
 		service:        svc,
+		deletion:       deletion,
 		repo:           repo,
 		allowedOrigins: allowedOrigins,
 	}
@@ -158,9 +163,10 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 
 // WithdrawPDN handles POST /users/me/consents/pdn/withdraw.
 //
-// 204 on success; 423 account_pending_deletion when the user is already
-// in the grace window (envelope reused); 403 when the
-// Origin header is missing/unmatched.
+// 200 on success and 423 account_pending_deletion (already in the grace
+// window) both return a PendingDeletionResponse carrying the real
+// scheduled deletion date; 403 when the Origin header is
+// missing/unmatched; 404 when the user row is gone.
 func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 	if !h.originAllowed(r.Header.Get("Origin")) {
 		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
@@ -174,12 +180,16 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 	err := h.service.WithdrawPDN(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	switch {
 	case err == nil:
-		w.WriteHeader(http.StatusNoContent)
+		writeJSON(w, http.StatusOK, openapi.PendingDeletionResponse{
+			Code:         pendingDeletionCode,
+			DeletionDate: h.scheduledDeletionDate(r.Context(), userID),
+			RestoreUrl:   "/settings/account",
+		})
 		return
 	case errors.Is(err, domain.ErrDeletionAlreadyPending):
 		writeJSON(w, http.StatusLocked, openapi.PendingDeletionResponse{
 			Code:         pendingDeletionCode,
-			DeletionDate: "",
+			DeletionDate: h.scheduledDeletionDate(r.Context(), userID),
 			RestoreUrl:   "/settings/account",
 		})
 		return
@@ -189,6 +199,20 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.ErrorContext(r.Context(), "POST /users/me/consents/pdn/withdraw failed", "userID", userID, "err", err)
 	writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+}
+
+// scheduledDeletionDate resolves the user's scheduled deletion timestamp
+// as RFC3339. Returns "" when no deletion service is wired or no deletion
+// is pending, so the caller still emits a well-formed envelope.
+func (h *ConsentsHandler) scheduledDeletionDate(ctx context.Context, userID uuid.UUID) string {
+	if h.deletion == nil {
+		return ""
+	}
+	scheduledAt, err := h.deletion.GetScheduledDeletionAt(ctx, userID)
+	if err != nil || scheduledAt.IsZero() {
+		return ""
+	}
+	return scheduledAt.UTC().Format(time.RFC3339)
 }
 
 // ListMine handles GET /users/me/consents. Returns the user's current

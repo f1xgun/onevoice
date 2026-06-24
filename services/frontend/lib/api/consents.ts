@@ -76,23 +76,27 @@ export async function postReconsent(policies: ConsentPolicy[]): Promise<void> {
  * withdrawPDN sends POST /api/v1/users/me/consents/pdn/withdraw with no
  * body. Backend triggers AccountDeletionService.RequestDeletion(reason=
  * 'consent_withdrawn') from (same 30-day grace + restore
- * window). Returns void on 204; throws on non-204 with the same shape.
- * 423 account_pending_deletion is treated as success by the caller per
- * UI-SPEC §F edge case.
+ * window). Returns the scheduled deletion date (RFC3339) on 200; throws
+ * on failure with the ConsentError shape. 423 account_pending_deletion
+ * is treated as success by the caller per UI-SPEC §F edge case — its
+ * body also carries the deletion date.
  */
-export async function withdrawPDN(): Promise<void> {
+export async function withdrawPDN(): Promise<{ deletionDate?: string }> {
   const res = await authFetch('/api/v1/users/me/consents/pdn/withdraw', {
     method: 'POST',
     credentials: 'include',
   });
 
   if (res.status === HTTP_NO_CONTENT) {
-    return;
+    return {};
   }
   let body: ConsentError = {};
   try {
     body = (await res.json()) as ConsentError;
   } catch {}
+  if (res.ok) {
+    return { deletionDate: body.deletionDate };
+  }
   body.status = res.status;
   throw body;
 }
