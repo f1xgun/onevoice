@@ -324,6 +324,10 @@ func Load() (*Config, error) {
 		cfg.HealthCheckTimeout = 2 * time.Second
 	}
 
+	if cfg.OutboxPollInterval <= 0 {
+		return nil, fmt.Errorf("OUTBOX_POLL_INTERVAL must be > 0, got %v", cfg.OutboxPollInterval)
+	}
+
 	const (
 		defaultLockoutCaptcha  = 4
 		defaultLockoutLock     = 10

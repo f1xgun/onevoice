@@ -339,6 +339,40 @@ func TestLoad_MessageHistoryLimit_InvalidFailsLoud(t *testing.T) {
 	}
 }
 
+func TestLoad_OutboxPollInterval_NonPositiveFailsLoud(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"zero", "0s"},
+		{"negative", "-1s"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			minTestEnv(t)
+			t.Setenv("OUTBOX_POLL_INTERVAL", c.value)
+			_, err := config.Load()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "OUTBOX_POLL_INTERVAL")
+		})
+	}
+}
+
+func TestLoad_OutboxPollInterval_Default(t *testing.T) {
+	minTestEnv(t)
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Second, cfg.OutboxPollInterval)
+}
+
+func TestLoad_OutboxPollInterval_PositiveLoads(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("OUTBOX_POLL_INTERVAL", "10s")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 10*time.Second, cfg.OutboxPollInterval)
+}
+
 func TestConfig_PG_Defaults(t *testing.T) {
 	minTestEnv(t)
 	cfg, err := config.Load()
