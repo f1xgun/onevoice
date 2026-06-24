@@ -32,8 +32,10 @@ func (r *resumePendingRepo) GetByBatchID(_ context.Context, _ string) (*domain.P
 
 type resumeMsgRepo struct {
 	domain.MessageRepository
-	active  *domain.Message
-	updated *domain.Message
+	active      *domain.Message
+	updated     *domain.Message
+	updateErr   error
+	updateCalls int
 }
 
 func (r *resumeMsgRepo) FindByConversationActive(_ context.Context, _ string) (*domain.Message, error) {
@@ -41,6 +43,10 @@ func (r *resumeMsgRepo) FindByConversationActive(_ context.Context, _ string) (*
 }
 
 func (r *resumeMsgRepo) Update(_ context.Context, m *domain.Message) error {
+	r.updateCalls++
+	if r.updateErr != nil {
+		return r.updateErr
+	}
 	r.updated = m
 	return nil
 }

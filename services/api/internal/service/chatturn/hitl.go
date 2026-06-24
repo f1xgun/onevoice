@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
@@ -251,6 +252,12 @@ func (t *Turn) runResumeStream(
 	for i, tc := range msg.ToolCalls {
 		callIdx[tc.ID] = i
 	}
+	resultIdx := make(map[string]int, len(msg.ToolResults))
+	for i, tr := range msg.ToolResults {
+		resultIdx[tr.ToolCallID] = i
+	}
+	recResultIdx := make(map[string]int)
+	freshCallIDs := make(map[string]struct{})
 
 	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), streamBudget)
 	if corrID := logger.CorrelationIDFromContext(ctx); corrID != "" {
@@ -284,6 +291,9 @@ func (t *Turn) runResumeStream(
 					Name:      ev.ToolName,
 					Arguments: ev.ToolArgs,
 				})
+				if ev.ToolCallID != "" {
+					freshCallIDs[ev.ToolCallID] = struct{}{}
+				}
 				t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
 			case "tool_approval_required":
 				evCopy := ev
@@ -295,19 +305,36 @@ func (t *Turn) runResumeStream(
 				} else {
 					content = map[string]interface{}{"raw": ev.ToolResult}
 				}
+				persistedIdx, hasPersisted := callIdx[ev.ToolCallID]
+				_, hasFresh := freshCallIDs[ev.ToolCallID]
+				if ev.ToolCallID == "" || (!hasPersisted && !hasFresh) {
+					slog.WarnContext(taskOpsCtx, "chatturn: resume: dropping tool_result with no matching tool_call",
+						"tool_call_id", ev.ToolCallID, "conversation_id", conversationID)
+					break
+				}
 				tr := domain.ToolResult{
 					ToolCallID: ev.ToolCallID,
 					Content:    content,
 					IsError:    ev.ToolError != "",
 					Code:       ev.Code,
 				}
-				msg.ToolResults = append(msg.ToolResults, tr)
-				recResults = append(recResults, tr)
-				if idx, ok := callIdx[ev.ToolCallID]; ok {
+				if existing, dup := resultIdx[ev.ToolCallID]; dup {
+					msg.ToolResults[existing] = tr
+				} else {
+					resultIdx[ev.ToolCallID] = len(msg.ToolResults)
+					msg.ToolResults = append(msg.ToolResults, tr)
+				}
+				if existing, dup := recResultIdx[ev.ToolCallID]; dup {
+					recResults[existing] = tr
+				} else {
+					recResultIdx[ev.ToolCallID] = len(recResults)
+					recResults = append(recResults, tr)
+				}
+				if hasPersisted {
 					if ev.ToolError != "" {
-						msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
+						msg.ToolCalls[persistedIdx].Status = domain.ToolCallStatusRejected
 					} else {
-						msg.ToolCalls[idx].Status = domain.ToolCallStatusApproved
+						msg.ToolCalls[persistedIdx].Status = domain.ToolCallStatusApproved
 					}
 				}
 				toolArgs := resumeToolArgs(ev.ToolCallID, callIdx, msg.ToolCalls, recCalls)
@@ -356,8 +383,9 @@ func (t *Turn) runResumeStream(
 	saveCtx, cancel := t.persistContext(ctx)
 	defer cancel()
 	if err := t.deps.Messages.Update(saveCtx, &msg); err != nil {
-		slog.WarnContext(saveCtx, "chatturn: resume: failed to persist partial message",
-			"error", err, "message_id", msg.ID)
+		metrics.ResumePersistFailure("partial")
+		slog.ErrorContext(saveCtx, "chatturn: resume: failed to persist partial message (self-heal will retry on next request)",
+			"error", err, "message_id", msg.ID, "conversation_id", conversationID, "status", msg.Status)
 	}
 	return OutcomeRejoinedResume, nil
 }
@@ -393,8 +421,9 @@ func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Messa
 	saveCtx, cancel := t.persistContext(parentCtx)
 	defer cancel()
 	if err := t.deps.Messages.Update(saveCtx, msg); err != nil {
-		slog.WarnContext(saveCtx, "chatturn: resume: failed to persist re-paused message",
-			"error", err, "message_id", msg.ID)
+		metrics.ResumePersistFailure("repause")
+		slog.ErrorContext(saveCtx, "chatturn: resume: failed to persist re-paused message (message stays active; next approve/heal will recover)",
+			"error", err, "message_id", msg.ID, "conversation_id", msg.ConversationID)
 	}
 	return OutcomePauseHITL
 }
@@ -408,8 +437,9 @@ func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message,
 	saveCtx, cancel := t.persistContext(parentCtx)
 	defer cancel()
 	if err := t.deps.Messages.Update(saveCtx, msg); err != nil {
-		slog.WarnContext(saveCtx, "chatturn: resume: failed to persist completed message",
-			"error", err, "message_id", msg.ID)
+		metrics.ResumePersistFailure("done")
+		slog.ErrorContext(saveCtx, "chatturn: resume: failed to persist completed message (self-heal will retry on next request)",
+			"error", err, "message_id", msg.ID, "conversation_id", msg.ConversationID, "status", msg.Status)
 	}
 	if t.deps.Posts != nil || t.deps.Reviews != nil {
 		t.recordPostsAndReviews(saveCtx, businessID, toolCalls, toolResults)

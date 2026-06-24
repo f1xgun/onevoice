@@ -168,11 +168,52 @@ func TestIncReviewsReplied_CollapsesUnknown(t *testing.T) {
 	}
 }
 
+func TestResumePersistFailure(t *testing.T) {
+	for _, path := range []string{"partial", "repause", "done"} {
+		t.Run(path, func(t *testing.T) {
+			before := testutil.ToFloat64(resumePersistFailuresTotal.WithLabelValues(path))
+			ResumePersistFailure(path)
+			after := testutil.ToFloat64(resumePersistFailuresTotal.WithLabelValues(path))
+			require.InDelta(t, before+1, after, 0.0001)
+		})
+	}
+}
+
+func TestResumePersistFailure_OnlyIncrementsSingleLabel(t *testing.T) {
+	beforeDone := testutil.ToFloat64(resumePersistFailuresTotal.WithLabelValues("done"))
+	ResumePersistFailure("partial")
+	afterDone := testutil.ToFloat64(resumePersistFailuresTotal.WithLabelValues("done"))
+	require.InDelta(t, beforeDone, afterDone, 0.0001, "incrementing 'partial' must not affect 'done'")
+}
+
+// TestResumePersistFailure_CollapsesUnknown guards the cardinality bound: an
+// unexpected path string must land in the bounded "other" bucket and must NOT
+// create a new series for the raw value.
+func TestResumePersistFailure_CollapsesUnknown(t *testing.T) {
+	beforeOther := testutil.ToFloat64(resumePersistFailuresTotal.WithLabelValues(labelOther))
+	ResumePersistFailure("frobnicate")
+	ResumePersistFailure("")
+	afterOther := testutil.ToFloat64(resumePersistFailuresTotal.WithLabelValues(labelOther))
+	require.InDelta(t, beforeOther+2, afterOther, 0.0001, "unknown paths must increment 'other'")
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	mf := findMetric(families, "chatturn_resume_persist_failures_total")
+	require.NotNil(t, mf)
+	for _, m := range mf.GetMetric() {
+		for _, l := range m.GetLabel() {
+			require.NotContains(t, []string{"frobnicate", ""}, l.GetValue(),
+				"raw unknown path values must never become a series")
+		}
+	}
+}
+
 func TestProductMetricsLabelShape(t *testing.T) {
 	IncChatTurn("done")
 	IncHITLDecision("approve")
 	IncPostsPublished("telegram", "published")
 	IncReviewsReplied("telegram", "replied")
+	ResumePersistFailure("done")
 
 	families, err := prometheus.DefaultGatherer.Gather()
 	require.NoError(t, err)
@@ -185,6 +226,7 @@ func TestProductMetricsLabelShape(t *testing.T) {
 		{"hitl_decisions_total", []string{"decision"}},
 		{"posts_published_total", []string{"platform", "result"}},
 		{"reviews_replied_total", []string{"platform", "result"}},
+		{"chatturn_resume_persist_failures_total", []string{"path"}},
 	} {
 		mf := findMetric(families, tc.metric)
 		require.NotNil(t, mf, "%s metric family not found", tc.metric)
