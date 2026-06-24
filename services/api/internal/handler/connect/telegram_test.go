@@ -63,6 +63,51 @@ func TestVerifyTelegramLogin_ValidHash(t *testing.T) {
 	}
 }
 
+// TestVerifyTelegramLogin_NumericFields_ValidHash sends id/auth_date as JSON
+// NUMBERS (not strings) — exactly what a real Telegram Login Widget callback
+// posts — with the hash computed over the canonical integer check-string.
+// Verification must succeed. Reverting Fix B (formatting the decoded float64
+// with %v) renders auth_date as "1.71924...e+09" scientific notation, so the
+// HMAC can never match and this test fails with 401 invalid hash.
+func TestVerifyTelegramLogin_NumericFields_ValidHash(t *testing.T) {
+	botToken := "12345:ABCDEF"
+
+	authDate := time.Now().Unix()
+	const id int64 = 1719240000123
+
+	hash := buildTelegramHashCanonical(botToken, map[string]string{
+		"id":        strconv.FormatInt(id, 10),
+		"username":  "testuser",
+		"auth_date": strconv.FormatInt(authDate, 10),
+	})
+
+	cfg := ConnectConfig{TelegramBotToken: botToken}
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, nil)
+
+	body := fmt.Sprintf(
+		`{"id":%d,"username":"testuser","auth_date":%d,"hash":%q}`,
+		id, authDate, hash,
+	)
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/verify", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.VerifyTelegramLogin(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for numeric-field payload with canonical hash, got %d: %s",
+			rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if verified, _ := resp["verified"].(bool); !verified {
+		t.Errorf("expected verified=true, got %v", resp["verified"])
+	}
+}
+
 func TestVerifyTelegramLogin_InvalidHash(t *testing.T) {
 	botToken := "12345:ABCDEF"
 

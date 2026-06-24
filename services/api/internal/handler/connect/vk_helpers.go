@@ -101,10 +101,12 @@ func (h *ConnectHandler) probeVKCommunityToken(
 // checkVKWallScope verifies the supplied token grants `wall` permission. The
 // review-reply dispatch path needs it; surfacing the gap at connect time
 // avoids a confusing "ok!" → "can't reply" UX a few clicks later. Returns
-// nil when the scope is present, an error with a Russian-language message
-// when it isn't, and nil (treating as best-effort) on transport failures
-// — VK occasionally rate-limits this method and we'd rather connect than
-// block on a flaky check.
+// nil when the scope is present, ErrVKWallPermissionMissing only when VK
+// returned a permission list that genuinely lacks `wall`, and nil
+// (treating as best-effort) on transport failures or an API-level error
+// envelope — VK occasionally rate-limits this method (error_code 6) and we'd
+// rather connect than block on a flaky check or misread a rate-limit envelope
+// as a missing scope.
 func (h *ConnectHandler) checkVKWallScope(ctx context.Context, accessToken string) error {
 	apiURL := fmt.Sprintf(
 		"%s/method/groups.getTokenPermissions?access_token=%s&v="+vkapi.APIVersion,
@@ -126,8 +128,17 @@ func (h *ConnectHandler) checkVKWallScope(ctx context.Context, accessToken strin
 				Name string `json:"name"`
 			} `json:"permissions"`
 		} `json:"response"`
+		Error *struct {
+			ErrorCode int    `json:"error_code"`
+			ErrorMsg  string `json:"error_msg"`
+		} `json:"error"`
 	}
 	if jsonErr := json.Unmarshal(body, &permResp); jsonErr != nil {
+		return nil
+	}
+	if permResp.Error != nil {
+		slog.Warn("VK token-permissions check returned API error; treating as best-effort connect",
+			"code", permResp.Error.ErrorCode, "msg", permResp.Error.ErrorMsg)
 		return nil
 	}
 	for _, p := range permResp.Response.Permissions {

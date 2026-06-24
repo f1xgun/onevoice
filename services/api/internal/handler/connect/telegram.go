@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -48,10 +47,19 @@ type telegramGetChatResponse struct {
 	Description string `json:"description"`
 }
 
+// telegramLoginFields is Telegram's documented Login Widget field set. Only
+// these keys take part in the data-check-string; anything else the widget
+// sends is ignored so the canonical string matches Telegram's signature.
+var telegramLoginFields = []string{
+	"auth_date", "first_name", "id", "last_name", "photo_url", "username",
+}
+
 // VerifyTelegramLogin verifies a Telegram Login Widget callback (JWT required).
 func (h *ConnectHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Request) {
+	dec := json.NewDecoder(r.Body)
+	dec.UseNumber()
 	var req map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -62,28 +70,20 @@ func (h *ConnectHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	authDateStr, _ := req["auth_date"].(string)
-	if authDateStr == "" {
-		if authDateF, ok := req["auth_date"].(float64); ok {
-			authDateStr = strconv.FormatInt(int64(authDateF), 10)
-		}
-	}
+	authDateStr := telegramFieldString(req["auth_date"])
 	authDate, err := strconv.ParseInt(authDateStr, 10, 64)
 	if err != nil || time.Since(time.Unix(authDate, 0)) > 5*time.Minute {
 		writeJSONError(w, http.StatusUnauthorized, "auth_date expired")
 		return
 	}
 
-	delete(req, "hash")
-	keys := make([]string, 0, len(req))
-	for k := range req {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%v", k, req[k]))
+	parts := make([]string, 0, len(telegramLoginFields))
+	for _, k := range telegramLoginFields {
+		v, ok := req[k]
+		if !ok {
+			continue
+		}
+		parts = append(parts, k+"="+telegramFieldString(v))
 	}
 	checkString := strings.Join(parts, "\n")
 
@@ -97,7 +97,23 @@ func (h *ConnectHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	delete(req, "hash")
 	writeJSON(w, http.StatusOK, map[string]interface{}{"verified": true, "user": req})
+}
+
+// telegramFieldString renders a Login Widget field as the canonical text
+// Telegram itself signed: json.Number keeps integer fields (id, auth_date)
+// as their integer literal instead of float64 scientific notation, and
+// string fields pass through verbatim.
+func telegramFieldString(v interface{}) string {
+	switch t := v.(type) {
+	case json.Number:
+		return t.String()
+	case string:
+		return t
+	default:
+		return fmt.Sprintf("%v", t)
+	}
 }
 
 // telegramErrKind classifies why a getChat call failed, so HTTP handlers

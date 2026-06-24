@@ -84,3 +84,25 @@ func buildTelegramHash(token string, fields map[string]interface{}) string {
 	mac.Write([]byte(checkString))
 	return hex.EncodeToString(mac.Sum(nil))
 }
+
+// buildTelegramHashCanonical reproduces exactly how Telegram signs a Login
+// Widget payload: the data-check-string joins the documented field set in
+// alphabetical key order using each value's canonical text (integers as
+// their integer literal, never float64/scientific notation). The test
+// passes integer fields as int64 so "%d" emits e.g. 1719240000.
+func buildTelegramHashCanonical(token string, fields map[string]string) string {
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+fields[k])
+	}
+	checkString := strings.Join(parts, "\n")
+	secretKey := sha256.Sum256([]byte(token))
+	mac := hmac.New(sha256.New, secretKey[:])
+	mac.Write([]byte(checkString))
+	return hex.EncodeToString(mac.Sum(nil))
+}
