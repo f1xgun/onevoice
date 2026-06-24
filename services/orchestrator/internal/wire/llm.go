@@ -204,6 +204,9 @@ func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) 
 				HealthStatus:       llm.HealthStatusHealthy,
 				Enabled:            true,
 			})
+			if inCost == 0 && outCost == 0 {
+				warnRateCardMiss(log, spec.name, modelID)
+			}
 			log.Info("LLM provider registered",
 				"provider", spec.name,
 				"model", modelID,
@@ -230,8 +233,28 @@ func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) 
 			HealthStatus:       llm.HealthStatusHealthy,
 			Enabled:            true,
 		})
+		if inCost == 0 && outCost == 0 {
+			warnRateCardMiss(log, name, ep.Model)
+		}
 		log.Info("self-hosted LLM registered", "name", name, "url", ep.URL, "model", ep.Model)
 	}
 
 	return opts
+}
+
+// warnRateCardMiss flags a (provider, model) registration whose rate-card
+// lookup returned $0 for both input and output. priceFor returns (0,0) for any
+// model absent from modelPricing, so a typo'd or newly-added LLM_MODEL prices
+// every call at $0: usage_logs rows land with provider_cost_usd=0, the
+// per-business daily-spend gate (pkg/llm/ratelimit.go) sums to 0, and the cost
+// guard never trips. Emitting this loudly at startup turns silent rate-card
+// drift into an operator-visible signal. A genuinely free/internal model
+// trips it too; that warning is safe to ignore. Add the model to modelPricing
+// and docs/llm-pricing.md to clear it.
+func warnRateCardMiss(log *slog.Logger, provider, modelID string) {
+	log.Warn("LLM model missing from rate card: billing records $0 and the daily-spend rate limiter will be ineffective for it — add it to modelPricing and docs/llm-pricing.md",
+		"provider", provider,
+		"model", modelID,
+		"rate_card", "docs/llm-pricing.md",
+	)
 }
