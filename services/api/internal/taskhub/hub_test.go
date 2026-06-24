@@ -1,6 +1,8 @@
 package taskhub_test
 
 import (
+	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -132,6 +134,10 @@ func TestHub_ConcurrentPublishUnsubNoPanic(t *testing.T) {
 		cycles      = 3000
 	)
 	h := taskhub.New()
+
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	defer slog.SetDefault(prevLogger)
 
 	stop := make(chan struct{})
 
