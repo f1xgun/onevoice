@@ -38,13 +38,20 @@ func (r *messageRepository) Create(ctx context.Context, msg *domain.Message) err
 	return nil
 }
 
+// ListByConversationID returns the latest `limit` messages of a conversation,
+// in ascending chronological order (newest last). The window is fetched with a
+// descending created_at sort so an over-limit conversation yields its MOST
+// RECENT messages, then reversed in memory to honor the ascending-order
+// contract every caller relies on (the most-recent message at the tail).
+// `offset` pages from the newest end. The {conversation_id, created_at}
+// compound index serves the descending sort equally.
 func (r *messageRepository) ListByConversationID(ctx context.Context, conversationID string, limit, offset int) ([]domain.Message, error) {
 	messages := make([]domain.Message, 0)
 
 	opts := options.Find().
 		SetLimit(int64(limit)).
 		SetSkip(int64(offset)).
-		SetSort(bson.M{"created_at": 1})
+		SetSort(bson.M{"created_at": -1})
 
 	cursor, err := r.collection.Find(ctx, bson.M{"conversation_id": conversationID}, opts)
 	if err != nil {
@@ -54,6 +61,10 @@ func (r *messageRepository) ListByConversationID(ctx context.Context, conversati
 
 	if err := cursor.All(ctx, &messages); err != nil {
 		return messages, fmt.Errorf("decode messages: %w", err)
+	}
+
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
 	}
 
 	return messages, nil
@@ -118,7 +129,8 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 // EnsureMessageIndexes creates the messages collection's compound indexes
 // idempotently at API startup. The two indexes cover the per-turn read paths:
 //   - {conversation_id, created_at} serves ListByConversationID (filter
-//     conversation_id, sort created_at asc) and prefixes CountByConversationID.
+//     conversation_id, sort created_at desc to fetch the latest window) and
+//     prefixes CountByConversationID.
 //   - {conversation_id, role, status, created_at} serves FindByConversationActive
 //     (filter conversation_id+role+status, sort created_at desc).
 //

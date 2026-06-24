@@ -219,6 +219,40 @@ func TestMessageRepository_ListByConversationID(t *testing.T) {
 				messages[i].CreatedAt.Equal(messages[i+1].CreatedAt))
 		}
 	})
+
+	// When a conversation exceeds the limit, the window must be the LATEST
+	// messages (not the oldest), returned in ascending order (newest at the
+	// tail). With an ascending sort + limit, Mongo returns the OLDEST N — this
+	// test fails if the fix is reverted to created_at:1.
+	t.Run("over-limit returns the latest window in ascending order", func(t *testing.T) {
+		convID := "conv-latest-window"
+
+		const total = 5
+		for i := 0; i < total; i++ {
+			msg := &domain.Message{
+				ConversationID: convID,
+				Role:           "user",
+				Content:        "Msg " + string(rune('1'+i)),
+			}
+			require.NoError(t, repo.Create(ctx, msg))
+			time.Sleep(5 * time.Millisecond)
+		}
+
+		messages, err := repo.ListByConversationID(ctx, convID, 3, 0)
+		require.NoError(t, err)
+		require.Len(t, messages, 3)
+
+		assert.Equal(t, []string{"Msg 3", "Msg 4", "Msg 5"},
+			[]string{messages[0].Content, messages[1].Content, messages[2].Content},
+			"must return the 3 MOST-RECENT messages in ascending order (newest last)")
+
+		for i := 0; i < len(messages)-1; i++ {
+			assert.True(t, messages[i].CreatedAt.Before(messages[i+1].CreatedAt),
+				"ascending order: messages[%d] must predate messages[%d]", i, i+1)
+		}
+		assert.Equal(t, "Msg 5", messages[len(messages)-1].Content,
+			"tail must be the newest message")
+	})
 }
 
 func TestMessageRepository_CountByConversationID(t *testing.T) {
