@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
@@ -397,8 +399,44 @@ func TestEnsureMessageIndexes_Idempotent(t *testing.T) {
 	for _, s := range specs {
 		names[s.Name] = true
 	}
-	assert.True(t, names["messages_conversation_created"],
-		"named index messages_conversation_created must exist")
+	assert.True(t, names["conversation_id_1_created_at_1"],
+		"index conversation_id_1_created_at_1 must exist")
+	assert.True(t, names["messages_conversation_role_status_created_desc"],
+		"named index messages_conversation_role_status_created_desc must exist")
+}
+
+// TestEnsureMessageIndexes_CoexistsWithInitJS guards against the boot-abort that
+// occurs when EnsureMessageIndexes requests {conversation_id, created_at} under a
+// name that differs from the one migrations/mongo/init.js already created on a
+// fresh volume (auto-named conversation_id_1_created_at_1). Mongo rejects same
+// keys + different name with IndexOptionsConflict (code 85), which is NOT a
+// duplicate-key error, so it would propagate out of EnsureMessageIndexes and
+// abort API startup. Pre-creating the init.js index here and asserting no error
+// reproduces that production state.
+func TestEnsureMessageIndexes_CoexistsWithInitJS(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+
+	coll := db.Collection("messages")
+	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "conversation_id", Value: 1},
+			{Key: "created_at", Value: 1},
+		},
+	})
+	require.NoError(t, err, "pre-create init.js auto-named index")
+
+	require.NoError(t, EnsureMessageIndexes(ctx, db),
+		"EnsureMessageIndexes must coexist with init.js's auto-named index")
+
+	specs, err := coll.Indexes().ListSpecifications(ctx)
+	require.NoError(t, err)
+	names := map[string]bool{}
+	for _, s := range specs {
+		names[s.Name] = true
+	}
+	assert.True(t, names["conversation_id_1_created_at_1"],
+		"the {conversation_id, created_at} index must exist")
 	assert.True(t, names["messages_conversation_role_status_created_desc"],
 		"named index messages_conversation_role_status_created_desc must exist")
 }

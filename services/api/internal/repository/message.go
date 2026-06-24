@@ -123,6 +123,11 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 //     (filter conversation_id+role+status, sort created_at desc).
 //
 // created_at is stamped once at insert and never mutated, so indexing it is safe.
+//
+// The {conversation_id, created_at} index uses Mongo's default-generated name
+// (conversation_id_1_created_at_1) instead of a custom name. migrations/mongo/init.js
+// auto-creates the same keys on fresh volumes; matching that name keeps the ensure an
+// idempotent no-op rather than a fatal IndexOptionsConflict (same keys, different name).
 func EnsureMessageIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("messages")
 	models := []mongo.IndexModel{
@@ -131,7 +136,6 @@ func EnsureMessageIndexes(ctx context.Context, db *mongo.Database) error {
 				{Key: "conversation_id", Value: 1},
 				{Key: "created_at", Value: 1},
 			},
-			Options: options.Index().SetName("messages_conversation_created"),
 		},
 		{
 			Keys: bson.D{
