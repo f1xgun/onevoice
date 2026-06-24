@@ -434,15 +434,30 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 					return domain.ErrTokenExpired
 				}
 
-				pts := [][]byte{[]byte(newAccess), []byte(newRefresh)}
+				refreshPlaintext := []byte(newRefresh)
+				if newRefresh == "" {
+					refreshPlaintext = refreshPts
+				}
+
+				var userTokenPlaintext []byte
+				if len(fresh.EncryptedUserToken) > 0 {
+					utPts, _, uderr := s.envelope.DecryptToken(lockCtx, fresh.ID, fresh.Platform, fresh.EncryptedUserToken, fresh.WrappedDEK)
+					if uderr != nil {
+						return fmt.Errorf("decrypt user token: %w", uderr)
+					}
+					defer crypto.Wipe(utPts)
+					userTokenPlaintext = utPts
+				}
+
+				pts := [][]byte{[]byte(newAccess), refreshPlaintext, userTokenPlaintext}
 				cts, wrapped, ver, fp, eerr := s.envelope.EncryptForRow(lockCtx, fresh.ID, fresh.Platform, pts)
+				crypto.Wipe(pts[0])
 				if eerr != nil {
 					return fmt.Errorf("encrypt new tokens: %w", eerr)
 				}
 				fresh.EncryptedAccessToken = cts[0]
-				if newRefresh != "" {
-					fresh.EncryptedRefreshToken = cts[1]
-				}
+				fresh.EncryptedRefreshToken = cts[1]
+				fresh.EncryptedUserToken = cts[2]
 				fresh.WrappedDEK = wrapped
 				fresh.KeyVersion = ver
 				fresh.EncryptionKeyFingerprint = fp
@@ -498,15 +513,30 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 					return nil, domain.ErrTokenExpired
 				}
 
-				pts := [][]byte{[]byte(newAccess), []byte(newRefresh)}
+				refreshPlaintext := []byte(newRefresh)
+				if newRefresh == "" {
+					refreshPlaintext = refreshPts
+				}
+
+				var userTokenPlaintext []byte
+				if len(integration.EncryptedUserToken) > 0 {
+					utPts, _, uderr := s.envelope.DecryptToken(ctx, integration.ID, integration.Platform, integration.EncryptedUserToken, integration.WrappedDEK)
+					if uderr != nil {
+						return nil, fmt.Errorf("decrypt user token: %w", uderr)
+					}
+					defer crypto.Wipe(utPts)
+					userTokenPlaintext = utPts
+				}
+
+				pts := [][]byte{[]byte(newAccess), refreshPlaintext, userTokenPlaintext}
 				cts, wrapped, ver, fp, eerr := s.envelope.EncryptForRow(ctx, integration.ID, integration.Platform, pts)
+				crypto.Wipe(pts[0])
 				if eerr != nil {
 					return nil, fmt.Errorf("encrypt new tokens: %w", eerr)
 				}
 				integration.EncryptedAccessToken = cts[0]
-				if newRefresh != "" {
-					integration.EncryptedRefreshToken = cts[1]
-				}
+				integration.EncryptedRefreshToken = cts[1]
+				integration.EncryptedUserToken = cts[2]
 				integration.WrappedDEK = wrapped
 				integration.KeyVersion = ver
 				integration.EncryptionKeyFingerprint = fp
