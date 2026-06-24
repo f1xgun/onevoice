@@ -125,7 +125,7 @@ func (t *Turn) fireAutoTitleIfPendingResume(parentCtx context.Context, conversat
 	if conv.TitleStatus != domain.TitleStatusAutoPending {
 		return
 	}
-	msgs, err := t.deps.Messages.ListByConversationID(gateCtx, conversationID, 100, 0)
+	msgs, err := t.deps.Messages.ListByConversationID(gateCtx, conversationID, t.deps.HistoryLimit, 0)
 	if err != nil {
 		slog.WarnContext(gateCtx, "resume auto-title gate: list messages failed",
 			"conversation_id", conversationID, "error", err)

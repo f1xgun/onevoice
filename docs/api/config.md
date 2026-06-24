@@ -200,6 +200,7 @@ Auto-titler env loading mirrors `services/orchestrator/internal/config/config.go
 | `RedisDownPolicy` | `LLM_RATELIMIT_ON_REDIS_DOWN` | `block` | Must be `"block"` or `"local_fallback"` — any other value fails Load. |
 | `LocalFallbackRequestsPerHour` | `LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR` | `2000` | Fail loud on non-integer input. Must be `> 0` when `RedisDownPolicy=local_fallback`. |
 | `SSEMaxPerUser` | `SSE_MAX_PER_USER` | `3` | Per-user SSE concurrency cap (`0` disables). Fail loud on non-integer or negative input — silent default coercion has bitten cost-guard wiring before. The Redis-down decision is governed by the same `RedisDownPolicy` + `LocalFallbackRequestsPerHour` pair as the LLM rate limiter so one operator knob spans both gates. |
+| `MessageHistoryLimit` | `MESSAGE_HISTORY_LIMIT` | `100` | Number of prior messages loaded into the LLM context per chat turn (and read by the auto-titler). Fail loud on non-integer input; must be `> 0` and `<= 500` (the upper bound caps prompt size / per-turn cost). Threaded from config into the chat-turn lifecycle and the titler handler so both stay consistent. |
 
 `LLMTier` defaults to `"free"` when unset.
 

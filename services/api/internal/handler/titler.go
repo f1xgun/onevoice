@@ -31,16 +31,19 @@ type TitlerHandler struct {
 	titler           *service.Titler
 	conversationRepo domain.ConversationRepository
 	messageRepo      domain.MessageRepository
+	historyLimit     int
 }
 
 // NewTitlerHandler constructs a TitlerHandler. titler may be nil (graceful
 // disable). conversationRepo and messageRepo MUST be non-nil — they are
 // wiring-time invariants and a nil there is a programmer bug. Mirror the
-// service/hitl.go:92-123 nil-guard convention.
+// service/hitl.go:92-123 nil-guard convention. A non-positive historyLimit
+// falls back to defaultHistoryLimit.
 func NewTitlerHandler(
 	titler *service.Titler,
 	conversationRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
+	historyLimit int,
 ) *TitlerHandler {
 	if conversationRepo == nil {
 		panic("NewTitlerHandler: conversationRepo cannot be nil")
@@ -48,10 +51,14 @@ func NewTitlerHandler(
 	if messageRepo == nil {
 		panic("NewTitlerHandler: messageRepo cannot be nil")
 	}
+	if historyLimit <= 0 {
+		historyLimit = defaultHistoryLimit
+	}
 	return &TitlerHandler{
 		titler:           titler,
 		conversationRepo: conversationRepo,
 		messageRepo:      messageRepo,
+		historyLimit:     historyLimit,
 	}
 }
 
@@ -133,7 +140,7 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	msgs, err := h.messageRepo.ListByConversationID(r.Context(), conversationID, 100, 0)
+	msgs, err := h.messageRepo.ListByConversationID(r.Context(), conversationID, h.historyLimit, 0)
 	if err != nil {
 		slog.WarnContext(r.Context(), "regenerate-title: list messages failed",
 			"error", err, "conversation_id", conversationID)

@@ -34,6 +34,14 @@ const (
 	defaultSSEMaxPerUser   = 3
 )
 
+// Chat-history fetch limit defaults. The number of prior messages loaded into
+// the LLM context for a chat turn. maxMessageHistoryLimit caps the operator
+// override so an over-large value can't blow up the prompt size / per-turn cost.
+const (
+	defaultMessageHistoryLimit = 100
+	maxMessageHistoryLimit     = 500
+)
+
 // PostgreSQL pool sizing defaults. Sized for free-beta single-pod /
 // ~10-20 concurrent chats; operators raise via PG_* env at scale.
 const (
@@ -197,6 +205,11 @@ type Config struct {
 	LocalFallbackRequestsPerHour int
 
 	SSEMaxPerUser int
+
+	// MessageHistoryLimit is the number of prior messages loaded into the LLM
+	// context per chat turn. Defaults to 100; operators override via
+	// MESSAGE_HISTORY_LIMIT (must be > 0 and <= 500).
+	MessageHistoryLimit int
 
 	PGMaxConns              int
 	PGMinConns              int
@@ -380,6 +393,21 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("SSE_MAX_PER_USER must be >= 0, got %d", n)
 		}
 		cfg.SSEMaxPerUser = n
+	}
+
+	cfg.MessageHistoryLimit = defaultMessageHistoryLimit
+	if v := os.Getenv("MESSAGE_HISTORY_LIMIT"); v != "" {
+		n, perr := strconv.Atoi(v)
+		if perr != nil {
+			return nil, fmt.Errorf("MESSAGE_HISTORY_LIMIT must be a positive integer, got %q: %w", v, perr)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("MESSAGE_HISTORY_LIMIT must be > 0, got %d", n)
+		}
+		if n > maxMessageHistoryLimit {
+			return nil, fmt.Errorf("MESSAGE_HISTORY_LIMIT must be <= %d, got %d", maxMessageHistoryLimit, n)
+		}
+		cfg.MessageHistoryLimit = n
 	}
 
 	pgMaxConns, err := parseIntEnv("PG_MAX_CONNS", defaultPGMaxConns)

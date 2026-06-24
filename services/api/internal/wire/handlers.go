@@ -133,6 +133,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		svcs.OrchClient,
 		svcs.Titler,
 		svcs.AuditLogger,
+		cfg.MessageHistoryLimit,
 	)
 
 	if h.Redis != nil && cfg.SSEMaxPerUser > 0 {
@@ -152,7 +153,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	businessHandler.SetToolsCache(svcs.ToolsCache)
 	projectHandler.SetToolsCache(svcs.ToolsCache)
 
-	titlerHandler := handler.NewTitlerHandler(svcs.Titler, repos.Conversation, repos.Message)
+	titlerHandler := handler.NewTitlerHandler(svcs.Titler, repos.Conversation, repos.Message, cfg.MessageHistoryLimit)
 
 	searchHandler, err := handler.NewSearchHandler(svcs.Searcher)
 	if err != nil {

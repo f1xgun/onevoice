@@ -303,6 +303,42 @@ func TestLoad_LocalFallback_InvalidIntFailsLoud(t *testing.T) {
 	assert.Contains(t, err.Error(), `"foo"`)
 }
 
+func TestLoad_MessageHistoryLimit_Default(t *testing.T) {
+	minTestEnv(t)
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 100, cfg.MessageHistoryLimit)
+}
+
+func TestLoad_MessageHistoryLimit_EnvOverride(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("MESSAGE_HISTORY_LIMIT", "250")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 250, cfg.MessageHistoryLimit)
+}
+
+func TestLoad_MessageHistoryLimit_InvalidFailsLoud(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"non_integer", "foo"},
+		{"zero", "0"},
+		{"negative", "-1"},
+		{"over_max", "501"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			minTestEnv(t)
+			t.Setenv("MESSAGE_HISTORY_LIMIT", c.value)
+			_, err := config.Load()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "MESSAGE_HISTORY_LIMIT")
+		})
+	}
+}
+
 func TestConfig_PG_Defaults(t *testing.T) {
 	minTestEnv(t)
 	cfg, err := config.Load()
