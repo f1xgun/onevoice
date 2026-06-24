@@ -195,6 +195,60 @@ func TestSendPhoto_InvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "download photo")
 }
 
+func TestGetReviews_SkipsMessageWithNilChat(t *testing.T) {
+	var callCount int
+
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		callCount++
+		if callCount > 1 {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":     true,
+				"result": []interface{}{},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok": true,
+			"result": []interface{}{
+				map[string]interface{}{
+					"update_id": 1,
+					"message": map[string]interface{}{
+						"message_id": 100,
+						"date":       1700000000,
+						"text":       "review without a chat",
+						"from":       map[string]interface{}{"id": 7, "first_name": "Alice"},
+					},
+				},
+				map[string]interface{}{
+					"update_id": 2,
+					"message": map[string]interface{}{
+						"message_id": 101,
+						"date":       1700000001,
+						"text":       "valid review",
+						"chat":       map[string]interface{}{"id": -1001234567890, "type": "supergroup"},
+						"from":       map[string]interface{}{"id": 8, "first_name": "Bob"},
+					},
+				},
+			},
+		})
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+
+	var reviews []map[string]interface{}
+	var err error
+	require.NotPanics(t, func() {
+		reviews, err = bot.GetReviews(0)
+	}, "a message with a nil Chat must not panic")
+
+	require.NoError(t, err)
+	require.Len(t, reviews, 1, "the chat-less message must be skipped, only the valid one kept")
+	assert.Equal(t, "-1001234567890_101", reviews[0]["id"])
+	assert.Equal(t, "valid review", reviews[0]["text"])
+}
+
 func TestSendMessage_EmptyText(t *testing.T) {
 	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
