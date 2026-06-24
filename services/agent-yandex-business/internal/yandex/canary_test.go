@@ -55,10 +55,11 @@ func TestCheckSessionAndEvict_EvictsOnExpiry(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   defaultMaxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
-	pool.contexts.Store("biz-1", &pooledContext{cookies: "[]", ctx: &mockBrowserContext{}})
+	pool.contextsTest().Store("biz-1", &pooledContext{cookies: "[]", ctx: &mockBrowserContext{}})
 
 	page := newMockPage("https://passport.yandex.ru/auth")
 	err := checkSessionAndEvict(page, "https://business.yandex.ru", pool, "biz-1")
@@ -66,7 +67,7 @@ func TestCheckSessionAndEvict_EvictsOnExpiry(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	if _, ok := pool.contexts.Load("biz-1"); ok {
+	if _, ok := pool.contextsTest().Load("biz-1"); ok {
 		t.Fatal("expected context to be evicted from pool")
 	}
 }
@@ -75,10 +76,11 @@ func TestCheckSessionAndEvict_NoEvictOnValid(t *testing.T) {
 	pool := &BrowserPool{
 		maxIdle:   defaultMaxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	defer close(pool.stopEvict)
 
-	pool.contexts.Store("biz-1", &pooledContext{cookies: "[]"})
+	pool.contextsTest().Store("biz-1", &pooledContext{cookies: "[]"})
 
 	page := newMockPage("https://business.yandex.ru/reviews")
 	err := checkSessionAndEvict(page, "https://business.yandex.ru", pool, "biz-1")
@@ -86,7 +88,7 @@ func TestCheckSessionAndEvict_NoEvictOnValid(t *testing.T) {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
 
-	if _, ok := pool.contexts.Load("biz-1"); !ok {
+	if _, ok := pool.contextsTest().Load("biz-1"); !ok {
 		t.Fatal("expected context to remain in pool")
 	}
 }

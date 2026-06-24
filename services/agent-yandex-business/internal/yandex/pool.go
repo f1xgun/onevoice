@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -77,9 +76,9 @@ func closePooledContext(pc *pooledContext) {
 }
 
 // clearAndClose clears a BrowserContext's cookies before closing it. Used on the
-// construction-error and lost-LoadOrStore-race discard paths where the context
-// may already carry an injected session but is not yet wrapped in a
-// pooledContext, so no Session_id survives the discard.
+// construction-error and lost-commit-race discard paths where the context may
+// already carry an injected session but is not yet wrapped in a pooledContext,
+// so no Session_id survives the discard.
 func clearAndClose(bCtx playwright.BrowserContext) {
 	if bCtx == nil {
 		return
@@ -92,7 +91,6 @@ func clearAndClose(bCtx playwright.BrowserContext) {
 type BrowserPool struct {
 	pw        *playwright.Playwright
 	browser   playwright.Browser
-	contexts  sync.Map // businessID -> *pooledContext
 	mu        sync.Mutex
 	maxIdle   time.Duration
 	closed    atomic.Bool
@@ -102,14 +100,28 @@ type BrowserPool struct {
 	// fresh businessID acquire evicts the LRU non-busy context first.
 	maxContexts int
 
-	// acquireMu serializes the count-check + evict + slot-reservation step of a
-	// fresh-businessID acquire so two goroutines can't both pass the cap gate
-	// against the same stale snapshot. The slow newContext / cookie-injection
-	// runs OUTSIDE this lock; only the fast reservation bookkeeping is guarded.
-	acquireMu sync.Mutex
-	// liveCount is the authoritative number of live + reserved contexts. It is
-	// incremented under acquireMu when a fresh-context slot is reserved and
-	// decremented on eviction, lost LoadOrStore races, Close, and idle sweeps.
+	// commitMu guards the contexts map for EVERY mutation and the size read, and
+	// serializes the cap-enforcing critical sections end to end: the admission
+	// reservation (reserveSlot) and the build-then-publish commit (buildAndCommit).
+	// A plain map under one mutex gives an exact, consistent len() — sync.Map.Range
+	// can transiently overcount entries a concurrent goroutine has logically
+	// deleted, which makes a hard size cap impossible to observe or enforce. The
+	// slow newContext / cookie-injection / OAuth build runs OUTSIDE this lock; only
+	// the fast bookkeeping and the map mutation that publishes a context are
+	// guarded. Holding it across the commit's size-check + LRU-evict + publishing
+	// store is what makes len(contexts) <= maxContexts a HARD invariant: no number
+	// of concurrent in-flight builds can push the map past the cap, because the
+	// check and the store that could violate it are atomic with respect to each
+	// other. Lock ordering: commitMu is always released before any pc.mu / p.mu is
+	// taken, so the two pool mutexes never nest. Chromium teardown (Close) is run
+	// AFTER releasing commitMu so a slow eviction never blocks the pool.
+	commitMu sync.Mutex
+	contexts map[string]*pooledContext // businessID -> *pooledContext; guarded by commitMu
+	// liveCount is admission control: live + in-flight contexts. It is incremented
+	// when a build slot is reserved (reserveSlot) and decremented on eviction,
+	// lost commit races, build failures, Close, and idle sweeps. It bounds the
+	// number of concurrent builds; the HARD per-map cap is enforced separately at
+	// commit time under commitMu against the exact map len.
 	liveCount atomic.Int64
 
 	// withPageFn, when non-nil, replaces the real WithPage execution path.
@@ -137,6 +149,7 @@ func NewBrowserPoolWithIdle(maxIdle time.Duration) *BrowserPool {
 	p := &BrowserPool{
 		maxIdle:   maxIdle,
 		stopEvict: make(chan struct{}),
+		contexts:  make(map[string]*pooledContext),
 	}
 	go p.evictLoop()
 	return p
@@ -149,6 +162,7 @@ func NewBrowserPoolWithCap(maxContexts int) *BrowserPool {
 		maxIdle:     defaultMaxIdle,
 		stopEvict:   make(chan struct{}),
 		maxContexts: maxContexts,
+		contexts:    make(map[string]*pooledContext),
 	}
 	go p.evictLoop()
 	return p
@@ -194,120 +208,217 @@ func (p *BrowserPool) newContext() (playwright.BrowserContext, error) {
 func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookiesJSON string) (*pooledContext, error) {
 	wantHash := credentialHash(cookiesJSON)
 
-	if val, ok := p.contexts.Load(businessID); ok {
-		pc := val.(*pooledContext)
-		if pc.credHash == wantHash {
-			pc.busy.Store(true)
-			pc.touch()
+	for {
+		if pc, ok := p.cacheHit(businessID, wantHash); ok {
 			return pc, nil
 		}
-		p.EvictContext(businessID)
-	}
 
-	if err := p.reserveSlot(ctx); err != nil {
-		return nil, err
-	}
+		if err := p.reserveSlot(ctx); err != nil {
+			return nil, err
+		}
 
+		pc, retry, err := p.buildAndCommit(businessID, cookiesJSON, wantHash)
+		if err != nil {
+			return nil, err
+		}
+		if retry {
+			continue
+		}
+		return pc, nil
+	}
+}
+
+// cacheHit returns the pooled context for businessID when one is published with
+// the matching credential, marking it busy. A published entry whose credential
+// hashes differently belongs to a different/rotated account and is evicted (no
+// hit) so the caller rebuilds. The map lookup and the credential-mismatch evict
+// run under commitMu.
+func (p *BrowserPool) cacheHit(businessID, wantHash string) (*pooledContext, bool) {
+	p.commitMu.Lock()
+	pc, ok := p.contexts[businessID]
+	if !ok {
+		p.commitMu.Unlock()
+		return nil, false
+	}
+	if pc.credHash == wantHash {
+		pc.busy.Store(true)
+		pc.touch()
+		p.commitMu.Unlock()
+		return pc, true
+	}
+	victim := p.deleteLocked(businessID)
+	p.commitMu.Unlock()
+	closeEvicted(victim)
+	return nil, false
+}
+
+// buildAndCommit constructs a fresh context (OUTSIDE any pool lock), then
+// publishes it under commitMu where the HARD per-map cap is enforced. It returns
+// retry=true when a concurrent acquire for the same businessID published a
+// context with a DIFFERENT credential — the caller must re-evict and rebuild
+// rather than be served a stale-credential context. The reserved liveCount slot
+// is released on every non-publishing path (build error, lost race, retry).
+func (p *BrowserPool) buildAndCommit(businessID, cookiesJSON, wantHash string) (pc *pooledContext, retry bool, err error) {
 	bCtx, err := p.newContext()
 	if err != nil {
 		p.liveCount.Add(-1)
-		return nil, fmt.Errorf("playwright: new context: %w", err)
+		return nil, false, fmt.Errorf("playwright: new context: %w", err)
 	}
 
 	if isOAuthToken(cookiesJSON) {
 		if err := exchangeOAuthForSession(bCtx, cookiesJSON); err != nil {
 			clearAndClose(bCtx)
 			p.liveCount.Add(-1)
-			return nil, fmt.Errorf("playwright: oauth session exchange: %w", err)
+			return nil, false, fmt.Errorf("playwright: oauth session exchange: %w", err)
 		}
 	} else {
 		if err := injectCookies(bCtx, cookiesJSON); err != nil {
 			clearAndClose(bCtx)
 			p.liveCount.Add(-1)
-			return nil, fmt.Errorf("playwright: set cookies: %w", err)
+			return nil, false, fmt.Errorf("playwright: set cookies: %w", err)
 		}
 	}
 
-	pc := &pooledContext{ctx: bCtx, cookies: "", credHash: wantHash}
-	pc.busy.Store(true)
-	pc.touch()
+	fresh := &pooledContext{ctx: bCtx, cookies: "", credHash: wantHash}
+	fresh.busy.Store(true)
+	fresh.touch()
 
-	actual, loaded := p.contexts.LoadOrStore(businessID, pc)
-	if loaded {
-		clearAndClose(bCtx)
-		p.liveCount.Add(-1)
-		existing := actual.(*pooledContext)
+	p.commitMu.Lock()
+	if existing, ok := p.contexts[businessID]; ok {
+		if existing.credHash != wantHash {
+			victim := p.deleteLocked(businessID)
+			p.commitMu.Unlock()
+			clearAndClose(bCtx)
+			p.liveCount.Add(-1)
+			closeEvicted(victim)
+			return nil, true, nil
+		}
 		existing.busy.Store(true)
 		existing.touch()
-		return existing, nil
+		p.commitMu.Unlock()
+		clearAndClose(bCtx)
+		p.liveCount.Add(-1)
+		return existing, false, nil
 	}
+	evicted := p.evictForCommitLocked()
+	p.contexts[businessID] = fresh
 	metrics.BrowserPoolContexts.Inc()
-	return pc, nil
+	p.commitMu.Unlock()
+
+	closeEvicted(evicted...)
+	return fresh, false, nil
 }
 
-// reserveSlot reserves capacity for one fresh context. When a cap is set it
-// serializes the count-check + LRU-evict + reservation under acquireMu so two
-// acquirers can't both pass the gate against a stale count. The reservation is
-// recorded by incrementing liveCount; the caller MUST decrement it on any
-// subsequent failure (newContext error, cookie-inject error, or lost
-// LoadOrStore race). With no cap, the reservation is unconditional.
+// reserveSlot is admission control: it grants the caller permission to build one
+// fresh context, keeping liveCount (committed + in-flight) bounded by maxContexts
+// so concurrent builds can never outnumber the cap. When the pool is at cap it
+// evicts an LRU non-busy committed entry to free an admission slot; if every
+// committed entry is busy it waits for one to free up, surfacing ErrPoolExhausted
+// on timeout. The check + evict + reservation increment are serialized under
+// commitMu — the same lock the publishing store holds — so the
+// committed-plus-in-flight total observed here is the one the commit enforces
+// against. The slow build runs AFTER this returns, outside the lock. The caller
+// MUST decrement liveCount on any non-publishing path (build error, lost race,
+// credential-retry). With no cap the reservation is unconditional.
 func (p *BrowserPool) reserveSlot(ctx context.Context) error {
 	if p.maxContexts <= 0 {
 		p.liveCount.Add(1)
 		return nil
 	}
 	for {
-		p.acquireMu.Lock()
+		p.commitMu.Lock()
 		if p.liveCount.Load() < int64(p.maxContexts) {
 			p.liveCount.Add(1)
-			p.acquireMu.Unlock()
+			p.commitMu.Unlock()
 			return nil
 		}
-		if p.evictLRUUnlessBusy() {
+		evicted := p.evictLRULocked()
+		if evicted != nil {
 			p.liveCount.Add(1)
-			p.acquireMu.Unlock()
+			p.commitMu.Unlock()
+			closeEvicted(evicted)
 			return nil
 		}
-		p.acquireMu.Unlock()
+		p.commitMu.Unlock()
 		if !p.waitForNonBusy(ctx, acquireWaitTimeout) {
 			return ErrPoolExhausted
 		}
 	}
 }
 
-// evictLRUUnlessBusy walks the pool's contexts, picks the oldest non-busy
-// entry by lastUsed, and removes it from the pool. The BrowserContext is
-// closed asynchronously so the caller (already holding the acquire path)
-// is not blocked on Chromium teardown. Returns true if a context was evicted.
-func (p *BrowserPool) evictLRUUnlessBusy() bool {
-	type entry struct {
-		key      string
-		lastUsed int64
-		pc       *pooledContext
+// evictForCommitLocked enforces the HARD cap at the publishing store. Called
+// under commitMu with a fresh slot about to be added, it evicts LRU non-busy
+// entries while the map is at cap so the subsequent insert cannot push
+// len(contexts) past maxContexts. Each eviction decrements liveCount; the
+// caller's reservation slot then converts into the freshly stored entry, so the
+// map stays at cap. Returns the evicted contexts for the caller to Close OUTSIDE
+// the lock. With no cap it is a no-op.
+func (p *BrowserPool) evictForCommitLocked() []*pooledContext {
+	if p.maxContexts <= 0 {
+		return nil
 	}
-	var candidates []entry
-	p.contexts.Range(func(k, v any) bool {
-		pc := v.(*pooledContext)
-		if pc.busy.Load() {
-			return true
+	var evicted []*pooledContext
+	for len(p.contexts) >= p.maxContexts {
+		victim := p.evictLRULocked()
+		if victim == nil {
+			break
 		}
-		candidates = append(candidates, entry{k.(string), pc.lastUsed.Load(), pc})
-		return true
-	})
-	if len(candidates) == 0 {
-		return false
+		evicted = append(evicted, victim)
 	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].lastUsed < candidates[j].lastUsed })
-	victim := candidates[0]
-	if victim.pc.busy.Load() {
-		return false
+	return evicted
+}
+
+// evictLRULocked removes the oldest non-busy entry from the map and decrements
+// liveCount, returning it so the caller closes the BrowserContext OUTSIDE
+// commitMu (Chromium teardown must not block the pool). Returns nil when every
+// entry is busy. MUST be called under commitMu.
+func (p *BrowserPool) evictLRULocked() *pooledContext {
+	var (
+		victimKey string
+		victim    *pooledContext
+		oldest    int64
+	)
+	for k, pc := range p.contexts {
+		if pc.busy.Load() {
+			continue
+		}
+		if victim == nil || pc.lastUsed.Load() < oldest {
+			victimKey, victim, oldest = k, pc, pc.lastUsed.Load()
+		}
 	}
-	p.contexts.Delete(victim.key)
+	if victim == nil {
+		return nil
+	}
+	delete(p.contexts, victimKey)
 	p.liveCount.Add(-1)
 	metrics.BrowserPoolEvictions.WithLabelValues("lru").Inc()
 	metrics.BrowserPoolContexts.Dec()
-	go func() { closePooledContext(victim.pc) }()
-	return true
+	return victim
+}
+
+// deleteLocked removes businessID from the map, decrements liveCount and the
+// gauge, and returns the removed context (nil if absent) for the caller to Close
+// OUTSIDE commitMu. MUST be called under commitMu.
+func (p *BrowserPool) deleteLocked(businessID string) *pooledContext {
+	pc, ok := p.contexts[businessID]
+	if !ok {
+		return nil
+	}
+	delete(p.contexts, businessID)
+	p.liveCount.Add(-1)
+	metrics.BrowserPoolContexts.Dec()
+	return pc
+}
+
+// closeEvicted closes evicted contexts asynchronously so callers are never
+// blocked on Chromium teardown. nil entries are ignored.
+func closeEvicted(pcs ...*pooledContext) {
+	for _, pc := range pcs {
+		if pc == nil {
+			continue
+		}
+		go func(pc *pooledContext) { closePooledContext(pc) }(pc)
+	}
 }
 
 // waitForNonBusy polls every busyPollInterval until at least one context in
@@ -325,19 +436,23 @@ func (p *BrowserPool) waitForNonBusy(ctx context.Context, timeout time.Duration)
 		case <-deadline.C:
 			return false
 		case <-ticker.C:
-			var anyFree bool
-			p.contexts.Range(func(_, v any) bool {
-				if !v.(*pooledContext).busy.Load() {
-					anyFree = true
-					return false
-				}
-				return true
-			})
-			if anyFree {
+			if p.anyFree() {
 				return true
 			}
 		}
 	}
+}
+
+// anyFree reports whether any published context is currently non-busy.
+func (p *BrowserPool) anyFree() bool {
+	p.commitMu.Lock()
+	defer p.commitMu.Unlock()
+	for _, pc := range p.contexts {
+		if !pc.busy.Load() {
+			return true
+		}
+	}
+	return false
 }
 
 // WithPage acquires a page in the business's browser context, executes fn, then closes the page.
@@ -380,11 +495,20 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 }
 
 // EvictContext removes and closes the browser context for the given business.
+//
+// It deliberately ignores the busy flag and does NOT take pc.mu: revoke and
+// credential rotation need the underlying session torn down IMMEDIATELY rather
+// than after the in-flight page work drains, so a leaked or rotated session is
+// never served again. Closing a context another goroutine holds under pc.mu is
+// safe here because playwright-go returns a retryable "context closed" error
+// (not a panic) on the now-dead context, which withRetry absorbs and the next
+// attempt rebuilds — the security win of immediate teardown outweighs one
+// retried action.
 func (p *BrowserPool) EvictContext(businessID string) {
-	if val, ok := p.contexts.LoadAndDelete(businessID); ok {
-		pc := val.(*pooledContext)
-		p.liveCount.Add(-1)
-		metrics.BrowserPoolContexts.Dec()
+	p.commitMu.Lock()
+	pc := p.deleteLocked(businessID)
+	p.commitMu.Unlock()
+	if pc != nil {
 		closePooledContext(pc)
 	}
 }
@@ -395,24 +519,32 @@ func (p *BrowserPool) evictLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			now := time.Now().UnixMilli()
-			p.contexts.Range(func(key, value any) bool {
-				pc := value.(*pooledContext)
-				if now-pc.lastUsed.Load() > p.maxIdle.Milliseconds() {
-					if pc.busy.Load() {
-						return true
-					}
-					p.contexts.Delete(key)
-					p.liveCount.Add(-1)
-					metrics.BrowserPoolEvictions.WithLabelValues("idle").Inc()
-					metrics.BrowserPoolContexts.Dec()
-					closePooledContext(pc)
-				}
-				return true
-			})
+			p.sweepIdle()
 		case <-p.stopEvict:
 			return
 		}
+	}
+}
+
+// sweepIdle evicts contexts idle longer than maxIdle. Map mutation runs under
+// commitMu; the Chromium teardown of each victim runs after the lock is released.
+func (p *BrowserPool) sweepIdle() {
+	now := time.Now().UnixMilli()
+	var evicted []*pooledContext
+	p.commitMu.Lock()
+	for key, pc := range p.contexts {
+		if now-pc.lastUsed.Load() <= p.maxIdle.Milliseconds() || pc.busy.Load() {
+			continue
+		}
+		delete(p.contexts, key)
+		p.liveCount.Add(-1)
+		metrics.BrowserPoolEvictions.WithLabelValues("idle").Inc()
+		metrics.BrowserPoolContexts.Dec()
+		evicted = append(evicted, pc)
+	}
+	p.commitMu.Unlock()
+	for _, pc := range evicted {
+		closePooledContext(pc)
 	}
 }
 
@@ -422,14 +554,18 @@ func (p *BrowserPool) Close() {
 		return
 	}
 	close(p.stopEvict)
-	p.contexts.Range(func(key, value any) bool {
-		pc := value.(*pooledContext)
-		closePooledContext(pc)
-		p.contexts.Delete(key)
-		return true
-	})
+	p.commitMu.Lock()
+	victims := make([]*pooledContext, 0, len(p.contexts))
+	for key, pc := range p.contexts {
+		victims = append(victims, pc)
+		delete(p.contexts, key)
+	}
 	p.liveCount.Store(0)
 	metrics.BrowserPoolContexts.Set(0)
+	p.commitMu.Unlock()
+	for _, pc := range victims {
+		closePooledContext(pc)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.browser != nil {

@@ -19,43 +19,53 @@ import (
 // it while acquires are in flight.
 func liveContexts(p *BrowserPool) int {
 	var n int
-	p.contexts.Range(func(_, _ any) bool { n++; return true })
+	p.contextsTest().Range(func(_ string, _ *pooledContext) bool { n++; return true })
 	return n
 }
 
 // --- Bug 2: cap-eviction must be atomic ------------------------------------
 
 // TestBrowserPool_CapEviction_NeverExceedsCap_UnderConcurrency spawns far more
-// concurrent fresh-businessID acquires than the cap allows and asserts the live
-// context count never overshoots maxContexts at any sampled instant. Each
+// concurrent fresh-businessID acquires than the cap allows and asserts the
+// COMMITTED map size never overshoots maxContexts at any sampled instant. Each
 // goroutine releases (clears busy) shortly after acquiring so waiters can make
-// progress, exercising the reserve/evict/store sequence repeatedly. With the
-// non-atomic gate reverted, independent goroutines pass the count check against
-// the same stale snapshot and the map transiently holds more than the cap.
+// progress, exercising the reserve/build/commit sequence repeatedly. Several
+// samplers race the publishing stores so a transient overshoot can't slip
+// between samples. The invariant under test is len(contexts) <= maxContexts at
+// ALL times: it is enforced at the commit-time critical section (build slot vs.
+// LRU-evict vs. publishing store are serialized under commitMu), so no number of
+// concurrent in-flight builds can push the committed map past the cap. With that
+// commit-time enforcement reverted, in-flight builds that reserved before an
+// eviction refill the freed slot and the map transiently holds more than the
+// cap. The build delay widens the reserve->store window so the overshoot
+// manifests on a revert; the multiple samplers make the assertion deterministic.
 func TestBrowserPool_CapEviction_NeverExceedsCap_UnderConcurrency(t *testing.T) {
 	const (
 		maxCtx     = 4
-		goroutines = 40
+		goroutines = 64
+		samplers   = 4
 	)
-	pool, _ := newSlowCappedPool(t, maxCtx, 200*time.Microsecond)
+	pool, _ := newSlowCappedPool(t, maxCtx, time.Millisecond)
 
 	var maxObserved int64
 	stop := make(chan struct{})
 	var samplerWG sync.WaitGroup
-	samplerWG.Add(1)
-	go func() {
-		defer samplerWG.Done()
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-				if n := int64(liveContexts(pool)); n > atomic.LoadInt64(&maxObserved) {
-					atomic.StoreInt64(&maxObserved, n)
+	for s := 0; s < samplers; s++ {
+		samplerWG.Add(1)
+		go func() {
+			defer samplerWG.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					if n := int64(liveContexts(pool)); n > atomic.LoadInt64(&maxObserved) {
+						atomic.StoreInt64(&maxObserved, n)
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < goroutines; i++ {
@@ -67,7 +77,7 @@ func TestBrowserPool_CapEviction_NeverExceedsCap_UnderConcurrency(t *testing.T) 
 			if err != nil {
 				return
 			}
-			time.Sleep(100 * time.Microsecond)
+			time.Sleep(200 * time.Microsecond)
 			pc.busy.Store(false)
 		}(i)
 	}
@@ -80,6 +90,60 @@ func TestBrowserPool_CapEviction_NeverExceedsCap_UnderConcurrency(t *testing.T) 
 	}
 	if got := liveContexts(pool); got > maxCtx {
 		t.Fatalf("final live context count = %d, exceeds cap %d", got, maxCtx)
+	}
+}
+
+// TestBrowserPool_CapEviction_CommitTimeEnforcement deterministically forces the
+// exact window Issue #3 is about: a fresh build is reserved and in flight while
+// the committed map fills to the cap underneath it, so the cap can only be held
+// by re-checking and evicting AT THE PUBLISHING STORE, not by the reservation
+// gate alone. The in-flight build's newContextFn publishes maxCtx non-busy
+// committed entries (and bumps liveCount to match) before returning, modeling
+// other acquires that committed during this build. When this build then commits,
+// a commit-time cap check must evict one LRU non-busy entry so the Store lands at
+// exactly maxCtx. Without commit-time enforcement the Store pushes the map to
+// maxCtx+1. The assertion is the HARD invariant: len(contexts) <= maxCtx after
+// commit, regardless of how many entries appeared mid-build.
+func TestBrowserPool_CapEviction_CommitTimeEnforcement(t *testing.T) {
+	const maxCtx = 4
+	metrics.BrowserPoolEvictions.Reset()
+	metrics.BrowserPoolContexts.Set(0)
+
+	pool := &BrowserPool{
+		maxIdle:     defaultMaxIdle,
+		stopEvict:   make(chan struct{}),
+		contexts:    make(map[string]*pooledContext),
+		maxContexts: maxCtx,
+	}
+
+	var filled bool
+	pool.newContextFn = func() (playwright.BrowserContext, error) {
+		if !filled {
+			filled = true
+			for i := 0; i < maxCtx; i++ {
+				seed := &pooledContext{ctx: &recordingMockContext{}, credHash: credentialHash("[]")}
+				seed.lastUsed.Store(time.Now().Add(time.Duration(-maxCtx+i) * time.Second).UnixMilli())
+				pool.contextsTest().Store(fmt.Sprintf("seed-%d", i), seed)
+				pool.liveCount.Add(1)
+			}
+		}
+		return &recordingMockContext{}, nil
+	}
+
+	pc, err := pool.getOrCreateContext(context.Background(), "fresh", "[]")
+	if err != nil {
+		t.Fatalf("acquire fresh: %v", err)
+	}
+	pc.busy.Store(false)
+
+	if got := liveContexts(pool); got > maxCtx {
+		t.Fatalf("committed map = %d after commit, exceeds cap %d (commit-time cap NOT enforced)", got, maxCtx)
+	}
+	if _, ok := pool.contextsTest().Load("fresh"); !ok {
+		t.Fatal("expected the freshly built context to be published")
+	}
+	if _, ok := pool.contextsTest().Load("seed-0"); ok {
+		t.Fatal("expected the LRU seed (seed-0) to be evicted at commit time")
 	}
 }
 
@@ -162,6 +226,54 @@ func TestBrowserPool_CacheHit_DifferentCredentials_Rebuilds(t *testing.T) {
 	}
 }
 
+// TestBrowserPool_CacheHit_ConcurrentDifferentCreds_NoStaleServe drives the
+// LoadOrStore lost-race for the SAME businessID with DIFFERENT credentials: both
+// goroutines mismatch-evict and build, one wins the publishing store, the other
+// takes the loaded branch. The loser must NOT be served the winner's
+// (foreign-credential) context — it re-evicts and rebuilds keyed to its own
+// credential. The invariant asserted: whatever context each goroutine ends up
+// with carries ITS OWN credHash. Reverting the loaded-branch credHash re-check
+// lets the loser run on the other account and this fails.
+func TestBrowserPool_CacheHit_ConcurrentDifferentCreds_NoStaleServe(t *testing.T) {
+	const iterations = 200
+	cookiesA := `[{"name":"Session_id","value":"AAA","domain":".yandex.ru","path":"/"}]`
+	cookiesB := `[{"name":"Session_id","value":"BBB","domain":".yandex.ru","path":"/"}]`
+	hashA := credentialHash(cookiesA)
+	hashB := credentialHash(cookiesB)
+
+	for iter := 0; iter < iterations; iter++ {
+		pool := freshSlowPool(5, 200*time.Microsecond)
+
+		var wg sync.WaitGroup
+		var gotA, gotB string
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			pc, err := pool.getOrCreateContext(context.Background(), "biz-1", cookiesA)
+			if err == nil {
+				gotA = pc.credHash
+				pc.busy.Store(false)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			pc, err := pool.getOrCreateContext(context.Background(), "biz-1", cookiesB)
+			if err == nil {
+				gotB = pc.credHash
+				pc.busy.Store(false)
+			}
+		}()
+		wg.Wait()
+
+		if gotA != "" && gotA != hashA {
+			t.Fatalf("iter %d: goroutine A served credHash %s, want its own %s (stale-cred serve)", iter, gotA, hashA)
+		}
+		if gotB != "" && gotB != hashB {
+			t.Fatalf("iter %d: goroutine B served credHash %s, want its own %s (stale-cred serve)", iter, gotB, hashB)
+		}
+	}
+}
+
 // TestBrowserPool_CacheHit_SameCredentials_Reuses is the control: an identical
 // credential on a cache hit must reuse the pooled context (no rebuild, no
 // eviction), preserving the warm-context fast path.
@@ -207,7 +319,7 @@ func TestBrowserPool_Revoke_EvictsContext(t *testing.T) {
 
 	pool.EvictContext("biz-1")
 
-	if _, ok := pool.contexts.Load("biz-1"); ok {
+	if _, ok := pool.contextsTest().Load("biz-1"); ok {
 		t.Fatal("expected biz-1 context to be evicted on revoke")
 	}
 	if !(*ctxs)[0].closeCalled.Load() {
@@ -272,6 +384,26 @@ func TestBrowserPool_Acquire_NotEvictedDuringPublishWindow(t *testing.T) {
 	}
 }
 
+// freshSlowPool builds a capped pool with an artificial per-context build delay
+// for use inside a tight per-iteration loop. It starts no evictLoop and registers
+// no cleanup, so callers can spin up hundreds without leaking goroutines or
+// double-closing stopEvict.
+func freshSlowPool(maxCtx int, delay time.Duration) *BrowserPool {
+	pool := &BrowserPool{
+		maxIdle:     defaultMaxIdle,
+		stopEvict:   make(chan struct{}),
+		contexts:    make(map[string]*pooledContext),
+		maxContexts: maxCtx,
+	}
+	pool.newContextFn = func() (playwright.BrowserContext, error) {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		return &recordingMockContext{}, nil
+	}
+	return pool
+}
+
 // newSlowCappedPool is newCappedPool with an artificial per-context construction
 // delay so the reserve→build→store window is wide enough for the cap-overshoot
 // race to manifest if the gate is not atomic.
@@ -287,6 +419,7 @@ func newSlowCappedPool(t *testing.T, maxCtx int, delay time.Duration) (*BrowserP
 	pool := &BrowserPool{
 		maxIdle:     defaultMaxIdle,
 		stopEvict:   make(chan struct{}),
+		contexts:    make(map[string]*pooledContext),
 		maxContexts: maxCtx,
 	}
 	pool.newContextFn = func() (playwright.BrowserContext, error) {
