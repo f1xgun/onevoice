@@ -171,6 +171,7 @@ Maps `pkg/metrics/*.go` collectors to the Prometheus metric names that dashboard
 | pkg/metrics/nats.go | `nats_publish_total` | subject, result | NATS publish count (a2a transport) |
 | pkg/metrics/nats.go | `nats_publish_duration_seconds` (histogram) | subject | NATS publish latency |
 | pkg/metrics/nats.go | `nats_handler_duration_seconds` (histogram) | subject, result | NATS subscribe-side handler latency |
+| pkg/metrics/nats.go | `a2a_handlers_inflight` (gauge) | — | In-flight a2a message handlers in this agent process; pins at the `A2A_MAX_CONCURRENT` cap when the agent is saturated (backpressure active) |
 | pkg/metrics/dbpool.go | `pgxpool_acquire_count_total` | — | Cumulative successful pgxpool acquires |
 | pkg/metrics/dbpool.go | `pgxpool_acquire_duration_seconds_total` | — | Cumulative acquire duration; **mean = rate(_total) / rate(_count_total)** (not a histogram) |
 | pkg/metrics/dbpool.go | `pgxpool_acquired_conns`, `pgxpool_idle_conns`, `pgxpool_max_conns` | — | pgxpool capacity gauges |

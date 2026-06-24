@@ -47,6 +47,16 @@ func CollapseSubject(subject string) string {
 	return subject
 }
 
+// A2AHandlersInflight is a per-process gauge of in-flight a2a message handlers
+// (== concurrency slots held when a cap is configured). It pins at the
+// configured cap when an agent is saturated (backpressure active) — the signal
+// that A2A_MAX_CONCURRENT is the binding constraint. No labels: one capacity
+// signal per agent process.
+var A2AHandlersInflight = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "a2a_handlers_inflight",
+	Help: "Current number of in-flight a2a message handlers in this agent process (concurrency slots held when a cap is set).",
+})
+
 // RecordNATSPublish records a single NATS publish attempt.
 func RecordNATSPublish(subject, result string, duration time.Duration) {
 	s := CollapseSubject(subject)
