@@ -260,6 +260,10 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 			author = msg.Chat.Title
 		}
 
+		if msg.Chat == nil {
+			continue
+		}
+
 		review := map[string]interface{}{
 			"id":         fmt.Sprintf("%d_%d", msg.Chat.ID, msg.MessageID),
 			"message_id": msg.MessageID,
