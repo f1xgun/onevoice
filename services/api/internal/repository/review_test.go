@@ -74,4 +74,6 @@ func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 	}
 	require.True(t, names["reviews_business_platform_external"],
 		"named compound index reviews_business_platform_external must exist")
+	require.True(t, names["reviews_business_reply_status_created_desc"],
+		"named compound index reviews_business_reply_status_created_desc must exist")
 }

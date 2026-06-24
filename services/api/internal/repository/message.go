@@ -115,6 +115,47 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 	return &msg, nil
 }
 
+// EnsureMessageIndexes creates the messages collection's compound indexes
+// idempotently at API startup. The two indexes cover the per-turn read paths:
+//   - {conversation_id, created_at} serves ListByConversationID (filter
+//     conversation_id, sort created_at asc) and prefixes CountByConversationID.
+//   - {conversation_id, role, status, created_at} serves FindByConversationActive
+//     (filter conversation_id+role+status, sort created_at desc).
+//
+// created_at is stamped once at insert and never mutated, so indexing it is safe.
+//
+// The {conversation_id, created_at} index uses Mongo's default-generated name
+// (conversation_id_1_created_at_1) instead of a custom name. migrations/mongo/init.js
+// auto-creates the same keys on fresh volumes; matching that name keeps the ensure an
+// idempotent no-op rather than a fatal IndexOptionsConflict (same keys, different name).
+func EnsureMessageIndexes(ctx context.Context, db *mongo.Database) error {
+	coll := db.Collection("messages")
+	models := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "conversation_id", Value: 1},
+				{Key: "created_at", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "conversation_id", Value: 1},
+				{Key: "role", Value: 1},
+				{Key: "status", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("messages_conversation_role_status_created_desc"),
+		},
+	}
+	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil
+		}
+		return fmt.Errorf("ensure message indexes: %w", err)
+	}
+	return nil
+}
+
 // SearchByConversationIDs — content search via word-prefix regex.
 //
 // Each lowercased token in the query must match SOME word in `content` whose

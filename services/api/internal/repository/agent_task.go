@@ -93,6 +93,30 @@ func (r *agentTaskRepository) GetByID(ctx context.Context, businessID, taskID st
 	return &task, nil
 }
 
+// EnsureAgentTaskIndexes creates the agent_tasks collection's compound index
+// idempotently at API startup. {business_id, created_at} serves ListByBusinessID
+// (filter business_id, sort created_at desc) and prefixes its CountDocuments;
+// the optional platform/status/type filters are low-cardinality, so a single
+// business_id+created_at index keeps the sort indexed without index sprawl.
+// created_at is stamped once at insert and never mutated, so indexing it is safe.
+func EnsureAgentTaskIndexes(ctx context.Context, db *mongo.Database) error {
+	coll := db.Collection("agent_tasks")
+	model := mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "business_id", Value: 1},
+			{Key: "created_at", Value: -1},
+		},
+		Options: options.Index().SetName("agent_tasks_business_created_desc"),
+	}
+	if _, err := coll.Indexes().CreateOne(ctx, model); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil
+		}
+		return fmt.Errorf("ensure agent task indexes: %w", err)
+	}
+	return nil
+}
+
 func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID string, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
 	tasks := make([]domain.AgentTask, 0)
 

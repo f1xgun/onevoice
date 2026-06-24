@@ -572,6 +572,8 @@ func TestEnsureConversationIndexes_Idempotent(t *testing.T) {
 		"named index conversations_user_biz_title_status must exist (untouched)")
 	assert.True(t, names["conversations_user_biz_proj_pinned_recency"],
 		"named index conversations_user_biz_proj_pinned_recency must exist (locked — this is a NEW separate index)")
+	assert.True(t, names["conversations_user_created_desc"],
+		"named index conversations_user_created_desc must exist (covers ListByUserID sort)")
 }
 
 // insertConvForPin inserts a conversation document directly

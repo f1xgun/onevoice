@@ -154,23 +154,39 @@ func (r *reviewRepository) BulkUpsert(ctx context.Context, reviews []*domain.Rev
 	return nil
 }
 
-// EnsureReviewIndexes creates the reviews collection's compound index on the
-// upsert natural key idempotently at API startup, so each upsert (and each
-// BulkWrite model) is an indexed lookup rather than a collection scan. The
-// index is non-unique: it is a query accelerator, not a constraint — the sync
-// path dedupes by the same key, and a unique index could fail to build on a
-// collection that predates it and already holds duplicates.
+// EnsureReviewIndexes creates the reviews collection's compound indexes
+// idempotently at API startup, so the hot read paths run as indexed lookups
+// rather than collection scans. Both indexes are non-unique query accelerators,
+// not constraints — the sync path dedupes by the upsert key, and a unique index
+// could fail to build on a collection that predates it and already holds
+// duplicates.
+//
+//   - {business_id, platform, external_id} serves the upsert natural key, so
+//     each upsert (and each BulkWrite model) is an indexed lookup.
+//   - {business_id, reply_status, created_at} serves ListPendingWithoutDraft and
+//     ListRepliedExamples (filter business_id+reply_status, sort created_at desc).
+//     created_at is set at sync time and never mutated, so indexing it is safe.
 func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("reviews")
-	model := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "business_id", Value: 1},
-			{Key: "platform", Value: 1},
-			{Key: "external_id", Value: 1},
+	models := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "business_id", Value: 1},
+				{Key: "platform", Value: 1},
+				{Key: "external_id", Value: 1},
+			},
+			Options: options.Index().SetName("reviews_business_platform_external"),
 		},
-		Options: options.Index().SetName("reviews_business_platform_external"),
+		{
+			Keys: bson.D{
+				{Key: "business_id", Value: 1},
+				{Key: "reply_status", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("reviews_business_reply_status_created_desc"),
+		},
 	}
-	if _, err := coll.Indexes().CreateOne(ctx, model); err != nil {
+	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			return nil
 		}
