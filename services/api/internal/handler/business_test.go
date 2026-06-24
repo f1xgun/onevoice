@@ -94,6 +94,12 @@ func (m *MockBusinessService) hasExpectation(method string) bool {
 	return false
 }
 
+// allToolsCache is a ToolsCache that accepts every tool name, so a decoded
+// toolApprovals entry always validates.
+type allToolsCache struct{}
+
+func (allToolsCache) Has(string) bool { return true }
+
 // bizPerms returns a BusinessContext with all business + content permissions
 // — enough to pass every Can() gate in the business handler.
 func bizPerms(businessID, userID uuid.UUID) authz.BusinessContext {
@@ -892,6 +898,34 @@ func TestBusinessHandler_BodyAndFieldLimits(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		mockSvc.AssertNotCalled(t, "Update")
+	})
+
+	// over-large body must be rejected by MaxBytesReader before the decoder
+	// finishes the object. The bulk lives in an unknown field while a valid
+	// toolApprovals entry keeps the fail-on-revert path clean: remove the
+	// `r.Body = http.MaxBytesReader(...)` line in UpdateBusinessToolApprovals
+	// and the oversized body decodes, the known tool passes, and the handler
+	// returns 200 (test fails). Restore → 400.
+	t.Run("UpdateBusinessToolApprovals rejects over-large body with 400", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("UpdateToolApprovals", mock.Anything, testBusinessID, mock.Anything).
+			Return(nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+		h.SetToolsCache(allToolsCache{})
+
+		filler := strings.Repeat("z", maxBusinessBodyBytes+1)
+		body := `{"_pad":"` + filler + `","toolApprovals":{"telegram__send_channel_post":"auto"}}`
+		req := httptest.NewRequest(http.MethodPut, "/tool-approvals", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateBusinessToolApprovals(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "UpdateToolApprovals")
 	})
 
 	// over-large schedule blob must be rejected by the settings cap. Revert the

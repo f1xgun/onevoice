@@ -418,6 +418,7 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
 	var req openapi.UpdateToolApprovalsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
