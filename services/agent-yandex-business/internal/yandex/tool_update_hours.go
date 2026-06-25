@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,12 +13,26 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
+// yandexHoursShape matches the Yandex.Business hours text format that the
+// structured-JSON branch of formatHoursForYandex emits and that the edit-page
+// input placeholder ("Пн-Пт 9:00-18:00") expects: a comma-separated list whose
+// first segment is a day or day-range ("Пн" / "Пн-Пт") followed by one or more
+// "H:MM-H:MM" / "HH:MM-HH:MM" ranges, and whose later segments are either
+// additional day-prefixed ranges or bare ranges (split shifts).
+var yandexHoursShape = regexp.MustCompile(
+	`^(Пн|Вт|Ср|Чт|Пт|Сб|Вс)(-(Пн|Вт|Ср|Чт|Пт|Сб|Вс))? \d{1,2}:\d{2}-\d{1,2}:\d{2}` +
+		`(, ((Пн|Вт|Ср|Чт|Пт|Сб|Вс)(-(Пн|Вт|Ср|Чт|Пт|Сб|Вс))? )?\d{1,2}:\d{2}-\d{1,2}:\d{2})*$`,
+)
+
 // UpdateHours updates business operating hours in Yandex.Business via RPA.
 // The Yandex.Business edit page has a single text input for hours with
 // placeholder "Введите в формате «Пн-Пт 9:00-18:00»".
 // hoursJSON is passed from the LLM — we convert it to the Yandex text format.
 func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) error {
-	hoursText := formatHoursForYandex(hoursJSON)
+	hoursText, err := formatHoursForYandex(hoursJSON)
+	if err != nil {
+		return a2a.NewNonRetryableError(err)
+	}
 	if hoursText == "" {
 		return a2a.NewNonRetryableError(fmt.Errorf("could not parse hours from: %s", hoursJSON))
 	}
@@ -57,11 +72,21 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 }
 
 // formatHoursForYandex converts LLM-generated hours JSON into the text format
-// that Yandex.Business expects: "Пн-Пт 9:00-18:00, Сб 10:00-15:00"
-func formatHoursForYandex(hoursJSON string) string {
+// that Yandex.Business expects: "Пн-Пт 9:00-18:00, Сб 10:00-15:00".
+//
+// When the input is not JSON it may already be a pre-formatted Yandex hours
+// string (the input placeholder shape), which is forwarded verbatim — but only
+// if it matches yandexHoursShape. Genuinely malformed input (truncated JSON,
+// stray prose) is rejected with an error so the caller surfaces the failed
+// write instead of typing garbage into the operating-hours field.
+func formatHoursForYandex(hoursJSON string) (string, error) {
 	var structured map[string]interface{}
 	if err := json.Unmarshal([]byte(hoursJSON), &structured); err != nil {
-		return hoursJSON
+		trimmed := strings.TrimSpace(hoursJSON)
+		if yandexHoursShape.MatchString(trimmed) {
+			return trimmed, nil
+		}
+		return "", fmt.Errorf("could not parse hours from: %s", hoursJSON)
 	}
 
 	dayMap := map[string]string{
@@ -163,5 +188,5 @@ func formatHoursForYandex(hoursJSON string) string {
 		i = j
 	}
 
-	return strings.Join(parts, ", ")
+	return strings.Join(parts, ", "), nil
 }
