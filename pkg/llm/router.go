@@ -139,6 +139,13 @@ func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
 // checker has no daily/token state (no TokenRecorder) or there is no user to
 // attribute. The delta is clamped at zero — the estimate already charged the
 // gate, and an over-estimate must not credit tokens back.
+//
+// actual sums every consumed token class directly rather than reading the
+// shared TotalTokens field: Anthropic sets TotalTokens to InputTokens+
+// OutputTokens, which excludes CacheReadTokens/CacheCreationTokens (its
+// InputTokens is post-cache), so a cache-heavy turn would under-charge the
+// monthly budget gate. The cache fields are zero for providers without a
+// cache surface, so the explicit sum is provider-agnostic.
 func (r *Router) reconcileTokens(req ChatRequest, resp *ChatResponse) {
 	if r.rateLimiter == nil || req.UserID == uuid.Nil {
 		return
@@ -147,10 +154,8 @@ func (r *Router) reconcileTokens(req ChatRequest, resp *ChatResponse) {
 	if !ok {
 		return
 	}
-	actual := resp.Usage.TotalTokens
-	if actual == 0 {
-		actual = resp.Usage.InputTokens + resp.Usage.OutputTokens
-	}
+	actual := resp.Usage.InputTokens + resp.Usage.OutputTokens +
+		resp.Usage.CacheReadTokens + resp.Usage.CacheCreationTokens
 	delta := actual - estimateRequestTokens(req)
 	if delta <= 0 {
 		return

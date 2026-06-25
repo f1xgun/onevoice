@@ -65,14 +65,20 @@ type defaultSelector struct {
 }
 
 // providerMetrics holds runtime state owned by defaultSelector.
+//
+// consecutiveSuccesses counts successes since the last failure (reset to 0 on
+// any failure); it gates recovery so a degraded/down provider only flips back
+// to healthy after healthRecoverySuccessMin successes in a row, not on its
+// first success after a lifetime of accumulated successCount.
 type providerMetrics struct {
-	totalRequests   int64
-	successCount    int64
-	failureCount    int64
-	avgLatencyMs    int
-	lastLatencies   []int64
-	healthStatus    string
-	lastTouchedUnix int64
+	totalRequests        int64
+	successCount         int64
+	failureCount         int64
+	consecutiveSuccesses int64
+	avgLatencyMs         int
+	lastLatencies        []int64
+	healthStatus         string
+	lastTouchedUnix      int64
 }
 
 // NewSelector constructs the default Selector. See docs/pkg/llm.md.
@@ -171,6 +177,7 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 
 	if outcome.Success {
 		m.successCount++
+		m.consecutiveSuccesses++
 		if outcome.Latency > 0 {
 			ms := outcome.Latency.Milliseconds()
 			m.lastLatencies = append(m.lastLatencies, ms)
@@ -183,11 +190,12 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 			}
 			m.avgLatencyMs = int(sum / int64(len(m.lastLatencies)))
 		}
-		if m.healthStatus != HealthStatusHealthy && m.successCount >= healthRecoverySuccessMin {
+		if m.healthStatus != HealthStatusHealthy && m.consecutiveSuccesses >= healthRecoverySuccessMin {
 			m.healthStatus = HealthStatusHealthy
 		}
 	} else {
 		m.failureCount++
+		m.consecutiveSuccesses = 0
 		failureRate := float64(m.failureCount) / float64(m.totalRequests)
 		switch {
 		case failureRate > healthDownRate:

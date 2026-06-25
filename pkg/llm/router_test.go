@@ -482,7 +482,7 @@ func TestRouter_ReconcileTokens_RecordsDelta(t *testing.T) {
 		name: "openai",
 		response: &llm.ChatResponse{
 			Content: "ok",
-			Usage:   llm.TokenUsage{TotalTokens: 9000},
+			Usage:   llm.TokenUsage{InputTokens: 6000, OutputTokens: 3000, TotalTokens: 9000},
 		},
 	}
 	r := llm.NewRouter(registry,
@@ -518,7 +518,7 @@ func TestRouter_ReconcileTokens_SkippedWhenActualUnderEstimate(t *testing.T) {
 
 	stub := &stubProvider{
 		name:     "openai",
-		response: &llm.ChatResponse{Content: "ok", Usage: llm.TokenUsage{TotalTokens: 5}},
+		response: &llm.ChatResponse{Content: "ok", Usage: llm.TokenUsage{InputTokens: 3, OutputTokens: 2, TotalTokens: 5}},
 	}
 	r := llm.NewRouter(registry,
 		llm.WithProvider(stub),
@@ -537,6 +537,53 @@ func TestRouter_ReconcileTokens_SkippedWhenActualUnderEstimate(t *testing.T) {
 	case delta := <-frl.recordCh:
 		t.Fatalf("reconcile must not fire when actual <= estimate, got delta=%d", delta)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// TestRouter_ReconcileTokens_IncludesCacheTokens — Anthropic reports a small
+// post-cache InputTokens plus separate CacheReadTokens/CacheCreationTokens, and
+// its TotalTokens excludes the cache classes. The reconcile must charge the FULL
+// consumed total (Input+Output+CacheRead+CacheCreation), not the cache-blind
+// TotalTokens, or the monthly budget gate under-charges cache-heavy turns.
+func TestRouter_ReconcileTokens_IncludesCacheTokens(t *testing.T) {
+	entry := healthyEntry("claude-3-5-sonnet", "anthropic", 3.0, 15.0, 400)
+	registry := newTestRegistry(entry)
+	frl := &fakeRateLimiter{allowed: true, recordCh: make(chan int, 1)}
+
+	stub := &stubProvider{
+		name: "anthropic",
+		response: &llm.ChatResponse{
+			Content: "ok",
+			Usage: llm.TokenUsage{
+				InputTokens:         100,
+				OutputTokens:        200,
+				CacheReadTokens:     50000,
+				CacheCreationTokens: 30000,
+				TotalTokens:         300, // Anthropic: Input+Output only (cache excluded)
+			},
+		},
+	}
+	r := llm.NewRouter(registry,
+		llm.WithProvider(stub),
+		llm.WithRateLimitChecker(frl),
+	)
+
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:    "claude-3-5-sonnet",
+		UserID:   uuid.New(),
+		Tier:     "free",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}}, // tiny estimate
+	})
+	require.NoError(t, err)
+
+	select {
+	case delta := <-frl.recordCh:
+		assert.Greater(t, delta, 80000,
+			"reconcile must charge the full consumed total (100+200+50000+30000=80300 minus a tiny estimate), not TotalTokens=300")
+		assert.Less(t, delta, 80300,
+			"delta is the full consumed total minus the pre-flight estimate, so strictly below the raw 80300 sum")
+	case <-time.After(2 * time.Second):
+		t.Fatal("reconcile RecordTokens was not called within timeout")
 	}
 }
 
