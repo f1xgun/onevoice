@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -156,6 +158,33 @@ func NewWithHITL(
 	}
 }
 
+// recoverToError converts a panic on a detached agent-loop goroutine into a
+// terminal EventError instead of crashing the whole process (which would kill
+// every other concurrent SSE stream). It mirrors a2a.recoverHandler: count the
+// panic on app_errors_total{service="orchestrator"}, log it with the full
+// stack, then emit the same generic internal_error event stepRun uses so the
+// API proxy can finalize the message rather than strand it on a silent close.
+// MUST be deferred AFTER `defer close(ch)` so the error is emitted before the
+// channel closes.
+func recoverToError(ctx context.Context, ch chan<- Event) {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	metrics.IncAppError(metrics.ServiceOrchestrator)
+	slog.ErrorContext(ctx, "orchestrator: recovered panic on agent-loop goroutine",
+		slog.Any("panic", r),
+		slog.String("stack", string(debug.Stack())),
+	)
+
+	ev := Event{Type: EventError, Code: "internal_error", Content: friendlyInternalErrorMessage(ctx)}
+	select {
+	case ch <- ev:
+	case <-ctx.Done():
+	}
+}
+
 // Run starts a fresh agent turn and returns a channel of events. The channel
 // is closed when stepRun returns (done / paused / error).
 // See docs/orchestrator/run.md.
@@ -184,6 +213,7 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 
 	go func() {
 		defer close(ch)
+		defer recoverToError(ctx, ch)
 		_, _, _ = o.stepRun(ctx, state, ch)
 	}()
 

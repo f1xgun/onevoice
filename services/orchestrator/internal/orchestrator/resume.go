@@ -64,6 +64,7 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 
 	go func() {
 		defer close(ch)
+		defer recoverToError(ctx, ch)
 		o.resumeGoroutine(ctx, batch, req, ch)
 	}()
 	return ch, nil
@@ -262,6 +263,13 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 
 		if call.Dispatched {
+			mu.Lock()
+			state.Messages = append(state.Messages, llm.Message{
+				Role:       "tool",
+				Content:    `{"dispatched":true,"note":"result not persisted across resume"}`,
+				ToolCallID: call.CallID,
+			})
+			mu.Unlock()
 			continue
 		}
 

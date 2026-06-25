@@ -16,6 +16,12 @@ var (
 	ErrNoProvider = errors.New("no healthy provider available for model")
 	// ErrRateLimitExceeded is returned when the per-user/tier rate limit gate rejects the call.
 	ErrRateLimitExceeded = errors.New("rate limit exceeded")
+
+	// errNilProviderResponse marks the contract violation where a Provider.Chat
+	// returns (nil, nil). Synthesized in Chat so the success path never
+	// dereferences a nil response; classified transient so the router falls
+	// through to the next candidate instead of surfacing a panic.
+	errNilProviderResponse = errors.New("provider returned nil response without error")
 )
 
 // tokensPerMillion is the divisor used when converting per-1M-token list prices into per-token cost.
@@ -198,6 +204,9 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 
 		start := time.Now()
 		resp, callErr := cand.Provider.Chat(ctx, req)
+		if callErr == nil && resp == nil {
+			callErr = errNilProviderResponse
+		}
 		providerLatency := time.Duration(0)
 		if resp != nil {
 			providerLatency = resp.Latency
