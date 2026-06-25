@@ -592,6 +592,130 @@ func TestMembersHandler_UpdateMemberRole_RejectsUnknownRole(t *testing.T) {
 	inv.AssertNotCalled(t, "InvalidateMember")
 }
 
+// An actor holding the seeded system admin role has members.update_role but
+// lacks owner-only permissions. Assigning a target the system owner role must
+// be refused before any tx opens.
+func TestMembersHandler_UpdateMemberRole_EscalationSubset_403(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	rr := &MockRoleRepository{}
+	ur := &MockUserRepository{}
+	inv := &MockCacheInvalidator{}
+	mockPool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+
+	bizID := uuid.New()
+	actorID := uuid.New()
+	targetID := uuid.New()
+	adminRoleID := uuid.MustParse(domain.SystemRoleAdminID)
+	ownerRoleID := uuid.MustParse(domain.SystemRoleOwnerID)
+
+	rr.On("GetByID", mock.Anything, ownerRoleID).Return(&domain.Role{
+		ID:         ownerRoleID,
+		BusinessID: nil,
+		Name:       "owner",
+		Permissions: []string{
+			string(authz.PermMembersUpdateRole),
+			string(authz.PermBusinessDelete),
+			string(authz.PermBusinessTransferOwnership),
+			string(authz.PermBillingUpdate),
+		},
+	}, nil)
+
+	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
+
+	ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID: bizID,
+		UserID:     actorID,
+		RoleID:     adminRoleID,
+		Permissions: []authz.Permission{
+			authz.PermMembersUpdateRole,
+			authz.PermMembersRemove,
+			authz.PermMembersInvite,
+		},
+	})
+	body := map[string]interface{}{"role_id": ownerRoleID.String()}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(bodyBytes)).WithContext(ctx)
+	req = withChiParams(req, map[string]string{"userId": targetID.String()})
+	w := httptest.NewRecorder()
+	h.UpdateMemberRole(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assertErrorCode(t, w, "cannot_grant_unowned_permissions")
+	mr.AssertNotCalled(t, "UpdateRoleInTx")
+	inv.AssertNotCalled(t, "InvalidateMember")
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// A system owner actor is exempt from the escalation subset check and can still
+// promote a member to the system owner role.
+func TestMembersHandler_UpdateMemberRole_OwnerCanAssignOwner(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	rr := &MockRoleRepository{}
+	ur := &MockUserRepository{}
+	inv := &MockCacheInvalidator{}
+	mockPool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+
+	bizID := uuid.New()
+	actorID := uuid.New()
+	targetID := uuid.New()
+	ownerRoleID := uuid.MustParse(domain.SystemRoleOwnerID)
+	now := time.Now().UTC()
+
+	rr.On("GetByID", mock.Anything, ownerRoleID).Return(&domain.Role{
+		ID:         ownerRoleID,
+		BusinessID: nil,
+		Name:       "owner",
+		Permissions: []string{
+			string(authz.PermMembersUpdateRole),
+			string(authz.PermBusinessDelete),
+			string(authz.PermBusinessTransferOwnership),
+			string(authz.PermBillingUpdate),
+		},
+	}, nil)
+
+	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	mockPool.ExpectQuery("SELECT user_id, role_id").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
+			AddRow(actorID, ownerRoleID).
+			AddRow(targetID, ownerRoleID))
+	mockPool.ExpectCommit()
+
+	mr.On("UpdateRoleInTx", mock.Anything, mock.Anything, bizID, targetID, ownerRoleID, actorID).Return(nil)
+	mr.On("GetByBusinessUser", mock.Anything, bizID, targetID).Return(&domain.BusinessMember{
+		BusinessID:    bizID,
+		UserID:        targetID,
+		RoleID:        ownerRoleID,
+		Status:        "active",
+		JoinedAt:      now,
+		RoleChangedAt: &now,
+		RoleChangedBy: &actorID,
+	}, nil)
+	inv.On("InvalidateMember", bizID, targetID).Return()
+
+	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
+
+	ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  bizID,
+		UserID:      actorID,
+		RoleID:      ownerRoleID,
+		Permissions: []authz.Permission{authz.PermMembersUpdateRole},
+	})
+	body := map[string]interface{}{"role_id": ownerRoleID.String()}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPatch, "/businesses/"+bizID.String()+"/members/"+targetID.String(), bytes.NewReader(bodyBytes)).WithContext(ctx)
+	req = withChiParams(req, map[string]string{"userId": targetID.String()})
+	w := httptest.NewRecorder()
+	h.UpdateMemberRole(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	inv.AssertExpectations(t)
+	mr.AssertExpectations(t)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
 // --- RemoveMember tests ---
 
 func TestMembersHandler_RemoveMember_HappyPath_NonSelf(t *testing.T) {

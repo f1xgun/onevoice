@@ -193,6 +193,15 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	rolePerms := make([]authz.Permission, 0, len(role.Permissions))
+	for _, p := range role.Permissions {
+		rolePerms = append(rolePerms, authz.Permission(p))
+	}
+	if err := authz.CheckEscalationSubset(bc.RoleID, bc.Permissions, rolePerms); err != nil {
+		writeAuthzInvariantError(r.Context(), w, "update_member_role.escalation", err)
+		return
+	}
+
 	tx, err := h.pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		writeAuthzInvariantError(r.Context(), w, "update_member_role.begin", err)
