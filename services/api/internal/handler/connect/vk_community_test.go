@@ -47,6 +47,15 @@ func newVKAPIMock(t *testing.T, opts vkMockOpts) *httptest.Server {
 	})
 	mux.HandleFunc("/method/groups.getTokenPermissions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if opts.tokenPermsErrorCode != 0 {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": map[string]interface{}{
+					"error_code": opts.tokenPermsErrorCode,
+					"error_msg":  opts.tokenPermsErrorMsg,
+				},
+			})
+			return
+		}
 		perms := make([]map[string]interface{}, 0, len(opts.scopes))
 		for _, s := range opts.scopes {
 			perms = append(perms, map[string]interface{}{"name": s, "setting": 1})
@@ -67,6 +76,12 @@ type vkMockOpts struct {
 
 	// groups.getTokenPermissions scope list (e.g. {"wall", "manage"}).
 	scopes []string
+
+	// groups.getTokenPermissions HTTP-200 error envelope. When
+	// tokenPermsErrorCode is non-zero the mock returns {"error":{...}}
+	// instead of a permissions list (error_code 6 = "Too many requests").
+	tokenPermsErrorCode int
+	tokenPermsErrorMsg  string
 }
 
 func TestConnectVK_Paste_Success(t *testing.T) {
@@ -141,6 +156,55 @@ func TestConnectVK_Paste_TokenWithoutWallScope_400(t *testing.T) {
 		t.Errorf("expected wall-scope hint in error, got %s", rr.Body.String())
 	}
 	mockIntegration.AssertNotCalled(t, "Connect", mock.Anything, mock.Anything)
+}
+
+// TestConnectVK_Paste_TokenPermissionsRateLimited_StillConnects guards the
+// external-API-error distinction in checkVKWallScope: when
+// groups.getTokenPermissions returns an HTTP-200 error envelope (error_code 6
+// = "Too many requests", common on this method), the scope check must fall
+// back to a best-effort connect rather than misreading the rate-limit
+// envelope as a missing `wall` permission. Reverting Fix A (dropping the
+// Error field / its nil-check) makes the permissions list parse empty and the
+// handler reject with 400 wall_permission_missing — this test then fails.
+func TestConnectVK_Paste_TokenPermissionsRateLimited_StillConnects(t *testing.T) {
+	vkServer := newVKAPIMock(t, vkMockOpts{
+		communityID:         236912172,
+		communityName:       "OneVoice",
+		communityScreenName: "club236912172",
+		tokenPermsErrorCode: 6,
+		tokenPermsErrorMsg:  "Too many requests per second",
+	})
+	defer vkServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockBusiness := new(MockBusinessService)
+
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
+		return p.Platform == "vk" && p.ExternalID == "236912172"
+	})).Return(&domain.Integration{ID: uuid.New(), Platform: "vk", ExternalID: "236912172"}, nil)
+
+	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
+		strings.NewReader(`{"access_token": "vk1.a.PASTED_COMMUNITY_TOKEN"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 (best-effort connect on rate-limited scope probe), got %d: %s",
+			rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "wall_permission_missing") {
+		t.Errorf("rate-limit envelope must not be reported as missing wall scope: %s", rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
 }
 
 func TestConnectVK_Paste_VKAPIError_400(t *testing.T) {
