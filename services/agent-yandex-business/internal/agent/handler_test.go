@@ -134,8 +134,9 @@ func TestHandler_UpdateInfo(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 	assert.Equal(t, "+7 999 123 45 67", browser.updatedInfo["phone"])
-	assert.Equal(t, "https://example.com", browser.updatedInfo["website"])
 	assert.Equal(t, "Best coffee", browser.updatedInfo["description"])
+	_, hasWebsite := browser.updatedInfo["website"]
+	assert.False(t, hasWebsite, "handler must not collect 'website' — the RPA layer has no selector for it")
 }
 
 func TestHandler_GetReviews(t *testing.T) {
