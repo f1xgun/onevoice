@@ -146,15 +146,41 @@ func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) er
 	return nil
 }
 
+// reviewNaturalKey is the (business_id, platform, external_id) tuple a review
+// upserts on. Two reviews sharing it address the same document.
+type reviewNaturalKey struct {
+	businessID string
+	platform   string
+	externalID string
+}
+
 // BulkUpsert upserts every review with a non-empty external_id in a single
 // unordered BulkWrite — one round-trip instead of one UpdateOne per review.
 // Unordered so a single failing model does not abort the rest of the batch.
+//
+// Reviews sharing a natural key are collapsed to a single model, keeping the
+// last occurrence (the freshest copy from the caller). Without this, an
+// unordered BulkWrite of two upserts on the same key both miss on filter and
+// both insert — two documents for one review on any non-unique-index path, and
+// an E11000 that drops the second under the unique index.
 func (r *reviewRepository) BulkUpsert(ctx context.Context, reviews []*domain.Review) error {
-	models := make([]mongo.WriteModel, 0, len(reviews))
+	seen := make(map[reviewNaturalKey]int, len(reviews))
+	deduped := make([]*domain.Review, 0, len(reviews))
 	for _, review := range reviews {
 		if review.ExternalID == "" {
 			continue
 		}
+		key := reviewNaturalKey{review.BusinessID, review.Platform, review.ExternalID}
+		if idx, ok := seen[key]; ok {
+			deduped[idx] = review
+			continue
+		}
+		seen[key] = len(deduped)
+		deduped = append(deduped, review)
+	}
+
+	models := make([]mongo.WriteModel, 0, len(deduped))
+	for _, review := range deduped {
 		filter, update := reviewUpsert(review)
 		models = append(models, mongo.NewUpdateOneModel().
 			SetFilter(filter).
@@ -170,15 +196,24 @@ func (r *reviewRepository) BulkUpsert(ctx context.Context, reviews []*domain.Rev
 	return nil
 }
 
+// reviewBusinessExternalIndexName is the name of the compound index over the
+// upsert natural key {business_id, platform, external_id}. Shared by
+// EnsureReviewIndexes and MigrateReviewsBusinessScopedUniqueIndex so both
+// converge on the same named, UNIQUE index.
+const reviewBusinessExternalIndexName = "reviews_business_platform_external"
+
 // EnsureReviewIndexes creates the reviews collection's compound indexes
 // idempotently at API startup, so the hot read paths run as indexed lookups
-// rather than collection scans. Both indexes are non-unique query accelerators,
-// not constraints — the sync path dedupes by the upsert key, and a unique index
-// could fail to build on a collection that predates it and already holds
-// duplicates.
+// rather than collection scans.
 //
-//   - {business_id, platform, external_id} serves the upsert natural key, so
-//     each upsert (and each BulkWrite model) is an indexed lookup.
+//   - {business_id, platform, external_id} is the upsert natural key and is
+//     UNIQUE: external_id is per-business (VK builds "{post_id}_{comment_id}"
+//     from per-community sequential ints), so the constraint must include
+//     business_id or two organizations sharing an (external_id, platform) would
+//     collide. Building unique requires the collection to hold no duplicates on
+//     this key; the sync path dedupes its batch and the BulkWrite collapses
+//     same-key models, and the one-shot migration relocates any pre-existing
+//     collisions before this runs at boot.
 //   - {business_id, reply_status, created_at} serves ListPendingWithoutDraft and
 //     ListRepliedExamples (filter business_id+reply_status, sort created_at desc).
 //     created_at is set at sync time and never mutated, so indexing it is safe.
@@ -191,7 +226,7 @@ func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 				{Key: "platform", Value: 1},
 				{Key: "external_id", Value: 1},
 			},
-			Options: options.Index().SetName("reviews_business_platform_external"),
+			Options: options.Index().SetName(reviewBusinessExternalIndexName).SetUnique(true),
 		},
 		{
 			Keys: bson.D{

@@ -221,18 +221,7 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		return nil
 	}
 
-	reviews := make([]*domain.Review, 0, len(reviewsList))
-	for _, r := range reviewsList {
-		m, ok := r.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		review := reviewFromMap(m, businessID.String(), platform)
-		if review.ExternalID == "" {
-			continue
-		}
-		reviews = append(reviews, review)
-	}
+	reviews := dedupeReviewsByExternalID(reviewsList, businessID.String(), platform)
 
 	upsertCtx, upsertCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer upsertCancel()
@@ -258,6 +247,36 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		}
 	}
 	return nil
+}
+
+// dedupeReviewsByExternalID converts a tool result's raw review list into
+// domain.Reviews, dropping entries with an empty external_id and collapsing
+// duplicates on external_id (keep-last, so the freshest copy wins). Platform is
+// constant within a single syncOne call, so external_id alone is the natural
+// key here. The live Yandex RPA get_reviews re-queries every visible card from
+// index 0 on each 'load more' pass, so the same external_id is emitted more than
+// once in one batch; without this collapse an unordered BulkWrite would insert
+// the same review twice on any non-unique-index path.
+func dedupeReviewsByExternalID(reviewsList []interface{}, businessID, platform string) []*domain.Review {
+	seen := make(map[string]int, len(reviewsList))
+	out := make([]*domain.Review, 0, len(reviewsList))
+	for _, r := range reviewsList {
+		m, ok := r.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		review := reviewFromMap(m, businessID, platform)
+		if review.ExternalID == "" {
+			continue
+		}
+		if idx, ok := seen[review.ExternalID]; ok {
+			out[idx] = review
+			continue
+		}
+		seen[review.ExternalID] = len(out)
+		out = append(out, review)
+	}
+	return out
 }
 
 // reviewFromMap converts a raw map from a tool result into a domain.Review.

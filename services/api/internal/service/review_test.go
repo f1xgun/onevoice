@@ -251,6 +251,36 @@ func TestBuildPlatformReply_UnknownPlatformIsNoop(t *testing.T) {
 	}
 }
 
+// The live Yandex RPA get_reviews re-queries every visible card from index 0 on
+// each 'load more' pass, so the same external_id is emitted more than once in
+// one batch. The syncer must collapse those before BulkUpsert (keep-last) so one
+// scraped review never lands as two documents.
+func TestDedupeReviewsByExternalID(t *testing.T) {
+	raw := []interface{}{
+		map[string]interface{}{"id": "y-1", "text": "first pass"},
+		map[string]interface{}{"id": "y-2", "text": "other review"},
+		map[string]interface{}{"id": "y-1", "text": "second pass (fresher)"},
+		map[string]interface{}{"id": "", "text": "no external id, dropped"},
+		"not a map, dropped",
+	}
+
+	out := dedupeReviewsByExternalID(raw, "biz-1", a2a.AgentYandexBusiness)
+
+	if len(out) != 2 {
+		t.Fatalf("expected 2 reviews after dedupe, got %d: %+v", len(out), out)
+	}
+	byExt := map[string]*domain.Review{}
+	for _, r := range out {
+		byExt[r.ExternalID] = r
+	}
+	if got := byExt["y-1"]; got == nil || got.Text != "second pass (fresher)" {
+		t.Errorf("y-1 must collapse keep-last to the freshest copy, got %+v", got)
+	}
+	if got := byExt["y-2"]; got == nil || got.Text != "other review" {
+		t.Errorf("y-2 must survive untouched, got %+v", got)
+	}
+}
+
 func TestMetaInt_AcceptsFloatAndInt(t *testing.T) {
 	cases := []map[string]interface{}{
 		{"k": float64(42)},
