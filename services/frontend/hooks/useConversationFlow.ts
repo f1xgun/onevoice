@@ -183,6 +183,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const isStreamingRef = useRef(false);
   const streamingConversationIdRef = useRef<string | null>(null);
   const isResolvingRef = useRef(false);
+  const resumingConversationIdRef = useRef<string | null>(null);
+  const loadedConversationIdRef = useRef<string | null>(null);
   const turnPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tCommon = useTranslations('common');
@@ -225,6 +227,28 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       streamingConversationIdRef.current = null;
       setIsStreaming(false);
     }
+
+    // A real switch to a DIFFERENT conversation (not a same-conversation effect
+    // re-run from an activeBusinessId/queryClient dep change) must drop the prior
+    // conversation's HITL state: clear the leaked approval card and abort any
+    // in-flight resume stream whose SSE events would otherwise bleed into the new
+    // conversation (a `done` frame finalizing the wrong bubble, a re-pause frame
+    // injecting the old batch as a card here). B's own pending approval, if any,
+    // is re-established by the hydration branch in load() below.
+    if (
+      loadedConversationIdRef.current !== null &&
+      loadedConversationIdRef.current !== conversationId
+    ) {
+      setPendingApproval(null);
+      setIsResolving(false);
+      isResolvingRef.current = false;
+      resumeAbortRef.current?.abort();
+      // Release resume ownership so the orphaned resume's onEvent/finally (still
+      // running in the previous conversation's closure) no longer match and skip
+      // their setPendingApproval/finalize writes against the new conversation.
+      resumingConversationIdRef.current = null;
+    }
+    loadedConversationIdRef.current = conversationId;
 
     const clearPoll = () => {
       if (turnPollRef.current) {
@@ -520,6 +544,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
       const controller = new AbortController();
       resumeAbortRef.current = controller;
+      resumingConversationIdRef.current = conversationId;
       let sawDone = false;
       let sawNextApproval = false;
 
@@ -532,6 +557,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           }
         );
         await consumeSSEStream(resumeRes, controller.signal, (event) => {
+          // Drop frames once a conversation switch reassigned ownership — their
+          // setMessages/setPendingApproval would target the new conversation.
+          if (resumingConversationIdRef.current !== conversationId) return;
           if (event.type === 'done') sawDone = true;
           if (event.type === 'tool_approval_required') sawNextApproval = true;
           handleChatSSEEvent(event);
@@ -540,9 +568,14 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         if ((err as Error).name === 'AbortError') return;
         toast.error(resumeStreamError);
       } finally {
-        if (!sawNextApproval) setPendingApproval(null);
-        if (!sawDone && !sawNextApproval) {
-          applyEventToLastAssistant({ type: 'done' });
+        // Mirror sendMessage's ownership check: only this resume's conversation may
+        // write approval/finalize state. A switch already cleared it for the new
+        // conversation; don't stomp the new conversation's freshly-loaded state.
+        if (resumingConversationIdRef.current === conversationId) {
+          if (!sawNextApproval) setPendingApproval(null);
+          if (!sawDone && !sawNextApproval) {
+            applyEventToLastAssistant({ type: 'done' });
+          }
         }
         isResolvingRef.current = false;
         setIsResolving(false);
