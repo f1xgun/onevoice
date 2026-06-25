@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -243,4 +246,86 @@ func TestDrainOutboxOnce_Metrics(t *testing.T) {
 		require.Equal(t, 1.0, after-before)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+// ctxCapturePool wraps a pgxmock pool to record the context handed to the
+// post-delivery Exec (the MarkSent UPDATE), letting the SIGTERM regression
+// test assert that persist runs on a non-canceled context.
+type ctxCapturePool struct {
+	pgxmock.PgxPoolIface
+	mu         sync.Mutex
+	execCalled bool
+	execCtxErr error
+}
+
+func (p *ctxCapturePool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	p.mu.Lock()
+	p.execCalled = true
+	p.execCtxErr = ctx.Err()
+	p.mu.Unlock()
+	return p.PgxPoolIface.Exec(ctx, sql, args...)
+}
+
+func (p *ctxCapturePool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return p.PgxPoolIface.Query(ctx, sql, args...)
+}
+
+func (p *ctxCapturePool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return p.PgxPoolIface.QueryRow(ctx, sql, args...)
+}
+
+// execObserved reports whether Exec ran and the ctx.Err() captured at the
+// moment of the call (nil = the persist ctx was live, not canceled).
+func (p *ctxCapturePool) execObserved() (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.execCalled, p.execCtxErr
+}
+
+// cancelOnSendSender models a SIGTERM landing in the window between a
+// successful delivery and its persist: it reports success, then cancels the
+// worker (parent) ctx before returning, so MarkSent runs under an
+// already-canceled parent.
+type cancelOnSendSender struct{ cancel context.CancelFunc }
+
+func (s cancelOnSendSender) Send(_ context.Context, _ email.Message) (string, error) {
+	s.cancel()
+	return "job-1", nil
+}
+
+// TestDrainOutboxOnce_MarkSentSurvivesCanceledParent proves the dup-email
+// guard: a SIGTERM that cancels the worker ctx right after a successful Send
+// must NOT abort the 'sent' persist, or the row stays 'pending' and the next
+// tick re-Sends it (Unisender has no idempotency key → duplicate mail).
+//
+// The fake sender cancels the parent ctx the moment delivery succeeds, exactly
+// the SIGTERM-after-Send window cmd/main.go exposes. The success-path UPDATE
+// must still execute on a non-canceled context.
+//
+// Fail-on-revert: route MarkSent through the parent ctx instead of
+// context.Background() and the UPDATE never runs (canceled ctx) — both the
+// ExpectationsWereMet and the captured-ctx Err()==nil assertions fail.
+func TestDrainOutboxOnce_MarkSentSurvivesCanceledParent(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(mock.Close)
+	pool := &ctxCapturePool{PgxPoolIface: mock}
+	repo := repository.NewEmailOutboxRepository(pool)
+	id := uuid.New()
+
+	expectPendingCount(mock, 1)
+	drainRow(mock, id, 0)
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'sent'`).
+		WithArgs(id).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	drainOutboxOnce(parent, bufLogger(&bytes.Buffer{}), repo, cancelOnSendSender{cancel: cancel}, 5)
+
+	require.Error(t, parent.Err(), "precondition: the SIGTERM-after-Send window must have canceled the parent ctx")
+	require.NoError(t, mock.ExpectationsWereMet(), "MarkSent UPDATE must run even though the parent ctx was canceled")
+	called, ctxErr := pool.execObserved()
+	require.True(t, called, "MarkSent must have been invoked")
+	require.NoError(t, ctxErr, "MarkSent must run on a non-canceled context so a just-sent row is persisted")
 }

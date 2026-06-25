@@ -32,6 +32,14 @@ import (
 // burst of 25 covers any reasonable spike without starving the DB pool.
 const outboxBatchLimit = 25
 
+// outboxPersistTimeout bounds the post-delivery status UPDATE. The transition
+// runs on a non-cancelable context (context.Background) so a SIGTERM that
+// cancels the worker ctx in the window between a successful Send and its
+// persist can't strand a just-delivered row in 'pending' — the next tick (or
+// next boot) would otherwise re-Send it and the recipient gets a duplicate,
+// as Unisender has no idempotency key.
+const outboxPersistTimeout = 5 * time.Second
+
 // BuildEmailSender returns the transactional-email Sender.
 //
 // In production (cfg.IsProduction) a missing UNISENDER_API_KEY or From
@@ -115,9 +123,12 @@ func drainOutboxOnce(ctx context.Context, log *slog.Logger, repo *repository.Ema
 		})
 		if sendErr == nil {
 			metrics.EmailsSentTotal.WithLabelValues(sendResult(sender)).Inc()
-			if mErr := repo.MarkSent(ctx, row.ID, jobID); mErr != nil {
-				log.ErrorContext(ctx, "email_outbox: mark_sent failed", "id", row.ID, "error", mErr)
+			markCtx, cancel := context.WithTimeout(context.Background(), outboxPersistTimeout)
+			if mErr := repo.MarkSent(markCtx, row.ID, jobID); mErr != nil {
+				metrics.OutboxStrandedSentRows.Inc()
+				log.ErrorContext(ctx, "email_outbox: mark_sent failed after successful delivery — row may be re-sent on next tick (duplicate email risk)", "id", row.ID, "error", mErr)
 			}
+			cancel()
 			continue
 		}
 		if errors.Is(sendErr, email.ErrPermanent) {
