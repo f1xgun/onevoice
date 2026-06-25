@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -150,42 +151,64 @@ func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 // on the tool_approvals sub-object: a key removed from the PUT body becomes
 // un-approved (no longer in the persisted map).
 //
-// Implementation: load current settings, mutate the tool_approvals key,
-// write the merged settings back with Update. Done under a single pgx Exec
-// call (no transaction) because this is standalone Postgres and a lost
-// update only affects settings races which the frontend serializes via
-// React Query's mutate() pattern.
+// The write is a single server-side jsonb_set touching ONLY the tool_approvals
+// key, so a concurrent writer of a sibling settings key (e.g. UpdateSchedule)
+// can never revert a freshly tightened approval floor: there is no
+// read-modify-write window in which a stale settings snapshot is re-persisted.
+// Security-relevant — the per-tool HITL floor consumed by hitl/policy.go must
+// not be silently downgraded to auto by an unrelated edit.
 //
 // Feeds the PUT /api/v1/business/{id}/tool-approvals
 // endpoint.
 func (r *businessRepository) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
-	business, err := r.GetByID(ctx, businessID)
-	if err != nil {
-		return err
-	}
-	if business.Settings == nil {
-		business.Settings = make(map[string]interface{})
-	}
-	raw := make(map[string]interface{}, len(approvals))
+	raw := make(map[string]string, len(approvals))
 	for k, v := range approvals {
 		raw[k] = string(v)
 	}
-	business.Settings["tool_approvals"] = raw
-	business.UpdatedAt = time.Now()
+	return r.setSettingsKeys(ctx, businessID, map[string]interface{}{
+		"tool_approvals": raw,
+	})
+}
 
-	sql, args, buildErr := r.sb.
-		Update("businesses").
-		Set("settings", business.Settings).
-		Set("updated_at", business.UpdatedAt).
-		Where(squirrel.Eq{"id": businessID}).
-		ToSql()
-	if buildErr != nil {
-		return fmt.Errorf("build update: %w", buildErr)
+// UpdateSettingsKeys writes only the supplied settings sub-keys via a targeted
+// jsonb_set, preserving every other key in the settings JSONB. Used by the
+// schedule and voice-tone editors so each edit touches just the keys it owns
+// and never rewrites the whole settings map (which would clobber a concurrent
+// writer of a different sub-key, e.g. tool_approvals).
+func (r *businessRepository) UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}) error {
+	return r.setSettingsKeys(ctx, businessID, keys)
+}
+
+// setSettingsKeys applies one server-side jsonb_set per supplied sub-key
+// against the settings JSONB column, leaving every other key untouched. Each
+// value is marshaled to its own JSONB bind argument and the jsonb_set calls
+// are chained, so two writers of DIFFERENT sub-keys cannot clobber each other:
+// there is no whole-map read-modify-write window. RowsAffected==0 (missing or
+// soft-deleted row) maps to ErrBusinessNotFound.
+func (r *businessRepository) setSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}) error {
+	if len(keys) == 0 {
+		return nil
 	}
 
-	tag, execErr := r.pool.Exec(ctx, sql, args...)
-	if execErr != nil {
-		return fmt.Errorf("update business settings: %w", execErr)
+	expr := "coalesce(settings, '{}'::jsonb)"
+	args := []any{businessID}
+	for key, val := range keys {
+		blob, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Errorf("marshal settings key %q: %w", key, err)
+		}
+		args = append(args, string(blob))
+		expr = fmt.Sprintf("jsonb_set(%s, '{%s}', $%d::jsonb)", expr, quoteJSONBPathKey(key), len(args))
+	}
+
+	sql := fmt.Sprintf(
+		"UPDATE businesses SET settings = %s, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+		expr,
+	)
+
+	tag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("update business settings: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrBusinessNotFound
@@ -193,6 +216,20 @@ func (r *businessRepository) UpdateToolApprovals(ctx context.Context, businessID
 	return nil
 }
 
+// quoteJSONBPathKey escapes a settings sub-key for safe interpolation into a
+// jsonb_set text-path literal `'{key}'`. The keys here are server-controlled
+// (tool_approvals, schedule, specialDates, voiceTone), but escaping any double
+// quote keeps the path literal well-formed regardless of caller input.
+func quoteJSONBPathKey(key string) string {
+	return strings.ReplaceAll(key, `"`, `""`)
+}
+
+// Update writes the business profile COLUMNS (name, category, address, phone,
+// website, description, logo_url) only. It deliberately does NOT write the
+// settings JSONB: a profile or logo edit must never re-persist a settings
+// snapshot and thereby revert a concurrent settings sub-key change (e.g. a
+// tightened tool-approval floor). Settings sub-keys are written through the
+// targeted UpdateSettingsKeys / UpdateToolApprovals jsonb_set paths instead.
 func (r *businessRepository) Update(ctx context.Context, business *domain.Business) error {
 	business.UpdatedAt = time.Now()
 
@@ -205,9 +242,9 @@ func (r *businessRepository) Update(ctx context.Context, business *domain.Busine
 		Set("website", business.Website).
 		Set("description", business.Description).
 		Set("logo_url", business.LogoURL).
-		Set("settings", business.Settings).
 		Set("updated_at", business.UpdatedAt).
 		Where(squirrel.Eq{"id": business.ID}).
+		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build update: %w", err)

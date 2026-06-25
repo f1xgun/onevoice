@@ -64,6 +64,11 @@ type BusinessService interface {
 	// Update applies a business profile edit; actorUserID is threaded through
 	// for the service-layer audit emission.
 	Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error)
+	// UpdateSettingsKeys writes only the named settings sub-keys (schedule,
+	// voiceTone, specialDates) via a targeted jsonb_set and returns the re-read
+	// row. Sibling settings sub-keys (incl. tool_approvals) are preserved so a
+	// concurrent writer of a different sub-key is never reverted.
+	UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}, actorUserID uuid.UUID) (*domain.Business, error)
 	// ListMembershipsByUser powers GET /api/v1/businesses.
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]service.MembershipSummary, error)
 	// Tool-approval methods. Permission enforcement (PermBusinessRead /
@@ -285,20 +290,6 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to get business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	if business.Settings == nil {
-		business.Settings = make(map[string]interface{})
-	}
 	var schedule interface{}
 	if req.Schedule != nil {
 		schedule = *req.Schedule
@@ -306,17 +297,20 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	if !settingsBlobWithinCap(w, schedule, "schedule too large") {
 		return
 	}
-	business.Settings["schedule"] = schedule
+	keys := map[string]interface{}{"schedule": schedule}
 	if req.SpecialDates != nil {
 		if !settingsBlobWithinCap(w, *req.SpecialDates, "special dates too large") {
 			return
 		}
-		business.Settings["specialDates"] = *req.SpecialDates
+		keys["specialDates"] = *req.SpecialDates
 	}
-	business.UpdatedAt = time.Now()
 
-	updated, err := h.businessService.Update(r.Context(), business, bc.UserID)
+	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, keys, bc.UserID)
 	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
 		slog.ErrorContext(r.Context(), "failed to update schedule", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -345,20 +339,6 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to get business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	if business.Settings == nil {
-		business.Settings = make(map[string]interface{})
-	}
 	var tones []string
 	if req.Tones != nil {
 		tones = *req.Tones
@@ -366,11 +346,13 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 	if !settingsBlobWithinCap(w, tones, "voice tone too large") {
 		return
 	}
-	business.Settings["voiceTone"] = tones
-	business.UpdatedAt = time.Now()
 
-	updated, err := h.businessService.Update(r.Context(), business, bc.UserID)
+	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, map[string]interface{}{"voiceTone": tones}, bc.UserID)
 	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
 		slog.ErrorContext(r.Context(), "failed to update voice tone", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return

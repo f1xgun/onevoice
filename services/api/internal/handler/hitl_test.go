@@ -137,6 +137,9 @@ func (f *fakeBusinessRepoHITL) GetByID(_ context.Context, _ uuid.UUID) (*domain.
 	return &b, nil
 }
 func (f *fakeBusinessRepoHITL) Update(_ context.Context, _ *domain.Business) error { return nil }
+func (f *fakeBusinessRepoHITL) UpdateSettingsKeys(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
+	return nil
+}
 func (f *fakeBusinessRepoHITL) UpdateToolApprovals(_ context.Context, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
 	return nil
 }
@@ -180,6 +183,9 @@ func (s *hitlBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.B
 	return s.biz, nil
 }
 func (s *hitlBusinessService) Update(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
+	return nil, nil
+}
+func (s *hitlBusinessService) UpdateSettingsKeys(_ context.Context, _ uuid.UUID, _ map[string]interface{}, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }
 func (s *hitlBusinessService) GetToolApprovals(_ context.Context, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
