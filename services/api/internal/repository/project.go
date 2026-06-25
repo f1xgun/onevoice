@@ -253,13 +253,25 @@ func (r *projectRepository) CountConversationsByID(ctx context.Context, id uuid.
 }
 
 // HardDeleteCascade deletes every Mongo message whose conversation belongs to
-// the project, then every Mongo conversation in the project, then the Postgres
+// the project, then every enumerated Mongo conversation, then the Postgres
 // project row. Returns (deletedConversations, deletedMessages, err).
 //
-// Order matters: Mongo first, Postgres last. If the Postgres delete fails
-// after Mongo succeeds, a retry re-runs cleanly (messages/conversations are
-// already gone on the second attempt, so the counts reset to 0, but the
-// Postgres row still vanishes). This is the "best-effort atomic" guarantee.
+// Both Mongo deletes key off the SAME enumerated convIDs set: messages by
+// conversation_id $in convIDs and conversations by _id $in convIDs. This binds
+// a conversation's deletion to its messages' deletion — a partial enumeration
+// can only ever drop a matching subset of conversations+messages together,
+// never conversations without their messages (which would orphan messages that
+// carry no project_id and so are unreachable by any read path or sweep).
+//
+// A cursor error (transient getMore failure, cursor timeout) or a per-document
+// decode error is therefore FATAL: we abort before any delete so a retry can
+// finish the job. The enumeration is only trusted when the cursor drains
+// cleanly.
+//
+// Order matters: Mongo first, Postgres last. If the Postgres delete fails after
+// Mongo succeeds, a retry re-runs cleanly (the conversations/messages already
+// gone are simply re-counted as 0, but the Postgres row still vanishes). This
+// is the "best-effort atomic" guarantee.
 func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	projectIDStr := id.String()
 
@@ -272,22 +284,32 @@ func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID)
 		var doc struct {
 			ID string `bson:"_id"`
 		}
-		if decodeErr := cursor.Decode(&doc); decodeErr == nil {
-			convIDs = append(convIDs, doc.ID)
+		if decodeErr := cursor.Decode(&doc); decodeErr != nil {
+			_ = cursor.Close(ctx)
+			return 0, 0, fmt.Errorf("decode conversation id for cascade: %w", decodeErr)
 		}
+		convIDs = append(convIDs, doc.ID)
+	}
+	if curErr := cursor.Err(); curErr != nil {
+		_ = cursor.Close(ctx)
+		return 0, 0, fmt.Errorf("enumerate conversations for cascade: %w", curErr)
 	}
 	_ = cursor.Close(ctx)
 
-	var msgCount int64
-	if len(convIDs) > 0 {
-		msgRes, msgErr := r.msgColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}})
-		if msgErr != nil {
-			return 0, 0, fmt.Errorf("delete cascade messages: %w", msgErr)
+	if len(convIDs) == 0 {
+		if delErr := r.Delete(ctx, id); delErr != nil {
+			return 0, 0, fmt.Errorf("delete project row: %w", delErr)
 		}
-		msgCount = msgRes.DeletedCount
+		return 0, 0, nil
 	}
 
-	convRes, convErr := r.convColl.DeleteMany(ctx, bson.M{"project_id": projectIDStr})
+	msgRes, msgErr := r.msgColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}})
+	if msgErr != nil {
+		return 0, 0, fmt.Errorf("delete cascade messages: %w", msgErr)
+	}
+	msgCount := msgRes.DeletedCount
+
+	convRes, convErr := r.convColl.DeleteMany(ctx, bson.M{"_id": bson.M{"$in": convIDs}})
 	if convErr != nil {
 		return 0, int(msgCount), fmt.Errorf("delete cascade conversations: %w", convErr)
 	}
