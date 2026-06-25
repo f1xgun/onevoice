@@ -68,6 +68,21 @@ const batchA = {
   ],
 };
 
+const batchB = {
+  batchId: 'batch-b',
+  status: 'pending',
+  createdAt: new Date().toISOString(),
+  calls: [
+    {
+      callId: 'call-b-1',
+      toolName: 'vk__publish_post',
+      args: { text: 'B announcement' },
+      editableFields: [],
+      floor: 'manual',
+    },
+  ],
+};
+
 // A controllable SSE response: stays open until close() is called, keeping the
 // resume stream in flight across the conversation switch so the abort guard is
 // exercised mid-resume deterministically.
@@ -229,5 +244,76 @@ describe('useConversationFlow — switching conversations does not leak HITL sta
       gate.close();
       await resolvePromise;
     });
+  });
+
+  // Fail-on-revert target for the resume `finally` ownership guard. B has its
+  // OWN pending approval. A's orphaned resume settles (its `finally` runs)
+  // AFTER the switch to B; without the guard A's `finally` calls
+  // setPendingApproval(null) and wipes B's freshly-hydrated batch-b card.
+  it("preserves B's own pending approval when A's orphaned resume settles after the switch", async () => {
+    const gate = gatedSSEResponse();
+
+    const convBHistory = {
+      messages: [
+        { id: 'b-u1', role: 'user', content: 'B prompt', toolCalls: [] },
+        { id: 'b-a1', role: 'assistant', content: 'B reply', toolCalls: [] },
+      ],
+      pendingApprovals: [batchB],
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/resolve')) {
+        return jsonResponse({ ok: true });
+      }
+      if (url.includes('/resume')) {
+        void init?.signal;
+        return gate.response;
+      }
+      // History GETs: B hydrates its own batch-b approval.
+      if (url.includes('cid-B')) return jsonResponse(convBHistory);
+      return jsonResponse({ messages: [], pendingApprovals: [batchA] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result, rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) => useConversationFlow({ conversationId }),
+      { wrapper: makeQCWrapper(), initialProps: { conversationId: 'cid-A' } }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
+    expect(result.current.pendingApproval!.batchId).toBe('batch-a');
+
+    // Approve A's batch — opens the gated resume SSE and keeps it open.
+    let resolvePromise!: Promise<void>;
+    await act(async () => {
+      resolvePromise = result.current.resolveApproval([{ id: 'call-a-1', action: 'approve' }]);
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(result.current.isResolving).toBe(true);
+
+    // Switch to conversation B mid-resume (same dynamic route → no remount).
+    // B hydrates its own batch-b approval card.
+    await act(async () => {
+      rerender({ conversationId: 'cid-B' });
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.pendingApproval?.batchId).toBe('batch-b'));
+
+    // Settle A's orphaned resume AFTER the switch: closing the gate wakes the
+    // aborted reader, the resume loop exits, and resolveApproval's `finally`
+    // runs in A's stale closure. The ownership guard must skip its
+    // setPendingApproval(null) so B's batch-b card survives.
+    await act(async () => {
+      gate.close();
+      await resolvePromise;
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    expect(result.current.pendingApproval).not.toBeNull();
+    expect(result.current.pendingApproval!.batchId).toBe('batch-b');
   });
 });
