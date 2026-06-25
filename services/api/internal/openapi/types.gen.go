@@ -582,12 +582,12 @@ type ConversationTitleStatus string
 
 // CreateBusinessRequest defines model for CreateBusinessRequest.
 type CreateBusinessRequest struct {
-	Address     *string `json:"address,omitempty"`
-	Category    *string `json:"category,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Name        string  `json:"name" validate:"required"`
-	Phone       *string `json:"phone,omitempty"`
-	Website     *string `json:"website"`
+	Address     *string `json:"address,omitempty" validate:"omitempty,max=500"`
+	Category    *string `json:"category,omitempty" validate:"omitempty,max=255"`
+	Description *string `json:"description,omitempty" validate:"omitempty,max=2000"`
+	Name        string  `json:"name" validate:"required,max=200"`
+	Phone       *string `json:"phone,omitempty" validate:"omitempty,max=255"`
+	Website     *string `json:"website" validate:"omitempty,max=255"`
 }
 
 // CreateConversationRequest defines model for CreateConversationRequest.
@@ -1471,12 +1471,12 @@ type ToolRegistryEntry struct {
 
 // UpdateBusinessRequest defines model for UpdateBusinessRequest.
 type UpdateBusinessRequest struct {
-	Address     *string `json:"address,omitempty"`
-	Category    *string `json:"category,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Name        string  `json:"name" validate:"required"`
-	Phone       *string `json:"phone,omitempty"`
-	Website     *string `json:"website"`
+	Address     *string `json:"address,omitempty" validate:"omitempty,max=500"`
+	Category    *string `json:"category,omitempty" validate:"omitempty,max=255"`
+	Description *string `json:"description,omitempty" validate:"omitempty,max=2000"`
+	Name        string  `json:"name" validate:"required,max=200"`
+	Phone       *string `json:"phone,omitempty" validate:"omitempty,max=255"`
+	Website     *string `json:"website" validate:"omitempty,max=255"`
 }
 
 // UpdateConversationRequest defines model for UpdateConversationRequest.

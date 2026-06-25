@@ -879,17 +879,23 @@ components:
       properties:
         name:
           type: string
+          maxLength: 200
         category:
           type: string
+          maxLength: 255
         address:
           type: string
+          maxLength: 500
         phone:
           type: string
+          maxLength: 255
         website:
           type: string
+          maxLength: 255
           nullable: true
         description:
           type: string
+          maxLength: 2000
     UpdateBusinessRequest:
       type: object
       required:
@@ -897,17 +903,23 @@ components:
       properties:
         name:
           type: string
+          maxLength: 200
         category:
           type: string
+          maxLength: 255
         address:
           type: string
+          maxLength: 500
         phone:
           type: string
+          maxLength: 255
         website:
           type: string
+          maxLength: 255
           nullable: true
         description:
           type: string
+          maxLength: 2000
     UpdateScheduleRequest:
       type: object
       properties:

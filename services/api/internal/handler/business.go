@@ -22,11 +22,39 @@ import (
 
 const maxUploadSize = 5 << 20 // 5 MB
 
+// maxBusinessBodyBytes caps the JSON request body on the business write
+// endpoints (profile, schedule, voice tone). The profile fields are bounded
+// individually by the max= validators; this guards the decoder itself and the
+// free-form JSONB blobs from an unbounded body.
+const maxBusinessBodyBytes = 64 * 1024
+
+// maxSettingsBlobBytes caps the marshaled size of each free-form value stored
+// into the JSONB settings column (schedule, special dates, voice tones) so a
+// single business row cannot be bloated by an arbitrarily large blob.
+const maxSettingsBlobBytes = 16 * 1024
+
 var allowedMimeTypes = map[string]string{
 	"image/jpeg": ".jpg",
 	"image/png":  ".png",
 	"image/webp": ".webp",
 	"image/gif":  ".gif",
+}
+
+// settingsBlobWithinCap marshals v and rejects (400) when the serialized form
+// exceeds maxSettingsBlobBytes, guarding the free-form JSONB settings column
+// from arbitrarily large blobs. It returns false (after writing the error)
+// when the blob is too large or unmarshalable.
+func settingsBlobWithinCap(w http.ResponseWriter, v interface{}, errMsg string) bool {
+	blob, err := json.Marshal(v)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return false
+	}
+	if len(blob) > maxSettingsBlobBytes {
+		writeJSONError(w, http.StatusBadRequest, errMsg)
+		return false
+	}
+	return true
 }
 
 // BusinessService defines the interface for business operations
@@ -140,6 +168,7 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
 	req, ok := decodeAndValidate[openapi.CreateBusinessRequest](w, r, "invalid request body")
 	if !ok {
 		return
@@ -202,6 +231,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
 	req, ok := decodeAndValidate[openapi.UpdateBusinessRequest](w, r, "invalid request body")
 	if !ok {
 		return
@@ -248,6 +278,7 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
 	var req openapi.UpdateScheduleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -272,8 +303,14 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	if req.Schedule != nil {
 		schedule = *req.Schedule
 	}
+	if !settingsBlobWithinCap(w, schedule, "schedule too large") {
+		return
+	}
 	business.Settings["schedule"] = schedule
 	if req.SpecialDates != nil {
+		if !settingsBlobWithinCap(w, *req.SpecialDates, "special dates too large") {
+			return
+		}
 		business.Settings["specialDates"] = *req.SpecialDates
 	}
 	business.UpdatedAt = time.Now()
@@ -301,6 +338,7 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
 	var req openapi.UpdateVoiceToneRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -324,6 +362,9 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 	var tones []string
 	if req.Tones != nil {
 		tones = *req.Tones
+	}
+	if !settingsBlobWithinCap(w, tones, "voice tone too large") {
+		return
 	}
 	business.Settings["voiceTone"] = tones
 	business.UpdatedAt = time.Now()
@@ -377,6 +418,7 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
 	var req openapi.UpdateToolApprovalsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
