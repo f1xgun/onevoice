@@ -25,7 +25,8 @@ type mockLocator struct {
 	fillCalls     []string // records Fill() calls
 	fillErr       error
 	clickErr      error
-	clickCount    int // records number of Click() invocations
+	clickCount    int    // records number of Click() invocations
+	clickFn       func() // optional side effect run on each Click()
 	waitErr       error
 	isChecked     bool
 	inputValue    string
@@ -66,6 +67,9 @@ func (m *mockLocator) Fill(value string, _ ...playwright.LocatorFillOptions) err
 
 func (m *mockLocator) Click(_ ...playwright.LocatorClickOptions) error {
 	m.clickCount++
+	if m.clickFn != nil {
+		m.clickFn()
+	}
 	return m.clickErr
 }
 

@@ -3,6 +3,7 @@ package yandex
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -156,10 +157,84 @@ func TestBusinessBrowser_GetReviews_ExtractsAuthorRatingText(t *testing.T) {
 	}
 }
 
+// reviewCardLocator builds a mock review card whose data-review-id attribute
+// supplies its stable identity for cross-page dedup.
+func reviewCardLocator(id string) *mockLocator {
+	return &mockLocator{
+		attributes: map[string]string{"data-review-id": id},
+		children:   make(map[string]*mockLocator),
+	}
+}
+
+// Test #5b — GetReviews paginates via "load more" and must NOT re-emit the
+// already-captured top cards (which the SPA keeps rendered) when the next page
+// appends new ones below them. With the pre-fix top-slice logic the second
+// iteration re-read cards from index 0 and returned the SAME top cards while
+// the genuinely new tail cards were never reached — duplicated heads and a
+// dropped, unrecoverable tail. This test grows the rendered DOM on each
+// load-more click and asserts the result is the distinct union, in order,
+// including the tail.
+func TestBusinessBrowser_GetReviews_LoadMore_NoDuplicatesNoDroppedTail(t *testing.T) {
+	page := newMockPage("https://yandex.ru/sprav/123/p/edit/reviews")
+
+	page.locators[".ReviewsPage-ReviewsList"] = &mockLocator{}
+
+	reviewList := &mockLocator{}
+	page.locators[".Review"] = reviewList
+
+	for i := 0; i < 15; i++ {
+		reviewList.allItems = append(reviewList.allItems, reviewCardLocator(fmt.Sprintf("r-%d", i)))
+	}
+
+	pages := [][]string{
+		{"r-15", "r-16", "r-17", "r-18", "r-19"},
+	}
+	pageIdx := 0
+	loadMore := &mockLocator{}
+	loadMore.clickFn = func() {
+		if pageIdx >= len(pages) {
+			return
+		}
+		for _, id := range pages[pageIdx] {
+			reviewList.allItems = append(reviewList.allItems, reviewCardLocator(id))
+		}
+		pageIdx++
+	}
+	page.locators["[data-testid='load-more-reviews']"] = loadMore
+
+	bb := businessBrowserOnPage(page, "123")
+	got, err := bb.GetReviews(context.Background(), 20)
+	if err != nil {
+		t.Fatalf("GetReviews returned error: %v", err)
+	}
+
+	if len(got) != 20 {
+		t.Fatalf("expected 20 distinct reviews, got %d", len(got))
+	}
+
+	seen := make(map[string]int)
+	for _, r := range got {
+		id, _ := r["id"].(string)
+		seen[id]++
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Fatalf("review id %q appeared %d times, want exactly once (duplicate top cards re-emitted)", id, n)
+		}
+	}
+
+	for i := 0; i < 20; i++ {
+		want := fmt.Sprintf("r-%d", i)
+		if _, ok := seen[want]; !ok {
+			t.Fatalf("expected review id %q in result but it was missing (dropped tail / never scraped)", want)
+		}
+	}
+}
+
 // Test #6 — scrapeReviewCards on an empty DOM returns empty slice (no error).
 func TestScrapeReviewCards_HandlesEmpty(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/reviews")
-	cards, err := scrapeReviewCards(page, 10)
+	cards, err := scrapeReviewCards(page)
 	if err != nil {
 		t.Fatalf("scrapeReviewCards returned error: %v", err)
 	}
