@@ -341,7 +341,10 @@ type PendingToolCallBatch struct {
 	IterationIdx   int           `bson:"iteration_idx"`
 	CreatedAt      time.Time     `bson:"created_at"`
 	UpdatedAt      time.Time     `bson:"updated_at"`
-	ExpiresAt      time.Time     `bson:"expires_at"`
+	// omitempty keeps a zero ExpiresAt out of the marshaled doc so preparing
+	// rows carry no expires_at and stay invisible to the TTL sweep until the
+	// promotion UpdateOne sets it explicitly via $set.
+	ExpiresAt time.Time `bson:"expires_at,omitempty"`
 }
 
 // PendingCall is a single proposed tool invocation within a batch.
