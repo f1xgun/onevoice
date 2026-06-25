@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
@@ -235,6 +236,16 @@ func resumeToolArgs(toolCallID string, callIdx map[string]int, persisted, fresh 
 	return nil
 }
 
+// resumeStreamHeaders forwards the request locale to the orchestrator's resume
+// endpoint as an Accept-Language header. The resume body has no locale field
+// (unlike the fresh-chat body), so without this the orchestrator's
+// LocaleMiddleware resolves an empty header to the default tag (RU) and rebuilds
+// the post-approval tool definitions in RU even for an EN tenant. ctx carries
+// the tag set by the API's LocaleMiddleware.
+func resumeStreamHeaders(ctx context.Context) map[string]string {
+	return map[string]string{"Accept-Language": i18n.LocaleFromContext(ctx).String()}
+}
+
 func (t *Turn) runResumeStream(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -277,6 +288,7 @@ func (t *Turn) runResumeStream(
 		ConversationID: conversationID,
 		BatchID:        batchID,
 		Body:           body,
+		Headers:        resumeStreamHeaders(ctx),
 		Writer:         w,
 		OrchCtxBudget:  streamBudget,
 		OnEvent: func(ev sse.Event) {
