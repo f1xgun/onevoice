@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
+
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
@@ -145,34 +147,11 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		AuditLogger: audit.NewLoggerWithResolver(repos.AuditLog, userResolverAdapter{repo: repos.User}),
 	}
 
-	var llmRouter *llm.Router
 	titlerModel := cfg.TitlerModel
-	if titlerModel != "" {
-		registry := llm.NewRegistry()
-		routerOpts := LLMProviderOpts(cfg, registry, log)
-		if len(routerOpts) > 0 {
-			if h.Redis != nil && repos.Billing != nil {
-				rl, rlErr := BuildAPIRateLimiter(cfg, log, h.Redis, repos.Billing)
-				if rlErr != nil {
-					return nil, fmt.Errorf("api rate limiter: %w", rlErr)
-				}
-				routerOpts = append(routerOpts, llm.WithRateLimiter(rl))
-				log.Info("api rate limiter wired",
-					"policy", cfg.RedisDownPolicy,
-					"free_tier_daily_spend_usd", cfg.FreeTierDailySpendUSD,
-				)
-			} else {
-				log.Warn("api rate limiter disabled — Redis or billing repo unavailable")
-			}
-			llmRouter = llm.NewRouter(registry, routerOpts...)
-			log.Info("auto-titler: llm router constructed", "model", titlerModel, "providers", len(routerOpts))
-		} else {
-			log.Warn("auto-titler: disabled (no LLM provider API key set; set OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY to enable)")
-		}
-	} else {
-		log.Warn("auto-titler: disabled (TITLER_MODEL and LLM_MODEL both unset)")
+	llmRouter, err := buildTitlerRouter(cfg, log, h.Redis, repos.Billing)
+	if err != nil {
+		return nil, err
 	}
-
 	if llmRouter != nil {
 		s.Titler = service.NewTitler(llmRouter, repos.Conversation, titlerModel)
 		log.Info("auto-titler: service constructed", "model", titlerModel)
@@ -379,6 +358,64 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	}
 
 	return s, nil
+}
+
+// buildTitlerRouter assembles the LLM Router that backs the auto-titler. It
+// returns (nil, nil) when the titler is disabled (no TITLER_MODEL, or no
+// provider API key) so the caller leaves Services.Titler nil and titling
+// degrades gracefully.
+//
+// The Router is wired with three concerns, in order:
+//   - provider options + pricing registry (LLMProviderOpts),
+//   - the per-business daily-spend rate limiter (when Redis + billing present),
+//   - the billing Writer (WithBilling) so every titler completion lands a
+//     usage_logs row.
+//
+// WithBilling is load-bearing: pkg/llm/router.go gates logBilling on a non-nil
+// billing sink, so omitting it (the pre-fix state) silently drops every titler
+// usage_logs row. That under-counts the per-business daily-spend cap
+// (billingRepository.GetDailySpend sums usage_logs) by the entire titler
+// volume and under-reports real LLM spend in forensics. Mirrors the
+// orchestrator's chat-path Router, which is likewise wired WithBilling.
+// extraOpts is appended last so tests can inject a fake Selector (mirrors the
+// orchestrator's wire.LLMRouter seam); production passes none.
+func buildTitlerRouter(cfg *config.Config, log *slog.Logger, rdb *goredis.Client, billing llm.BillingRepository, extraOpts ...llm.RouterOption) (*llm.Router, error) {
+	if cfg.TitlerModel == "" {
+		log.Warn("auto-titler: disabled (TITLER_MODEL and LLM_MODEL both unset)")
+		return nil, nil
+	}
+
+	registry := llm.NewRegistry()
+	routerOpts := LLMProviderOpts(cfg, registry, log)
+	if len(routerOpts) == 0 {
+		log.Warn("auto-titler: disabled (no LLM provider API key set; set OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY to enable)")
+		return nil, nil
+	}
+
+	if rdb != nil && billing != nil {
+		rl, err := BuildAPIRateLimiter(cfg, log, rdb, billing)
+		if err != nil {
+			return nil, fmt.Errorf("api rate limiter: %w", err)
+		}
+		routerOpts = append(routerOpts, llm.WithRateLimiter(rl))
+		log.Info("api rate limiter wired",
+			"policy", cfg.RedisDownPolicy,
+			"free_tier_daily_spend_usd", cfg.FreeTierDailySpendUSD,
+		)
+	} else {
+		log.Warn("api rate limiter disabled — Redis or billing repo unavailable")
+	}
+
+	if billing != nil {
+		routerOpts = append(routerOpts, llm.WithBilling(billing))
+		log.Info("auto-titler: billing wired — titler completions write usage_logs")
+	} else {
+		log.Warn("auto-titler: billing disabled — titler LLM spend will not be recorded in usage_logs and the daily-spend cap will under-count")
+	}
+
+	routerOpts = append(routerOpts, extraOpts...)
+	log.Info("auto-titler: llm router constructed", "model", cfg.TitlerModel, "providers", len(routerOpts))
+	return llm.NewRouter(registry, routerOpts...), nil
 }
 
 // toolsCacheTTL caps how long the orchestrator tool registry is memoized

@@ -1,10 +1,14 @@
 package wire
 
 import (
+	"context"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,6 +18,154 @@ import (
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+const (
+	billingEventuallyTimeout = 500 * time.Millisecond
+	billingEventuallyTick    = 10 * time.Millisecond
+)
+
+// countingBillingRepo is a minimal llm.BillingRepository that increments an
+// atomic counter on each LogUsage call so the titler-Router billing test can
+// prove buildTitlerRouter wired WithBilling and logBilling fired. The read
+// methods are unused stubs — only the write path is exercised.
+type countingBillingRepo struct {
+	calls int64
+}
+
+func (c *countingBillingRepo) LogUsage(_ context.Context, _ *llm.UsageLog) error {
+	atomic.AddInt64(&c.calls, 1)
+	return nil
+}
+
+func (c *countingBillingRepo) GetUserBalance(context.Context, uuid.UUID) (float64, error) {
+	return 0, nil
+}
+
+func (c *countingBillingRepo) GetDailySpend(context.Context, uuid.UUID, time.Time) (float64, error) {
+	return 0, nil
+}
+
+func (c *countingBillingRepo) GetMonthlyUsage(context.Context, uuid.UUID, int, int) ([]llm.UsageLog, error) {
+	return nil, nil
+}
+
+// titlerFakeProvider returns a canned ChatResponse with non-zero token usage
+// so the Router computes a billable cost and forwards a UsageLog.
+type titlerFakeProvider struct {
+	name string
+	resp *llm.ChatResponse
+}
+
+func (p *titlerFakeProvider) Chat(_ context.Context, _ llm.ChatRequest) (*llm.ChatResponse, error) {
+	return p.resp, nil
+}
+
+func (p *titlerFakeProvider) ChatStream(_ context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	return nil, nil
+}
+func (p *titlerFakeProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
+func (p *titlerFakeProvider) HealthCheck(_ context.Context) error                   { return nil }
+func (p *titlerFakeProvider) Name() string                                          { return p.name }
+
+// titlerFakeSelector pins a single (entry, provider) candidate so the Router's
+// Chat path resolves without touching the real provider HTTP stack.
+type titlerFakeSelector struct {
+	entry *llm.ModelProviderEntry
+	prov  llm.Provider
+}
+
+func (s *titlerFakeSelector) Pick(_ string, _ llm.Strategy) (*llm.ModelProviderEntry, llm.Provider, error) {
+	return s.entry, s.prov, nil
+}
+
+func (s *titlerFakeSelector) Candidates(_ string, _ llm.Strategy) []llm.Candidate {
+	return []llm.Candidate{{Entry: s.entry, Provider: s.prov}}
+}
+
+func (s *titlerFakeSelector) Record(*llm.ModelProviderEntry, llm.Outcome) {}
+
+// titlerTestConfig is the cheap-tier titler config (haiku titler over sonnet
+// main) with a single provider key so LLMProviderOpts returns one option.
+func titlerTestConfig() *config.Config {
+	return &config.Config{
+		LLMModel:        "anthropic/claude-sonnet-4-6",
+		TitlerModel:     "anthropic/claude-haiku-4-5",
+		AnthropicAPIKey: "sk-ant-test",
+		RedisDownPolicy: "block",
+	}
+}
+
+// titlerFakeSelectorOpt injects a fake selector so the production
+// buildTitlerRouter resolves without a real provider HTTP call.
+func titlerFakeSelectorOpt() llm.RouterOption {
+	return llm.WithSelector(&titlerFakeSelector{
+		entry: &llm.ModelProviderEntry{
+			Model: "anthropic/claude-haiku-4-5", Provider: "anthropic",
+			InputCostPer1MTok: 1.00, OutputCostPer1MTok: 5.00,
+			HealthStatus: llm.HealthStatusHealthy, Enabled: true,
+		},
+		prov: &titlerFakeProvider{name: "anthropic", resp: &llm.ChatResponse{
+			Content: "Запуск нового кафе", FinishReason: "stop",
+			Usage: llm.TokenUsage{InputTokens: 200, OutputTokens: 12},
+		}},
+	})
+}
+
+// titlerChatRequest is the BusinessID-bearing, background-tier completion the
+// auto-titler issues on every chat turn (see service/titler.go GenerateAndSave).
+func titlerChatRequest() llm.ChatRequest {
+	return llm.ChatRequest{
+		UserID:     uuid.Nil,
+		BusinessID: uuid.New(),
+		Model:      "anthropic/claude-haiku-4-5",
+		Messages:   []llm.Message{{Role: "user", Content: "hi"}},
+		Tier:       "background",
+	}
+}
+
+// TestBuildTitlerRouter_WritesUsageLog_WhenBillingWired is the fail-on-revert
+// guard for the titler-billing fix. The api-side titler Router (built by the
+// production buildTitlerRouter that BuildServices calls) must be wired WITH
+// billing so a titler-style completion (real BusinessID) writes a usage_logs
+// row — otherwise the per-business daily-spend cap (GetDailySpend sums
+// usage_logs) under-counts by the entire titler volume. Deleting the
+// WithBilling wiring in buildTitlerRouter leaves r.billing nil and this
+// assertion fails.
+func TestBuildTitlerRouter_WritesUsageLog_WhenBillingWired(t *testing.T) {
+	billing := &countingBillingRepo{}
+
+	router, err := buildTitlerRouter(titlerTestConfig(), discardLogger(), nil, billing, titlerFakeSelectorOpt())
+	require.NoError(t, err)
+	require.NotNil(t, router, "titler router must construct when TITLER_MODEL and a provider key are set")
+
+	_, err = router.Chat(context.Background(), titlerChatRequest())
+	require.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		return atomic.LoadInt64(&billing.calls) >= 1
+	}, billingEventuallyTimeout, billingEventuallyTick,
+		"titler Router must write a usage_logs row via WithBilling — the daily-spend cap depends on it")
+}
+
+// TestBuildTitlerRouter_NoUsageLog_WhenBillingNil proves the guard is
+// load-bearing: with a nil billing repo (the pre-fix state, where the rate
+// limiter was also disabled) buildTitlerRouter wires no billing sink, so
+// logBilling never fires and no usage_logs row is written.
+func TestBuildTitlerRouter_NoUsageLog_WhenBillingNil(t *testing.T) {
+	billing := &countingBillingRepo{}
+
+	router, err := buildTitlerRouter(titlerTestConfig(), discardLogger(), nil, nil, titlerFakeSelectorOpt())
+	require.NoError(t, err)
+	require.NotNil(t, router)
+
+	_, err = router.Chat(context.Background(), titlerChatRequest())
+	require.NoError(t, err)
+
+	assert.Never(t, func() bool {
+		return atomic.LoadInt64(&billing.calls) >= 1
+	}, billingEventuallyTimeout, billingEventuallyTick,
+		"with billing unwired the titler Router must not write usage_logs")
 }
 
 // TestLLMProviderOpts_RegistersTitlerModel — set LLM_MODEL and TITLER_MODEL to
