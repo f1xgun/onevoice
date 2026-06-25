@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -333,6 +334,63 @@ func TestMoveToProject_HappyPath_WithProject(t *testing.T) {
 	assert.Equal(t, convID, conv.BumpCalls[0].ID)
 	assert.Equal(t, msg.Created[0].CreatedAt, conv.BumpCalls[0].TS,
 		"bump must use the appended note's timestamp")
+}
+
+// TestMoveToProject_NonCanonicalProjectID_PersistsCanonical guards against the
+// data-loss defect where a non-canonical client-supplied project_id (uppercase
+// hex, urn:uuid: prefix, {braced}) was persisted verbatim. The stored value
+// must be the canonical lowercase-hyphenated UUID so project count and
+// cascade-delete queries (which use uuid.String()) still match.
+func TestMoveToProject_NonCanonicalProjectID_PersistsCanonical(t *testing.T) {
+	requesterUser := uuid.New()
+	businessID := uuid.New()
+	projID := uuid.New()
+	canonical := projID.String()
+	convID := "507f1f77bcf86cd799439011"
+
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"uppercase hex", strings.ToUpper(canonical)},
+		{"urn:uuid prefix", "urn:uuid:" + canonical},
+		{"braced", "{" + canonical + "}"},
+		{"no hyphens", strings.ReplaceAll(canonical, "-", "")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conv := &stubConversationRepo{
+				Conv: &domain.Conversation{
+					ID:        convID,
+					UserID:    requesterUser.String(),
+					ProjectID: nil,
+				},
+			}
+			msg := &stubMessageRepo{}
+			proj := &stubProjectRepoForConv{
+				Project: &domain.Project{
+					ID:         projID,
+					Name:       "Marketing",
+					BusinessID: businessID,
+				},
+			}
+			svc := newConvSvc(t, conv, msg, proj, nil)
+
+			input := tc.input
+			updated, err := svc.MoveToProject(context.Background(), convID, businessID, requesterUser, &input)
+			require.NoError(t, err)
+			require.NotNil(t, updated)
+
+			require.Len(t, conv.UpdateCalls, 1, "exactly one UpdateProjectAssignment call")
+			require.NotNil(t, conv.UpdateCalls[0].ProjectID)
+			assert.Equal(t, canonical, *conv.UpdateCalls[0].ProjectID,
+				"UpdateProjectAssignment must receive the canonical lowercase-hyphenated UUID, not the raw %q", input)
+
+			require.NotNil(t, updated.ProjectID)
+			assert.Equal(t, canonical, *updated.ProjectID,
+				"returned conversation must reflect the canonical project_id")
+		})
+	}
 }
 
 // TestMoveToProject_HappyPath_NoProject covers the move-to-"no project"

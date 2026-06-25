@@ -79,8 +79,13 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if req.ProjectId != nil && *req.ProjectId != "" {
-		projUUID, parseErr := uuid.Parse(*req.ProjectId)
+	projectID, normErr := service.NormalizeProjectID(req.ProjectId)
+	if normErr != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	if projectID != nil && *projectID != "" {
+		projUUID, parseErr := uuid.Parse(*projectID)
 		if parseErr != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid project id")
 			return
@@ -101,7 +106,7 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		ID:          primitive.NewObjectID().Hex(),
 		UserID:      bc.UserID.String(),
 		BusinessID:  bc.BusinessID.String(),
-		ProjectID:   req.ProjectId,
+		ProjectID:   projectID,
 		Title:       req.Title,
 		TitleStatus: domain.TitleStatusAutoPending,
 		CreatedAt:   now,
