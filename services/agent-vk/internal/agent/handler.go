@@ -261,15 +261,21 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, err
 	}
 
-	postIDf, _ := req.Args["post_id"].(float64)
-	postID := int(postIDf)
+	postID, err := a2a.GetIntParam(req.Args, "post_id", 0)
+	if err != nil {
+		slog.Warn("vk agent: invalid post_id param, treating as absent", "error", err)
+		postID = 0
+	}
 	count, err := a2a.GetIntParam(req.Args, "count", defaultCommentCount)
 	if err != nil {
 		slog.Warn("vk agent: invalid count param, using default", "error", err)
 		count = defaultCommentCount
 	}
-	if count == 0 {
+	if count <= 0 {
 		count = defaultCommentCount
+	}
+	if count > 100 {
+		count = maxWallPostCount
 	}
 
 	if postID == 0 {
@@ -305,13 +311,11 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 }
 
 func (h *Handler) replyComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	postIDf, _ := req.Args["post_id"].(float64)
-	postID := int(postIDf)
+	postID, _ := a2a.GetIntParam(req.Args, "post_id", 0)
 	if postID == 0 {
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: post_id is required and must be > 0"))
 	}
-	commentIDf, _ := req.Args["comment_id"].(float64)
-	commentID := int(commentIDf)
+	commentID, _ := a2a.GetIntParam(req.Args, "comment_id", 0)
 	if commentID == 0 {
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: comment_id is required and must be > 0"))
 	}
@@ -332,8 +336,7 @@ func (h *Handler) replyComment(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 }
 
 func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	commentIDf, _ := req.Args["comment_id"].(float64)
-	commentID := int(commentIDf)
+	commentID, _ := a2a.GetIntParam(req.Args, "comment_id", 0)
 	if commentID == 0 {
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: comment_id is required and must be > 0"))
 	}

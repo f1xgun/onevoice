@@ -1227,3 +1227,144 @@ func TestHandler_Handle_ApprovalID_InFlight_ReturnsDuplicateError(t *testing.T) 
 	assert.Equal(t, int64(0), atomic.LoadInt64(&calls),
 		"in-flight claim must short-circuit before tool dispatch")
 }
+
+func TestHandler_GetComments_StringPostID_TargetsThatPost(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
+	var gotPostID int
+	wallWalked := false
+	vkClient := &mockVKClient{
+		getWallPostsFn: func(string, int) ([]map[string]interface{}, int, error) {
+			wallWalked = true
+			return nil, 0, nil
+		},
+		getCommentsFn: func(_ string, postID, _ int) ([]map[string]interface{}, error) {
+			gotPostID = postID
+			return []map[string]interface{}{{"id": 1, "text": "ok"}}, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-str-postid",
+		Tool:       tools.VKGetComments,
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+			"post_id":  "4521",
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, 4521, gotPostID, "string post_id must target that post, not collapse to whole-wall")
+	assert.False(t, wallWalked, "must not fall back to the whole-wall walk when a post_id is supplied")
+}
+
+func TestHandler_GetComments_ClampsNegativeAndOverMaxCount(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
+
+	t.Run("negative count uses default", func(t *testing.T) {
+		var gotCount int
+		vkClient := &mockVKClient{
+			getCommentsFn: func(_ string, _, count int) ([]map[string]interface{}, error) {
+				gotCount = count
+				return nil, nil
+			},
+		}
+		h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+		resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+			Tool:       tools.VKGetComments,
+			BusinessID: "biz-1",
+			Args: map[string]interface{}{
+				"group_id": "-123456",
+				"post_id":  float64(42),
+				"count":    float64(-5),
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.Success)
+		assert.Equal(t, 20, gotCount,
+			"negative count must be clamped to the default, not forwarded to VK")
+	})
+
+	t.Run("over-100 count clamps to 100", func(t *testing.T) {
+		var gotCount int
+		vkClient := &mockVKClient{
+			getCommentsFn: func(_ string, _, count int) ([]map[string]interface{}, error) {
+				gotCount = count
+				return nil, nil
+			},
+		}
+		h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+		resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+			Tool:       tools.VKGetComments,
+			BusinessID: "biz-1",
+			Args: map[string]interface{}{
+				"group_id": "-123456",
+				"post_id":  float64(42),
+				"count":    float64(500),
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.Success)
+		assert.Equal(t, 100, gotCount, "count above 100 must be clamped to VK's per-call ceiling")
+	})
+}
+
+func TestHandler_ReplyComment_StringIDs_Succeed(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	var gotPostID, gotCommentID int
+	vkClient := &mockVKClient{
+		replyCommentFn: func(_ string, postID, commentID int, _ string) (int, error) {
+			gotPostID = postID
+			gotCommentID = commentID
+			return 999, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-reply-str",
+		Tool:       tools.VKReplyComment,
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id":   "-123456",
+			"post_id":    "42",
+			"comment_id": "77",
+			"text":       "thanks!",
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, 42, gotPostID)
+	assert.Equal(t, 77, gotCommentID)
+	assert.Equal(t, float64(999), resp.Result["comment_id"])
+}
+
+func TestHandler_DeleteComment_StringID_Succeeds(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	var gotCommentID int
+	vkClient := &mockVKClient{
+		deleteCommentFn: func(_ string, commentID int) error {
+			gotCommentID = commentID
+			return nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-del-str",
+		Tool:       tools.VKDeleteComment,
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id":   "-123456",
+			"comment_id": "77",
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, 77, gotCommentID)
+	assert.Equal(t, "deleted", resp.Result["status"])
+}
