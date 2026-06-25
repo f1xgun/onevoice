@@ -31,12 +31,34 @@ const (
 	// the same approved tool for the full DedupeTTL. The short window lets the
 	// sentinel auto-expire so a retry can re-Claim, while a completed call still
 	// gets the full DedupeTTL via Store.
-	ExecutingTTL = 90 * time.Second
+	//
+	// It MUST exceed the orchestrator's per-tool execution deadline. The dedupe
+	// gate fires BEFORE the tool runs and holds the sentinel for the whole
+	// execution, so if this expired under a still-running tool a concurrent
+	// resume (double-click approve) or retry would find no sentinel and
+	// double-execute the approved action. RPA mutations routinely run tens of
+	// seconds up to that ceiling, so this sits comfortably above it with margin.
+	ExecutingTTL = 300 * time.Second
 
 	// valueExecuting is the sentinel stored by Claim before the tool executes.
 	// Claim uses it to distinguish "in-flight elsewhere" from "completed".
 	valueExecuting = "executing"
 )
+
+// releaseSentinelScript deletes the dedupe key only when its current value is
+// still the "executing" sentinel, atomically. An unconditional DEL could clobber
+// a completed result written by Store or a successor's claim; the compare guards
+// against deleting anything other than the sentinel this caller is releasing.
+//
+// KEYS[1] = dedupe key. ARGV[1] = the executing sentinel value.
+// Returns 1 when the sentinel was deleted, 0 otherwise.
+var releaseSentinelScript = redis.NewScript(`
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+else
+  return 0
+end
+`)
 
 // ClaimOutcome enumerates the four states a Claim call can resolve to.
 type ClaimOutcome int
@@ -123,16 +145,25 @@ func (d *DedupeClient) Store(ctx context.Context, businessID, approvalID string,
 	return d.rdb.Set(ctx, key, string(payload), DedupeTTL).Err()
 }
 
-// Release deletes the dedupe key when an execution failed before reaching
-// Store. The ExecutingTTL already auto-expires a stranded sentinel, so Release
-// is a best-effort belt-and-braces that frees the key immediately rather than
-// waiting out the short window. Callers that only held the "executing" sentinel
-// (never completed) use it so a retry can re-Claim at once.
+// Release frees the dedupe key when an execution failed before reaching Store.
+// The ExecutingTTL already auto-expires a stranded sentinel, so Release is a
+// best-effort belt-and-braces that frees the key immediately rather than waiting
+// out the window. Callers that only held the "executing" sentinel (never
+// completed) use it so a retry can re-Claim at once.
+//
+// Release is a compare-and-delete: it removes the key ONLY when its current
+// value is still the executing sentinel. This never clobbers a completed result
+// written by Store (its value is the JSON payload, not the sentinel) nor a
+// successor's claim — it deletes exactly the in-flight marker and nothing else.
 //
 // When approvalID is empty, Release is a no-op — mirrors Claim's short-circuit.
 func (d *DedupeClient) Release(ctx context.Context, businessID, approvalID string) error {
 	if approvalID == "" {
 		return nil
 	}
-	return d.rdb.Del(ctx, KeyFor(businessID, approvalID)).Err()
+	key := KeyFor(businessID, approvalID)
+	if err := releaseSentinelScript.Run(ctx, d.rdb, []string{key}, valueExecuting).Err(); err != nil {
+		return fmt.Errorf("hitldedupe: release CAS: %w", err)
+	}
+	return nil
 }

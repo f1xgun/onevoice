@@ -174,6 +174,34 @@ func TestRelease_DeletesExecutingSentinel(t *testing.T) {
 		"after Release a retry must be able to re-Claim")
 }
 
+func TestRelease_AfterStore_DoesNotDeleteCompletedResult(t *testing.T) {
+	client, mr := newTestClient(t)
+	ctx := context.Background()
+
+	out, _, err := client.Claim(ctx, "biz-1", "appr-fence")
+	require.NoError(t, err)
+	require.Equal(t, hitldedupe.ClaimOutcomeClaimed, out)
+
+	require.NoError(t, client.Store(ctx, "biz-1", "appr-fence",
+		map[string]interface{}{"task_id": "t-fence", "success": true}))
+
+	key := hitldedupe.KeyFor("biz-1", "appr-fence")
+	require.True(t, mr.Exists(key), "pre-condition: Store wrote the completed result")
+
+	require.NoError(t, client.Release(ctx, "biz-1", "appr-fence"))
+	assert.True(t, mr.Exists(key),
+		"Release must NOT delete a completed result — its value is not the executing sentinel")
+
+	out2, cached, err := client.Claim(ctx, "biz-1", "appr-fence")
+	require.NoError(t, err)
+	assert.Equal(t, hitldedupe.ClaimOutcomeDuplicate, out2,
+		"the completed result survives Release, so a replay still dedupes")
+	var decoded map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(cached), &decoded))
+	assert.Equal(t, "t-fence", decoded["task_id"],
+		"the original completed payload is intact after Release")
+}
+
 func TestRelease_EmptyApprovalID_IsNoOp(t *testing.T) {
 	client, mr := newTestClient(t)
 	ctx := context.Background()
