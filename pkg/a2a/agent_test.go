@@ -35,6 +35,8 @@ func (f *fakeTransport) Publish(subject string, data []byte) error {
 	return nil
 }
 
+func (f *fakeTransport) DrainSubs() error { return nil }
+
 func (f *fakeTransport) Close() {}
 
 // Trigger simulates receiving a NATS message.

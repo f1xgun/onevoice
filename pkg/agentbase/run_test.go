@@ -1,9 +1,63 @@
 package agentbase
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
+
+// recordingTransport satisfies a2a.Transport and appends each shutdown-path
+// call to a shared order slice so a test can assert the call sequence.
+type recordingTransport struct {
+	mu    sync.Mutex
+	order *[]string
+}
+
+func (r *recordingTransport) Subscribe(string, func(string, string, []byte)) error { return nil }
+func (r *recordingTransport) Publish(string, []byte) error                         { return nil }
+
+func (r *recordingTransport) DrainSubs() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	*r.order = append(*r.order, "DrainSubs")
+	return nil
+}
+
+func (r *recordingTransport) Close() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	*r.order = append(*r.order, "Close")
+}
+
+// TestDrainTransportOrder pins the shutdown contract: subscriptions are drained
+// (new requests stop) and in-flight handlers are waited out BEFORE the
+// connection is closed, so a handler's reply Publish still lands on the open
+// connection. Reverting to Close-before-Stop (the old order) drops the late
+// reply and strands the requester on a timeout, double-posting on retry — and
+// flips this assertion, because Close would record before Stop.
+func TestDrainTransportOrder(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	transport := &recordingTransport{order: &order}
+	stop := func() {
+		transport.mu.Lock()
+		defer transport.mu.Unlock()
+		order = append(order, "Stop")
+	}
+
+	drainTransport("test", transport, stop, time.Second)
+
+	want := []string{"DrainSubs", "Stop", "Close"}
+	if len(order) != len(want) {
+		t.Fatalf("shutdown order = %v, want %v", order, want)
+	}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Fatalf("shutdown order = %v, want %v (mismatch at %d: %q != %q)", order, want, i, order[i], want[i])
+		}
+	}
+}
 
 func TestWaitWithDeadlineFastStopReturnsTrue(t *testing.T) {
 	t.Parallel()
