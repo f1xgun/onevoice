@@ -92,9 +92,33 @@ func Run(cfg RunConfig) error {
 	}
 	_ = healthSrv.Shutdown(shutCtx)
 	transport.Close()
-	ag.Stop()
+	if !waitWithDeadline(ag.Stop, runShutdownTimeout) {
+		slog.Warn(cfg.Name + " agent: drain budget elapsed, forcing shutdown with handlers still in flight")
+	}
 	slog.Info(cfg.Name + " agent stopped")
 	return nil
+}
+
+// waitWithDeadline runs stop in a goroutine and waits for it to return, but no
+// longer than d. It reports whether stop completed within the budget. A bounded
+// wait keeps a blocked in-flight handler (e.g. a Playwright RPA step that runs
+// on its own clock and ignores Go context cancellation mid-call) from holding
+// the process past the shutdown budget, so k8s sees a prompt exit instead of
+// SIGKILLing the pod after the termination grace period.
+func waitWithDeadline(stop func(), d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		stop()
+		close(done)
+	}()
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }
 
 // serveHealth builds the health/metrics mux with a NATS connectivity check and
