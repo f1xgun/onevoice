@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
 )
 
 // EmailVerificationService composes a pgxpool.Pool — see the same deviation
@@ -75,11 +76,11 @@ func (f *fakeVerifyUserRepo) MarkEmailVerifiedInTx(context.Context, txStub, uuid
 // txStub avoids importing pgx in tests that don't actually use it.
 type txStub interface{}
 
-// stubbedRequestResend reimplements the rate-limit + guard half of
+// stubbedRequestResend mirrors the rate-limit + guard half of
 // EmailVerificationService.RequestResend (without the pool.Begin + outbox)
-// so we can assert the contract against miniredis. The rate-limit code is
-// the load-bearing part — it MUST share the exact key format and TTL
-// semantics with the production method.
+// so we can assert the contract against miniredis. It shares the exact key
+// format and the same ratelimit.IncrWithHeal helper as the production method,
+// so the load-bearing throttle code stays covered.
 func (s *stubbedVerify) RequestResend(ctx context.Context, userID uuid.UUID) error {
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
@@ -90,24 +91,20 @@ func (s *stubbedVerify) RequestResend(ctx context.Context, userID uuid.UUID) err
 	}
 
 	minKey := fmt.Sprintf("verify_resend:user:%s:min", userID)
-	cnt, err := s.redis.Incr(ctx, minKey).Result()
+	cnt, err := ratelimit.IncrWithHeal(ctx, s.redis, minKey, verifyResendMinWindow)
 	if err != nil {
 		return err
 	}
-	if cnt == 1 {
-		_ = s.redis.Expire(ctx, minKey, verifyResendMinWindow).Err()
-	} else if cnt > 1 {
+	if cnt > 1 {
 		return domain.ErrResendThrottled
 	}
 
 	hrKey := fmt.Sprintf("verify_resend:user:%s:hr", userID)
-	cnt, err = s.redis.Incr(ctx, hrKey).Result()
+	cnt, err = ratelimit.IncrWithHeal(ctx, s.redis, hrKey, verifyResendHourWindow)
 	if err != nil {
 		return err
 	}
-	if cnt == 1 {
-		_ = s.redis.Expire(ctx, hrKey, verifyResendHourWindow).Err()
-	} else if cnt > int64(verifyResendHourMax) {
+	if cnt > int64(verifyResendHourMax) {
 		return domain.ErrResendThrottled
 	}
 
@@ -177,6 +174,33 @@ func TestRequestResend_SixthCallInHourThrottles(t *testing.T) {
 	err := s.RequestResend(context.Background(), u.ID)
 	require.ErrorIs(t, err, domain.ErrResendThrottled)
 	require.Equal(t, 5, s.issued, "hourly cap must short-circuit issue")
+}
+
+// TestRequestResend_SelfHealsMissingTTL reproduces the lost-EXPIRE failure:
+// the per-minute counter loses its TTL (a transient Redis blip when the key
+// was first stamped), so without the heal it stays at value 1 with no expiry
+// and every later call INCRs to >1 → throttled forever, blocking onboarding.
+// The heal re-stamps the TTL on the next call so the window can recover. With
+// the raw INCR + conditional-Expire this test fails: the counter stays
+// TTL-less ("min counter must always carry a TTL so the throttle can recover").
+func TestRequestResend_SelfHealsMissingTTL(t *testing.T) {
+	s, mr := newStubbedVerify(t)
+	u := s.users.addUser(t, "alice@example.com", false)
+	minKey := fmt.Sprintf("verify_resend:user:%s:min", u.ID)
+
+	require.NoError(t, s.RequestResend(context.Background(), u.ID))
+	require.Positive(t, mr.TTL(minKey).Nanoseconds(), "first call must stamp a TTL")
+
+	require.NoError(t, s.redis.Persist(context.Background(), minKey).Err())
+	require.Equal(t, time.Duration(0), mr.TTL(minKey), "precondition: counter has no TTL")
+
+	err := s.RequestResend(context.Background(), u.ID)
+	require.ErrorIs(t, err, domain.ErrResendThrottled, "second call within the window is still throttled")
+	require.Positive(t, mr.TTL(minKey).Nanoseconds(), "min counter must always carry a TTL so the throttle can recover")
+
+	mr.FastForward(verifyResendMinWindow + time.Second)
+	require.False(t, mr.Exists(minKey), "repaired window must expire so resend recovers")
+	require.NoError(t, s.RequestResend(context.Background(), u.ID), "after the window the user can resend again")
 }
 
 // --- Token shape ---------------------------------------------------------

@@ -21,6 +21,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/lockout"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -237,13 +238,10 @@ func (s *PasswordResetService) ConfirmReset(ctx context.Context, plaintextToken,
 func (s *PasswordResetService) bumpRateLimit(ctx context.Context, emailAddr string) bool {
 	emailHash := sha256.Sum256([]byte(emailAddr))
 	rateKey := fmt.Sprintf("reset:email:%x", emailHash)
-	count, err := s.redis.Incr(ctx, rateKey).Result()
+	count, err := ratelimit.IncrWithHeal(ctx, s.redis, rateKey, resetRateLimitWindow)
 	if err != nil {
 		slog.ErrorContext(ctx, "password reset: rate-limit INCR failed (fail-open)", "error", err)
 		return false
-	}
-	if count == 1 {
-		_ = s.redis.Expire(ctx, rateKey, resetRateLimitWindow).Err()
 	}
 	return count > resetRateLimitMax
 }
