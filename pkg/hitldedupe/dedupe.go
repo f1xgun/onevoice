@@ -1,6 +1,8 @@
 // Package hitldedupe provides per-agent deduplication of HITL approvals
-// via Redis SetNX. The key format is `hitl:approval:{business_id}:{approval_id}`
-// with a 24h TTL, matching the pending_tool_calls.expires_at window.
+// via Redis SetNX. The key format is `hitl:approval:{business_id}:{approval_id}`.
+// A completed result keeps a 24h TTL matching the pending_tool_calls.expires_at
+// window; the pre-execution "executing" sentinel uses a short TTL so a crashed
+// or failed claim auto-expires and a legitimate retry can re-claim.
 //
 // The package is shared across all platform agents (telegram, vk,
 // yandex-business, google-business) so dedupe semantics never drift.
@@ -18,8 +20,18 @@ import (
 
 const (
 	// DedupeTTL matches the 24h window of pending_tool_calls.expires_at so a
-	// retry of an approved tool within the approval window gets deduped.
+	// retry of an approved tool within the approval window gets deduped. It is
+	// applied only to the COMPLETED result written by Store, so a genuinely
+	// finished call keeps its full 24h dedupe window.
 	DedupeTTL = 24 * time.Hour
+
+	// ExecutingTTL bounds how long the "executing" sentinel survives before the
+	// owning execution calls Store. A crashed agent or a failed exec never
+	// reaches Store, so a long-lived sentinel would block a legitimate retry of
+	// the same approved tool for the full DedupeTTL. The short window lets the
+	// sentinel auto-expire so a retry can re-Claim, while a completed call still
+	// gets the full DedupeTTL via Store.
+	ExecutingTTL = 90 * time.Second
 
 	// valueExecuting is the sentinel stored by Claim before the tool executes.
 	// Claim uses it to distinguish "in-flight elsewhere" from "completed".
@@ -73,7 +85,7 @@ func (d *DedupeClient) Claim(ctx context.Context, businessID, approvalID string)
 		return ClaimOutcomeSkip, "", nil
 	}
 	key := KeyFor(businessID, approvalID)
-	ok, err := d.rdb.SetNX(ctx, key, valueExecuting, DedupeTTL).Result()
+	ok, err := d.rdb.SetNX(ctx, key, valueExecuting, ExecutingTTL).Result()
 	if err != nil {
 		return ClaimOutcomeSkip, "", fmt.Errorf("hitldedupe: SetNX: %w", err)
 	}
@@ -109,4 +121,18 @@ func (d *DedupeClient) Store(ctx context.Context, businessID, approvalID string,
 		return fmt.Errorf("hitldedupe: marshal result: %w", err)
 	}
 	return d.rdb.Set(ctx, key, string(payload), DedupeTTL).Err()
+}
+
+// Release deletes the dedupe key when an execution failed before reaching
+// Store. The ExecutingTTL already auto-expires a stranded sentinel, so Release
+// is a best-effort belt-and-braces that frees the key immediately rather than
+// waiting out the short window. Callers that only held the "executing" sentinel
+// (never completed) use it so a retry can re-Claim at once.
+//
+// When approvalID is empty, Release is a no-op — mirrors Claim's short-circuit.
+func (d *DedupeClient) Release(ctx context.Context, businessID, approvalID string) error {
+	if approvalID == "" {
+		return nil
+	}
+	return d.rdb.Del(ctx, KeyFor(businessID, approvalID)).Err()
 }

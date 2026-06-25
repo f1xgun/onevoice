@@ -81,9 +81,9 @@ func (d *dispatcherImpl) Dispatch(
 // error the gate is best-effort — we log and fall through rather than fail
 // a turn because Redis blinked.
 //
-// Body is lifted verbatim from
-// services/agent-telegram/internal/agent/handler.go:88-117 — the four agent
-// implementations were byte-identical apart from comment wording.
+// The in-flight envelope carries the "transient" code so the orchestrator and
+// FE classify a concurrent-resume collision (double-click approve) as
+// retryable rather than a hard, uncoded failure.
 func (d *dispatcherImpl) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
 	if d.dedupe == nil || req.ApprovalID == "" {
 		return nil, false
@@ -96,7 +96,12 @@ func (d *dispatcherImpl) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*
 	}
 	switch outcome {
 	case hitldedupe.ClaimOutcomeInFlight:
-		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
+		return &a2a.ToolResponse{
+			TaskID:  req.TaskID,
+			Success: false,
+			Error:   "duplicate: already in flight",
+			Code:    "transient",
+		}, true
 	case hitldedupe.ClaimOutcomeDuplicate:
 		var cachedResp a2a.ToolResponse
 		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
@@ -113,14 +118,21 @@ func (d *dispatcherImpl) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*
 
 // dedupeStore persists a successful ToolResponse under the HITL dedupe key so
 // replays see ClaimOutcomeDuplicate. Errors and nil responses are NOT cached
-// (a replay should be free to retry when the original failed).
+// (a replay should be free to retry when the original failed); on failure the
+// "executing" sentinel is released so the retry can re-Claim immediately rather
+// than waiting out hitldedupe.ExecutingTTL.
 //
-// Body is lifted verbatim from
-// services/agent-telegram/internal/agent/handler.go:118-130. Note that
 // hitldedupe.DedupeClient.Store accepts an interface{} and json-marshals it
 // internally — we pass *resp directly, not a pre-encoded string.
 func (d *dispatcherImpl) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, execErr error) {
-	if d.dedupe == nil || req.ApprovalID == "" || execErr != nil || resp == nil {
+	if d.dedupe == nil || req.ApprovalID == "" {
+		return
+	}
+	if execErr != nil || resp == nil {
+		if rerr := d.dedupe.Release(ctx, req.BusinessID, req.ApprovalID); rerr != nil {
+			slog.WarnContext(ctx, "hitl dedupe release failed; executing sentinel will expire on its own",
+				"error", rerr, "approval_id", req.ApprovalID)
+		}
 		return
 	}
 	if serr := d.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
