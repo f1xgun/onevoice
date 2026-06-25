@@ -101,9 +101,11 @@ Each iteration of the for-loop performs:
    `EventError{Code: "conversation_token_cap"}`, increment
    `LLMConversationCapHit{axis="input|output"}` metric, return
    `OutcomeError, "", ErrConversationTokenCap`.
-6. **Terminal branch**: if `len(resp.ToolCalls) == 0` or `FinishReason ==
-   "stop"`, emit `EventText` (when non-empty) then `EventDone`, return
-   `OutcomeDone`.
+6. **Terminal branch**: if `len(resp.ToolCalls) == 0`, emit `EventText`
+   (when non-empty) then `EventDone`, return `OutcomeDone`. The branch is
+   gated solely on the absence of tool calls — `FinishReason` is **not**
+   consulted, because some providers report `finish_reason == "stop"` on a
+   completion that still carries `tool_calls`.
 7. **Append assistant message** with `tool_calls` to `state.Messages`.
 8. **Bucket tool calls** via `hitl.Bucket(o.tools.Floor,
    BusinessApprovals, ProjectApprovalOverrides, resp.ToolCalls)` →

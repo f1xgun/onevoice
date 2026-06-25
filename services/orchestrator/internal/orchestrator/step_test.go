@@ -214,6 +214,89 @@ func TestStepRun_AutoFloorTool_DispatchesInline(t *testing.T) {
 	assert.NotEmpty(t, findEvents(evts, orchestrator.EventDone))
 }
 
+// TestStepRun_AutoFloorTool_FinishReasonStop_StillDispatches guards the
+// terminal-branch gate. Some OpenAI-compatible upstreams (free/quantized
+// models proxied via OpenRouter) emit tool_calls AND finish_reason="stop" in
+// the same completion. The terminal branch MUST be decided by the absence of
+// tool calls alone — never by FinishReason — or the auto-floor tool is
+// silently dropped while the user is told the action succeeded.
+func TestStepRun_AutoFloorTool_FinishReasonStop_StillDispatches(t *testing.T) {
+	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "stop",
+			ToolCalls: []llm.ToolCall{{
+				ID:       "call_a",
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: "auto_tool", Arguments: string(toolCallArgs)},
+			}},
+		},
+		{Content: "Done!", FinishReason: "stop"},
+	}}
+
+	var executed int32
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, toolregistry.ExecutorFunc(
+		func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+			executed = 1
+			return map[string]interface{}{"ok": true}, nil
+		}))
+
+	orch := orchestrator.New(stub, reg)
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "go"}},
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+	assert.Equal(t, int32(1), executed,
+		"auto tool MUST be dispatched even when finish_reason=stop accompanies tool_calls (silent action loss otherwise)")
+	assert.NotEmpty(t, findEvents(evts, orchestrator.EventToolCall),
+		"a tool_call event must be emitted, not just an EventDone")
+	assert.NotEmpty(t, findEvents(evts, orchestrator.EventToolResult))
+}
+
+// TestStepRun_ManualFloorTool_FinishReasonStop_StillRaisesApproval guards the
+// HITL gate against the same finish_reason="stop"+tool_calls bypass. A
+// manual-floor tool MUST surface an approval card rather than being treated as
+// a terminal text turn (HITL bypass otherwise).
+func TestStepRun_ManualFloorTool_FinishReasonStop_StillRaisesApproval(t *testing.T) {
+	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "stop",
+			ToolCalls: []llm.ToolCall{{
+				ID:       "call_m",
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: "manual_tool", Arguments: string(toolCallArgs)},
+			}},
+		},
+	}}
+
+	reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, nil)
+	repo := newMockPendingRepo()
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "post it"}},
+		ConversationID:  "conv-fr-stop",
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+	pauses := findEvents(evts, orchestrator.EventToolApprovalRequired)
+	require.Len(t, pauses, 1,
+		"manual-floor tool MUST raise an approval card even when finish_reason=stop accompanies tool_calls (HITL bypass otherwise)")
+	require.Len(t, pauses[0].Calls, 1)
+	assert.Equal(t, "manual_tool", pauses[0].Calls[0].ToolName)
+	assert.Equal(t, domain.ToolFloorManual, pauses[0].Calls[0].Floor)
+
+	require.Len(t, repo.insertedBatches, 1, "the approval batch must be persisted")
+	assert.Empty(t, findEvents(evts, orchestrator.EventDone),
+		"MUST NOT emit EventDone when a manual-floor tool_call is present")
+}
+
 func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
 	stub := &stubLLM{responses: []*llm.ChatResponse{
