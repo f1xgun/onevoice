@@ -128,6 +128,38 @@ func TestHTTPMiddleware_UsesRoutePattern(t *testing.T) {
 	}
 }
 
+func TestHTTPMiddleware_UnmatchedPathCollapsesToSentinel(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(HTTPMiddleware)
+	r.Get("/registered", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	const rawPath = "/health/" + "attacker-controlled-unique-garbage-9f3c"
+
+	req := httptest.NewRequest(http.MethodGet, rawPath, http.NoBody)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	mf := findMetric(families, "http_requests_total")
+	if mf == nil {
+		t.Fatal("http_requests_total metric family not found")
+	}
+
+	if findSample(mf, map[string]string{"method": "GET", "path": rawPath}) != nil {
+		t.Fatalf("unmatched request must not create a {path=%q} series; raw URL would let an unauthenticated attacker explode metric cardinality", rawPath)
+	}
+
+	if findSample(mf, map[string]string{"method": "GET", "path": "<unmatched>"}) == nil {
+		t.Fatal("expected unmatched request to collapse into the single {path=\"<unmatched>\"} bucket")
+	}
+}
+
 func TestIncAppError_NormalizesUnknownService(t *testing.T) {
 	const hostile = "'; DROP TABLE x; --"
 	IncAppError(ServiceAPI)
