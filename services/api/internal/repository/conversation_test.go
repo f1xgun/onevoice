@@ -219,26 +219,30 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 	repo := NewConversationRepository(db)
 	ctx := context.Background()
 
+	const businessA = "biz-a"
+
 	t.Run("returns all conversations for user", func(t *testing.T) {
 		userID := "user-list-123"
 
 		for i := 0; i < 3; i++ {
 			conv := &domain.Conversation{
-				UserID: userID,
-				Title:  "Conversation " + string(rune('A'+i)),
+				UserID:     userID,
+				BusinessID: businessA,
+				Title:      "Conversation " + string(rune('A'+i)),
 			}
 			err := repo.Create(ctx, conv)
 			require.NoError(t, err)
 		}
 
 		otherConv := &domain.Conversation{
-			UserID: "other-user",
-			Title:  "Other User Conversation",
+			UserID:     "other-user",
+			BusinessID: businessA,
+			Title:      "Other User Conversation",
 		}
 		err := repo.Create(ctx, otherConv)
 		require.NoError(t, err)
 
-		conversations, err := repo.ListByUserID(ctx, userID, 10, 0)
+		conversations, err := repo.ListByUserID(ctx, userID, businessA, 10, 0)
 		require.NoError(t, err)
 		assert.Len(t, conversations, 3)
 		for _, conv := range conversations {
@@ -247,7 +251,7 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 	})
 
 	t.Run("returns empty slice when no conversations", func(t *testing.T) {
-		conversations, err := repo.ListByUserID(ctx, "no-conversations-user", 10, 0)
+		conversations, err := repo.ListByUserID(ctx, "no-conversations-user", businessA, 10, 0)
 		require.NoError(t, err)
 		assert.NotNil(t, conversations)
 		assert.Len(t, conversations, 0)
@@ -258,14 +262,15 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 
 		for i := 0; i < 5; i++ {
 			conv := &domain.Conversation{
-				UserID: userID,
-				Title:  "Conv " + string(rune('1'+i)),
+				UserID:     userID,
+				BusinessID: businessA,
+				Title:      "Conv " + string(rune('1'+i)),
 			}
 			err := repo.Create(ctx, conv)
 			require.NoError(t, err)
 		}
 
-		conversations, err := repo.ListByUserID(ctx, userID, 2, 0)
+		conversations, err := repo.ListByUserID(ctx, userID, businessA, 2, 0)
 		require.NoError(t, err)
 		assert.Len(t, conversations, 2)
 	})
@@ -275,16 +280,45 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 
 		for i := 0; i < 5; i++ {
 			conv := &domain.Conversation{
-				UserID: userID,
-				Title:  "Conv " + string(rune('1'+i)),
+				UserID:     userID,
+				BusinessID: businessA,
+				Title:      "Conv " + string(rune('1'+i)),
 			}
 			err := repo.Create(ctx, conv)
 			require.NoError(t, err)
 		}
 
-		conversations, err := repo.ListByUserID(ctx, userID, 10, 2)
+		conversations, err := repo.ListByUserID(ctx, userID, businessA, 10, 2)
 		require.NoError(t, err)
 		assert.Len(t, conversations, 3)
+	})
+
+	// TestConversationRepository_ListByUserID/scopes by business_id is the
+	// repo-level fail-on-revert guard for the cross-organization leak: a user
+	// who is a member of two organizations must only see the active
+	// organization's conversations. Reverting the business_id predicate in
+	// ListByUserID makes the org-B conversation leak into the org-A listing and
+	// fails this subtest.
+	t.Run("scopes by business_id (does not leak other org's conversations)", func(t *testing.T) {
+		userID := "multi-org-user"
+		const orgA = "org-a-scope"
+		const orgB = "org-b-scope"
+
+		convA := &domain.Conversation{UserID: userID, BusinessID: orgA, Title: "Org A conversation"}
+		require.NoError(t, repo.Create(ctx, convA))
+
+		convB := &domain.Conversation{UserID: userID, BusinessID: orgB, Title: "Org B conversation"}
+		require.NoError(t, repo.Create(ctx, convB))
+
+		got, err := repo.ListByUserID(ctx, userID, orgA, 10, 0)
+		require.NoError(t, err)
+		require.Len(t, got, 1, "org-A listing must contain ONLY the org-A conversation")
+		assert.Equal(t, orgA, got[0].BusinessID)
+		assert.Equal(t, "Org A conversation", got[0].Title)
+		for _, c := range got {
+			assert.NotEqual(t, orgB, c.BusinessID,
+				"org-B conversation must NOT leak into the org-A listing")
+		}
 	})
 }
 

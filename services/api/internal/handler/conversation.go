@@ -131,7 +131,7 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 
 	limit, offset := parseLimitOffset(r, DefaultConversationLimit, MaxConversationLimit)
 
-	conversations, err := h.conversationRepo.ListByUserID(r.Context(), bc.UserID.String(), limit, offset)
+	conversations, err := h.conversationRepo.ListByUserID(r.Context(), bc.UserID.String(), bc.BusinessID.String(), limit, offset)
 	if err != nil {
 		slog.Error("failed to list conversations", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -170,6 +170,10 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 
 	if conversation.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if conversation.BusinessID != bc.BusinessID.String() {
+		writeJSONError(w, http.StatusNotFound, "conversation not found")
 		return
 	}
 
@@ -261,7 +265,7 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 
 	conversationID := chi.URLParam(r, "id")
 
-	view, err := h.conversationService.OpenChat(r.Context(), conversationID, bc.UserID)
+	view, err := h.conversationService.OpenChat(r.Context(), conversationID, bc.BusinessID, bc.UserID)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrConversationNotFound):

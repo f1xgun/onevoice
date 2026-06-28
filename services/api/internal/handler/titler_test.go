@@ -77,7 +77,7 @@ func (r *titlerConvRepo) GetByID(_ context.Context, _ string) (*domain.Conversat
 	cp := *r.getByIDReturn
 	return &cp, nil
 }
-func (r *titlerConvRepo) ListByUserID(_ context.Context, _ string, _, _ int) ([]domain.Conversation, error) {
+func (r *titlerConvRepo) ListByUserID(_ context.Context, _, _ string, _, _ int) ([]domain.Conversation, error) {
 	return nil, nil
 }
 func (r *titlerConvRepo) Update(_ context.Context, _ *domain.Conversation) error { return nil }

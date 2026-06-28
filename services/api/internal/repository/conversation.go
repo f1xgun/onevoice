@@ -61,8 +61,10 @@ func (r *conversationRepository) GetByID(ctx context.Context, id string) (*domai
 	return &conv, nil
 }
 
-// ListByUserID returns conversations for a user, newest-first, paginated.
-func (r *conversationRepository) ListByUserID(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error) {
+// ListByUserID returns conversations for a user within one organization,
+// newest-first, paginated. Scoped by (user_id, business_id) so a member of
+// multiple organizations never sees another organization's conversations.
+func (r *conversationRepository) ListByUserID(ctx context.Context, userID, businessID string, limit, offset int) ([]domain.Conversation, error) {
 	conversations := make([]domain.Conversation, 0)
 
 	opts := options.Find().
@@ -70,7 +72,7 @@ func (r *conversationRepository) ListByUserID(ctx context.Context, userID string
 		SetSkip(int64(offset)).
 		SetSort(bson.M{"created_at": -1})
 
-	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userID}, opts)
+	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userID, "business_id": businessID}, opts)
 	if err != nil {
 		return conversations, fmt.Errorf("find conversations: %w", err)
 	}

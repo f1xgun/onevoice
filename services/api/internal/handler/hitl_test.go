@@ -216,7 +216,7 @@ func (c *hitlConvRepo) GetByID(_ context.Context, id string) (*domain.Conversati
 	}
 	return conv, nil
 }
-func (c *hitlConvRepo) ListByUserID(_ context.Context, _ string, _, _ int) ([]domain.Conversation, error) {
+func (c *hitlConvRepo) ListByUserID(_ context.Context, _, _ string, _, _ int) ([]domain.Conversation, error) {
 	return nil, nil
 }
 func (c *hitlConvRepo) Update(_ context.Context, _ *domain.Conversation) error { return nil }
