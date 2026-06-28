@@ -43,6 +43,16 @@ type BusinessOwnerEmailResolver interface {
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 }
 
+// BusinessDeletionOutbox is the slice of the email outbox repository the
+// deletion flows use: enqueue the confirmation + deferred T-7 rows on request,
+// and cancel the pending T-7 row on cancel. Declared as an interface so tests
+// can substitute a double; production wires *repository.EmailOutboxRepository.
+type BusinessDeletionOutbox interface {
+	Enqueue(ctx context.Context, tx pgx.Tx, in repository.OutboxEnqueueInput) (uuid.UUID, error)
+	EnqueueDeferred(ctx context.Context, tx pgx.Tx, in repository.OutboxEnqueueInput, nextAttemptAt time.Time) (uuid.UUID, error)
+	CancelPendingBySubjectAndRecipient(ctx context.Context, toEmail, subject string) error
+}
+
 // BusinessDeletionService orchestrates the organization request/cancel/sweep
 // flows. Mirrors AccountDeletionService — same 30-day grace, same audit + email
 // structure — but gated to members holding the system OWNER role.
@@ -52,7 +62,7 @@ type BusinessDeletionService struct {
 	members       BusinessOwnerChecker
 	users         BusinessOwnerEmailResolver
 	conversations domain.ConversationRepository
-	outbox        *repository.EmailOutboxRepository
+	outbox        BusinessDeletionOutbox
 	auditLog      audit.Logger
 	graceDays     int
 	t7OffsetDays  int
@@ -66,7 +76,7 @@ func NewBusinessDeletionService(
 	members BusinessOwnerChecker,
 	users BusinessOwnerEmailResolver,
 	conversations domain.ConversationRepository,
-	outbox *repository.EmailOutboxRepository,
+	outbox BusinessDeletionOutbox,
 	auditLogger audit.Logger,
 ) *BusinessDeletionService {
 	return &BusinessDeletionService{
@@ -208,8 +218,39 @@ func (s *BusinessDeletionService) CancelDeletion(ctx context.Context, actorUserI
 		return domain.ErrBusinessAlreadyPurged
 	}
 
+	s.cancelPendingT7Warning(ctx, actorUserID, businessID)
+
 	audit.LogBusinessDeletionCanceled(ctx, s.auditLog, businessID, actorUserID, clientIP, userAgent)
 	return nil
+}
+
+// cancelPendingT7Warning best-effort cancels the deferred T-7 warning row that
+// RequestDeletion enqueued, so the worker doesn't email "your organization will
+// be deleted in 7 days" ~23 days after the owner cancels. The T-7 subject is
+// locale-dependent: when the owner's locale resolves, cancel that variant; when
+// the owner email or locale can't be resolved, cancel both subject variants so
+// the pending row is caught regardless. Non-fatal — never fails the cancel.
+func (s *BusinessDeletionService) cancelPendingT7Warning(ctx context.Context, actorUserID, businessID uuid.UUID) {
+	owner, ownerErr := s.users.GetByID(ctx, actorUserID)
+	if ownerErr != nil || owner == nil || owner.Email == "" {
+		if ownerErr != nil {
+			slog.WarnContext(ctx, "resolve owner email failed (skipping T-7 cancel)", "businessID", businessID, "userID", actorUserID, "err", ownerErr)
+		}
+		return
+	}
+
+	subjects := []string{templates.BusinessDeletionT7WarningSubject(owner.PreferredLocale)}
+	if owner.PreferredLocale == "" {
+		subjects = []string{
+			templates.BusinessDeletionT7WarningSubject("ru"),
+			templates.BusinessDeletionT7WarningSubject("en"),
+		}
+	}
+	for _, subject := range subjects {
+		if cancelErr := s.outbox.CancelPendingBySubjectAndRecipient(ctx, owner.Email, subject); cancelErr != nil {
+			slog.WarnContext(ctx, "cancel pending T-7 warning failed (non-fatal)", "businessID", businessID, "userID", actorUserID, "err", cancelErr)
+		}
+	}
 }
 
 // GetScheduledDeletionAt returns deletion_requested_at + graceDays, or zero time
