@@ -216,7 +216,12 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 		call := batch.Calls[i]
 
-		if call.Verdict == "reject" {
+		// Fail-closed: a call is dispatched ONLY when its verdict is an explicit
+		// approval (approve/edit). Any other verdict — reject, or an EMPTY/unknown
+		// verdict left behind when RecordDecisions failed to persist after the
+		// batch transitioned to "resolving" — is treated as a rejection and never
+		// executes, so a call the user intended to reject is not published.
+		if call.Verdict != "approve" && call.Verdict != "edit" {
 			reason := call.RejectReason
 			if reason == "" {
 				reason = "user_rejected"
