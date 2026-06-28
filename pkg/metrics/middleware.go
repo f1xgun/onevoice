@@ -53,6 +53,32 @@ func IncAppError(service string) {
 	appErrorsTotal.WithLabelValues(service).Inc()
 }
 
+// allowedHTTPMethods caps the `method` label cardinality to the fixed set of
+// standard HTTP request methods. r.Method is attacker-controlled (net/http
+// accepts any RFC 7230 method token verbatim), so any value outside this set
+// collapses to "other" in normalizeHTTPMethod. See pkg/metrics/README.md.
+var allowedHTTPMethods = map[string]struct{}{
+	http.MethodGet:     {},
+	http.MethodHead:    {},
+	http.MethodPost:    {},
+	http.MethodPut:     {},
+	http.MethodPatch:   {},
+	http.MethodDelete:  {},
+	http.MethodConnect: {},
+	http.MethodOptions: {},
+	http.MethodTrace:   {},
+}
+
+// normalizeHTTPMethod bounds the `method` label to allowedHTTPMethods, mapping
+// anything else to "other" so an attacker-supplied method token can never
+// explode metric cardinality.
+func normalizeHTTPMethod(method string) string {
+	if _, ok := allowedHTTPMethods[method]; ok {
+		return method
+	}
+	return labelOther
+}
+
 // responseWriter wraps http.ResponseWriter to capture the status code.
 type responseWriter struct {
 	http.ResponseWriter
@@ -85,7 +111,9 @@ func (rw *responseWriter) Flush() {
 // URL) to prevent cardinality explosion from path parameters. Requests that
 // match no registered route — where chi reports an empty pattern — collapse to
 // the single "<unmatched>" bucket so an attacker-controlled URL can never be
-// turned into an unbounded set of label series.
+// turned into an unbounded set of label series. The {method} label is likewise
+// bounded to the standard HTTP method set via normalizeHTTPMethod, since
+// r.Method is attacker-controlled and would otherwise be unbounded.
 func HTTPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -102,8 +130,9 @@ func HTTPMiddleware(next http.Handler) http.Handler {
 
 		status := strconv.Itoa(rw.statusCode)
 		duration := time.Since(start).Seconds()
+		method := normalizeHTTPMethod(r.Method)
 
-		httpRequestsTotal.WithLabelValues(r.Method, path, status).Inc()
-		httpRequestDuration.WithLabelValues(r.Method, path, status).Observe(duration)
+		httpRequestsTotal.WithLabelValues(method, path, status).Inc()
+		httpRequestDuration.WithLabelValues(method, path, status).Observe(duration)
 	})
 }
