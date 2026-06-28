@@ -273,11 +273,11 @@ func (r *businessMembershipRepository) ListByUser(ctx context.Context, userID uu
 }
 
 // ListUserIDsByRole returns the user_id values for every business_members row
-// holding roleID in the given business. RolesHandler.Delete captures
-// this set BEFORE tx.Commit so it can fanout authz.InvalidateMember per
-// affected user AFTER commit succeeds (InvalidateRole alone evicts only the
-// role-perms entry, NOT the per-member membership entry that caches the OLD
-// role_id).
+// holding roleID in the given business. This is a non-transactional snapshot;
+// callers that need the set to match rows mutated inside a tx (e.g. the
+// authz.InvalidateMember fan-out after role-delete-with-reassign) must instead
+// enumerate the affected rows from within that tx — see
+// RoleRepository.DeleteWithReassignInTx, which returns the reassigned user_ids.
 func (r *businessMembershipRepository) ListUserIDsByRole(ctx context.Context, businessID, roleID uuid.UUID) ([]uuid.UUID, error) {
 	sqlStr, args, err := r.sb.
 		Select("user_id").

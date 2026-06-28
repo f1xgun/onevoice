@@ -155,9 +155,13 @@ func (m *MockRoleRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.
 	return args.Error(0)
 }
 
-func (m *MockRoleRepository) DeleteWithReassignInTx(ctx context.Context, tx pgx.Tx, businessID, oldRoleID, reassignToID, actorUserID uuid.UUID) error {
+func (m *MockRoleRepository) DeleteWithReassignInTx(ctx context.Context, tx pgx.Tx, businessID, oldRoleID, reassignToID, actorUserID uuid.UUID) ([]uuid.UUID, error) {
 	args := m.Called(ctx, tx, businessID, oldRoleID, reassignToID, actorUserID)
-	return args.Error(0)
+	var ids []uuid.UUID
+	if v := args.Get(0); v != nil {
+		ids = v.([]uuid.UUID)
+	}
+	return ids, args.Error(1)
 }
 
 func (m *MockRoleRepository) Reassign(ctx context.Context, businessID, oldRoleID, newRoleID uuid.UUID) error {

@@ -816,10 +816,11 @@ func TestRolesHandler_Delete(t *testing.T) {
 			IsSystem:    false,
 		}, nil).Once()
 		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(3, nil)
-		mr.On("ListUserIDsByRole", mock.Anything, bizID, roleID).Return([]uuid.UUID{user1, user2, user3}, nil)
 		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		mockPool.ExpectCommit()
-		rr.On("DeleteWithReassignInTx", mock.Anything, mock.Anything, bizID, roleID, reassignToID, actorID).Return(nil)
+		reassigned := []uuid.UUID{user1, user2, user3}
+		rr.On("DeleteWithReassignInTx", mock.Anything, mock.Anything, bizID, roleID, reassignToID, actorID).
+			Return(reassigned, nil)
 
 		h := newRolesHandlerForTest(rr, mr, mockPool, inv)
 
@@ -835,6 +836,64 @@ func TestRolesHandler_Delete(t *testing.T) {
 		require.Len(t, inv.invalidateMember, 3, "InvalidateMember must fanout per affected user")
 		require.NoError(t, mockPool.ExpectationsWereMet())
 		mr.AssertExpectations(t)
+	})
+
+	t.Run("invalidates_member_reassigned_inside_tx_not_pretx_snapshot", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		mr := &MockBusinessMembershipRepository{}
+		inv := &recordingInvalidator{}
+		mockPool, err := pgxmock.NewPool()
+		require.NoError(t, err)
+
+		bizID := uuid.New()
+		actorID := uuid.New()
+		roleID := uuid.New()
+		reassignToID := uuid.New()
+		snapshotUser := uuid.New()
+		racingUser := uuid.New()
+
+		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
+			ID:         roleID,
+			BusinessID: &bizID,
+			IsSystem:   false,
+		}, nil).Once()
+		rr.On("GetByID", mock.Anything, reassignToID).Return(&domain.Role{
+			ID:          reassignToID,
+			BusinessID:  &bizID,
+			Permissions: []string{"content.read"},
+			IsSystem:    false,
+		}, nil).Once()
+		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(1, nil)
+
+		mr.On("ListUserIDsByRole", mock.Anything, bizID, roleID).
+			Return([]uuid.UUID{snapshotUser}, nil).Maybe()
+
+		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		mockPool.ExpectCommit()
+		txReassigned := []uuid.UUID{snapshotUser, racingUser}
+		rr.On("DeleteWithReassignInTx", mock.Anything, mock.Anything, bizID, roleID, reassignToID, actorID).
+			Return(txReassigned, nil)
+
+		h := newRolesHandlerForTest(rr, mr, mockPool, inv)
+
+		ctx := businessContextFull(context.Background(), bizID, actorID, ownerRoleUUID(t),
+			authz.PermRolesDelete, authz.PermContentRead)
+		req := httptest.NewRequest(http.MethodDelete, "/?reassign_to="+reassignToID.String(), http.NoBody).WithContext(ctx)
+		req = withRoleIDParam(req, roleID.String())
+		w := httptest.NewRecorder()
+		h.Delete(w, req)
+
+		assert.Equal(t, http.StatusNoContent, w.Code)
+
+		got := make(map[uuid.UUID]bool, len(inv.invalidateMember))
+		for _, c := range inv.invalidateMember {
+			got[c.UserID] = true
+		}
+		assert.True(t, got[snapshotUser], "snapshot member must be invalidated")
+		assert.True(t, got[racingUser],
+			"member reassigned-into-the-role inside the tx must be invalidated; "+
+				"sourcing the fan-out from the pre-tx ListUserIDsByRole snapshot drops it and leaks a stale authz cache entry")
+		require.NoError(t, mockPool.ExpectationsWereMet())
 	})
 
 	t.Run("missing_permission", func(t *testing.T) {

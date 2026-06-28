@@ -555,7 +555,7 @@ func TestRoleRepository_DeleteInTx_NilTx(t *testing.T) {
 // --- DeleteWithReassignInTx ----------------------------------------
 
 func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
-	t.Run("reassigns_then_deletes_in_order", func(t *testing.T) {
+	t.Run("reassigns_then_deletes_in_order_and_returns_reassigned_ids", func(t *testing.T) {
 		ctx := context.Background()
 		r, mockPool := newTestRoleRepo(t)
 
@@ -563,20 +563,24 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		oldRoleID := uuid.New()
 		newRoleID := uuid.New()
 		actorID := uuid.New()
+		user1, user2, user3 := uuid.New(), uuid.New(), uuid.New()
 
 		mockPool.ExpectBegin()
 		tx, err := mockPool.Begin(ctx)
 		require.NoError(t, err)
 
-		mockPool.ExpectExec(`UPDATE business_members`).
+		mockPool.ExpectQuery(`UPDATE business_members .* RETURNING user_id`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 3))
+			WillReturnRows(pgxmock.NewRows([]string{"user_id"}).
+				AddRow(user1).AddRow(user2).AddRow(user3))
 		mockPool.ExpectExec(`DELETE FROM roles`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
-		err = r.DeleteWithReassignInTx(ctx, tx, businessID, oldRoleID, newRoleID, actorID)
+		ids, err := r.DeleteWithReassignInTx(ctx, tx, businessID, oldRoleID, newRoleID, actorID)
 		require.NoError(t, err)
+		assert.Equal(t, []uuid.UUID{user1, user2, user3}, ids,
+			"reassigned user_ids must come from the in-tx UPDATE RETURNING, not a pre-tx snapshot")
 		require.NoError(t, mockPool.ExpectationsWereMet(),
 			"expectations met implies UPDATE fired before DELETE — FK ON DELETE RESTRICT discipline")
 	})
@@ -590,7 +594,7 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		require.NoError(t, err)
 
 		roleID := uuid.New()
-		err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), roleID, roleID, uuid.New())
+		_, err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), roleID, roleID, uuid.New())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot equal oldRoleID")
 		require.NoError(t, mockPool.ExpectationsWereMet())
@@ -604,14 +608,14 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		tx, err := mockPool.Begin(ctx)
 		require.NoError(t, err)
 
-		mockPool.ExpectExec(`UPDATE business_members`).
+		mockPool.ExpectQuery(`UPDATE business_members .* RETURNING user_id`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+			WillReturnRows(pgxmock.NewRows([]string{"user_id"}))
 		mockPool.ExpectExec(`DELETE FROM roles`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
-		err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), uuid.New(), uuid.New(), uuid.New())
+		_, err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), uuid.New(), uuid.New(), uuid.New())
 		assert.ErrorIs(t, err, domain.ErrRoleNotFound)
 		require.NoError(t, mockPool.ExpectationsWereMet())
 	})
@@ -620,7 +624,7 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		ctx := context.Background()
 		r, _ := newTestRoleRepo(t)
 
-		err := r.DeleteWithReassignInTx(ctx, nil, uuid.New(), uuid.New(), uuid.New(), uuid.New())
+		_, err := r.DeleteWithReassignInTx(ctx, nil, uuid.New(), uuid.New(), uuid.New(), uuid.New())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "tx is required")
 	})
@@ -633,11 +637,11 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		tx, err := mockPool.Begin(ctx)
 		require.NoError(t, err)
 
-		mockPool.ExpectExec(`UPDATE business_members`).
+		mockPool.ExpectQuery(`UPDATE business_members .* RETURNING user_id`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnError(errors.New("connection reset"))
 
-		err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), uuid.New(), uuid.New(), uuid.New())
+		_, err = r.DeleteWithReassignInTx(ctx, tx, uuid.New(), uuid.New(), uuid.New(), uuid.New())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "reassign members")
 		require.NoError(t, mockPool.ExpectationsWereMet())

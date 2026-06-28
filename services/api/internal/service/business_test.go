@@ -799,8 +799,8 @@ func (m *mockRoleRepository) DeleteInTx(_ context.Context, _ pgx.Tx, _ uuid.UUID
 	return nil
 }
 
-func (m *mockRoleRepository) DeleteWithReassignInTx(_ context.Context, _ pgx.Tx, _, _, _, _ uuid.UUID) error {
-	return nil
+func (m *mockRoleRepository) DeleteWithReassignInTx(_ context.Context, _ pgx.Tx, _, _, _, _ uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
 }
 
 func (m *mockRoleRepository) CountMembersByRole(_ context.Context, _, _ uuid.UUID) (int, error) {
