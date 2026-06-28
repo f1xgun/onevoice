@@ -175,6 +175,7 @@ func (s *ConversationService) MoveToProject(
 func (s *ConversationService) OpenChat(
 	ctx context.Context,
 	conversationID string,
+	businessID uuid.UUID,
 	requesterUserID uuid.UUID,
 ) (*ChatView, error) {
 	conv, err := s.convRepo.GetByID(ctx, conversationID)
@@ -183,6 +184,9 @@ func (s *ConversationService) OpenChat(
 	}
 	if conv.UserID != requesterUserID.String() {
 		return nil, domain.ErrForbidden
+	}
+	if conv.BusinessID != businessID.String() {
+		return nil, domain.ErrConversationNotFound
 	}
 
 	messages, err := s.messageRepo.ListByConversationID(ctx, conversationID, defaultMessageListLimit, 0)

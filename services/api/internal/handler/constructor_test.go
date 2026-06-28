@@ -18,7 +18,7 @@ func (s *stubConversationRepo) Create(_ context.Context, _ *domain.Conversation)
 func (s *stubConversationRepo) GetByID(_ context.Context, _ string) (*domain.Conversation, error) {
 	return nil, nil
 }
-func (s *stubConversationRepo) ListByUserID(_ context.Context, _ string, _, _ int) ([]domain.Conversation, error) {
+func (s *stubConversationRepo) ListByUserID(_ context.Context, _, _ string, _, _ int) ([]domain.Conversation, error) {
 	return nil, nil
 }
 func (s *stubConversationRepo) Update(_ context.Context, _ *domain.Conversation) error { return nil }

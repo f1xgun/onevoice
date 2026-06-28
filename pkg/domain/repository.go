@@ -212,7 +212,9 @@ type AuditLogRepository interface {
 type ConversationRepository interface {
 	Create(ctx context.Context, conv *Conversation) error
 	GetByID(ctx context.Context, id string) (*Conversation, error)
-	ListByUserID(ctx context.Context, userID string, limit, offset int) ([]Conversation, error)
+	// ListByUserID scopes by (user_id, business_id) so a member of multiple
+	// organizations only sees the active organization's conversations.
+	ListByUserID(ctx context.Context, userID, businessID string, limit, offset int) ([]Conversation, error)
 	Update(ctx context.Context, conv *Conversation) error
 	Delete(ctx context.Context, id string) error
 	// UpdateProjectAssignment: bson:"project_id" without omitempty so nil writes explicit null.

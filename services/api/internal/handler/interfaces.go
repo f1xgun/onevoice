@@ -46,6 +46,6 @@ type ConversationService interface {
 	OpenChat(
 		ctx context.Context,
 		conversationID string,
-		requesterUserID uuid.UUID,
+		businessID, requesterUserID uuid.UUID,
 	) (*service.ChatView, error)
 }

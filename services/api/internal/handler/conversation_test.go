@@ -31,7 +31,7 @@ func ptr[T any](v T) *T { return &v }
 type MockConversationRepository struct {
 	CreateFunc                  func(ctx context.Context, conv *domain.Conversation) error
 	GetByIDFunc                 func(ctx context.Context, id string) (*domain.Conversation, error)
-	ListByUserIDFunc            func(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error)
+	ListByUserIDFunc            func(ctx context.Context, userID, businessID string, limit, offset int) ([]domain.Conversation, error)
 	UpdateFunc                  func(ctx context.Context, conv *domain.Conversation) error
 	DeleteFunc                  func(ctx context.Context, id string) error
 	UpdateProjectAssignmentFunc func(ctx context.Context, id string, projectID *string) error
@@ -57,9 +57,9 @@ func (m *MockConversationRepository) GetByID(ctx context.Context, id string) (*d
 	return nil, domain.ErrConversationNotFound
 }
 
-func (m *MockConversationRepository) ListByUserID(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error) {
+func (m *MockConversationRepository) ListByUserID(ctx context.Context, userID, businessID string, limit, offset int) ([]domain.Conversation, error) {
 	if m.ListByUserIDFunc != nil {
-		return m.ListByUserIDFunc(ctx, userID, limit, offset)
+		return m.ListByUserIDFunc(ctx, userID, businessID, limit, offset)
 	}
 	return []domain.Conversation{}, nil
 }
@@ -301,7 +301,7 @@ func (noopConversationService) MoveToProject(_ context.Context, _ string, _, _ u
 	panic("noopConversationService.MoveToProject: test must wire a real *service.ConversationService when exercising MoveConversation")
 }
 
-func (noopConversationService) OpenChat(_ context.Context, _ string, _ uuid.UUID) (*service.ChatView, error) {
+func (noopConversationService) OpenChat(_ context.Context, _ string, _, _ uuid.UUID) (*service.ChatView, error) {
 	panic("noopConversationService.OpenChat: test must wire a real *service.ConversationService when exercising ListMessages")
 }
 
@@ -564,9 +564,12 @@ func TestListConversations_Success(t *testing.T) {
 		},
 	}
 
+	businessID := uuid.New()
 	mockRepo := &MockConversationRepository{
-		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+		ListByUserIDFunc: func(ctx context.Context, uid, bizID string, limit, offset int) ([]domain.Conversation, error) {
 			assert.Equal(t, userID.String(), uid)
+			assert.Equal(t, businessID.String(), bizID,
+				"ListConversations must scope by the active business_id, not just user_id")
 			assert.Equal(t, 20, limit)
 			assert.Equal(t, 0, offset)
 			return conversations, nil
@@ -577,7 +580,7 @@ func TestListConversations_Success(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
-	ctx := convBizCtx(uuid.New(), userID)
+	ctx := convBizCtx(businessID, userID)
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -598,7 +601,7 @@ func TestListConversations_EmptyList(t *testing.T) {
 	userID := uuid.New()
 
 	mockRepo := &MockConversationRepository{
-		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+		ListByUserIDFunc: func(ctx context.Context, uid, bizID string, limit, offset int) ([]domain.Conversation, error) {
 			return []domain.Conversation{}, nil
 		},
 	}
@@ -661,7 +664,7 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 			userID := uuid.New()
 
 			mockRepo := &MockConversationRepository{
-				ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+				ListByUserIDFunc: func(ctx context.Context, uid, bizID string, limit, offset int) ([]domain.Conversation, error) {
 					assert.Equal(t, tt.expectedLimit, limit)
 					assert.Equal(t, tt.expectedOffset, offset)
 					return []domain.Conversation{}, nil
@@ -701,7 +704,7 @@ func TestListConversations_RepositoryError(t *testing.T) {
 	userID := uuid.New()
 
 	mockRepo := &MockConversationRepository{
-		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+		ListByUserIDFunc: func(ctx context.Context, uid, bizID string, limit, offset int) ([]domain.Conversation, error) {
 			return nil, errors.New("database error")
 		},
 	}
@@ -727,14 +730,16 @@ func TestListConversations_RepositoryError(t *testing.T) {
 // TestGetConversation_Success tests successful conversation retrieval
 func TestGetConversation_Success(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 	conversationID := "507f1f77bcf86cd799439011"
 
 	conversation := &domain.Conversation{
-		ID:        conversationID,
-		UserID:    userID.String(),
-		Title:     "Test Conversation",
-		CreatedAt: time.Now().Add(-1 * time.Hour),
-		UpdatedAt: time.Now().Add(-1 * time.Hour),
+		ID:         conversationID,
+		UserID:     userID.String(),
+		BusinessID: businessID.String(),
+		Title:      "Test Conversation",
+		CreatedAt:  time.Now().Add(-1 * time.Hour),
+		UpdatedAt:  time.Now().Add(-1 * time.Hour),
 	}
 
 	mockRepo := &MockConversationRepository{
@@ -748,7 +753,7 @@ func TestGetConversation_Success(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
-	ctx := convBizCtx(uuid.New(), userID)
+	ctx := convBizCtx(businessID, userID)
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
@@ -810,6 +815,56 @@ func TestGetConversation_Unauthorized(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&response)
 	require.NoError(t, err)
 	assert.Equal(t, "forbidden", response.Error)
+}
+
+// TestGetConversation_CrossBusiness_NotFound is the handler-level
+// fail-on-revert guard for the cross-organization read leak: GetByID returns a
+// conversation owned by the requester but scoped to a DIFFERENT organization
+// than the active one. The handler must respond 404 "conversation not found"
+// (uniform with the genuinely-missing case, so the response is not an
+// existence-leak oracle) rather than 200 with the foreign conversation's
+// title/project/timestamps. Reverting the business_id check returns 200 here
+// and fails the test.
+func TestGetConversation_CrossBusiness_NotFound(t *testing.T) {
+	userID := uuid.New()
+	activeBusiness := uuid.New()
+	otherBusiness := uuid.New()
+	conversationID := "507f1f77bcf86cd799439011"
+
+	conversation := &domain.Conversation{
+		ID:         conversationID,
+		UserID:     userID.String(),
+		BusinessID: otherBusiness.String(),
+		Title:      "Org B Conversation",
+	}
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return conversation, nil
+		},
+	}
+
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
+
+	ctx := convBizCtx(activeBusiness, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", conversationID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	handler.GetConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code,
+		"a conversation owned under another organization must surface as 404, not 200")
+
+	var response ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "conversation not found", response.Error,
+		"cross-business get must use the uniform not-found message (no existence-leak oracle)")
 }
 
 // TestGetConversation_NotFound tests conversation not found
@@ -989,7 +1044,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 	}
 
 	mockRepo := &MockConversationRepository{
-		ListByUserIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Conversation, error) {
+		ListByUserIDFunc: func(_ context.Context, _, _ string, _, _ int) ([]domain.Conversation, error) {
 			return conversations, nil
 		},
 	}
@@ -1038,13 +1093,21 @@ func keysOf(m map[string]any) []string {
 // context (satisfying the RBAC gate) and (optionally) a chi URL param {id}.
 func makeAuthedReq(t *testing.T, method, path string, body []byte, userID uuid.UUID, convID string) *http.Request {
 	t.Helper()
+	return makeAuthedReqForBiz(t, method, path, body, uuid.New(), userID, convID)
+}
+
+// makeAuthedReqForBiz is makeAuthedReq with an explicit active business so
+// tests that exercise the business-scoping guard can align the conversation's
+// business_id with the request's active organization.
+func makeAuthedReqForBiz(t *testing.T, method, path string, body []byte, businessID, userID uuid.UUID, convID string) *http.Request {
+	t.Helper()
 	var r *http.Request
 	if body == nil {
 		r = httptest.NewRequest(method, path, http.NoBody)
 	} else {
 		r = httptest.NewRequest(method, path, bytes.NewReader(body))
 	}
-	ctx := convBizCtx(uuid.New(), userID)
+	ctx := convBizCtx(businessID, userID)
 	if convID != "" {
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("id", convID)
@@ -1561,11 +1624,12 @@ func newConversationHandlerWithPending(t *testing.T, convRepo domain.Conversatio
 // (non-null, empty) so the frontend can iterate unconditionally.
 func TestGetMessages_NoPendingApprovals_ReturnsEmptyArray(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439101"
 
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+			return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	msgRepo := &MockMessageRepository{
@@ -1580,7 +1644,7 @@ func TestGetMessages_NoPendingApprovals_ReturnsEmptyArray(t *testing.T) {
 	}
 	h := newConversationHandlerWithPending(t, convRepo, msgRepo, pending)
 
-	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	req := makeAuthedReqForBiz(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, businessID, userID, convID)
 	w := httptest.NewRecorder()
 	h.ListMessages(w, req)
 
@@ -1596,13 +1660,14 @@ func TestGetMessages_NoPendingApprovals_ReturnsEmptyArray(t *testing.T) {
 // path: a single pending batch with one manual call surfaces in the response.
 func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439102"
 	created := time.Now().UTC().Truncate(time.Second)
 	expires := created.Add(24 * time.Hour)
 
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+			return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	msgRepo := &MockMessageRepository{}
@@ -1626,7 +1691,7 @@ func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
 	}
 	h := newConversationHandlerWithPending(t, convRepo, msgRepo, pending)
 
-	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	req := makeAuthedReqForBiz(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, businessID, userID, convID)
 	w := httptest.NewRecorder()
 	h.ListMessages(w, req)
 
@@ -1651,11 +1716,12 @@ func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
 // with status="expired" so the UI can render the "Истекло" badge.
 func TestGetMessages_ExpiredBatch_ReportsExpiredStatus(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439103"
 
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+			return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	pending := &MockPendingToolCallRepository{
@@ -1670,7 +1736,7 @@ func TestGetMessages_ExpiredBatch_ReportsExpiredStatus(t *testing.T) {
 	}
 	h := newConversationHandlerWithPending(t, convRepo, &MockMessageRepository{}, pending)
 
-	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	req := makeAuthedReqForBiz(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, businessID, userID, convID)
 	w := httptest.NewRecorder()
 	h.ListMessages(w, req)
 
@@ -1687,11 +1753,12 @@ func TestGetMessages_ExpiredBatch_ReportsExpiredStatus(t *testing.T) {
 // where a resume spawned a second pause (new turn inside a continuation).
 func TestGetMessages_MultiplePendingBatches_AllReturned(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439104"
 
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+			return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	pending := &MockPendingToolCallRepository{
@@ -1704,7 +1771,7 @@ func TestGetMessages_MultiplePendingBatches_AllReturned(t *testing.T) {
 	}
 	h := newConversationHandlerWithPending(t, convRepo, &MockMessageRepository{}, pending)
 
-	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	req := makeAuthedReqForBiz(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, businessID, userID, convID)
 	w := httptest.NewRecorder()
 	h.ListMessages(w, req)
 
