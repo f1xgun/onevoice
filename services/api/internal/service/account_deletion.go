@@ -33,6 +33,12 @@ const (
 	// deletionT7OffsetDays is the offset from deletion_requested_at when
 	// the T-7 warning email is enqueued via EnqueueDeferred (30 - 7).
 	deletionT7OffsetDays = 23
+	// defaultWarnScanWindow is the fallback width of the WarningSweeper scan
+	// window when no tick interval is injected. It is set wide enough to never
+	// be narrower than the production sweep cadence (see cmd/main.go
+	// deletionWarningTick), so no user's T-7 moment can fall in a gap between
+	// ticks. SetWarnScanWindow overrides it with the actual tick + jitter slack.
+	defaultWarnScanWindow = 7 * time.Hour
 	// systemOwnerRoleID — RBAC owner-role UUID seeded by migration 000007;
 	// hardcoded because the FK target is fixed at migration time.
 	systemOwnerRoleID = "00000000-0000-0000-0000-000000000001"
@@ -81,6 +87,10 @@ type AccountDeletionService struct {
 	auditLog      audit.Logger
 	graceDays     int
 	t7OffsetDays  int
+	// warnScanWindow is the width of the WarningSweeper scan window. It must be
+	// at least as wide as the sweep tick interval; otherwise a user whose T-7
+	// moment falls between two ticks is never enumerated and never warned.
+	warnScanWindow time.Duration
 }
 
 // NewAccountDeletionService constructs the service; all deps are required.
@@ -93,14 +103,28 @@ func NewAccountDeletionService(
 	auditLogger audit.Logger,
 ) *AccountDeletionService {
 	return &AccountDeletionService{
-		pool:          pool,
-		users:         users,
-		conversations: conversations,
-		outbox:        outbox,
-		auditLog:      auditLogger,
-		graceDays:     deletionGraceDays,
-		t7OffsetDays:  deletionT7OffsetDays,
+		pool:           pool,
+		users:          users,
+		conversations:  conversations,
+		outbox:         outbox,
+		auditLog:       auditLogger,
+		graceDays:      deletionGraceDays,
+		t7OffsetDays:   deletionT7OffsetDays,
+		warnScanWindow: defaultWarnScanWindow,
 	}
+}
+
+// SetWarnScanWindow ties the WarningSweeper scan window to the actual sweep
+// tick interval so the two cannot diverge: the window is set to tick + slack
+// for tick jitter, guaranteeing every T-7 moment is covered by some tick.
+// Callers should pass the same interval the sweeper is scheduled on. A
+// non-positive interval is ignored, leaving the safe default in place.
+func (s *AccountDeletionService) SetWarnScanWindow(tick time.Duration) {
+	if tick <= 0 {
+		return
+	}
+	const jitterSlack = time.Hour
+	s.warnScanWindow = tick + jitterSlack
 }
 
 // WithGraceDays returns a copy of the service with custom grace + T-7 offset
@@ -323,14 +347,23 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 	return len(purged), nil
 }
 
+// warningScanWindow returns the (fromTime, toTime] range the WarningSweeper
+// enumerates for the given wall clock. toTime is the T-7 instant; fromTime is
+// warnScanWindow earlier. The window width equals warnScanWindow, which is kept
+// >= the sweep tick interval so no T-7 moment falls in a between-ticks gap.
+func (s *AccountDeletionService) warningScanWindow(now time.Time) (fromTime, toTime time.Time) {
+	toTime = now.Add(-time.Duration(s.t7OffsetDays) * 24 * time.Hour)
+	fromTime = toTime.Add(-s.warnScanWindow)
+	return fromTime, toTime
+}
+
 // WarningSweeper enqueues the T-7 warning for users whose
-// deletion_requested_at falls inside the 1-hour-wide T-7 window;
-// dedupes via ExistsBySubjectAndRecipient. See
+// deletion_requested_at falls inside the T-7 scan window; the window is at
+// least as wide as the sweep tick so no due warning falls in a between-ticks
+// gap. Dedupes via ExistsBySubjectAndRecipient. See
 // docs/services/account-deletion.md.
 func (s *AccountDeletionService) WarningSweeper(ctx context.Context) (int, error) {
-	now := time.Now()
-	fromTime := now.Add(-time.Duration(s.t7OffsetDays)*24*time.Hour - time.Hour)
-	toTime := now.Add(-time.Duration(s.t7OffsetDays) * 24 * time.Hour)
+	fromTime, toTime := s.warningScanWindow(time.Now())
 
 	users, err := s.users.EnumerateUpcomingDeletions(ctx, fromTime, toTime, 1000)
 	if err != nil {

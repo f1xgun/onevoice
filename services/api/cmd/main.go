@@ -92,6 +92,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if svcs.AccountDeletion != nil {
 		metrics.MarkSweeperSuccess(metrics.SweeperAccountHardDelete)
 		metrics.MarkSweeperSuccess(metrics.SweeperDeletionWarning)
+		svcs.AccountDeletion.SetWarnScanWindow(deletionWarningTick)
 		go runSweeper(ctx, log, metrics.SweeperAccountHardDelete, accountHardDeleteTick, svcs.AccountDeletion.HardDeleteSweeper)
 		go runSweeper(ctx, log, metrics.SweeperDeletionWarning, deletionWarningTick, svcs.AccountDeletion.WarningSweeper)
 	}
@@ -204,10 +205,11 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 
 // Sweeper cadences. The hard-delete sweepers run hourly — the 30-day grace
 // before a user/org row is purged is forgiving of an hour of imprecision. The
-// deletion-warning sweeper runs every 6h; its 1h-wide T-7 scan window means a
-// warning email is still sent even across a multi-hour sweeper outage. Each
-// sweep is idempotent (hard-deletes use FOR UPDATE SKIP LOCKED; warnings dedupe
-// via ExistsBySubjectAndRecipient).
+// deletion-warning sweeper runs every 6h; its scan window is tied to this same
+// tick (via SetWarnScanWindow) so the window is never narrower than the
+// cadence — otherwise a user whose T-7 moment fell between two ticks would
+// never be enumerated and never warned. Each sweep is idempotent (hard-deletes
+// use FOR UPDATE SKIP LOCKED; warnings dedupe via ExistsBySubjectAndRecipient).
 const (
 	accountHardDeleteTick  = 1 * time.Hour
 	businessHardDeleteTick = 1 * time.Hour
