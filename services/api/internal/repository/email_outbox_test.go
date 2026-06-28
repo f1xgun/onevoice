@@ -45,7 +45,7 @@ func TestEmailOutbox_Enqueue_Commit(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO email_outbox`).
-		WithArgs("alice@example.com", "Reset", "Plain body", "<p>HTML</p>").
+		WithArgs("alice@example.com", "Reset", "Plain body", "<p>HTML</p>", (*uuid.UUID)(nil)).
 		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
 	mock.ExpectCommit()
 
@@ -76,7 +76,7 @@ func TestEmailOutbox_Enqueue_Rollback(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO email_outbox`).
-		WithArgs("alice@example.com", "Reset", "Plain body", "").
+		WithArgs("alice@example.com", "Reset", "Plain body", "", (*uuid.UUID)(nil)).
 		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
 	mock.ExpectRollback()
 
@@ -102,7 +102,7 @@ func TestEmailOutbox_Enqueue_NilTxFallsBackToPool(t *testing.T) {
 	expectedID := uuid.New()
 
 	mock.ExpectQuery(`INSERT INTO email_outbox`).
-		WithArgs("sweeper@example.com", "Удаление аккаунта — осталось 7 дней", "txt", "html").
+		WithArgs("sweeper@example.com", "Удаление аккаунта — осталось 7 дней", "txt", "html", (*uuid.UUID)(nil)).
 		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
 
 	got, err := repo.Enqueue(ctx, nil, OutboxEnqueueInput{
@@ -127,8 +127,8 @@ func TestEmailOutbox_EnqueueDeferred_Tx(t *testing.T) {
 	nextAttempt := time.Now().Add(23 * 24 * time.Hour).UTC().Truncate(time.Second)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`INSERT INTO email_outbox \(to_email, subject, body_text, body_html, next_attempt_at\)`).
-		WithArgs("user@example.com", "Удаление аккаунта — осталось 7 дней", "txt", "html", nextAttempt).
+	mock.ExpectQuery(`INSERT INTO email_outbox \(to_email, subject, body_text, body_html, next_attempt_at, business_id\)`).
+		WithArgs("user@example.com", "Удаление аккаунта — осталось 7 дней", "txt", "html", nextAttempt, (*uuid.UUID)(nil)).
 		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
 	mock.ExpectCommit()
 
@@ -140,6 +140,39 @@ func TestEmailOutbox_EnqueueDeferred_Tx(t *testing.T) {
 		Subject:  "Удаление аккаунта — осталось 7 дней",
 		BodyText: "txt",
 		BodyHTML: "html",
+	}, nextAttempt)
+	require.NoError(t, err)
+	require.Equal(t, expectedID, got)
+	require.NoError(t, tx.Commit(ctx))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEmailOutbox_EnqueueDeferred_WritesBusinessID verifies the organization
+// T-7 path persists its business_id so the per-organization cancel can later
+// target exactly this row. A NULL business_id here would leave the cancel
+// unable to disambiguate sibling organizations.
+func TestEmailOutbox_EnqueueDeferred_WritesBusinessID(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+	expectedID := uuid.New()
+	businessID := uuid.New()
+	nextAttempt := time.Now().Add(23 * 24 * time.Hour).UTC().Truncate(time.Second)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO email_outbox \(to_email, subject, body_text, body_html, next_attempt_at, business_id\)`).
+		WithArgs("owner@example.com", "Удаление организации — осталось 7 дней", "txt", "html", nextAttempt, &businessID).
+		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
+	mock.ExpectCommit()
+
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	got, err := repo.EnqueueDeferred(ctx, tx, OutboxEnqueueInput{
+		ToEmail:    "owner@example.com",
+		Subject:    "Удаление организации — осталось 7 дней",
+		BodyText:   "txt",
+		BodyHTML:   "html",
+		BusinessID: &businessID,
 	}, nextAttempt)
 	require.NoError(t, err)
 	require.Equal(t, expectedID, got)
@@ -194,6 +227,38 @@ func TestEmailOutbox_CancelPendingBySubjectAndRecipient(t *testing.T) {
 
 	require.NoError(t, repo.CancelPendingBySubjectAndRecipient(ctx, "user@example.com", "Удаление аккаунта — осталось 7 дней"))
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEmailOutbox_CancelPendingBusinessT7_ScopesToBusiness is the fail-on-revert
+// guard for the sibling-overcancel bug. An owner with two pending organization
+// deletions has two pending T-7 rows with identical (to_email, subject) but
+// distinct business_id. Restoring organization A must cancel ONLY A's row. The
+// cancel UPDATE must therefore carry a `business_id = $3` predicate bound to A's
+// id; reverting to the unscoped (to_email, subject)-only UPDATE drops that
+// predicate and bind arg, and these assertions fail.
+func TestEmailOutbox_CancelPendingBusinessT7_ScopesToBusiness(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(mock.Close)
+
+	businessA := uuid.New()
+	businessB := uuid.New()
+	const subject = "Удаление организации — осталось 7 дней"
+
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'canceled',\s+last_error = 'canceled: deletion restored',\s+body_text = '',\s+body_html = NULL\s+WHERE to_email = \$1 AND subject = \$2 AND business_id = \$3 AND status = 'pending'`).
+		WithArgs("owner@example.com", subject, businessA).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	capture := &sqlCapturePool{pgxPool: mock}
+	repo := NewEmailOutboxRepository(capture)
+
+	require.NoError(t, repo.CancelPendingBusinessT7ByRecipient(context.Background(), "owner@example.com", subject, businessA))
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	require.Contains(t, capture.execSQL, "business_id = $3",
+		"cancel must scope to one organization's business_id so siblings survive")
+	require.NotContains(t, capture.execSQL, businessB.String(),
+		"the sibling organization's id must never appear in the cancel statement")
 }
 
 func TestEmailOutbox_DrainPending_ReturnsDuePendingOnly(t *testing.T) {
@@ -358,7 +423,7 @@ func TestEmailOutbox_Enqueue_QueryError(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO email_outbox`).
-		WithArgs("a@b.c", "s", "t", "").
+		WithArgs("a@b.c", "s", "t", "", (*uuid.UUID)(nil)).
 		WillReturnError(pgx.ErrTxClosed)
 	mock.ExpectRollback()
 
