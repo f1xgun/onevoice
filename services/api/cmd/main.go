@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -28,6 +29,13 @@ import (
 // stream, which may run for minutes while RPA tool calls complete;
 // per-request deadlines are enforced inside handlers that need them.
 const shutdownTimeout = 30 * time.Second
+
+// workerDrainTimeout bounds the join on background workers (outbox worker,
+// retention/integrations/account/business sweepers) during shutdown. It runs
+// after the HTTP servers drain and before the database pools close, so a
+// worker mid-pass cannot write to a closed pool. Kept under typical SIGTERM
+// grace so a wedged worker can never block the process from exiting.
+const workerDrainTimeout = 10 * time.Second
 
 func main() {
 	log := logger.New("api")
@@ -78,28 +86,36 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	defer svcs.Close()
 
+	var workers sync.WaitGroup
+
 	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
-	wire.StartRetentionSweep(ctx, handles.PG, repos.AuditLog)
-	wire.StartIntegrationsPurge(ctx, handles.PG, repos.Integration)
+	wire.StartRetentionSweep(ctx, &workers, handles.PG, repos.AuditLog)
+	wire.StartIntegrationsPurge(ctx, &workers, handles.PG, repos.Integration)
 
 	emailSender, err := wire.BuildEmailSender(log, cfg)
 	if err != nil {
 		return err
 	}
-	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
+	wire.StartOutboxWorker(ctx, &workers, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
 
 	if svcs.AccountDeletion != nil {
 		metrics.MarkSweeperSuccess(metrics.SweeperAccountHardDelete)
 		metrics.MarkSweeperSuccess(metrics.SweeperDeletionWarning)
 		svcs.AccountDeletion.SetWarnScanWindow(deletionWarningTick)
-		go runSweeper(ctx, log, metrics.SweeperAccountHardDelete, accountHardDeleteTick, svcs.AccountDeletion.HardDeleteSweeper)
-		go runSweeper(ctx, log, metrics.SweeperDeletionWarning, deletionWarningTick, svcs.AccountDeletion.WarningSweeper)
+		goWorker(&workers, func() {
+			runSweeper(ctx, log, metrics.SweeperAccountHardDelete, accountHardDeleteTick, svcs.AccountDeletion.HardDeleteSweeper)
+		})
+		goWorker(&workers, func() {
+			runSweeper(ctx, log, metrics.SweeperDeletionWarning, deletionWarningTick, svcs.AccountDeletion.WarningSweeper)
+		})
 	}
 
 	if svcs.BusinessDeletion != nil {
 		metrics.MarkSweeperSuccess(metrics.SweeperBusinessHardDelete)
-		go runSweeper(ctx, log, metrics.SweeperBusinessHardDelete, businessHardDeleteTick, svcs.BusinessDeletion.HardDeleteSweeper)
+		goWorker(&workers, func() {
+			runSweeper(ctx, log, metrics.SweeperBusinessHardDelete, businessHardDeleteTick, svcs.BusinessDeletion.HardDeleteSweeper)
+		})
 	}
 
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)
@@ -114,13 +130,45 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	health.RegisterDefaultChecks(hc, handles.PG, mongoClient, handles.Redis, handles.NATS)
 
-	return runServers(ctx, log, cfg, handlers, hc, svcs, handles, repos)
+	return runServers(ctx, log, cfg, handlers, hc, svcs, handles, repos, &workers)
+}
+
+// goWorker spawns fn as a tracked background worker. wg.Add happens on the
+// caller's goroutine (before the spawn) so the WaitGroup count can never be
+// observed at zero between the spawn and the worker actually starting.
+func goWorker(wg *sync.WaitGroup, fn func()) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		fn()
+	}()
+}
+
+// waitWorkers blocks until every tracked background worker has returned or the
+// bound elapses, whichever comes first. It is called after both HTTP servers
+// have drained but BEFORE the database handles are closed, so no worker can
+// touch a closed pool mid-pass (the outbox worker marks a just-delivered row
+// 'sent' on a detached context — a closed *pgxpool.Pool there would strand the
+// row in 'pending' and the email would be re-sent on the next boot). The bound
+// guarantees shutdown still completes even if a worker wedges.
+func waitWorkers(wg *sync.WaitGroup, bound time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(bound):
+		return false
+	}
 }
 
 // runServers builds the public + internal chi routers and starts both
 // http.Servers with graceful shutdown. Process-lifecycle code, not wiring —
 // that is why it stays in cmd/main.go rather than internal/wire/.
-func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handlers *router.Handlers, hc *health.Checker, svcs *wire.Services, handles *wire.DBHandles, repos *wire.Repos) error {
+func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handlers *router.Handlers, hc *health.Checker, svcs *wire.Services, handles *wire.DBHandles, repos *wire.Repos, workers *sync.WaitGroup) error {
 	rateLimits := router.RateLimits{
 		Register:    cfg.RateLimitRegister,
 		Login:       cfg.RateLimitLogin,
@@ -143,12 +191,10 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		log.Info("server listening", "addr", addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
+		serveAndReport("public", log, errCh, srv.ListenAndServe)
 	}()
 
 	internalRouter := router.SetupInternal(handlers, hc, cfg)
@@ -170,15 +216,12 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	}
 	go func() {
 		log.Info("internal server listening", "addr", internalAddr, "tls", internalTLS != nil)
-		var serveErr error
-		if internalTLS != nil {
-			serveErr = internalSrv.ListenAndServeTLS("", "")
-		} else {
-			serveErr = internalSrv.ListenAndServe()
-		}
-		if serveErr != nil && serveErr != http.ErrServerClosed {
-			log.Error("internal server error", "error", serveErr)
-		}
+		serveAndReport("internal", log, errCh, func() error {
+			if internalTLS != nil {
+				return internalSrv.ListenAndServeTLS("", "")
+			}
+			return internalSrv.ListenAndServe()
+		})
 	}()
 
 	svcs.StartReviewSyncer(ctx, log, cfg.ReviewSyncInterval)
@@ -196,12 +239,33 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	if err := internalSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error("internal server forced to shutdown", "error", err)
 	}
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("server forced to shutdown: %w", err)
+	srvErr := srv.Shutdown(shutdownCtx)
+
+	if !waitWorkers(workers, workerDrainTimeout) {
+		log.Warn("background workers did not drain within timeout — proceeding to close pools", "timeout", workerDrainTimeout)
+	}
+
+	if srvErr != nil {
+		return fmt.Errorf("server forced to shutdown: %w", srvErr)
 	}
 
 	log.Info("server stopped")
 	return nil
+}
+
+// serveAndReport runs an http.Server's blocking serve function and forwards a
+// fatal listener failure to errCh so run() can abort with a non-zero exit. A
+// clean graceful shutdown (http.ErrServerClosed) is the expected terminal
+// state and is not reported. The internal mTLS server hosts the agent
+// token-fetch and orchestrator billing endpoints and is mandatory in
+// production (RequireInternalMTLS), so a silently swallowed bind failure there
+// would leave the pod READY while every token fetch and billing write got
+// connection-refused; routing the error here makes that failure fatal.
+func serveAndReport(name string, log *slog.Logger, errCh chan<- error, serve func() error) {
+	if err := serve(); err != nil && err != http.ErrServerClosed {
+		log.Error("server error", "server", name, "error", err)
+		errCh <- fmt.Errorf("%s server: %w", name, err)
+	}
 }
 
 // Sweeper cadences. The hard-delete sweepers run hourly — the 30-day grace

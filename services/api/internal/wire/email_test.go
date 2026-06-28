@@ -248,6 +248,66 @@ func TestDrainOutboxOnce_Metrics(t *testing.T) {
 	})
 }
 
+// syncBuffer is a bytes.Buffer guarded by a mutex so the worker goroutine and
+// the test can write/read the slog output without a data race under -race.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestStartOutboxWorker_JoinedByWaitGroup proves StartOutboxWorker registers
+// its goroutine on the WaitGroup so the shutdown sequence can join it before
+// the pools close. The worker is given a long poll interval (it never ticks),
+// the ctx is canceled, and the WaitGroup is awaited. When the join returns, the
+// worker must have actually returned — evidenced by its "shutting down" log
+// line being present.
+//
+// Fail-on-revert: drop the wg.Add/wg.Done tracking in StartOutboxWorker (back
+// to a bare `go runOutboxWorker(...)`) and wg.Wait() returns before the
+// goroutine has logged its shutdown — the assertion below fails because the
+// log buffer is still empty at the moment the (untracked) Wait returns.
+func TestStartOutboxWorker_JoinedByWaitGroup(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(mock.Close)
+	repo := repository.NewEmailOutboxRepository(mock)
+
+	sb := &syncBuffer{}
+	log := slog.New(slog.NewTextHandler(sb, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	StartOutboxWorker(ctx, &wg, log, repo, email.NewNoopSender(), time.Hour, 5)
+
+	cancel()
+
+	joined := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(joined)
+	}()
+	select {
+	case <-joined:
+	case <-time.After(2 * time.Second):
+		t.Fatal("wg.Wait() did not return: StartOutboxWorker goroutine was not joined")
+	}
+
+	require.Contains(t, sb.String(), "shutting down",
+		"WaitGroup returned before the outbox worker actually exited — the worker is not tracked on the WaitGroup, so shutdown can close the pool while it is mid-pass")
+}
+
 // ctxCapturePool wraps a pgxmock pool to record the context handed to the
 // post-delivery Exec (the MarkSent UPDATE), letting the SIGTERM regression
 // test assert that persist runs on a non-canceled context.
