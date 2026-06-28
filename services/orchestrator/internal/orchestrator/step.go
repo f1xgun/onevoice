@@ -253,6 +253,14 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeDone, "", nil
 		}
 
+		if resp.Content != "" {
+			select {
+			case out <- Event{Type: EventText, Content: resp.Content}:
+			case <-ctx.Done():
+				return OutcomeError, "", ctx.Err()
+			}
+		}
+
 		state.Messages = append(state.Messages, llm.Message{
 			Role:      "assistant",
 			Content:   resp.Content,
