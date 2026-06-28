@@ -166,6 +166,94 @@ func TestProjectService_Create(t *testing.T) {
 	})
 }
 
+// TestProjectService_Create_InputBounds asserts the storage- and LLM-cost
+// bounds on the free-form project fields. Reverting the bounds in
+// service.validate accepts the oversized inputs and these subtests flip to a
+// nil error (fail-on-revert). A project sized exactly at the caps still
+// passes, so the bounds reject only genuine overflow.
+func TestProjectService_Create_InputBounds(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+
+	newSvc := func() *ProjectService {
+		return NewProjectService(&mockProjectRepository{
+			createFunc: func(ctx context.Context, p *domain.Project) error { return nil },
+		}, audit.Nop())
+	}
+
+	t.Run("error - name over cap returns ErrProjectNameTooLong", func(t *testing.T) {
+		_, err := newSvc().Create(ctx, businessID, uuid.Nil, CreateProjectInput{
+			Name:          strings.Repeat("n", domain.MaxProjectNameChars+1),
+			WhitelistMode: domain.WhitelistModeAll,
+		})
+		assert.ErrorIs(t, err, domain.ErrProjectNameTooLong)
+	})
+
+	t.Run("error - description over cap returns ErrProjectDescriptionTooLong", func(t *testing.T) {
+		_, err := newSvc().Create(ctx, businessID, uuid.Nil, CreateProjectInput{
+			Name:          "X",
+			Description:   strings.Repeat("d", domain.MaxProjectDescriptionChars+1),
+			WhitelistMode: domain.WhitelistModeAll,
+		})
+		assert.ErrorIs(t, err, domain.ErrProjectDescriptionTooLong)
+	})
+
+	t.Run("error - too many allowed tools returns ErrProjectTooManyAllowedTools", func(t *testing.T) {
+		over := make([]string, domain.MaxProjectAllowedTools+1)
+		for i := range over {
+			over[i] = "t"
+		}
+		_, err := newSvc().Create(ctx, businessID, uuid.Nil, CreateProjectInput{
+			Name:          "X",
+			WhitelistMode: domain.WhitelistModeAll,
+			AllowedTools:  over,
+		})
+		assert.ErrorIs(t, err, domain.ErrProjectTooManyAllowedTools)
+	})
+
+	t.Run("error - oversized allowed tool element returns ErrProjectAllowedToolTooLong", func(t *testing.T) {
+		_, err := newSvc().Create(ctx, businessID, uuid.Nil, CreateProjectInput{
+			Name:          "X",
+			WhitelistMode: domain.WhitelistModeAll,
+			AllowedTools:  []string{strings.Repeat("t", domain.MaxProjectAllowedToolChars+1)},
+		})
+		assert.ErrorIs(t, err, domain.ErrProjectAllowedToolTooLong)
+	})
+
+	t.Run("error - too many quick actions returns ErrProjectTooManyQuickActions", func(t *testing.T) {
+		over := make([]string, domain.MaxProjectQuickActions+1)
+		for i := range over {
+			over[i] = "q"
+		}
+		_, err := newSvc().Create(ctx, businessID, uuid.Nil, CreateProjectInput{
+			Name:          "X",
+			WhitelistMode: domain.WhitelistModeAll,
+			QuickActions:  over,
+		})
+		assert.ErrorIs(t, err, domain.ErrProjectTooManyQuickActions)
+	})
+
+	t.Run("error - oversized quick action element returns ErrProjectQuickActionTooLong", func(t *testing.T) {
+		_, err := newSvc().Create(ctx, businessID, uuid.Nil, CreateProjectInput{
+			Name:          "X",
+			WhitelistMode: domain.WhitelistModeAll,
+			QuickActions:  []string{strings.Repeat("q", domain.MaxProjectQuickActionChars+1)},
+		})
+		assert.ErrorIs(t, err, domain.ErrProjectQuickActionTooLong)
+	})
+
+	t.Run("success - inputs exactly at the caps are accepted", func(t *testing.T) {
+		_, err := newSvc().Create(ctx, businessID, uuid.Nil, CreateProjectInput{
+			Name:          strings.Repeat("n", domain.MaxProjectNameChars),
+			Description:   strings.Repeat("d", domain.MaxProjectDescriptionChars),
+			WhitelistMode: domain.WhitelistModeAll,
+			AllowedTools:  []string{strings.Repeat("t", domain.MaxProjectAllowedToolChars)},
+			QuickActions:  []string{strings.Repeat("q", domain.MaxProjectQuickActionChars)},
+		})
+		require.NoError(t, err)
+	})
+}
+
 func TestProjectService_GetByID(t *testing.T) {
 	ctx := context.Background()
 	ownBusinessID := uuid.New()

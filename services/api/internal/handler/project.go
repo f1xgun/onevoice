@@ -17,6 +17,13 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
+// maxProjectBodyBytes caps the JSON request body on the project write
+// endpoints (POST/PUT /projects). The name/description/system_prompt fields
+// and the allowed_tools/quick_actions arrays are bounded individually by the
+// service-layer validator; this guards the decoder itself from an unbounded
+// body before any field bound can run.
+const maxProjectBodyBytes = 64 * 1024
+
 // ProjectHandler serves the /api/v1/projects REST endpoints.
 type ProjectHandler struct {
 	projectService ProjectService
@@ -115,7 +122,13 @@ func (h *ProjectHandler) mapProjectError(ctx context.Context, w http.ResponseWri
 	case errors.Is(err, domain.ErrProjectExists):
 		writeJSONError(w, http.StatusConflict, "project already exists")
 	case errors.Is(err, domain.ErrProjectNameRequired),
+		errors.Is(err, domain.ErrProjectNameTooLong),
+		errors.Is(err, domain.ErrProjectDescriptionTooLong),
 		errors.Is(err, domain.ErrProjectSystemPromptTooLong),
+		errors.Is(err, domain.ErrProjectTooManyAllowedTools),
+		errors.Is(err, domain.ErrProjectAllowedToolTooLong),
+		errors.Is(err, domain.ErrProjectTooManyQuickActions),
+		errors.Is(err, domain.ErrProjectQuickActionTooLong),
 		errors.Is(err, domain.ErrProjectWhitelistEmpty),
 		errors.Is(err, domain.ErrProjectWhitelistMode):
 		writeJSONError(w, http.StatusBadRequest, err.Error())
@@ -143,6 +156,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxProjectBodyBytes)
 	var req openapi.ProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -207,6 +221,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxProjectBodyBytes)
 	var req openapi.ProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")

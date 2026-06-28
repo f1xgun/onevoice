@@ -117,6 +117,12 @@ var (
 	ErrProjectSystemPromptTooLong = errors.New("project system prompt too long (max 4000 chars)")
 	ErrProjectWhitelistEmpty      = errors.New("explicit whitelist must contain at least one tool")
 	ErrProjectWhitelistMode       = errors.New("invalid whitelist mode")
+	ErrProjectNameTooLong         = errors.New("project name too long (max 200 chars)")
+	ErrProjectDescriptionTooLong  = errors.New("project description too long (max 2000 chars)")
+	ErrProjectTooManyAllowedTools = errors.New("project has too many allowed tools")
+	ErrProjectAllowedToolTooLong  = errors.New("project allowed tool name too long")
+	ErrProjectTooManyQuickActions = errors.New("project has too many quick actions")
+	ErrProjectQuickActionTooLong  = errors.New("project quick action too long")
 )
 
 // Membership errors (RBAC). Returned by BusinessMembershipRepository
