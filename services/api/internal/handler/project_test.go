@@ -422,6 +422,55 @@ func TestProjectHandler_Create_InvalidBody_Returns400(t *testing.T) {
 	assert.Equal(t, "invalid request body", resp.Error)
 }
 
+// TestProjectHandler_OversizedBody_Returns400 asserts the MaxBytesReader cap
+// on the project write endpoints. The bulk lives in an unknown padding field
+// (so the decoder reads past the cap to finish the object, yet no field
+// validator catches it). The service is stubbed to succeed, so removing the
+// `r.Body = http.MaxBytesReader(...)` line flips the response to 201/200 (the
+// oversized body decodes and the stub runs) — fail-on-revert.
+func TestProjectHandler_OversizedBody_Returns400(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+
+	filler := strings.Repeat("z", maxProjectBodyBytes+1)
+	body := []byte(`{"name":"Valid","whitelistMode":"all","_pad":"` + filler + `"}`)
+
+	t.Run("Create rejects over-large body with 400", func(t *testing.T) {
+		ps := &mockProjectService{
+			createFunc: func(_ context.Context, bid, _ uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
+				return &domain.Project{ID: projectID, BusinessID: bid, Name: input.Name}, nil
+			},
+		}
+		h, err := NewProjectHandler(ps)
+		require.NoError(t, err)
+
+		req := withBizContext(http.MethodPost, "/api/v1/projects", body, businessID, userID)
+		rec := httptest.NewRecorder()
+		h.Create(rec, req)
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("Update rejects over-large body with 400", func(t *testing.T) {
+		ps := &mockProjectService{
+			getByIDFunc: func(_ context.Context, bid, id uuid.UUID) (*domain.Project, error) {
+				return &domain.Project{ID: id, BusinessID: bid, Name: "Old"}, nil
+			},
+			updateFunc: func(_ context.Context, bid, id, _ uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
+				return &domain.Project{ID: id, BusinessID: bid, Name: input.Name}, nil
+			},
+		}
+		h, err := NewProjectHandler(ps)
+		require.NoError(t, err)
+
+		path := "/api/v1/projects/" + projectID.String()
+		rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodPut, path, body, h.Update, businessID, userID)
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+}
+
 func TestNewProjectHandler_NilArgs(t *testing.T) {
 	_, err := NewProjectHandler(nil)
 	assert.Error(t, err)

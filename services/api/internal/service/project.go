@@ -55,17 +55,42 @@ func NewProjectService(repo domain.ProjectRepository, auditLogger audit.Logger) 
 	return &ProjectService{repo: repo, audit: auditLogger}
 }
 
-// validate checks the inputs against the four domain invariants:
-// - name required
-// - system_prompt length cap (4000 chars, enforced in 3 places total)
-// - whitelist_mode is one of the 4 known enum values
-// - when mode=explicit, allowed_tools must not be empty (anti-footgun)
+// validate checks the inputs against the domain invariants:
+//   - name required and within the length cap
+//   - description within the length cap
+//   - system_prompt length cap (4000 chars, enforced in 3 places total)
+//   - allowed_tools / quick_actions element-count and per-element length caps
+//     (bound storage and the per-chat-turn prompt size)
+//   - whitelist_mode is one of the 4 known enum values
+//   - when mode=explicit, allowed_tools must not be empty (anti-footgun)
 func (s *ProjectService) validate(input CreateProjectInput) error {
 	if input.Name == "" {
 		return domain.ErrProjectNameRequired
 	}
+	if len(input.Name) > domain.MaxProjectNameChars {
+		return domain.ErrProjectNameTooLong
+	}
+	if len(input.Description) > domain.MaxProjectDescriptionChars {
+		return domain.ErrProjectDescriptionTooLong
+	}
 	if len(input.SystemPrompt) > domain.MaxProjectSystemPromptChars {
 		return domain.ErrProjectSystemPromptTooLong
+	}
+	if len(input.AllowedTools) > domain.MaxProjectAllowedTools {
+		return domain.ErrProjectTooManyAllowedTools
+	}
+	for _, t := range input.AllowedTools {
+		if len(t) > domain.MaxProjectAllowedToolChars {
+			return domain.ErrProjectAllowedToolTooLong
+		}
+	}
+	if len(input.QuickActions) > domain.MaxProjectQuickActions {
+		return domain.ErrProjectTooManyQuickActions
+	}
+	for _, qa := range input.QuickActions {
+		if len(qa) > domain.MaxProjectQuickActionChars {
+			return domain.ErrProjectQuickActionTooLong
+		}
 	}
 	if !domain.ValidWhitelistMode(input.WhitelistMode) {
 		return domain.ErrProjectWhitelistMode

@@ -35,6 +35,22 @@ func ValidWhitelistMode(m WhitelistMode) bool {
 // frontend zod schema. All four MUST agree on 4000.
 const MaxProjectSystemPromptChars = 4000
 
+// Project input bounds. These cap the free-form, user-supplied fields so a
+// single project row cannot be bloated into the multi-MB range (storage) and
+// so the system prompt / allowed-tools list that flow into every chat turn
+// stay bounded (LLM cost). The character caps agree with the frontend zod
+// schema (name 200, description 2000). AllowedTools / QuickActions element
+// counts are sized generously above any legitimate UI input while still
+// rejecting an adversarial dump.
+const (
+	MaxProjectNameChars        = 200
+	MaxProjectDescriptionChars = 2000
+	MaxProjectAllowedTools     = 100
+	MaxProjectAllowedToolChars = 200
+	MaxProjectQuickActions     = 50
+	MaxProjectQuickActionChars = 500
+)
+
 // QuickAction is a plain string. Kept as a named type alias so call sites
 // self-document when they mean "a quick action string" versus any other
 // string. v1.3 ships a plain string list; templating is deferred.
