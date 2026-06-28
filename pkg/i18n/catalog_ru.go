@@ -24,7 +24,7 @@ var ru = map[string]string{
 	"connect.vk.invalid_token":            "Невалидный токен: %s",
 	"connect.vk.community_unknown":        "VK не вернул сообщество для этого токена — проверьте, что вы создали ключ в админке сообщества",
 	"connect.vk.wall_permission_missing":  "Токену не хватает прав на «Стену» — пересоздайте ключ в админке сообщества с галочкой «Стена»",
-	"connect.vk.community_resolve_failed": "Не удалось распознать сообщество: %s",
+	"connect.vk.community_resolve_failed": "Не удалось распознать сообщество — проверьте ссылку или числовой ID и попробуйте ещё раз",
 
 	// Yandex cookies parser (services/api/internal/yandexcookies/parse.go)
 	// surfaced via handler boundary mapping (errors.Is on typed sentinels).

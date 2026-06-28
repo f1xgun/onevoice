@@ -29,6 +29,24 @@ var (
 	ErrVKWallPermissionMissing = errors.New("connect: vk wall permission missing")
 )
 
+// redactURLErr scrubs the query string from a *url.Error before the error is
+// wrapped, logged, or surfaced to a client. VK outbound calls carry the
+// service key / community token in the URL query (access_token=…); on a
+// transport failure net/http returns a *url.Error whose .Error() embeds the
+// FULL URL, which would otherwise leak the secret into log lines and JSON
+// error bodies. Non-*url.Error inputs are returned unchanged.
+func redactURLErr(err error) error {
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return err
+	}
+	if u, parseErr := url.Parse(ue.URL); parseErr == nil && u.RawQuery != "" {
+		u.RawQuery = "REDACTED"
+		ue.URL = u.String()
+	}
+	return err
+}
+
 // vkGroup is the subset of VK's groups.getById response we care about.
 type vkGroup struct {
 	ID         int64  `json:"id"`
@@ -69,7 +87,7 @@ func (h *ConnectHandler) probeVKCommunityToken(
 	}
 	resp, err := h.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, "", fmt.Errorf("vk request: %w", err)
+		return nil, "", fmt.Errorf("vk request: %w", redactURLErr(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -174,7 +192,7 @@ func (h *ConnectHandler) resolveVKGroupID(ctx context.Context, input string) (st
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("vk API request failed: %w", err)
+		return "", fmt.Errorf("vk API request failed: %w", redactURLErr(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
@@ -221,7 +239,7 @@ func (h *ConnectHandler) fetchVKCommunityName(ctx context.Context, groupID, toke
 	}
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", redactURLErr(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)

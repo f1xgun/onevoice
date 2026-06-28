@@ -63,8 +63,7 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	group, vkErr, transportErr := h.probeVKCommunityToken(r.Context(), req.AccessToken, groupID)
 	if transportErr != nil {
 		if errors.Is(transportErr, ErrVKCommunityResolveFailed) {
-			detail := strings.TrimPrefix(transportErr.Error(), ErrVKCommunityResolveFailed.Error()+": ")
-			writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.community_resolve_failed", detail)
+			writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.community_resolve_failed")
 			return
 		}
 		slog.Error("VK token validation failed", "error", transportErr)

@@ -22,7 +22,7 @@ var en = map[string]string{
 	"connect.vk.invalid_token":            "Invalid token: %s",
 	"connect.vk.community_unknown":        "VK didn't return a community for this token — make sure you created the key in the community admin panel",
 	"connect.vk.wall_permission_missing":  "Token is missing the \"Wall\" permission — recreate the key in the community admin panel with the \"Wall\" checkbox enabled",
-	"connect.vk.community_resolve_failed": "Couldn't recognize the community: %s",
+	"connect.vk.community_resolve_failed": "Couldn't recognize the community — check the link or numeric ID and try again",
 
 	// Yandex cookies parser — surfaced via handler boundary mapping.
 	"yandex.cookies.empty":             "Paste cookies from your browser",
