@@ -121,9 +121,19 @@ func (d *ReviewDrafter) GenerateForBusiness(ctx context.Context, businessID uuid
 // generateOne claims a single review row, calls the orchestrator, and
 // persists the outcome. Returns the orchestrator/HTTP error so callers can
 // log it; the draft_status update is best-effort and not part of the error.
+//
+// The claim is a compare-and-swap: two overlapping sync passes (the periodic
+// ReviewSyncer ticker and a manual SyncForBusiness call) can each read the same
+// pending row before either writes "generating". ClaimDraftForGenerating only
+// wins for one of them; the loser observes claimed=false and returns without
+// calling the orchestrator, so the LLM never drafts the same review twice.
 func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Business, review *domain.Review, examples []domain.Review) error {
-	if err := d.reviewRepo.UpdateDraft(ctx, review.ID, "", domain.ReviewDraftStatusGenerating, ""); err != nil {
+	claimed, err := d.reviewRepo.ClaimDraftForGenerating(ctx, review.ID)
+	if err != nil {
 		return fmt.Errorf("claim row: %w", err)
+	}
+	if !claimed {
+		return nil
 	}
 
 	reqBody := orchestratorclient.DraftReplyRequest{
