@@ -277,9 +277,10 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
-		UserID:          uuid.New(),
-		BusinessContext: prompt.BusinessContext{Name: "Test"},
-		Messages:        []llm.Message{{Role: "user", Content: "пост"}},
+		UserID:             uuid.New(),
+		BusinessContext:    prompt.BusinessContext{Name: "Test"},
+		Messages:           []llm.Message{{Role: "user", Content: "пост"}},
+		ActiveIntegrations: []string{"telegram"},
 	})
 	require.NoError(t, err)
 
