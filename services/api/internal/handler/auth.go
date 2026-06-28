@@ -414,7 +414,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return h.jwtSecret, nil
-	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience)); perr == nil {
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience), jwt.WithSubject(auth.TokenSubjectRefresh)); perr == nil {
 		if claims, ok := tok.Claims.(*auth.RefreshTokenClaims); ok && tok.Valid {
 			auditUserID = claims.UserID
 		}

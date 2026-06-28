@@ -42,7 +42,7 @@ func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 				}
 				return jwtSecret, nil
-			}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience))
+			}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience), jwt.WithSubject(auth.TokenSubjectAccess))
 
 			if err != nil {
 				switch {
@@ -58,6 +58,11 @@ func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 
 			claims, ok := token.Claims.(*auth.AccessTokenClaims)
 			if !ok || !token.Valid {
+				writeJSONError(w, "token_invalid")
+				return
+			}
+
+			if claims.TokenID != uuid.Nil {
 				writeJSONError(w, "token_invalid")
 				return
 			}
