@@ -356,6 +356,36 @@ func TestHITLService_Resolve_EditNestedObject_Returns400(t *testing.T) {
 	}
 }
 
+// TestHITLService_Resolve_EditStringFieldBool_Returns400 covers the resolve
+// path: editing the string-typed "text" field with a bool must be rejected
+// before persistence, otherwise the agent coerces the bool to "" and posts
+// nothing while reporting transport success.
+func TestHITLService_Resolve_EditStringFieldBool_Returns400(t *testing.T) {
+	bizID := uuid.New().String()
+	pr := newStubPendingRepo()
+	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+	})
+	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
+
+	_, err := svc.Resolve(context.Background(), service.ResolveInput{
+		ConversationID:  "conv-1",
+		BatchID:         "batch-1",
+		ActorUserID:     uuid.New().String(),
+		ActorBusinessID: bizID,
+		Decisions: []service.DecisionInput{
+			{ID: "tc_a", Action: "edit", EditedArgs: map[string]interface{}{"text": true}},
+		},
+	})
+	var typeErr *tools.ErrFieldTypeMismatch
+	if !errors.As(err, &typeErr) {
+		t.Fatalf("want ErrFieldTypeMismatch, got %v", err)
+	}
+	if typeErr.Field != "text" || typeErr.Want != "string" {
+		t.Errorf("field = %q want %q, want text/string", typeErr.Field, typeErr.Want)
+	}
+}
+
 func TestHITLService_Resolve_RejectReasonTooLong_Returns400(t *testing.T) {
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()

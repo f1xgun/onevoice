@@ -109,6 +109,78 @@ func TestValidateEditArgs_MultipleScalars_AllAccepted(t *testing.T) {
 	}
 }
 
+// TestValidateEditArgs_StringFieldBool_ReturnsErrFieldTypeMismatch pins the
+// declared-type gate: an editable field declared type:"string" (text) must
+// reject a bool. Without the gate the bool passes the scalar check, is
+// persisted, and the agent coerces req.Args["text"].(string) -> "" -> a
+// silent no-op post that still reports transport success.
+func TestValidateEditArgs_StringFieldBool_ReturnsErrFieldTypeMismatch(t *testing.T) {
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
+		map[string]interface{}{"text": true},
+		[]string{"text"},
+	)
+	var e *tools.ErrFieldTypeMismatch
+	if !errors.As(err, &e) {
+		t.Fatalf("want ErrFieldTypeMismatch for bool on string field, got %v", err)
+	}
+	if e.Field != "text" {
+		t.Errorf("field = %q, want text", e.Field)
+	}
+	if e.Want != "string" {
+		t.Errorf("want kind = %q, want string", e.Want)
+	}
+	if e.Tool != tools.TelegramSendChannelPost {
+		t.Errorf("tool = %q", e.Tool)
+	}
+}
+
+func TestValidateEditArgs_StringFieldNumber_ReturnsErrFieldTypeMismatch(t *testing.T) {
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
+		map[string]interface{}{"text": float64(42)},
+		[]string{"text"},
+	)
+	var e *tools.ErrFieldTypeMismatch
+	if !errors.As(err, &e) {
+		t.Fatalf("want ErrFieldTypeMismatch for number on string field, got %v", err)
+	}
+}
+
+func TestValidateEditArgs_StringFieldString_Accepted(t *testing.T) {
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
+		map[string]interface{}{"text": "hello"},
+		[]string{"text"},
+	)
+	if err != nil {
+		t.Fatalf("want nil for string on string field, got %v", err)
+	}
+}
+
+func TestValidateEditArgs_HoursFieldBool_ReturnsErrFieldTypeMismatch(t *testing.T) {
+	err := tools.ValidateEditArgs(tools.YandexBusinessUpdateHours,
+		map[string]interface{}{"hours": false},
+		[]string{"hours"},
+	)
+	var e *tools.ErrFieldTypeMismatch
+	if !errors.As(err, &e) {
+		t.Fatalf("want ErrFieldTypeMismatch for bool on hours field, got %v", err)
+	}
+}
+
+func TestEditableFieldKind(t *testing.T) {
+	for _, field := range []string{"text", "caption", "description", "hours"} {
+		kind, ok := tools.EditableFieldKind(field)
+		if !ok {
+			t.Errorf("field %q should be known", field)
+		}
+		if kind != "string" {
+			t.Errorf("field %q kind = %q, want string", field, kind)
+		}
+	}
+	if _, ok := tools.EditableFieldKind("channel_id"); ok {
+		t.Errorf("channel_id is not an editable field; should be unknown")
+	}
+}
+
 func TestValidateEditArgs_JSONNumericScalar_Accepted(t *testing.T) {
 	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{"count": float64(42)},

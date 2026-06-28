@@ -175,6 +175,14 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 		})
 		return
 	}
+	var errType *tools.ErrFieldTypeMismatch
+	if errors.As(err, &errType) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error": fmt.Sprintf("field %q must be %s", errType.Field, errType.Want),
+			"tool":  errType.Tool,
+		})
+		return
+	}
 
 	var errShape *service.ErrHITLDecisionsShape
 	if errors.As(err, &errShape) {
