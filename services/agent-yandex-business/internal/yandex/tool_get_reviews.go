@@ -77,14 +77,25 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 		}
 
 		reviews = make([]map[string]interface{}, 0, limit)
+		seen := make(map[string]struct{})
 		for len(reviews) < limit {
-			cards, err := scrapeReviewCards(page, limit-len(reviews))
+			cards, err := scrapeReviewCards(page)
 			if err != nil {
 				return fmt.Errorf("scrape review cards: %w", err)
 			}
-			reviews = append(reviews, cards...)
 
-			if len(reviews) >= limit {
+			added := 0
+			for _, card := range cards {
+				key, _ := card["id"].(string)
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				reviews = append(reviews, card)
+				added++
+			}
+
+			if len(reviews) >= limit || added == 0 {
 				break
 			}
 
@@ -121,8 +132,15 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 	return reviews, err
 }
 
-// scrapeReviewCards extracts review data from visible review card elements.
-func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interface{}, error) { //nolint:unparam // error return reserved for future DOM validation errors
+// scrapeReviewCards extracts review data from every currently-rendered review
+// card. It re-reads the full card list on each call (callers invoke it after a
+// "load more" click), so the returned slice always reflects the whole rendered
+// DOM in document order. Each card carries a stable "id": the real
+// data-review-id when present, or a position-derived synthetic id otherwise.
+// Because "load more" only appends cards below the existing ones, a card's
+// document index is stable across re-scrapes, which lets callers dedup
+// re-rendered top cards against newly appended ones.
+func scrapeReviewCards(page playwright.Page) ([]map[string]interface{}, error) { //nolint:unparam // error return reserved for future DOM validation errors
 	cardSelectors := []string{
 		".Review",
 		"[data-testid='review-card']",
@@ -143,12 +161,8 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 		return nil, nil
 	}
 
-	results := make([]map[string]interface{}, 0, maxCards)
+	results := make([]map[string]interface{}, 0, len(cards))
 	for i, card := range cards {
-		if i >= maxCards {
-			break
-		}
-
 		review := map[string]interface{}{}
 
 		if id, err := card.GetAttribute("data-review-id"); err == nil && id != "" {
