@@ -18,7 +18,13 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
 )
+
+// sseKeyTTLSlack is added to the chat stream budget when sizing the SSE
+// concurrency slot-key TTL so the key always outlives a single stream even
+// under clock skew or a slow final flush.
+const sseKeyTTLSlack = 5 * time.Minute
 
 // init wires handler.SoleOwnerExtractor so UserDeletionHandler can return
 // the 409 body with the businesses payload without importing service
@@ -142,7 +148,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		if perr != nil {
 			return nil, fmt.Errorf("wire: build ratelimit policy: %w", perr)
 		}
-		sseCounter := ssecounter.New(h.Redis, cfg.SSEMaxPerUser, policy)
+		sseCounter := ssecounter.NewWithKeyTTL(h.Redis, cfg.SSEMaxPerUser, policy, chatturn.StreamBudget+sseKeyTTLSlack)
 		chatProxyHandler.SetSSECounter(sseCounter, cfg.LLMTier)
 	}
 
