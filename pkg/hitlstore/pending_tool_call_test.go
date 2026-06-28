@@ -125,6 +125,41 @@ func TestPersist_HappyPath_SetsPendingWithExpiresAt(t *testing.T) {
 		"ExpiresAt %v must be before upper bound %v", got.ExpiresAt, upperBound)
 }
 
+// TestPersist_PreparingDoc_OmitsExpiresAt proves a preparing-staged batch
+// marshals WITHOUT an expires_at field. Persist's InsertOne stages the batch
+// with a zero ExpiresAt; if that zero time.Time marshaled to a real BSON date
+// (0001-01-01) instead of being omitted, the TTL index {expires_at:1,
+// expireAfterSeconds:0} would treat the row as already-expired and delete it
+// within ~60s — before ReconcileOrphanPreparing's 5-minute window, and inside
+// the InsertOne→promote gap where a TTL sweep would orphan a user's approval
+// batch. The bson tag must be `expires_at,omitempty` for the documented
+// "preparing window holds expires_at unset" invariant to hold.
+func TestPersist_PreparingDoc_OmitsExpiresAt(t *testing.T) {
+	db := setupPendingToolCallDB(t, "preparing_omits_expires")
+	ctx := context.Background()
+
+	preparing := &domain.PendingToolCallBatch{
+		ID:             "preparing-omit-1",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+		Status:         "preparing",
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	mustInsertBatch(t, db, preparing)
+
+	var raw bson.M
+	require.NoError(t,
+		db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "preparing-omit-1"}).Decode(&raw))
+
+	_, present := raw["expires_at"]
+	assert.False(t, present,
+		"preparing doc must NOT carry expires_at (got %v) — a zero time.Time without omitempty marshals to 0001-01-01, which the TTL index treats as already-expired and reaps within ~60s, defeating ReconcileOrphanPreparing and orphaning paused approval batches",
+		raw["expires_at"])
+}
+
 // TestPersist_RejectsEmptyConversationID is the regression guard for the
 // empty-ID bug. Pre-fix, the orchestrator HTTP handler defaulted
 // RunRequest.ConversationID = "" because chi.URLParam was never read, and
