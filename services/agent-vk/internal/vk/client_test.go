@@ -565,11 +565,14 @@ func TestNewWithBaseURL_SetsBoundedHTTPTimeout(t *testing.T) {
 		"vk.NewWithBaseURL must set a non-zero HTTP timeout so a stalled VK peer cannot hang a worker")
 }
 
-// TestClient_StalledPeer_TimesOut proves the timeout actually bounds a REST
-// call: the server accepts the connection but never writes a response. With a
-// short injected timeout the call must return an error promptly; if the client
-// has no timeout (the reverted bug) the request would block indefinitely.
-func TestClient_StalledPeer_TimesOut(t *testing.T) {
+// TestHTTPTimeoutMechanism_BoundsStalledPeer demonstrates the timeout MECHANISM:
+// against a server that accepts the connection but never writes a response, a
+// bounded HTTP client surfaces an error promptly instead of blocking forever.
+// It injects a short timeout (bypassing the constructor) so it does not wait the
+// full production bound, so it is a mechanism demo — not a fail-on-revert guard.
+// The constructor wiring that installs the bound is guarded by
+// TestNew_SetsBoundedHTTPTimeout and TestNewWithBaseURL_SetsBoundedHTTPTimeout.
+func TestHTTPTimeoutMechanism_BoundsStalledPeer(t *testing.T) {
 	blocked := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		<-blocked
