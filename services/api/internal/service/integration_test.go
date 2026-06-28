@@ -1578,3 +1578,29 @@ func TestGetDecryptedToken_RefreshEmptyRefresh_KMS_NoDEKMismatch(t *testing.T) {
 	assert.Equal(t, userPlain, resp2.UserToken)
 	assert.Equal(t, 2, refresher.callCount)
 }
+
+func TestWipeRefreshPlaintexts_RotatedZeroesNewRefresh(t *testing.T) {
+	newAccess := []byte("fresh-access-token")
+	rotatedRefresh := []byte("fresh-rotated-refresh-token")
+	userToken := []byte("user-token")
+	pts := [][]byte{newAccess, rotatedRefresh, userToken}
+
+	wipeRefreshPlaintexts(pts, true)
+
+	assert.Equal(t, make([]byte, len(newAccess)), pts[0], "new access plaintext must be zeroed")
+	assert.Equal(t, make([]byte, len(rotatedRefresh)), pts[1],
+		"rotated refresh plaintext must be zeroed; without this the secret lingers in memory")
+}
+
+func TestWipeRefreshPlaintexts_NotRotatedLeavesRefreshAlias(t *testing.T) {
+	newAccess := []byte("fresh-access-token")
+	aliasedRefresh := []byte("old-refresh-still-aliased-by-refreshPts")
+	original := append([]byte(nil), aliasedRefresh...)
+	pts := [][]byte{newAccess, aliasedRefresh, nil}
+
+	wipeRefreshPlaintexts(pts, false)
+
+	assert.Equal(t, make([]byte, len(newAccess)), pts[0], "new access plaintext must be zeroed")
+	assert.Equal(t, original, pts[1],
+		"non-rotated refresh aliases refreshPts and must be left for its own deferred wipe")
+}

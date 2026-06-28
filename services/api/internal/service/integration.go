@@ -451,7 +451,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 
 				pts := [][]byte{[]byte(newAccess), refreshPlaintext, userTokenPlaintext}
 				cts, wrapped, ver, fp, eerr := s.envelope.EncryptForRow(lockCtx, fresh.ID, fresh.Platform, pts)
-				crypto.Wipe(pts[0])
+				wipeRefreshPlaintexts(pts, newRefresh != "")
 				if eerr != nil {
 					return fmt.Errorf("encrypt new tokens: %w", eerr)
 				}
@@ -530,7 +530,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 
 				pts := [][]byte{[]byte(newAccess), refreshPlaintext, userTokenPlaintext}
 				cts, wrapped, ver, fp, eerr := s.envelope.EncryptForRow(ctx, integration.ID, integration.Platform, pts)
-				crypto.Wipe(pts[0])
+				wipeRefreshPlaintexts(pts, newRefresh != "")
 				if eerr != nil {
 					return nil, fmt.Errorf("encrypt new tokens: %w", eerr)
 				}
@@ -602,6 +602,19 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		ExpiresAt:        integration.TokenExpiresAt,
 		UserTokenExpires: integration.UserTokenExpiresAt,
 	}, nil
+}
+
+// wipeRefreshPlaintexts zeroes the freshly allocated plaintexts handed to
+// EncryptForRow that are not already covered by a deferred wipe. pts[0]
+// (new access token) is always a fresh allocation. pts[1] is fresh only when
+// the provider rotated the refresh token; otherwise it aliases the deferred
+// refreshPts. pts[2] is nil or aliases the deferred utPts. Call only after
+// EncryptForRow has returned.
+func wipeRefreshPlaintexts(pts [][]byte, rotated bool) {
+	crypto.Wipe(pts[0])
+	if rotated {
+		crypto.Wipe(pts[1])
+	}
 }
 
 // ListByBusinessAndPlatform retrieves all integrations for a business filtered by platform
