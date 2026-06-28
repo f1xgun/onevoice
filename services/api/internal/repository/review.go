@@ -340,6 +340,26 @@ func (r *reviewRepository) ListRepliedExamples(ctx context.Context, businessID, 
 	return out, nil
 }
 
+// ClaimDraftForGenerating — see domain.ReviewRepository docstring.
+func (r *reviewRepository) ClaimDraftForGenerating(ctx context.Context, id string) (bool, error) {
+	filter := bson.M{
+		"_id": id,
+		"draft_status": bson.M{
+			"$in": []interface{}{nil, "", domain.ReviewDraftStatusFailed},
+		},
+	}
+	update := bson.M{"$set": bson.M{
+		"draft_status": domain.ReviewDraftStatusGenerating,
+		"draft_error":  "",
+	}}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("claim review draft: %w", err)
+	}
+	return result.MatchedCount == 1, nil
+}
+
 // UpdateDraft — see domain.ReviewRepository docstring.
 func (r *reviewRepository) UpdateDraft(ctx context.Context, id, draft, status, errMsg string) error {
 	set := bson.M{"draft_status": status}
@@ -350,8 +370,6 @@ func (r *reviewRepository) UpdateDraft(ctx context.Context, id, draft, status, e
 		set["draft_error"] = ""
 	case domain.ReviewDraftStatusFailed:
 		set["draft_error"] = errMsg
-	case domain.ReviewDraftStatusGenerating:
-		set["draft_error"] = ""
 	}
 
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": set})

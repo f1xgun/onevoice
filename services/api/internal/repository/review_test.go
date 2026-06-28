@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -161,4 +163,104 @@ func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 	require.NotNil(t, sort, "named compound index reviews_business_reply_status_created_desc must exist")
 	require.False(t, sort.Unique != nil && *sort.Unique,
 		"the reply-status sort index must NOT be unique")
+}
+
+// Two overlapping sync passes (the periodic ticker and a manual
+// SyncForBusiness call) can each read the same pending review before either
+// writes "generating". ClaimDraftForGenerating is a compare-and-swap that must
+// let exactly one of them win — the loser skips the orchestrator so the LLM is
+// never billed twice for one review and the first draft is not overwritten.
+func TestReviewRepository_ClaimDraftForGenerating_AtomicSingleWinner(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+
+	insertPending := func(id string) {
+		_, err := db.Collection("reviews").InsertOne(ctx, bson.M{
+			"_id":          id,
+			"business_id":  uuid.NewString(),
+			"platform":     "yandex_business",
+			"external_id":  id,
+			"text":         "review text",
+			"reply_status": domain.ReviewReplyStatusPending,
+			"created_at":   time.Now().UTC(),
+		})
+		require.NoError(t, err)
+	}
+
+	t.Run("two concurrent claims yield exactly one winner", func(t *testing.T) {
+		const id = "race-row"
+		insertPending(id)
+
+		const racers = 8
+		var won int32
+		var start sync.WaitGroup
+		var done sync.WaitGroup
+		start.Add(1)
+		for i := 0; i < racers; i++ {
+			done.Add(1)
+			go func() {
+				defer done.Done()
+				start.Wait()
+				claimed, err := repo.ClaimDraftForGenerating(ctx, id)
+				require.NoError(t, err)
+				if claimed {
+					atomic.AddInt32(&won, 1)
+				}
+			}()
+		}
+		start.Done()
+		done.Wait()
+
+		require.EqualValues(t, 1, won,
+			"exactly one concurrent claim may win; the unconditional $set lets every racer win")
+
+		var got bson.M
+		require.NoError(t, db.Collection("reviews").FindOne(ctx, bson.M{"_id": id}).Decode(&got))
+		require.Equal(t, domain.ReviewDraftStatusGenerating, got["draft_status"])
+	})
+
+	t.Run("a row already generating is not re-claimable", func(t *testing.T) {
+		const id = "already-generating"
+		insertPending(id)
+
+		first, err := repo.ClaimDraftForGenerating(ctx, id)
+		require.NoError(t, err)
+		require.True(t, first, "first claim on a pending row must win")
+
+		second, err := repo.ClaimDraftForGenerating(ctx, id)
+		require.NoError(t, err)
+		require.False(t, second, "a row already in 'generating' must not be re-claimed")
+	})
+
+	t.Run("absent, empty, and failed draft_status are all claimable", func(t *testing.T) {
+		cases := map[string]bson.M{
+			"absent": {"_id": "claim-absent", "business_id": uuid.NewString(), "platform": "vk", "external_id": "claim-absent", "reply_status": domain.ReviewReplyStatusPending},
+			"empty":  {"_id": "claim-empty", "business_id": uuid.NewString(), "platform": "vk", "external_id": "claim-empty", "reply_status": domain.ReviewReplyStatusPending, "draft_status": ""},
+			"failed": {"_id": "claim-failed", "business_id": uuid.NewString(), "platform": "vk", "external_id": "claim-failed", "reply_status": domain.ReviewReplyStatusPending, "draft_status": domain.ReviewDraftStatusFailed},
+		}
+		for name, doc := range cases {
+			t.Run(name, func(t *testing.T) {
+				_, err := db.Collection("reviews").InsertOne(ctx, doc)
+				require.NoError(t, err)
+
+				claimed, err := repo.ClaimDraftForGenerating(ctx, doc["_id"].(string))
+				require.NoError(t, err)
+				require.True(t, claimed, "draft_status %s must be claimable (it is in the pending set)", name)
+			})
+		}
+	})
+
+	t.Run("a ready row is not claimable", func(t *testing.T) {
+		_, err := db.Collection("reviews").InsertOne(ctx, bson.M{
+			"_id": "claim-ready", "business_id": uuid.NewString(), "platform": "vk",
+			"external_id": "claim-ready", "reply_status": domain.ReviewReplyStatusPending,
+			"draft_status": domain.ReviewDraftStatusReady,
+		})
+		require.NoError(t, err)
+
+		claimed, err := repo.ClaimDraftForGenerating(ctx, "claim-ready")
+		require.NoError(t, err)
+		require.False(t, claimed, "a row that already has a 'ready' draft must not be re-claimed")
+	})
 }

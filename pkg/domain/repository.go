@@ -312,7 +312,16 @@ type ReviewRepository interface {
 
 	ListRepliedExamples(ctx context.Context, businessID, platform string, limit int) ([]Review, error)
 
-	// UpdateDraft writes draft_* atomically; status="generating" claims a row before the LLM call.
+	// ClaimDraftForGenerating atomically transitions a review to
+	// status="generating" only if its draft_status is currently absent, empty,
+	// or "failed" (the predicate ListPendingWithoutDraft selects on). It returns
+	// claimed=true when this caller won the row and may proceed to the LLM;
+	// claimed=false means another concurrent pass already claimed it, so the
+	// caller must skip the review (no orchestrator call). This compare-and-swap
+	// is what stops two overlapping sync passes from drafting one review twice.
+	ClaimDraftForGenerating(ctx context.Context, id string) (claimed bool, err error)
+
+	// UpdateDraft writes draft_* atomically; the ready/failed transitions persist the outcome after the LLM call.
 	UpdateDraft(ctx context.Context, id, draft, status, errMsg string) error
 }
 

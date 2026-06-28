@@ -24,6 +24,9 @@ type fakeReviewRepo struct {
 	pendingErr        error
 	examplesErr       error
 	updateDraftErr    error
+	claimErr          error
+	claimDenyIDs      map[string]bool
+	claimCalls        []string
 	updateDraftCalls  []updateDraftCall
 	listPendingCalls  int
 	listExamplesCalls int
@@ -74,6 +77,26 @@ func (f *fakeReviewRepo) ListRepliedExamples(_ context.Context, _, _ string, _ i
 	out := make([]domain.Review, len(f.examples))
 	copy(out, f.examples)
 	return out, nil
+}
+
+// ClaimDraftForGenerating models the real CAS claim: it records the call,
+// denies IDs listed in claimDenyIDs (returning claimed=false, the race-loser
+// path), and otherwise wins by recording a synthetic "generating" transition
+// — the same draft_status the real UpdateOne would set on a successful claim.
+func (f *fakeReviewRepo) ClaimDraftForGenerating(_ context.Context, id string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.claimCalls = append(f.claimCalls, id)
+	if f.claimErr != nil {
+		return false, f.claimErr
+	}
+	if f.claimDenyIDs[id] {
+		return false, nil
+	}
+	f.updateDraftCalls = append(f.updateDraftCalls, updateDraftCall{
+		ID: id, Status: domain.ReviewDraftStatusGenerating,
+	})
+	return true, nil
 }
 
 func (f *fakeReviewRepo) UpdateDraft(_ context.Context, id, draft, status, errMsg string) error {
@@ -268,6 +291,46 @@ func TestReviewDrafter_GenerateForBusiness_NoPendingShortCircuits(t *testing.T) 
 	}
 	if len(orchC.requests) != 0 {
 		t.Errorf("should not call orchestrator when nothing pending")
+	}
+}
+
+// A review the drafter fails to claim (another concurrent pass already
+// transitioned it to "generating") must be skipped entirely: no orchestrator
+// call, no ready/failed write. This is the race-loser path that prevents two
+// overlapping sync passes from drafting the same review twice.
+func TestReviewDrafter_GenerateForBusiness_LostClaimSkipsReview(t *testing.T) {
+	repo := &fakeReviewRepo{
+		pending: []domain.Review{
+			{ID: "won", Text: "claimed by us", BusinessID: "b1", Platform: "vk"},
+			{ID: "lost", Text: "claimed by the other pass", BusinessID: "b1", Platform: "vk"},
+		},
+		claimDenyIDs: map[string]bool{"lost": true},
+	}
+	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
+	orchC := &fakeDraftClient{
+		respFn: func(_ orchestratorclient.DraftReplyRequest) (*orchestratorclient.DraftReplyResponse, error) {
+			return &orchestratorclient.DraftReplyResponse{DraftReply: "ok"}, nil
+		},
+	}
+
+	d := newDrafter(repo, biz, orchC)
+	if err := d.GenerateForBusiness(context.Background(), uuid.New(), "vk"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(repo.claimCalls) != 2 {
+		t.Fatalf("both rows should be claim-attempted, got %d: %+v", len(repo.claimCalls), repo.claimCalls)
+	}
+	if len(orchC.requests) != 1 {
+		t.Fatalf("only the won row should reach the orchestrator, got %d", len(orchC.requests))
+	}
+	if orchC.requests[0].ReviewText != "claimed by us" {
+		t.Errorf("orchestrator called for the wrong review: %q", orchC.requests[0].ReviewText)
+	}
+	for _, c := range repo.updateDraftCalls {
+		if c.ID == "lost" {
+			t.Errorf("lost row must not get any draft_status write, got %+v", c)
+		}
 	}
 }
 
