@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -295,4 +297,43 @@ func TestSendMessage_EmptyText(t *testing.T) {
 	err := bot.SendMessage("-1001234567890", "")
 
 	require.Error(t, err)
+}
+
+// TestSendMessage_StalledServerTimesOut asserts the Bot API client carries its
+// own overall deadline. tgbotapi v5 builds requests with http.NewRequest (no
+// context), so the only thing that can unblock a send against a server that
+// accepts the connection but never writes response headers is the client's own
+// timeout. The mock server below answers getMe (so the bot constructs) but then
+// blocks every send past the configured timeout. With the timeout in place the
+// send returns a timeout error; reverting it makes this hang until the test's
+// own deadline trips it.
+func TestSendMessage_StalledServerTimesOut(t *testing.T) {
+	const clientTimeout = 200 * time.Millisecond
+
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+
+	srv := newMockTelegramServer(t, func(http.ResponseWriter, *http.Request) {
+		<-release
+	})
+	defer srv.Close()
+	defer unblock()
+
+	client := newAPIClient(clientTimeout)
+	api, err := tgbotapi.NewBotAPIWithClient("test-token", srv.URL+"/bot%s/%s", client)
+	require.NoError(t, err)
+	bot := &Bot{api: api}
+
+	done := make(chan error, 1)
+	go func() { done <- bot.SendMessage("-1001234567890", "Hello!") }()
+
+	select {
+	case sendErr := <-done:
+		require.Error(t, sendErr, "stalled server must surface a timeout, not a nil error")
+		assert.Contains(t, strings.ToLower(sendErr.Error()), "timeout",
+			"send against a stalled server must fail with a timeout error")
+	case <-time.After(5 * time.Second):
+		t.Fatal("SendMessage blocked far past the client timeout — no overall deadline is set on the Bot API client")
+	}
 }
