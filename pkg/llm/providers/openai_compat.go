@@ -136,6 +136,14 @@ func (p *openAICompatProvider) Chat(ctx context.Context, req llm.ChatRequest) (*
 		}
 	}
 
+	// Some OpenAI-compatible upstreams (notably free/quantized models proxied
+	// via OpenRouter) report finish_reason="stop" even when the completion
+	// carries tool_calls. Normalize to "tool_calls" so the contract matches the
+	// Anthropic adapter and callers never mistake a tool turn for terminal.
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
+	}
+
 	return &llm.ChatResponse{
 		Content:      content,
 		ToolCalls:    toolCalls,

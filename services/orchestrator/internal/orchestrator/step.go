@@ -238,7 +238,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeError, "", ErrConversationTokenCap
 		}
 
-		if len(resp.ToolCalls) == 0 || resp.FinishReason == "stop" {
+		if len(resp.ToolCalls) == 0 {
 			if resp.Content != "" {
 				select {
 				case out <- Event{Type: EventText, Content: resp.Content}:
