@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -187,7 +188,7 @@ func TestEmailOutbox_CancelPendingBySubjectAndRecipient(t *testing.T) {
 	mock, repo := newEmailOutboxRepoMock(t)
 	ctx := context.Background()
 
-	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'canceled'.*WHERE to_email = \$1 AND subject = \$2 AND status = 'pending'`).
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'canceled',\s+last_error = 'canceled: deletion restored',\s+body_text = '',\s+body_html = NULL\s+WHERE to_email = \$1 AND subject = \$2 AND status = 'pending'`).
 		WithArgs("user@example.com", "Удаление аккаунта — осталось 7 дней").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
@@ -264,7 +265,7 @@ func TestEmailOutbox_MarkSent(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 
-	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'sent',\s+sent_at = NOW\(\),\s+last_error = NULL,\s+attempts = attempts \+ 1\s+WHERE id = \$1 AND status = 'pending'`).
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'sent',\s+sent_at = NOW\(\),\s+last_error = NULL,\s+attempts = attempts \+ 1,\s+body_text = '',\s+body_html = NULL\s+WHERE id = \$1 AND status = 'pending'`).
 		WithArgs(id).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
@@ -311,7 +312,7 @@ func TestEmailOutbox_Reschedule_AtCapMarksFailed(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 
-	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'failed',\s+attempts = \$2,\s+last_error = \$3\s+WHERE id = \$1 AND status = 'pending'`).
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'failed',\s+attempts = \$2,\s+last_error = \$3,\s+body_text = '',\s+body_html = NULL\s+WHERE id = \$1 AND status = 'pending'`).
 		WithArgs(id, 5, "final fail").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
@@ -324,7 +325,7 @@ func TestEmailOutbox_MarkFailed(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 
-	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'failed',\s+attempts = attempts \+ 1,\s+last_error = \$2\s+WHERE id = \$1 AND status = 'pending'`).
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'failed',\s+attempts = attempts \+ 1,\s+last_error = \$2,\s+body_text = '',\s+body_html = NULL\s+WHERE id = \$1 AND status = 'pending'`).
 		WithArgs(id, "permanent error").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
@@ -369,4 +370,123 @@ func TestEmailOutbox_Enqueue_QueryError(t *testing.T) {
 	require.True(t, errors.Is(err, pgx.ErrTxClosed) || strings.Contains(err.Error(), "enqueue"))
 	require.NoError(t, tx.Rollback(ctx))
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// sqlCapturePool records the SQL of the first Exec so the body-scrub tests can
+// assert the terminal UPDATE clears body_text/body_html (rather than only
+// matching a pre-baked regex). It delegates everything else to the wrapped
+// pgxmock pool.
+type sqlCapturePool struct {
+	pgxPool
+	execSQL string
+}
+
+func (p *sqlCapturePool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if p.execSQL == "" {
+		p.execSQL = sql
+	}
+	return p.pgxPool.Exec(ctx, sql, args...)
+}
+
+// terminalScrubTokenBody is a stand-in for a password-reset / verify email body
+// carrying the LIVE plaintext recovery token in its reset link.
+const terminalScrubTokenBody = "Reset your password: https://app.example.com/reset?token=LIVE_PLAINTEXT_TOKEN_abc123"
+
+// TestEmailOutbox_TerminalTransitionsScrubBody is the fail-on-revert guard for
+// the secret-at-rest fix: every terminal transition (sent / failed via
+// MarkFailed / failed via Reschedule-at-cap / canceled) must clear body_text
+// and body_html in the SAME UPDATE so a delivered/terminated row stops holding
+// a usable recovery link. Reverting the scrub leaves the SET clause without the
+// body columns and every sub-test's assertions fail.
+//
+// We assert the emitted SQL clears body_text and sets body_html to NULL. The
+// body itself is never a bind arg on these by-id UPDATEs, so a row that started
+// with terminalScrubTokenBody can no longer yield a working token once the
+// UPDATE runs.
+func TestEmailOutbox_TerminalTransitionsScrubBody(t *testing.T) {
+	require.Contains(t, terminalScrubTokenBody, "token=", "precondition: the fixture body must embed a recovery token")
+
+	id := uuid.New()
+	cases := []struct {
+		name string
+		run  func(t *testing.T, repo *EmailOutboxRepository)
+		mock func(mock pgxmock.PgxPoolIface)
+	}{
+		{
+			name: "sent",
+			mock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec(`UPDATE email_outbox`).WithArgs(id).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+			},
+			run: func(t *testing.T, repo *EmailOutboxRepository) {
+				require.NoError(t, repo.MarkSent(context.Background(), id, "job-1"))
+			},
+		},
+		{
+			name: "failed_permanent",
+			mock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec(`UPDATE email_outbox`).WithArgs(id, "permanent").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+			},
+			run: func(t *testing.T, repo *EmailOutboxRepository) {
+				require.NoError(t, repo.MarkFailed(context.Background(), id, "permanent"))
+			},
+		},
+		{
+			name: "failed_at_cap",
+			mock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec(`UPDATE email_outbox`).WithArgs(id, 5, "final").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+			},
+			run: func(t *testing.T, repo *EmailOutboxRepository) {
+				require.NoError(t, repo.Reschedule(context.Background(), id, 4, "final", 5))
+			},
+		},
+		{
+			name: "canceled",
+			mock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec(`UPDATE email_outbox`).WithArgs("u@example.com", "subj").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+			},
+			run: func(t *testing.T, repo *EmailOutboxRepository) {
+				require.NoError(t, repo.CancelPendingBySubjectAndRecipient(context.Background(), "u@example.com", "subj"))
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock, err := pgxmock.NewPool()
+			require.NoError(t, err)
+			t.Cleanup(mock.Close)
+			tc.mock(mock)
+
+			capture := &sqlCapturePool{pgxPool: mock}
+			repo := NewEmailOutboxRepository(capture)
+
+			tc.run(t, repo)
+
+			require.NoError(t, mock.ExpectationsWereMet())
+			require.Contains(t, capture.execSQL, "body_text = ''", "terminal UPDATE must scrub body_text")
+			require.Contains(t, capture.execSQL, "body_html = NULL", "terminal UPDATE must scrub body_html")
+		})
+	}
+}
+
+// TestEmailOutbox_Reschedule_RetryKeepsBody asserts the NON-terminal retry path
+// leaves the body intact so a later attempt can still deliver the email. This
+// pins the boundary of the scrub: only terminal states clear the body.
+func TestEmailOutbox_Reschedule_RetryKeepsBody(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(mock.Close)
+	id := uuid.New()
+
+	mock.ExpectExec(`UPDATE email_outbox`).
+		WithArgs(id, 1, "transient", "120 seconds").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	capture := &sqlCapturePool{pgxPool: mock}
+	repo := NewEmailOutboxRepository(capture)
+
+	require.NoError(t, repo.Reschedule(context.Background(), id, 0, "transient", 5))
+	require.NoError(t, mock.ExpectationsWereMet())
+	require.NotContains(t, capture.execSQL, "body_text = ''", "retry path must NOT scrub the body — a later attempt re-reads it")
+	require.NotContains(t, capture.execSQL, "body_html = NULL", "retry path must NOT scrub the body — a later attempt re-reads it")
 }

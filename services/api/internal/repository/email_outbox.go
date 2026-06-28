@@ -120,11 +120,15 @@ func (r *EmailOutboxRepository) ExistsBySubjectAndRecipient(ctx context.Context,
 
 // CancelPendingBySubjectAndRecipient transitions a pending row to 'canceled'
 // when a user restores their account, so the +23d T-7 warning doesn't send.
-// Idempotent: nil even when 0 rows match.
+// Idempotent: nil even when 0 rows match. 'canceled' is terminal, so the same
+// UPDATE scrubs body_text/body_html for consistency with the other terminal
+// transitions (subject + to_email are kept for audit/dedupe).
 func (r *EmailOutboxRepository) CancelPendingBySubjectAndRecipient(ctx context.Context, toEmail, subject string) error {
 	const q = `UPDATE email_outbox
 	              SET status = 'canceled',
-	                  last_error = 'canceled: deletion restored'
+	                  last_error = 'canceled: deletion restored',
+	                  body_text = '',
+	                  body_html = NULL
 	            WHERE to_email = $1 AND subject = $2 AND status = 'pending'`
 	if _, err := r.pool.Exec(ctx, q, toEmail, subject); err != nil {
 		return fmt.Errorf("email_outbox: cancel pending: %w", err)
@@ -178,13 +182,21 @@ func (r *EmailOutboxRepository) CountPending(ctx context.Context) (int, error) {
 // MarkSent transitions a row to status='sent' atomically. The WHERE clause
 // `AND status='pending'` makes this idempotent under at-least-once worker
 // semantics — a concurrent winner becomes a silent no-op for the loser.
+//
+// The same UPDATE scrubs body_text/body_html: a delivered row may embed a
+// live plaintext recovery link (?token=…) whose token table stores only the
+// SHA-256 hash, so the outbox must not be the one place the usable secret
+// lingers at rest. 'sent' is terminal (no transition leaves it), so no retry
+// re-reads the body; subject + to_email are kept for audit/dedupe.
 func (r *EmailOutboxRepository) MarkSent(ctx context.Context, id uuid.UUID, providerJobID string) error {
 	const q = `
 		UPDATE email_outbox
 		   SET status = 'sent',
 		       sent_at = NOW(),
 		       last_error = NULL,
-		       attempts = attempts + 1
+		       attempts = attempts + 1,
+		       body_text = '',
+		       body_html = NULL
 		 WHERE id = $1 AND status = 'pending'`
 	if _, err := r.pool.Exec(ctx, q, id); err != nil {
 		return fmt.Errorf("email_outbox: mark sent: %w", err)
@@ -196,6 +208,10 @@ func (r *EmailOutboxRepository) MarkSent(ctx context.Context, id uuid.UUID, prov
 // Reschedule increments attempts + bumps next_attempt_at by exp-backoff.
 // When attempts hits maxAttempts the row transitions to 'failed' instead.
 // Backoff: NOW + (2 ^ newAttempts) minutes.
+//
+// The retry path leaves body_text/body_html intact (a later attempt re-reads
+// them), but the terminal 'failed' branch scrubs them so a non-delivered row
+// doesn't keep a usable recovery token at rest.
 func (r *EmailOutboxRepository) Reschedule(ctx context.Context, id uuid.UUID, currentAttempts int, lastErr string, maxAttempts int) error {
 	newAttempts := currentAttempts + 1
 	if newAttempts >= maxAttempts {
@@ -203,7 +219,9 @@ func (r *EmailOutboxRepository) Reschedule(ctx context.Context, id uuid.UUID, cu
 			UPDATE email_outbox
 			   SET status = 'failed',
 			       attempts = $2,
-			       last_error = $3
+			       last_error = $3,
+			       body_text = '',
+			       body_html = NULL
 			 WHERE id = $1 AND status = 'pending'`
 		if _, err := r.pool.Exec(ctx, q, id, newAttempts, truncateOutboxErr(lastErr)); err != nil {
 			return fmt.Errorf("email_outbox: reschedule->failed: %w", err)
@@ -225,13 +243,16 @@ func (r *EmailOutboxRepository) Reschedule(ctx context.Context, id uuid.UUID, cu
 
 // MarkFailed forces a row to 'failed' immediately (permanent failure path).
 // The status='pending' guard means a concurrent MarkSent wins, preserving
-// "successful delivery is final".
+// "successful delivery is final". 'failed' is terminal, so the same UPDATE
+// scrubs body_text/body_html to avoid keeping a usable recovery token at rest.
 func (r *EmailOutboxRepository) MarkFailed(ctx context.Context, id uuid.UUID, lastErr string) error {
 	const q = `
 		UPDATE email_outbox
 		   SET status = 'failed',
 		       attempts = attempts + 1,
-		       last_error = $2
+		       last_error = $2,
+		       body_text = '',
+		       body_html = NULL
 		 WHERE id = $1 AND status = 'pending'`
 	if _, err := r.pool.Exec(ctx, q, id, truncateOutboxErr(lastErr)); err != nil {
 		return fmt.Errorf("email_outbox: mark failed: %w", err)
