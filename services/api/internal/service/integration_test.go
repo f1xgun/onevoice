@@ -1604,3 +1604,101 @@ func TestWipeRefreshPlaintexts_NotRotatedLeavesRefreshAlias(t *testing.T) {
 	assert.Equal(t, original, pts[1],
 		"non-rotated refresh aliases refreshPts and must be left for its own deferred wipe")
 }
+
+// stubActorLookup is a minimal ActorLookup that returns a fixed user (or
+// ErrUserNotFound when nil) for the connect-actor gate tests.
+type stubActorLookup struct {
+	user *domain.User
+	err  error
+}
+
+func (s stubActorLookup) GetByID(_ context.Context, _ uuid.UUID) (*domain.User, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.user, nil
+}
+
+// TestConnect_ActorGate is the fail-on-revert guard for the OAuth-callback
+// gating bypass: integrationService.Connect, when a WithActorGate lookup is
+// attached, must re-assert the same email-verified and account-deletion-grace
+// predicates the RequireVerifiedEmailDay0 / BlockWritesDuringGrace middlewares
+// enforce — because the public OAuth callbacks (Yandex true-OAuth, Google
+// single-location) persist a live integration outside those middlewares. An
+// unverified actor, or an actor mid-deletion, must be rejected BEFORE the row
+// is created; a verified, non-deleting actor still connects.
+func TestConnect_ActorGate(t *testing.T) {
+	ctx := context.Background()
+	actorID := uuid.New()
+	now := time.Now()
+	requestedAt := now.Add(-24 * time.Hour)
+	canceledAt := now.Add(-time.Hour)
+
+	baseParams := func() ConnectParams {
+		return ConnectParams{
+			BusinessID:   uuid.New(),
+			ActorID:      actorID,
+			Platform:     "yandex_business",
+			ExternalID:   "default",
+			AccessToken:  "tok",
+			ParsedFormat: ParsedFormatOAuthCode,
+		}
+	}
+
+	tests := []struct {
+		name        string
+		user        *domain.User
+		lookupErr   error
+		wantErr     error
+		wantCreated bool
+	}{
+		{
+			name:        "unverified actor is rejected before persist",
+			user:        &domain.User{ID: actorID, EmailVerified: false},
+			wantErr:     domain.ErrActorEmailNotVerified,
+			wantCreated: false,
+		},
+		{
+			name:        "pending-deletion actor is rejected before persist",
+			user:        &domain.User{ID: actorID, EmailVerified: true, DeletionRequestedAt: &requestedAt},
+			wantErr:     domain.ErrActorPendingDeletion,
+			wantCreated: false,
+		},
+		{
+			name:        "verified non-deleting actor connects",
+			user:        &domain.User{ID: actorID, EmailVerified: true},
+			wantCreated: true,
+		},
+		{
+			name:        "canceled deletion is not pending and connects",
+			user:        &domain.User{ID: actorID, EmailVerified: true, DeletionRequestedAt: &requestedAt, DeletionCanceledAt: &canceledAt},
+			wantCreated: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var created bool
+			repo := &mockIntegrationRepository{
+				createFunc: func(_ context.Context, integration *domain.Integration) error {
+					created = true
+					integration.ID = uuid.New()
+					return nil
+				},
+			}
+
+			svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, audit.Nop())
+			svc = WithActorGate(svc, stubActorLookup{user: tc.user, err: tc.lookupErr})
+
+			_, err := svc.Connect(ctx, baseParams())
+
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantCreated, created,
+				"repo.Create call expectation mismatch — the gate must reject before persisting")
+		})
+	}
+}

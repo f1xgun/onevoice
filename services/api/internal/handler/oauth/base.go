@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -285,6 +286,23 @@ type googleAccount struct {
 type googleLocation struct {
 	Name  string `json:"name"`
 	Title string `json:"title"`
+}
+
+// connectErrorRedirectCode maps an integrationService.Connect failure to the
+// `error` query param the frontend renders on the /integrations page. The
+// connect-actor gate (email-unverified / account-pending-deletion) maps to
+// dedicated codes so the public OAuth callbacks signal those rejections the
+// same way the equivalent paste-flow POSTs return 412/423; every other failure
+// collapses to the generic connect_failed the callbacks already used.
+func connectErrorRedirectCode(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrActorEmailNotVerified):
+		return "email_verification_required"
+	case errors.Is(err, domain.ErrActorPendingDeletion):
+		return "account_pending_deletion"
+	default:
+		return "connect_failed"
+	}
 }
 
 // writeJSON is a oauth-local copy of the package-level helper in

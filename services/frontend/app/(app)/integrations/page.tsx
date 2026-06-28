@@ -121,6 +121,8 @@ export default function IntegrationsPage() {
         internal: 'internal',
         no_refresh_token: 'noRefreshToken',
         no_locations: 'noLocations',
+        email_verification_required: 'emailVerificationRequired',
+        account_pending_deletion: 'accountPendingDeletion',
       };
       const key = oauthErrorKeyMap[error];
       const message = key

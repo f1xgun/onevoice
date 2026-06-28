@@ -163,6 +163,76 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 	mockIntegration.AssertExpectations(t)
 }
 
+// TestYandexCallback_GateRejectionRedirects proves the public callback signals
+// a connect-actor gate rejection the same way it signals other errors — a 302
+// redirect to /integrations with a dedicated error param — rather than falling
+// through to connected=. The gate itself lives in integrationService.Connect;
+// here the mock returns the sentinel so we exercise the callback's mapping.
+func TestYandexCallback_GateRejectionRedirects(t *testing.T) {
+	businessID := uuid.New()
+
+	yandexServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token":  "yandex_access_token_xyz",
+			"refresh_token": "yandex_refresh_token_xyz",
+			"expires_in":    3600,
+		})
+	}))
+	defer yandexServer.Close()
+
+	cases := []struct {
+		name      string
+		connError error
+		wantParam string
+	}{
+		{"unverified", domain.ErrActorEmailNotVerified, "error=email_verification_required"},
+		{"pending_deletion", domain.ErrActorPendingDeletion, "error=account_pending_deletion"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockOAuth := new(MockOAuthStateService)
+			mockIntegration := new(MockOAuthIntegrationService)
+
+			stateData := &service.OAuthStateData{
+				BusinessID: businessID,
+				Platform:   "yandex_business",
+				Nonce:      "csrf-nonce",
+			}
+			mockOAuth.On("ValidateState", mock.Anything, "valid-yandex-state").Return(stateData, nil)
+			mockIntegration.On("Connect", mock.Anything, mock.Anything).Return(nil, tc.connError)
+
+			cfg := OAuthConfig{
+				YandexClientID:     "yandex_client",
+				YandexClientSecret: "yandex_secret",
+				YandexRedirectURI:  "https://example.com/callback/yandex",
+				yandexTokenBaseURL: yandexServer.URL,
+			}
+			h := NewOAuthHandler(mockOAuth, mockIntegration, new(MockBusinessService), cfg, yandexServer.Client(), nil)
+
+			req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=auth_code&state=valid-yandex-state", http.NoBody)
+			req.AddCookie(&http.Cookie{Name: oauthCSRFCookieName, Value: "csrf-nonce"})
+			rr := httptest.NewRecorder()
+
+			h.YandexCallback(rr, req)
+
+			if rr.Code != http.StatusFound {
+				t.Fatalf("expected 302, got %d: %s", rr.Code, rr.Body.String())
+			}
+			location := rr.Header().Get("Location")
+			if !strings.Contains(location, tc.wantParam) {
+				t.Errorf("expected redirect with %q, got: %s", tc.wantParam, location)
+			}
+			if strings.Contains(location, "connected=") {
+				t.Errorf("a gated rejection must not redirect to connected=, got: %s", location)
+			}
+			mockOAuth.AssertExpectations(t)
+			mockIntegration.AssertExpectations(t)
+		})
+	}
+}
+
 func TestYandexCallback_InvalidState(t *testing.T) {
 	mockOAuth := new(MockOAuthStateService)
 	mockOAuth.On("ValidateState", mock.Anything, "bad-state").Return(nil, fmt.Errorf("invalid state"))

@@ -40,6 +40,16 @@ var (
 	// ErrServiceUnavailable is returned when a downstream resource (e.g. the
 	// OAuth advisory lock) is exhausted or temporarily unavailable.
 	ErrServiceUnavailable = errors.New("service unavailable")
+	// ErrActorEmailNotVerified is returned by Connect when the acting user's
+	// email is unverified. Mirrors the RequireVerifiedEmailDay0 middleware so
+	// the public OAuth callbacks (which sit outside that gate) cannot persist a
+	// live integration for an unverified actor.
+	ErrActorEmailNotVerified = errors.New("actor email not verified")
+	// ErrActorPendingDeletion is returned by Connect when the acting user is
+	// inside the account-deletion grace window. Mirrors the
+	// BlockWritesDuringGrace middleware so the public OAuth callbacks cannot
+	// persist a live integration for a user mid-deletion.
+	ErrActorPendingDeletion = errors.New("actor account pending deletion")
 )
 
 // Auth errors.
