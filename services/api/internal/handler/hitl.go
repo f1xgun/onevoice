@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/pkg/ssecounter"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -40,6 +41,24 @@ type HITLHandler struct {
 	businessService  BusinessService
 	conversationRepo domain.ConversationRepository
 	resumer          chatResumer
+
+	// sseCounter caps in-flight SSE streams per user; nil disables the gate.
+	// Resume opens an orchestrator SSE stream as expensive as ChatProxyHandler.Chat,
+	// so it shares the same per-user cap to stay on the same fairness budget.
+	sseCounter *ssecounter.Counter
+
+	// defaultTier labels the SSE concurrency block metric; empty → "free".
+	defaultTier string
+}
+
+// SetSSECounter wires the per-user SSE concurrency cap (optional). Mirrors
+// ChatProxyHandler.SetSSECounter so the chat and resume streams share one cap.
+func (h *HITLHandler) SetSSECounter(c *ssecounter.Counter, defaultTier string) {
+	h.sseCounter = c
+	if defaultTier == "" {
+		defaultTier = defaultSSETier
+	}
+	h.defaultTier = defaultTier
 }
 
 // NewHITLHandler constructs a HITLHandler; all four deps are required. resumer
@@ -281,6 +300,19 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		"project_approval_overrides": projectOverrides,
 	}
 	raw, _ := json.Marshal(body)
+
+	if h.sseCounter != nil {
+		tier := h.defaultTier
+		if tier == "" {
+			tier = defaultSSETier
+		}
+		release, acqErr := h.sseCounter.Acquire(r.Context(), bc.UserID, tier)
+		if acqErr != nil {
+			writeConcurrencyError(w, acqErr)
+			return
+		}
+		defer release()
+	}
 
 	// Delegate to the shared chat-turn lifecycle so the approved-tool result is
 	// accumulated and the assistant message is finalized (complete + results).
