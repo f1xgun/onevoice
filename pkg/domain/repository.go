@@ -230,8 +230,10 @@ type ConversationRepository interface {
 	ScopedConversationIDs(ctx context.Context, businessID, userID string, projectID *string) ([]string, error)
 	// MongoConversationsCleanup is best-effort post-PG-TX — PG is source of truth.
 	MongoConversationsCleanup(ctx context.Context, userID string, originalEmail string) (int64, error)
-	// MongoBusinessCleanup nulls-and-flags conversations/posts/reviews scoped to
-	// a hard-deleted organization. Best-effort post-PG-TX — PG is source of truth.
+	// MongoBusinessCleanup flags conversations/posts/reviews scoped to a
+	// hard-deleted organization (and nulls business_id on conversations/posts;
+	// reviews keep it to avoid colliding on their unique key). Best-effort
+	// post-PG-TX — PG is source of truth.
 	MongoBusinessCleanup(ctx context.Context, businessID string, originalName string) (int64, error)
 }
 

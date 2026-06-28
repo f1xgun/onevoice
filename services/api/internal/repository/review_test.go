@@ -137,6 +137,86 @@ func TestReviewRepository_SyncDoesNotDowngradeRepliedStatus(t *testing.T) {
 	})
 }
 
+// When org A is hard-deleted AFTER org B, and A owns a review that shares a
+// (platform, external_id) with one of B's already-flagged reviews, the cleanup
+// must not collide on the reviews UNIQUE index {business_id, platform,
+// external_id}. external_id is per-business, so two orgs legitimately share one
+// (VK builds "{post_id}_{comment_id}" from per-community ints). Nulling A's
+// review business_id would make it {null, platform, external_id} — equal to B's
+// once B's was nulled too — triggering E11000 mid-UpdateMany and leaving A's
+// reviews partly flagged. Keeping reviews.business_id intact sidesteps the
+// collision while the deleted_business marker records the tombstone.
+func TestMongoBusinessCleanup_ReviewsNoUniqueKeyCollision(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+
+	require.NoError(t, EnsureReviewIndexes(ctx, db),
+		"the {business_id, platform, external_id} UNIQUE index must exist for this to exercise the collision")
+
+	reviews := db.Collection("reviews")
+	const platform = "vk"
+	const sharedExternalID = "1001_2002"
+
+	orgB := uuid.NewString()
+	_, err := reviews.InsertOne(ctx, bson.M{
+		"_id":         uuid.NewString(),
+		"business_id": orgB,
+		"platform":    platform,
+		"external_id": sharedExternalID,
+		"text":        "B's review on the shared external id",
+	})
+	require.NoError(t, err)
+
+	repo := NewConversationRepository(db)
+
+	// Org B is deleted first. With the pre-fix behavior this nulls B's
+	// business_id, parking a {null, platform, external_id} document that any
+	// later null-set on A's matching review would collide with.
+	_, err = repo.MongoBusinessCleanup(ctx, orgB, "Org B")
+	require.NoError(t, err)
+
+	orgA := uuid.NewString()
+	aMatching := uuid.NewString()
+	aOther := uuid.NewString()
+	_, err = reviews.InsertMany(ctx, []interface{}{
+		bson.M{
+			"_id":         aMatching,
+			"business_id": orgA,
+			"platform":    platform,
+			"external_id": sharedExternalID,
+			"text":        "A's review sharing the external id with B",
+		},
+		bson.M{
+			"_id":         aOther,
+			"business_id": orgA,
+			"platform":    platform,
+			"external_id": "9999_8888",
+			"text":        "A's unrelated review",
+		},
+	})
+	require.NoError(t, err)
+
+	// Deleting org A must complete cleanly: no E11000 from the shared key.
+	_, err = repo.MongoBusinessCleanup(ctx, orgA, "Org A")
+	require.NoError(t, err, "cleanup must not abort on the reviews unique-key collision")
+
+	read := func(id string) bson.M {
+		var got bson.M
+		require.NoError(t, reviews.FindOne(ctx, bson.M{"_id": id}).Decode(&got))
+		return got
+	}
+
+	// Both of A's reviews must be consistently flagged — no partial state where
+	// the pre-conflict doc committed and the colliding one was left untouched.
+	for _, id := range []string{aMatching, aOther} {
+		got := read(id)
+		require.Equal(t, true, got["deleted_business"],
+			"every review of the deleted org must be marked deleted_business (no partial state)")
+		require.Equal(t, "Org A", got["business_name_at_delete"],
+			"every review of the deleted org must snapshot the original name")
+	}
+}
+
 func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()

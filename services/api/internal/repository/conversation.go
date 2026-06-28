@@ -259,29 +259,55 @@ func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, 
 }
 
 // MongoBusinessCleanup is the soft-delete sweeper for a departing organization.
-// Nulls business_id, snapshots the original name, marks deleted_business=true on
-// every conversation, post, and review scoped to the organization. Documents
+// Snapshots the original name and marks deleted_business=true on every
+// conversation, post, and review scoped to the organization. Documents
 // themselves are NOT dropped — forensic history persists. Mirrors
 // MongoConversationsCleanup. Messages carry no business_id (they are scoped via
-// the conversation allowlist) so they are left intact alongside the nulled
+// the conversation allowlist) so they are left intact alongside the
 // conversations, matching the user-deletion template.
+//
+// conversations and posts have business_id nulled; reviews do NOT. The reviews
+// collection has a UNIQUE index on {business_id, platform, external_id} with no
+// partial filter, so an explicit null is indexed. external_id is per-business
+// (VK builds "{post_id}_{comment_id}" from per-community ints), so two orgs can
+// share a (platform, external_id) — nulling both their business_ids would
+// collide on {null, platform, external_id} and an UpdateMany aborts at the first
+// E11000, leaving the org's reviews partly nulled (and the call is best-effort
+// post-PG-commit, so never retried → stranded). Reviews keep their business_id:
+// a hard-deleted org has no live read path (every read filters on a live
+// business_id), so the value is dead weight, and the deleted_business marker
+// records the tombstone without touching the unique key.
 func (r *conversationRepository) MongoBusinessCleanup(ctx context.Context, businessID, originalName string) (int64, error) {
 	db := r.collection.Database()
 	filter := bson.M{"business_id": businessID}
-	update := bson.M{"$set": bson.M{
+
+	nullingUpdate := bson.M{"$set": bson.M{
 		"business_id":             nil,
 		"business_name_at_delete": originalName,
 		"deleted_business":        true,
 		"updated_at":              time.Now(),
 	}}
+	reviewUpdate := bson.M{"$set": bson.M{
+		"business_name_at_delete": originalName,
+		"deleted_business":        true,
+		"updated_at":              time.Now(),
+	}}
+
 	var total int64
-	for _, name := range []string{"conversations", "posts", "reviews"} {
-		result, err := db.Collection(name).UpdateMany(ctx, filter, update)
+	for _, name := range []string{"conversations", "posts"} {
+		result, err := db.Collection(name).UpdateMany(ctx, filter, nullingUpdate)
 		if err != nil {
 			return total, fmt.Errorf("mongo business cleanup (%s): %w", name, err)
 		}
 		total += result.MatchedCount
 	}
+
+	result, err := db.Collection("reviews").UpdateMany(ctx, filter, reviewUpdate)
+	if err != nil {
+		return total, fmt.Errorf("mongo business cleanup (reviews): %w", err)
+	}
+	total += result.MatchedCount
+
 	return total, nil
 }
 
