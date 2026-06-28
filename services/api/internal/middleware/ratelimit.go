@@ -38,6 +38,13 @@ func incrWithHeal(ctx context.Context, client *redis.Client, key string, window 
 // RateLimit creates a rate limiting middleware using Redis
 // Uses token bucket algorithm with per-IP limiting
 func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(http.Handler) http.Handler {
+	if redisClient == nil || limit <= 0 {
+		// No Redis client (tests / unconfigured) or a non-positive limit
+		// (unset budget) → rate limiting is disabled. Pass-through so the
+		// middleware can be applied unconditionally without a nil-deref, and so
+		// a forgotten/zero budget can't silently 429 every request on the route.
+		return func(next http.Handler) http.Handler { return next }
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			clientIP := ClientIP(r)
