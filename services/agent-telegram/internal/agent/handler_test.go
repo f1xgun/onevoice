@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/agent"
 )
@@ -392,6 +393,32 @@ func TestClassifyTelegramError_TokenFetchFailure(t *testing.T) {
 	_, err := h.Handle(context.Background(), sendPostReq())
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
+}
+
+func TestClassifyTelegramError_IntegrationNotFound_StampsTokenInvalid(t *testing.T) {
+	fetcher := &fakeTokenFetcher{err: tokenclient.ErrIntegrationNotFound}
+	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) {
+		return &fakeSender{}, nil
+	}, nil)
+
+	_, err := h.Handle(context.Background(), sendPostReq())
+	require.Error(t, err)
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(err),
+		"a deleted integration must reach the FE as integration_token_invalid (reconnect CTA), not transient auto-retry")
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}),
+		"a deleted integration is permanent until reconnect — must stay NonRetryable")
+}
+
+func TestClassifyTelegramError_TokenExpired_StampsTokenInvalid(t *testing.T) {
+	fetcher := &fakeTokenFetcher{err: tokenclient.ErrTokenExpired}
+	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) {
+		return &fakeSender{}, nil
+	}, nil)
+
+	_, err := h.Handle(context.Background(), sendPostReq())
+	require.Error(t, err)
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(err),
+		"an expired token whose refresh failed must reach the FE as integration_token_invalid (reconnect CTA), not transient")
 }
 
 // --- Redis dedupe gate tests ---
