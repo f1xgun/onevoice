@@ -21,9 +21,16 @@ import (
 const defaultMaxConcurrent = 64
 
 // Transport abstracts the NATS connection for testability.
+//
+// Shutdown is two-phase by design. DrainSubs stops new message delivery while
+// leaving the connection open so in-flight handlers can still Publish their
+// replies; Close then tears the connection down. Callers must DrainSubs, wait
+// for handlers to finish, and only then Close — closing first would race a
+// late reply Publish onto an already-draining connection and drop it.
 type Transport interface {
 	Subscribe(subject string, handler func(subject, reply string, data []byte)) error
 	Publish(subject string, data []byte) error
+	DrainSubs() error
 	Close()
 }
 
@@ -234,8 +241,9 @@ func (a *Agent) recoverHandler(ctx context.Context, reply string, req *ToolReque
 }
 
 // Stop waits for all in-flight message handlers to complete.
-// It should be called after the transport is closed/drained to ensure
-// no new messages arrive while waiting.
+// It should be called after Transport.DrainSubs (so no new messages arrive
+// while waiting) but before Transport.Close (so handlers can still Publish
+// their replies on the open connection).
 func (a *Agent) Stop() {
 	a.wg.Wait()
 }

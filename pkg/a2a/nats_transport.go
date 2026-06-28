@@ -10,7 +10,8 @@ import (
 
 // NATSTransport adapts *nats.Conn to the Transport interface.
 type NATSTransport struct {
-	nc *natslib.Conn
+	nc  *natslib.Conn
+	sub *natslib.Subscription
 }
 
 // NewNATSTransport wraps an existing *nats.Conn.
@@ -30,7 +31,7 @@ func NewNATSTransport(nc *natslib.Conn) *NATSTransport {
 // the ToolResponse reply payload (see tool_dispatch_total) and are not
 // distinguishable at the transport layer.
 func (t *NATSTransport) Subscribe(subject string, handler func(subject, reply string, data []byte)) error {
-	_, err := t.nc.Subscribe(subject, func(msg *natslib.Msg) {
+	sub, err := t.nc.Subscribe(subject, func(msg *natslib.Msg) {
 		start := time.Now()
 		handler(msg.Subject, msg.Reply, msg.Data)
 		metrics.RecordNATSHandler(msg.Subject, "ok", time.Since(start))
@@ -38,6 +39,7 @@ func (t *NATSTransport) Subscribe(subject string, handler func(subject, reply st
 	if err != nil {
 		return err
 	}
+	t.sub = sub
 	return t.nc.Flush()
 }
 
@@ -52,6 +54,23 @@ func (t *NATSTransport) Publish(subject string, data []byte) error {
 	}
 	metrics.RecordNATSPublish(subject, result, time.Since(start))
 	return err
+}
+
+// DrainSubs removes interest in the agent subject so no new requests are
+// delivered, while leaving the connection open. Unlike Close (which drains the
+// whole connection and then closes it), DrainSubs keeps the publish path alive
+// so in-flight handlers can still land their reply on the open connection. It
+// is the first step of shutdown; the agent is then waited out and only then is
+// the connection closed.
+//
+// Subscription.Drain removes interest but keeps invoking the callback until
+// queued messages are processed, so it is safe to call while a handler is
+// running. A nil sub (Subscribe never succeeded) is a no-op.
+func (t *NATSTransport) DrainSubs() error {
+	if t.sub == nil {
+		return nil
+	}
+	return t.sub.Drain()
 }
 
 // Close initiates graceful shutdown by draining the NATS connection.

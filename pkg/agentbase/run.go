@@ -41,7 +41,11 @@ type RunConfig struct {
 
 // Run connects to NATS, starts the agent over a NATS transport, serves the
 // health/metrics endpoints, and blocks until SIGINT/SIGTERM, then drains
-// in-flight work in the canonical order (health server, transport, agent).
+// in-flight work in the canonical order: stop the health server, drain the
+// agent subscription (no new requests, connection still open), wait out the
+// in-flight handlers so their replies land on the open connection, and only
+// then close the connection. Closing before the handlers finish would drop a
+// late reply onto a draining connection and strand the requester on a timeout.
 // It owns the boot+health+signal+shutdown sequence shared by every platform
 // agent; per-agent specifics arrive via cfg.Exec.
 func Run(cfg RunConfig) error {
@@ -91,10 +95,48 @@ func Run(cfg RunConfig) error {
 		cleanup()
 	}
 	_ = healthSrv.Shutdown(shutCtx)
-	transport.Close()
-	ag.Stop()
+	drainTransport(cfg.Name, transport, ag.Stop, runShutdownTimeout)
 	slog.Info(cfg.Name + " agent stopped")
 	return nil
+}
+
+// drainTransport tears down the transport in the only safe order: stop new
+// deliveries (DrainSubs) so no fresh request arrives, then wait out the
+// in-flight handlers within the budget so each lands its reply Publish on the
+// still-open connection, and only then Close (which drains pubs and closes the
+// connection). Closing before the handlers finish would race a late reply onto
+// a draining connection, drop it, and strand the requester on a full timeout.
+// The ordering here is load-bearing — see drainTransport's tests.
+func drainTransport(name string, transport a2a.Transport, stop func(), budget time.Duration) {
+	if err := transport.DrainSubs(); err != nil {
+		slog.Warn(name+" agent: failed to drain subscriptions", "error", err)
+	}
+	if !waitWithDeadline(stop, budget) {
+		slog.Warn(name + " agent: drain budget elapsed, forcing shutdown with handlers still in flight")
+	}
+	transport.Close()
+}
+
+// waitWithDeadline runs stop in a goroutine and waits for it to return, but no
+// longer than d. It reports whether stop completed within the budget. A bounded
+// wait keeps a blocked in-flight handler (e.g. a Playwright RPA step that runs
+// on its own clock and ignores Go context cancellation mid-call) from holding
+// the process past the shutdown budget, so k8s sees a prompt exit instead of
+// SIGKILLing the pod after the termination grace period.
+func waitWithDeadline(stop func(), d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		stop()
+		close(done)
+	}()
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }
 
 // serveHealth builds the health/metrics mux with a NATS connectivity check and
