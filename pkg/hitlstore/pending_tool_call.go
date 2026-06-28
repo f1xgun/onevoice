@@ -113,9 +113,30 @@ func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingTool
 	return nil
 }
 
+// virtualizeExpiry lazily marks a still-resident batch as "expired" when its
+// expires_at has passed. The Mongo TTL monitor reaps lazily (~60s), so a
+// non-terminal batch can outlive its 24h window in the collection. Any
+// non-terminal status ("pending" or "resolving") is virtualized so downstream
+// expiry guards — which key off Status == "expired" — reject resolve/resume
+// attempts that land after the deadline. Terminal states (resolved, expired)
+// and not-yet-promoted "preparing" rows carry no expires_at and are left
+// untouched.
+func virtualizeExpiry(doc *domain.PendingToolCallBatch) {
+	if doc.ExpiresAt.IsZero() {
+		return
+	}
+	if doc.Status != "pending" && doc.Status != "resolving" {
+		return
+	}
+	if time.Now().UTC().After(doc.ExpiresAt) {
+		doc.Status = "expired"
+	}
+}
+
 // GetByBatchID returns the batch with lazy TTL virtualization: a still-
-// resident document whose expires_at has passed is returned as Status
-// "expired" so callers never observe stale "pending" past the 24h window.
+// resident non-terminal document whose expires_at has passed is returned as
+// Status "expired" so callers never observe a stale "pending"/"resolving"
+// past the 24h window.
 func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
 	var doc domain.PendingToolCallBatch
 	err := r.coll.FindOne(ctx, bson.M{"_id": batchID}).Decode(&doc)
@@ -125,14 +146,14 @@ func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) 
 		}
 		return nil, err
 	}
-	if doc.Status == "pending" && !doc.ExpiresAt.IsZero() && time.Now().UTC().After(doc.ExpiresAt) {
-		doc.Status = "expired"
-	}
+	virtualizeExpiry(&doc)
 	return &doc, nil
 }
 
 // ListPendingByConversation returns open batches (pending OR resolving)
-// for the conversation, sorted oldest-first.
+// for the conversation, sorted oldest-first. Past-TTL-but-not-yet-reaped
+// batches are virtualized to status "expired" so callers never render a
+// past-deadline batch as a live, actionable approval card.
 func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
@@ -152,6 +173,7 @@ func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, con
 			return nil, err
 		}
 		docCopy := doc
+		virtualizeExpiry(&docCopy)
 		out = append(out, &docCopy)
 	}
 	if err := cursor.Err(); err != nil {

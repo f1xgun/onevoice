@@ -248,6 +248,125 @@ func TestPendingToolCall_GetByBatchID_LazyExpiration(t *testing.T) {
 		"lazy expiration: past expires_at must virtualize status to expired")
 }
 
+// TestPendingToolCall_GetByBatchID_LazyExpiration_Resolving guards the resolve-
+// just-before / resume-just-after-the-deadline window. A batch transitioned to
+// "resolving" then left past its expires_at must be virtualized to "expired" on
+// read, otherwise the downstream resume/resolve guards (which only reject
+// Status == "expired") dispatch the approved publish tools AFTER the 24h TTL
+// window because the Mongo TTL monitor reaps lazily (~60s).
+func TestPendingToolCall_GetByBatchID_LazyExpiration_Resolving(t *testing.T) {
+	db := setupPendingToolCallDB(t, "lazy_expire_resolving")
+	ctx := context.Background()
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "batch-resolving-past",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+		Status:         "resolving",
+		CreatedAt:      now.Add(-25 * time.Hour),
+		UpdatedAt:      now.Add(-25 * time.Hour),
+		ExpiresAt:      now.Add(-1 * time.Hour),
+	})
+
+	got, err := repo.GetByBatchID(ctx, "batch-resolving-past")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "expired", got.Status,
+		"lazy expiration: a resolving batch past expires_at must virtualize to expired")
+}
+
+// TestPendingToolCall_GetByBatchID_InWindowResolvingUnaffected proves the fix
+// does not over-expire: a normal in-window resume is in status "resolving" but
+// NOT past expires_at, so it must stay "resolving" and remain dispatchable.
+func TestPendingToolCall_GetByBatchID_InWindowResolvingUnaffected(t *testing.T) {
+	db := setupPendingToolCallDB(t, "in_window_resolving")
+	ctx := context.Background()
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "batch-resolving-live",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+		Status:         "resolving",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ExpiresAt:      now.Add(24 * time.Hour),
+	})
+
+	got, err := repo.GetByBatchID(ctx, "batch-resolving-live")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "resolving", got.Status,
+		"an in-window resolving batch (not past expires_at) must stay resolving")
+}
+
+// TestPendingToolCall_ListPendingByConversation_VirtualizesExpired guards the
+// OpenChat read path: a pending batch whose expires_at has passed but which the
+// Mongo TTL monitor has not yet reaped must NOT surface as an actionable
+// "pending" approval card (which would 410 on click). It must be virtualized to
+// "expired" so the UI renders an expired badge instead of an approve action,
+// while a live in-window pending batch stays pending.
+func TestPendingToolCall_ListPendingByConversation_VirtualizesExpired(t *testing.T) {
+	db := setupPendingToolCallDB(t, "list_virtualize_expired")
+	ctx := context.Background()
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "b-pending-past",
+		ConversationID: "conv-main",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-past",
+		Status:         "pending",
+		CreatedAt:      now.Add(-25 * time.Hour),
+		UpdatedAt:      now.Add(-25 * time.Hour),
+		ExpiresAt:      now.Add(-1 * time.Hour),
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "b-pending-live",
+		ConversationID: "conv-main",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-live",
+		Status:         "pending",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ExpiresAt:      now.Add(24 * time.Hour),
+	})
+
+	got, err := repo.ListPendingByConversation(ctx, "conv-main")
+	require.NoError(t, err)
+
+	byID := make(map[string]string, len(got))
+	for _, b := range got {
+		byID[b.ID] = b.Status
+	}
+
+	pastStatus, pastPresent := byID["b-pending-past"]
+	assert.False(t, pastStatus == "pending",
+		"past-TTL pending batch must not be returned as actionable pending (got status %q, present=%v)", pastStatus, pastPresent)
+	if pastPresent {
+		assert.Equal(t, "expired", pastStatus,
+			"past-TTL pending batch, if returned, must be virtualized to expired")
+	}
+
+	liveStatus, livePresent := byID["b-pending-live"]
+	require.True(t, livePresent, "in-window pending batch must still be returned")
+	assert.Equal(t, "pending", liveStatus,
+		"in-window pending batch must remain actionable pending")
+}
+
 func TestPendingToolCall_GetByBatchID_NotFound(t *testing.T) {
 	db := setupPendingToolCallDB(t, "get_notfound")
 	ctx := context.Background()
