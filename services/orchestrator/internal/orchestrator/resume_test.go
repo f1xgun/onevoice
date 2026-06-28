@@ -234,6 +234,47 @@ func TestResume_RejectedCall_SynthesizesToolMessage_SkipsDispatch(t *testing.T) 
 	assert.Equal(t, "c-rej", rejects[0].ToolCallID)
 }
 
+// TestResume_EmptyVerdict_FailsClosed_SkipsDispatch — when a batch reaches
+// "resolving" but RecordDecisions never persisted the per-call verdicts (a
+// transient Mongo failure on resolve), every call carries an EMPTY verdict. A
+// resume MUST treat such a call as a rejection and NEVER execute it, otherwise a
+// tool call the user intended to reject gets published with its original args.
+func TestResume_EmptyVerdict_FailsClosed_SkipsDispatch(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	var dispatchedEmpty int32
+	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatchedEmpty, 1) }}
+	reg := toolregistry.NewRegistry()
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: "empty_tool", Description: "d", Parameters: map[string]interface{}{}},
+	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-empty", []domain.PendingCall{
+		{CallID: "c-empty", ToolName: "empty_tool", Arguments: map[string]interface{}{"text": "x"}, Verdict: ""},
+	})
+	batch.Status = "resolving"
+	repo.store["batch-empty"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-empty"})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatchedEmpty),
+		"empty-verdict call MUST NOT be dispatched (fail-closed)")
+	toolCalls := findEvents(evts, orchestrator.EventToolCall)
+	for _, tc := range toolCalls {
+		assert.NotEqual(t, "c-empty", tc.ToolCallID,
+			"empty-verdict call MUST NOT emit a tool_call event")
+	}
+	rejects := findEvents(evts, orchestrator.EventToolRejected)
+	require.Len(t, rejects, 1)
+	assert.Equal(t, "c-empty", rejects[0].ToolCallID)
+}
+
 func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
