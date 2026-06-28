@@ -15,6 +15,7 @@ import { useMapInviteError } from '@/lib/resolveErrorMap';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RefusalCard } from '@/components/invite/RefusalCard';
 import { useAuthStore } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
@@ -27,12 +28,41 @@ export default function AcceptInvitePage() {
   const mapInviteError = useMapInviteError();
 
   const isAuthed = useAuthStore((s) => s.isAuthenticated);
+  const [bootstrapping, setBootstrapping] = useState(true);
 
   useEffect(() => {
-    if (!isAuthed) {
-      router.replace(`/login?next=/invite/${token}`);
+    if (useAuthStore.getState().isAuthenticated) {
+      setBootstrapping(false);
+      return;
     }
-  }, [isAuthed, router, token]);
+    // (public) routes never mount the (app) layout's session rehydration, so
+    // a logged-in user landing here cold has only the httpOnly refresh cookie.
+    // Rehydrate via a raw /auth/refresh (the api 401 interceptor treats
+    // /auth/refresh as an auth endpoint and rejects locally — it does NOT
+    // hard-redirect to /login, unlike refreshAccessToken). On failure we own
+    // the redirect so the ?next= deep link is always preserved.
+    let active = true;
+    api
+      .post('/auth/refresh', {}, { withCredentials: true })
+      .then((res) => {
+        if (!active) return;
+        const { user, accessToken } = res.data ?? {};
+        if (user) {
+          useAuthStore.getState().setAuth(user, accessToken);
+        } else {
+          useAuthStore.getState().setAccessToken(accessToken);
+        }
+      })
+      .catch(() => {
+        if (active) router.replace(`/login?next=/invite/${token}`);
+      })
+      .finally(() => {
+        if (active) setBootstrapping(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [router, token]);
 
   const preview = useInvitationPreview(token, isAuthed);
   const accept = useAcceptInvitation();
@@ -54,7 +84,7 @@ export default function AcceptInvitePage() {
     }
   };
 
-  if (!isAuthed) {
+  if (bootstrapping || !isAuthed) {
     return null;
   }
 
