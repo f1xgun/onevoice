@@ -298,9 +298,6 @@ func Load() (*Config, error) {
 		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", defaultHTTPIdleTimeout),
 		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", defaultOrchestratorFetchTO),
 
-		RateLimitRegister: getEnvInt("RATE_LIMIT_REGISTER", 5), //nolint:mnd // env-driven default
-		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
-
 		ShutdownTimeout: shutdownTimeout,
 
 		UnisenderAPIKey:     os.Getenv("UNISENDER_API_KEY"),
@@ -413,6 +410,8 @@ func Load() (*Config, error) {
 	}
 
 	const (
+		defaultRateLimitRegister    = 5
+		defaultRateLimitLogin       = 10
 		defaultRateLimitChat        = 10
 		defaultRateLimitHITL        = 10
 		defaultRateLimitConsents    = 10
@@ -426,6 +425,8 @@ func Load() (*Config, error) {
 		def    int
 		target *int
 	}{
+		{"RATE_LIMIT_REGISTER", defaultRateLimitRegister, &cfg.RateLimitRegister},
+		{"RATE_LIMIT_LOGIN", defaultRateLimitLogin, &cfg.RateLimitLogin},
 		{"RATE_LIMIT_CHAT", defaultRateLimitChat, &cfg.RateLimitChat},
 		{"RATE_LIMIT_HITL", defaultRateLimitHITL, &cfg.RateLimitHITL},
 		{"RATE_LIMIT_CONSENTS", defaultRateLimitConsents, &cfg.RateLimitConsents},

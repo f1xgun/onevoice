@@ -578,6 +578,40 @@ func TestRateLimitByUser_ZeroLimit_NoOp(t *testing.T) {
 	}
 }
 
+func TestRateLimit_ZeroLimit_NoOp(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	handler := RateLimit(redisClient, 0, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/api/v1/auth/login", http.NoBody)
+		req.RemoteAddr = "192.168.1.1:12345"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code, "zero per-IP limit must disable limiting, never 429")
+	}
+}
+
+func TestRateLimit_NegativeLimit_NoOp(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	handler := RateLimit(redisClient, -1, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/api/v1/auth/login", http.NoBody)
+		req.RemoteAddr = "192.168.1.1:12345"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code, "negative per-IP limit must disable limiting, never 429")
+	}
+}
+
 func TestRateLimitByUser_PerUserBucket(t *testing.T) {
 	redisClient, _ := setupTestRedis(t)
 	defer func() { _ = redisClient.Close() }()

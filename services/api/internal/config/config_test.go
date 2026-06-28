@@ -219,6 +219,35 @@ func TestLoad_UserRateLimits_NonPositiveFailsLoud(t *testing.T) {
 	}
 }
 
+func TestLoad_AuthRateLimits_NonPositiveFailsLoud(t *testing.T) {
+	keys := []string{
+		"RATE_LIMIT_REGISTER",
+		"RATE_LIMIT_LOGIN",
+	}
+	for _, key := range keys {
+		for _, value := range []string{"0", "-1", "notanint"} {
+			t.Run(key+"="+value, func(t *testing.T) {
+				minTestEnv(t)
+				t.Setenv(key, value)
+				_, err := config.Load()
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), key)
+			})
+		}
+	}
+}
+
+func TestLoad_AuthRateLimits_PositiveLoadsCleanly(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("RATE_LIMIT_REGISTER", "3")
+	t.Setenv("RATE_LIMIT_LOGIN", "11")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 3, cfg.RateLimitRegister)
+	assert.Equal(t, 11, cfg.RateLimitLogin)
+}
+
 func TestLoad_UserRateLimits_PositiveLoadsCleanly(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("RATE_LIMIT_SEARCH", "1")
