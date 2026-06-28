@@ -142,12 +142,10 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		log.Info("server listening", "addr", addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
+		serveAndReport("public", log, errCh, srv.ListenAndServe)
 	}()
 
 	internalRouter := router.SetupInternal(handlers, hc, cfg)
@@ -169,15 +167,12 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	}
 	go func() {
 		log.Info("internal server listening", "addr", internalAddr, "tls", internalTLS != nil)
-		var serveErr error
-		if internalTLS != nil {
-			serveErr = internalSrv.ListenAndServeTLS("", "")
-		} else {
-			serveErr = internalSrv.ListenAndServe()
-		}
-		if serveErr != nil && serveErr != http.ErrServerClosed {
-			log.Error("internal server error", "error", serveErr)
-		}
+		serveAndReport("internal", log, errCh, func() error {
+			if internalTLS != nil {
+				return internalSrv.ListenAndServeTLS("", "")
+			}
+			return internalSrv.ListenAndServe()
+		})
 	}()
 
 	svcs.StartReviewSyncer(ctx, log, cfg.ReviewSyncInterval)
@@ -201,6 +196,21 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 
 	log.Info("server stopped")
 	return nil
+}
+
+// serveAndReport runs an http.Server's blocking serve function and forwards a
+// fatal listener failure to errCh so run() can abort with a non-zero exit. A
+// clean graceful shutdown (http.ErrServerClosed) is the expected terminal
+// state and is not reported. The internal mTLS server hosts the agent
+// token-fetch and orchestrator billing endpoints and is mandatory in
+// production (RequireInternalMTLS), so a silently swallowed bind failure there
+// would leave the pod READY while every token fetch and billing write got
+// connection-refused; routing the error here makes that failure fatal.
+func serveAndReport(name string, log *slog.Logger, errCh chan<- error, serve func() error) {
+	if err := serve(); err != nil && err != http.ErrServerClosed {
+		log.Error("server error", "server", name, "error", err)
+		errCh <- fmt.Errorf("%s server: %w", name, err)
+	}
 }
 
 // Sweeper cadences. The hard-delete sweepers run hourly — the 30-day grace
