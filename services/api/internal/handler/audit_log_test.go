@@ -170,6 +170,57 @@ func TestAuditLogHandler_List_NullActor_RendersNullEmail(t *testing.T) {
 	require.Equal(t, "auth", item["action_category"])
 }
 
+// Hard-deleted actor: the live LEFT JOIN email is empty (user_id SET NULL),
+// but the write-time user_email_at_event snapshot preserves the forensic
+// email for 152-ФЗ queries. The handler must fall back to the snapshot so the
+// email is reachable via this endpoint.
+func TestAuditLogHandler_List_HardDeletedActor_FallsBackToSnapshot(t *testing.T) {
+	t.Parallel()
+	biz := uuid.New()
+	rows := makeRows(1, biz, nil, "")
+	rows[0].Action = "user.self_deleted"
+	rows[0].UserEmailAtEvent = "forensic@x"
+
+	stub := &fakeAuditLister{returnRows: rows}
+	h := NewAuditLogHandler(stub)
+
+	ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body AuditLogListResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.Items, 1)
+	require.NotNil(t, body.Items[0].ActorEmail, "snapshot email must surface after hard-delete")
+	require.Equal(t, "forensic@x", string(*body.Items[0].ActorEmail))
+}
+
+// The live LEFT JOIN email wins over the snapshot when both are present —
+// the fallback only fills the gap, it never overrides a live email.
+func TestAuditLogHandler_List_LiveEmailWinsOverSnapshot(t *testing.T) {
+	t.Parallel()
+	biz, actor := uuid.New(), uuid.New()
+	rows := makeRows(1, biz, &actor, "live@test.local")
+	rows[0].UserEmailAtEvent = "stale@x"
+
+	stub := &fakeAuditLister{returnRows: rows}
+	h := NewAuditLogHandler(stub)
+
+	ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body AuditLogListResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.Items, 1)
+	require.NotNil(t, body.Items[0].ActorEmail)
+	require.Equal(t, "live@test.local", string(*body.Items[0].ActorEmail))
+}
+
 // Default limit = 50 when ?limit= is absent.
 func TestAuditLogHandler_List_DefaultLimit(t *testing.T) {
 	t.Parallel()
