@@ -12,7 +12,14 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace, push }),
   useParams: () => ({ token: 'abc123' }),
 }));
-vi.mock('@/lib/auth', () => ({ useAuthStore: vi.fn() }));
+vi.mock('@/lib/auth', () => {
+  const useAuthStore = vi.fn();
+  (useAuthStore as unknown as { getState: () => unknown }).getState = () => ({
+    isAuthenticated: authedAtMount,
+  });
+  return { useAuthStore };
+});
+vi.mock('@/lib/api/authFetch', () => ({ refreshAccessToken: vi.fn() }));
 vi.mock('@/lib/hooks/useInvitations', () => ({
   useInvitationPreview: vi.fn(),
   useAcceptInvitation: vi.fn(),
@@ -23,10 +30,16 @@ vi.mock('@/lib/stores/business', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 import { useAuthStore } from '@/lib/auth';
+import { refreshAccessToken } from '@/lib/api/authFetch';
 import { useInvitationPreview, useAcceptInvitation } from '@/lib/hooks/useInvitations';
 import { useBusinessStore } from '@/lib/stores/business';
 import { toast } from 'sonner';
 import AcceptInvitePage from '../../../app/(public)/invite/[token]/page';
+
+// Mirrors the in-memory store at mount: the page reads
+// useAuthStore.getState().isAuthenticated synchronously in its bootstrap
+// effect before deciding whether to attempt a refresh.
+let authedAtMount = false;
 
 function wrap(node: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -45,9 +58,18 @@ const FRESH_PREVIEW = {
   expires_at: '2026-05-17T00:00:00Z',
 };
 
+function mockAuth(isAuthenticated: boolean) {
+  authedAtMount = isAuthenticated;
+  vi.mocked(useAuthStore).mockImplementation((sel: (s: { isAuthenticated: boolean }) => unknown) =>
+    sel({ isAuthenticated })
+  );
+}
+
 beforeEach(() => {
   replace.mockReset();
   push.mockReset();
+  authedAtMount = false;
+  vi.mocked(refreshAccessToken).mockReset();
   vi.mocked(toast.error).mockReset();
   vi.mocked(useBusinessStore).mockImplementation(
     (
@@ -60,23 +82,46 @@ beforeEach(() => {
 });
 
 describe('AcceptInvitePage', () => {
-  it('redirects anonymous users to /login?next=/invite/{token}', () => {
-    vi.mocked(useAuthStore).mockImplementation(
-      (sel: (s: { isAuthenticated: boolean }) => unknown) => sel({ isAuthenticated: false })
-    );
+  it('redirects anonymous users to /login?next=/invite/{token} when refresh fails', async () => {
+    mockAuth(false);
+    vi.mocked(refreshAccessToken).mockRejectedValue(new Error('401'));
     vi.mocked(useInvitationPreview).mockReturnValue({ isLoading: true } as never);
     vi.mocked(useAcceptInvitation).mockReturnValue({
       mutateAsync: vi.fn(),
       isPending: false,
     } as never);
     render(wrap(<AcceptInvitePage />));
-    expect(replace).toHaveBeenCalledWith('/login?next=/invite/abc123');
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?next=/invite/abc123'));
+  });
+
+  it('bootstraps the session from the refresh cookie and renders the authed view without redirecting', async () => {
+    mockAuth(false);
+    let resolveRefresh: (token: string) => void = () => {};
+    vi.mocked(refreshAccessToken).mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveRefresh = resolve;
+        })
+    );
+    vi.mocked(useInvitationPreview).mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: FRESH_PREVIEW,
+    } as never);
+    vi.mocked(useAcceptInvitation).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as never);
+    const { rerender } = render(wrap(<AcceptInvitePage />));
+    mockAuth(true);
+    resolveRefresh('new-access-token');
+    rerender(wrap(<AcceptInvitePage />));
+    await waitFor(() => expect(screen.getByText('Acme')).toBeInTheDocument());
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it('renders the preview card for authenticated users', async () => {
-    vi.mocked(useAuthStore).mockImplementation(
-      (sel: (s: { isAuthenticated: boolean }) => unknown) => sel({ isAuthenticated: true })
-    );
+    mockAuth(true);
     vi.mocked(useInvitationPreview).mockReturnValue({
       isLoading: false,
       isError: false,
@@ -92,9 +137,7 @@ describe('AcceptInvitePage', () => {
   });
 
   it('on accept success, routes to /chat', async () => {
-    vi.mocked(useAuthStore).mockImplementation(
-      (sel: (s: { isAuthenticated: boolean }) => unknown) => sel({ isAuthenticated: true })
-    );
+    mockAuth(true);
     vi.mocked(useInvitationPreview).mockReturnValue({
       isLoading: false,
       isError: false,
@@ -109,9 +152,7 @@ describe('AcceptInvitePage', () => {
   });
 
   it('renders gone refusal card when preview returns 410', async () => {
-    vi.mocked(useAuthStore).mockImplementation(
-      (sel: (s: { isAuthenticated: boolean }) => unknown) => sel({ isAuthenticated: true })
-    );
+    mockAuth(true);
     vi.mocked(useInvitationPreview).mockReturnValue({
       isLoading: false,
       isError: true,
@@ -129,9 +170,7 @@ describe('AcceptInvitePage', () => {
   });
 
   it('renders already-member refusal when accept returns 409', async () => {
-    vi.mocked(useAuthStore).mockImplementation(
-      (sel: (s: { isAuthenticated: boolean }) => unknown) => sel({ isAuthenticated: true })
-    );
+    mockAuth(true);
     vi.mocked(useInvitationPreview).mockReturnValue({
       isLoading: false,
       isError: false,
@@ -148,9 +187,7 @@ describe('AcceptInvitePage', () => {
   });
 
   it('fires toast on 500 from accept and stays on the card', async () => {
-    vi.mocked(useAuthStore).mockImplementation(
-      (sel: (s: { isAuthenticated: boolean }) => unknown) => sel({ isAuthenticated: true })
-    );
+    mockAuth(true);
     vi.mocked(useInvitationPreview).mockReturnValue({
       isLoading: false,
       isError: false,

@@ -15,6 +15,7 @@ import { useMapInviteError } from '@/lib/resolveErrorMap';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RefusalCard } from '@/components/invite/RefusalCard';
 import { useAuthStore } from '@/lib/auth';
+import { refreshAccessToken } from '@/lib/api/authFetch';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
@@ -27,12 +28,25 @@ export default function AcceptInvitePage() {
   const mapInviteError = useMapInviteError();
 
   const isAuthed = useAuthStore((s) => s.isAuthenticated);
+  const [bootstrapping, setBootstrapping] = useState(true);
 
   useEffect(() => {
-    if (!isAuthed) {
-      router.replace(`/login?next=/invite/${token}`);
+    if (useAuthStore.getState().isAuthenticated) {
+      setBootstrapping(false);
+      return;
     }
-  }, [isAuthed, router, token]);
+    let active = true;
+    refreshAccessToken()
+      .catch(() => {
+        if (active) router.replace(`/login?next=/invite/${token}`);
+      })
+      .finally(() => {
+        if (active) setBootstrapping(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [router, token]);
 
   const preview = useInvitationPreview(token, isAuthed);
   const accept = useAcceptInvitation();
@@ -54,7 +68,7 @@ export default function AcceptInvitePage() {
     }
   };
 
-  if (!isAuthed) {
+  if (bootstrapping || !isAuthed) {
     return null;
   }
 
