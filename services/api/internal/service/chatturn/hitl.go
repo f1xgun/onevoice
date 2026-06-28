@@ -144,8 +144,13 @@ func (t *Turn) reemitApprovalEvent(w http.ResponseWriter, batch *domain.PendingT
 	flusher.Flush()
 }
 
+// reasonNoActiveApproval is the uniform inline-error payload for every resume
+// path that cannot proceed (no batch, no active message, or a cross-tenant
+// ownership mismatch). Keeping it uniform avoids leaking why the resume failed.
+const reasonNoActiveApproval = "no_active_approval_for_conversation"
+
 // sseInlineError writes a single error SSE event and closes the stream.
-func (t *Turn) sseInlineError(w http.ResponseWriter, reason string) {
+func (t *Turn) sseInlineError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -156,7 +161,7 @@ func (t *Turn) sseInlineError(w http.ResponseWriter, reason string) {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
-	data, _ := sse.Marshal(sse.Event{Type: sseEventError, Content: reason})
+	data, _ := sse.Marshal(sse.Event{Type: sseEventError, Content: reasonNoActiveApproval})
 	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }
@@ -174,7 +179,7 @@ func (t *Turn) streamResume(
 ) (TurnOutcome, error) {
 	batch, err := t.deps.Pending.GetByBatchID(ctx, batchID)
 	if err != nil || batch == nil || batch.ConversationID != conversationID {
-		t.sseInlineError(w, "no_active_approval_for_conversation")
+		t.sseInlineError(w)
 		return OutcomeInlineError, nil
 	}
 	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batch.UserID, batchID, nil)
@@ -197,14 +202,18 @@ func (t *Turn) ResumeApproved(
 ) (TurnOutcome, error) {
 	batch, err := t.deps.Pending.GetByBatchID(ctx, batchID)
 	if err != nil || batch == nil || batch.ConversationID != conversationID {
-		t.sseInlineError(w, "no_active_approval_for_conversation")
+		t.sseInlineError(w)
 		return OutcomeInlineError, nil
+	}
+	if !t.ownsConversation(ctx, conversationID, batch.UserID, batch.BusinessID) {
+		t.sseInlineError(w)
+		return OutcomeConversationNotFound, nil
 	}
 	activeMsg, ferr := t.deps.Messages.FindByConversationActive(ctx, conversationID)
 	if ferr != nil || activeMsg == nil {
 		slog.WarnContext(ctx, "chatturn: ResumeApproved: no active message to finalize",
 			"error", ferr, "conversation_id", conversationID, "batch_id", batchID)
-		t.sseInlineError(w, "no_active_approval_for_conversation")
+		t.sseInlineError(w)
 		return OutcomeInlineError, nil
 	}
 	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batch.UserID, batchID, body)

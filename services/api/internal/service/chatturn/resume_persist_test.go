@@ -28,6 +28,14 @@ func (resumeStubConv) BumpLastMessageAt(_ context.Context, _ string, _ time.Time
 	return nil
 }
 
+// GetByID reports not-found so the ownership gate treats these resume fixtures as
+// a pass-through (the resume path's behavior under test is independent of the
+// conversation row). The cross-tenant rejection is proven by a dedicated test
+// that injects an owner-mismatched conversation.
+func (resumeStubConv) GetByID(_ context.Context, _ string) (*domain.Conversation, error) {
+	return nil, domain.ErrConversationNotFound
+}
+
 type resumePendingRepo struct {
 	domain.PendingToolCallRepository
 	batch *domain.PendingToolCallBatch

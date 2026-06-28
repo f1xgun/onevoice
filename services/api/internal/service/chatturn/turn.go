@@ -118,6 +118,10 @@ func (t *Turn) Run(
 	req TurnRequest,
 	emit func(sse.Event),
 ) (TurnOutcome, error) {
+	if !t.ownsConversation(ctx, req.ConversationID, req.UserID.String(), req.BusinessID.String()) {
+		return OutcomeConversationNotFound, nil
+	}
+
 	action, activeMsg, batch, batchID := t.gateOnRequest(ctx, req.ConversationID, req.ResumeBatchID)
 	switch action {
 	case gateRejoinResume:
@@ -176,6 +180,37 @@ func (t *Turn) Run(
 		return OutcomeError, nil
 	}
 	return OutcomeDone, nil
+}
+
+// ownsConversation is the cross-tenant access gate for the chat turn. The router
+// only authorizes the caller against the {bizID} URL segment; the conversation
+// ID is otherwise trusted, so without this check a member of one organization
+// could load, append to, and stream another tenant's conversation by guessing
+// its ID. The ownership predicate mirrors ConversationService exactly (compare
+// the persisted user_id / business_id against the caller).
+//
+// Returns true (proceed) when the conversation does NOT exist yet — the first
+// turn on a brand-new conversation ID legitimately precedes its row, so a
+// not-found must NOT be rejected. A lookup error other than not-found is also
+// treated as proceed-with-warn so a transient datastore blip degrades to the
+// pre-existing behavior rather than a spurious 404. Returns false only when the
+// conversation is FOUND and the owner mismatches.
+func (t *Turn) ownsConversation(ctx context.Context, conversationID, userID, businessID string) bool {
+	conv, err := t.deps.Conversations.GetByID(ctx, conversationID)
+	switch {
+	case errors.Is(err, domain.ErrConversationNotFound):
+		return true
+	case err != nil:
+		slog.WarnContext(ctx, "chatturn: ownership gate: conversation lookup failed, proceeding",
+			"conversation_id", conversationID, "error", err)
+		return true
+	}
+	if conv.UserID != userID || conv.BusinessID != businessID {
+		slog.WarnContext(ctx, "chatturn: ownership gate: conversation owner mismatch, rejecting as not-found",
+			"conversation_id", conversationID)
+		return false
+	}
+	return true
 }
 
 // persistAfterStream writes the assistant Message after the SSE loop drains.

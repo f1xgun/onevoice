@@ -39,10 +39,12 @@ func chatProxyBizCtx(businessID, userID uuid.UUID) context.Context {
 
 // newChatProxyNoProject returns a ChatProxyHandler wired with a stub
 // projectService that returns ErrProjectNotFound and a stub conversation repo
-// that returns a conversation with ProjectID = nil. Used by legacy tests that
-// do not exercise project enrichment. The conversationID URL param is bound
-// via chi.RouteCtxKey in each test. Also injects an empty
-// pendingRepo (no active batches) so the gate is a pass-through.
+// that reports the conversation as not-yet-created. Used by legacy tests that
+// do not exercise project enrichment. A not-found conversation is the
+// first-turn create path: the ownership gate proceeds (it only rejects when the
+// conversation EXISTS and the owner mismatches). The conversationID URL param is
+// bound via chi.RouteCtxKey in each test. Also injects an empty pendingRepo (no
+// active batches) so the gate is a pass-through.
 func newChatProxyNoProject(
 	biz BusinessService,
 	integ IntegrationService,
@@ -50,8 +52,8 @@ func newChatProxyNoProject(
 	orchURL string,
 ) *ChatProxyHandler {
 	convRepo := &MockConversationRepository{
-		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return nil, domain.ErrConversationNotFound
 		},
 	}
 	proj := &noopProjectService{}
@@ -307,6 +309,67 @@ func TestChatProxy_NoBusiness(t *testing.T) {
 	assert.Contains(t, errResp["error"], "business not found")
 }
 
+// TestChatProxy_CrossTenantConversation_Returns404 is the IDOR regression at the
+// HTTP boundary: RequireBusinessAccess only authorized the caller against the
+// {bizID} URL segment, so a member of organization A could POST a chat turn at a
+// conversation ID owned by user/org B. The handler must map the ownership-gate
+// outcome to a uniform 404 — and crucially the attacker's message must NOT be
+// persisted into the victim conversation, nor the victim's history loaded.
+//
+// Reverting the gate in Turn.Run makes this fail: the status flips to 200 (the
+// stream proceeds) and a user message is created against the victim conversation.
+func TestChatProxy_CrossTenantConversation_Returns404(t *testing.T) {
+	attackerUser := uuid.New()
+	attackerBiz := uuid.New()
+	victimUser := uuid.New()
+	victimBiz := uuid.New()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByID", mock.Anything, attackerBiz).
+		Return(&domain.Business{ID: attackerBiz, Name: "Attacker Org"}, nil).Maybe()
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, attackerBiz).
+		Return([]domain.Integration{}, nil).Maybe()
+
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{
+				ID:         id,
+				UserID:     victimUser.String(),
+				BusinessID: victimBiz.String(),
+			}, nil
+		},
+	}
+
+	var createCalls, listCalls int
+	msgRepo := &MockMessageRepository{
+		CreateFunc:               func(_ context.Context, _ *domain.Message) error { createCalls++; return nil },
+		ListByConversationIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Message, error) { listCalls++; return nil, nil },
+	}
+
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo,
+		&MockPendingToolCallRepository{}, nil, nil, nil, nil,
+		orchestratorclient.New("http://unused", nil), nil, nil, 0)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/victim-conv", strings.NewReader(`{"message":"leak it"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chatProxyBizCtx(attackerBiz, attackerUser)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "victim-conv")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusNotFound, rr.Code, "cross-tenant chat must be a uniform 404")
+	var errResp map[string]string
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	assert.Contains(t, errResp["error"], "conversation not found")
+	assert.Zero(t, createCalls, "attacker message must not be persisted into the victim conversation")
+	assert.Zero(t, listCalls, "victim history must not be loaded")
+}
+
 // TestChatProxy_OrchestratorDown verifies that a 502 is returned when the
 // orchestrator is unreachable.
 func TestChatProxy_OrchestratorDown(t *testing.T) {
@@ -375,7 +438,7 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
 			assert.Equal(t, conversationID, id)
-			return &domain.Conversation{ID: id, UserID: userID.String(), ProjectID: nil}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 		},
 	}
 	proj := &noopProjectService{
@@ -439,7 +502,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 	projIDStr := projectID.String()
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: conversationID, UserID: userID.String(), ProjectID: &projIDStr}, nil
+			return &domain.Conversation{ID: conversationID, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: &projIDStr}, nil
 		},
 	}
 	proj := &noopProjectService{
@@ -724,7 +787,7 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 		},
 	}
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
@@ -795,7 +858,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 	}
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any"}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
@@ -876,7 +939,7 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 	}
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 		},
 	}
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
@@ -958,7 +1021,7 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	}
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 		},
 	}
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
@@ -1042,7 +1105,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 	}
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any"}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
@@ -1110,7 +1173,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 	}
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any"}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
@@ -1182,7 +1245,7 @@ func TestChatProxy_OrphanActive_NoBatch_SelfHealsInsteadOfDeadEnd(t *testing.T) 
 	}
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: id, UserID: "any"}, nil
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
@@ -1286,7 +1349,7 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	projIDStr := projectID.String()
 	convRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: conversationID, UserID: userID.String(), ProjectID: &projIDStr}, nil
+			return &domain.Conversation{ID: conversationID, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: &projIDStr}, nil
 		},
 	}
 	proj := &noopProjectService{
@@ -1366,7 +1429,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		projIDStr := projectID.String()
 		convRepo := &MockConversationRepository{
 			GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-				return &domain.Conversation{ID: conversationID, UserID: userID.String(), ProjectID: &projIDStr}, nil
+				return &domain.Conversation{ID: conversationID, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: &projIDStr}, nil
 			},
 		}
 		proj := &noopProjectService{
@@ -1449,7 +1512,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 
 		convRepo := &MockConversationRepository{
 			GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-				return &domain.Conversation{ID: id, UserID: userID.String(), ProjectID: nil}, nil
+				return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 			},
 		}
 		proj := &noopProjectService{}

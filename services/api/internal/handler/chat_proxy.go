@@ -220,6 +220,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "message is required")
 	case chatturn.OutcomeBusinessNotFound:
 		writeJSONError(w, http.StatusNotFound, "business not found")
+	case chatturn.OutcomeConversationNotFound:
+		writeJSONError(w, http.StatusNotFound, "conversation not found")
 	case chatturn.OutcomeOrchestratorUnavailable:
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
 	case chatturn.OutcomeError:

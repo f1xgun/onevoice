@@ -126,7 +126,7 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 		&noopProjectService{},
 		&MockConversationRepository{
 			GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
-				return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+				return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 			},
 		},
 		&MockMessageRepository{},

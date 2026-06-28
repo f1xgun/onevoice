@@ -89,6 +89,12 @@ const (
 	// any body validation should fire — the legacy code's
 	// "message is required" check only ran on the Fresh path.
 	OutcomeMissingMessage
+
+	// OutcomeConversationNotFound is returned when the targeted conversation
+	// exists but belongs to a different user or organization. The handler maps
+	// it to 404 — a uniform not-found over 403 so a member of one organization
+	// cannot probe the existence of another tenant's conversation IDs.
+	OutcomeConversationNotFound
 )
 
 // String is for log lines; the value names are part of the
@@ -111,6 +117,8 @@ func (o TurnOutcome) String() string {
 		return "missing_message"
 	case OutcomeBusinessNotFound:
 		return "business_not_found"
+	case OutcomeConversationNotFound:
+		return "conversation_not_found"
 	case OutcomeInlineError:
 		return "inline_error"
 	default:
