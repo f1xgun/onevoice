@@ -545,3 +545,54 @@ func TestClient_UpdateGroupInfo_InvalidGroupID(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid group_id")
 }
+
+// --- HTTP-timeout tests ---
+//
+// The VK SDK defaults vk.Client to http.DefaultClient, which has no Timeout.
+// Without an explicit bound, a peer that accepts the TCP connection but never
+// responds blocks the calling goroutine forever, exhausting the agent's NATS
+// worker semaphore. New/NewWithBaseURL must install a bounded client.
+
+func TestNew_SetsBoundedHTTPTimeout(t *testing.T) {
+	c := vk.New("test-token")
+	assert.NotZero(t, c.HTTPTimeout(),
+		"vk.New must set a non-zero HTTP timeout so a stalled VK peer cannot hang a worker")
+}
+
+func TestNewWithBaseURL_SetsBoundedHTTPTimeout(t *testing.T) {
+	c := vk.NewWithBaseURL("test-token", "http://127.0.0.1:1/method/")
+	assert.NotZero(t, c.HTTPTimeout(),
+		"vk.NewWithBaseURL must set a non-zero HTTP timeout so a stalled VK peer cannot hang a worker")
+}
+
+// TestHTTPTimeoutMechanism_BoundsStalledPeer demonstrates the timeout MECHANISM:
+// against a server that accepts the connection but never writes a response, a
+// bounded HTTP client surfaces an error promptly instead of blocking forever.
+// It injects a short timeout (bypassing the constructor) so it does not wait the
+// full production bound, so it is a mechanism demo — not a fail-on-revert guard.
+// The constructor wiring that installs the bound is guarded by
+// TestNew_SetsBoundedHTTPTimeout and TestNewWithBaseURL_SetsBoundedHTTPTimeout.
+func TestHTTPTimeoutMechanism_BoundsStalledPeer(t *testing.T) {
+	blocked := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		<-blocked
+	}))
+	defer srv.Close()
+	defer close(blocked)
+
+	c := vk.NewWithBaseURL("test-token", srv.URL+"/method/")
+	c.SetHTTPTimeout(200 * time.Millisecond)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.PublishPost("-123456", "Hello")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "stalled peer must surface a timeout error, not a success")
+	case <-time.After(5 * time.Second):
+		t.Fatal("PublishPost blocked past the injected HTTP timeout: VK REST client is not bounded")
+	}
+}

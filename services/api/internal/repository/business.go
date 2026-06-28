@@ -312,9 +312,12 @@ func (r *businessRepository) GetByIDIncludingDeletedInTx(ctx context.Context, tx
 	return &business, nil
 }
 
-// RequestDeletionInTx flips active → pending. The
-// `deletion_requested_at IS NULL` guard makes the write idempotent; the
-// follow-up classify-read distinguishes ErrBusinessNotFound from
+// RequestDeletionInTx flips active → pending, re-arming a fresh request. The
+// WHERE clause matches a never-requested row OR a previously-restored one
+// (deletion_canceled_at IS NOT NULL), so an organization restored within the
+// grace window can schedule deletion again; the SET clears deletion_canceled_at
+// so the re-armed request is genuinely pending. The follow-up classify-read
+// distinguishes ErrBusinessNotFound from a still-pending (uncanceled) request →
 // ErrBusinessDeletionAlreadyPending.
 func (r *businessRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) error {
 	const q = `UPDATE businesses
@@ -323,22 +326,23 @@ func (r *businessRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx,
 	                  deletion_canceled_at = NULL,
 	                  updated_at = NOW()
 	            WHERE id = $1
-	              AND deletion_requested_at IS NULL`
+	              AND (deletion_requested_at IS NULL OR deletion_canceled_at IS NOT NULL)`
 	cmdTag, err := tx.Exec(ctx, q, businessID)
 	if err != nil {
 		return fmt.Errorf("request business deletion: %w", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
 		var requestedAt *time.Time
-		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at FROM businesses WHERE id = $1`, businessID).
-			Scan(&requestedAt)
+		var canceledAt *time.Time
+		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deletion_canceled_at FROM businesses WHERE id = $1`, businessID).
+			Scan(&requestedAt, &canceledAt)
 		if err2 != nil {
 			if errors.Is(err2, pgx.ErrNoRows) {
 				return domain.ErrBusinessNotFound
 			}
 			return fmt.Errorf("classify business deletion state: %w", err2)
 		}
-		if requestedAt != nil {
+		if requestedAt != nil && canceledAt == nil {
 			return domain.ErrBusinessDeletionAlreadyPending
 		}
 		return domain.ErrBusinessNotFound

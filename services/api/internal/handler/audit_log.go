@@ -246,6 +246,11 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 //     nil. Empty actor_email / actor_display_name on the row map to nil
 //     pointers so the JSON envelope emits null (matches the legacy
 //     conditional pointer fix-up).
+//   - actor_email falls back to the write-time user_email_at_event snapshot
+//     when the live LEFT JOIN email is empty. After an actor is hard-deleted
+//     user_id is NULL so the JOIN yields an empty string, but the snapshot
+//     preserves the email for 152-ФЗ forensic queries — without the fallback
+//     that email is unreachable via this endpoint.
 //   - Details is decoded from the pkg/audit pre-marshaled RawMessage into a
 //     generic map[string]interface{} for the wire. Re-encoding into the
 //     response is semantically equivalent but NOT byte-identical with the
@@ -263,8 +268,12 @@ func toOpenAPIAuditEvent(l repository.AuditLogRow) openapi.AuditEvent {
 		CreatedAt:      l.CreatedAt,
 		Details:        decodeAuditDetails(l.Details),
 	}
-	if l.ActorEmail != "" {
-		email := openapi_types.Email(l.ActorEmail)
+	actorEmail := l.ActorEmail
+	if actorEmail == "" {
+		actorEmail = l.UserEmailAtEvent
+	}
+	if actorEmail != "" {
+		email := openapi_types.Email(actorEmail)
 		evt.ActorEmail = &email
 	}
 	if l.ActorDisplayName != "" {

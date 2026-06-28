@@ -446,9 +446,12 @@ func (r *userRepository) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, u
 	return nil
 }
 
-// RequestDeletionInTx flips active → pending. The
-// `deletion_requested_at IS NULL` guard makes the write idempotent; the
-// follow-up classify-read distinguishes ErrUserNotFound from
+// RequestDeletionInTx flips active → pending, re-arming a fresh request. The
+// WHERE clause matches a never-requested row OR a previously-restored one
+// (deletion_canceled_at IS NOT NULL), so a user restored within the grace
+// window can schedule deletion again; the SET clears deletion_canceled_at so
+// the re-armed request is genuinely pending. The follow-up classify-read
+// distinguishes ErrUserNotFound from a still-pending (uncanceled) request →
 // ErrDeletionAlreadyPending.
 func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	const q = `UPDATE users
@@ -457,23 +460,23 @@ func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, use
 	                  deletion_canceled_at = NULL,
 	                  updated_at = NOW()
 	            WHERE id = $1
-	              AND deletion_requested_at IS NULL`
+	              AND (deletion_requested_at IS NULL OR deletion_canceled_at IS NOT NULL)`
 	cmdTag, err := tx.Exec(ctx, q, userID)
 	if err != nil {
 		return fmt.Errorf("request deletion: %w", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
 		var requestedAt *time.Time
-		var deletedAt *time.Time
-		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deleted_at FROM users WHERE id = $1`, userID).
-			Scan(&requestedAt, &deletedAt)
+		var canceledAt *time.Time
+		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deletion_canceled_at FROM users WHERE id = $1`, userID).
+			Scan(&requestedAt, &canceledAt)
 		if err2 != nil {
 			if errors.Is(err2, pgx.ErrNoRows) {
 				return domain.ErrUserNotFound
 			}
 			return fmt.Errorf("classify deletion state: %w", err2)
 		}
-		if requestedAt != nil {
+		if requestedAt != nil && canceledAt == nil {
 			return domain.ErrDeletionAlreadyPending
 		}
 		return domain.ErrUserNotFound
