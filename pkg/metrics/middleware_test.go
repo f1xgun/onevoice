@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -157,6 +158,102 @@ func TestHTTPMiddleware_UnmatchedPathCollapsesToSentinel(t *testing.T) {
 
 	if findSample(mf, map[string]string{"method": "GET", "path": "<unmatched>"}) == nil {
 		t.Fatal("expected unmatched request to collapse into the single {path=\"<unmatched>\"} bucket")
+	}
+}
+
+func TestNormalizeHTTPMethod(t *testing.T) {
+	for _, m := range []string{
+		http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodConnect,
+		http.MethodOptions, http.MethodTrace,
+	} {
+		if got := normalizeHTTPMethod(m); got != m {
+			t.Errorf("normalizeHTTPMethod(%q) = %q, want %q", m, got, m)
+		}
+	}
+
+	for _, m := range []string{"BREW123", "PROPFIND", "", "get", "lowercase-token", "MKCOL"} {
+		if got := normalizeHTTPMethod(m); got != labelOther {
+			t.Errorf("normalizeHTTPMethod(%q) = %q, want %q", m, got, labelOther)
+		}
+	}
+}
+
+// TestHTTPMiddleware_UnknownMethodCollapsesToOther proves the {method} label is
+// bounded to the standard HTTP method set. An attacker can send arbitrary RFC
+// 7230 method tokens; without normalization each fresh token mints a new label
+// series and leaks memory. This test fails if normalizeHTTPMethod is reverted.
+func TestHTTPMiddleware_UnknownMethodCollapsesToOther(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(HTTPMiddleware)
+	r.Handle("/method-bound", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	const hostile = "BREW123"
+	req := httptest.NewRequest(hostile, "/method-bound", http.NoBody)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	mf := findMetric(families, "http_requests_total")
+	if mf == nil {
+		t.Fatal("http_requests_total metric family not found")
+	}
+
+	if findSample(mf, map[string]string{"method": hostile}) != nil {
+		t.Fatalf("attacker method %q must not create a raw {method=%q} series; it would let an unauthenticated attacker explode metric cardinality", hostile, hostile)
+	}
+
+	if findSample(mf, map[string]string{"method": "other"}) == nil {
+		t.Fatal("expected unknown method to collapse into the single {method=\"other\"} bucket")
+	}
+}
+
+// TestHTTPMiddleware_MethodLabelSetStaysBounded proves that hammering the
+// middleware with many distinct attacker-controlled method tokens does not grow
+// the {method} label set without bound. Reverting normalizeHTTPMethod makes each
+// raw token appear as its own series and fails this assertion.
+func TestHTTPMiddleware_MethodLabelSetStaysBounded(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(HTTPMiddleware)
+	r.Handle("/bounded", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < 200; i++ {
+		req := httptest.NewRequest(fmt.Sprintf("ZZTOKEN%d", i), "/bounded", http.NoBody)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+	}
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+	mf := findMetric(families, "http_requests_total")
+	if mf == nil {
+		t.Fatal("http_requests_total metric family not found")
+	}
+
+	distinctMethods := map[string]struct{}{}
+	for _, m := range mf.GetMetric() {
+		for _, lp := range m.GetLabel() {
+			if lp.GetName() == "method" {
+				distinctMethods[lp.GetValue()] = struct{}{}
+			}
+		}
+	}
+
+	if len(distinctMethods) > len(allowedHTTPMethods)+1 {
+		t.Fatalf("method label cardinality unbounded: %d distinct values seen %v; expected <= %d (allowlist + \"other\")", len(distinctMethods), distinctMethods, len(allowedHTTPMethods)+1)
+	}
+	if _, ok := distinctMethods["ZZTOKEN0"]; ok {
+		t.Fatal("raw attacker method token leaked into the method label set")
 	}
 }
 
