@@ -16,14 +16,35 @@ import (
 	"github.com/f1xgun/onevoice/pkg/safefetch"
 )
 
+// botAPITimeout bounds an entire Bot API round-trip. netdial only bounds the
+// dial (10s); without an overall deadline a server that accepts the connection
+// but stalls before sending response headers wedges the call forever, leaking
+// the handler goroutine and socket and blocking graceful shutdown. tgbotapi v5
+// builds requests with http.NewRequest (no context), so the handler ctx never
+// reaches the transport — the client must carry the deadline itself. GetUpdates
+// is called with Timeout:0 (short-poll), so a fixed client timeout is safe; a
+// dedicated longer-timeout client would be needed only if true long-polling is
+// enabled later.
+const botAPITimeout = 30 * time.Second
+
 // telegramAPIClient is the HTTP client backing the Bot API calls. It pins
 // outbound dials to IPv4 — Yandex Cloud VMs have no IPv6 route, and
 // api.telegram.org publishes AAAA records, so without this every Bot API
-// request can hang on the dead v6 address until timeout. No Client.Timeout is
-// set on purpose: GetUpdates long-polls, so the per-dial timeout inside
-// netdial is the only deadline that applies.
-var telegramAPIClient = &http.Client{
-	Transport: &http.Transport{DialContext: netdial.TCP4DialContext},
+// request can hang on the dead v6 address until timeout.
+var telegramAPIClient = newAPIClient(botAPITimeout)
+
+// newAPIClient builds a Bot API HTTP client that forces IPv4 dials and bounds
+// the whole round-trip by timeout, including the post-handshake wait for
+// response headers and idle connection reuse.
+func newAPIClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			DialContext:           netdial.TCP4DialContext,
+			ResponseHeaderTimeout: timeout,
+			IdleConnTimeout:       timeout,
+		},
+	}
 }
 
 // photoFetcher downloads images from user-provided (LLM-supplied) URLs with
