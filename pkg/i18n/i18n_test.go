@@ -139,6 +139,36 @@ func TestNormalizeToSupported(t *testing.T) {
 	}
 }
 
+// TestMatchAcceptLanguage_ReturnsCanonicalTag locks the contract that the
+// returned tag is exactly one of Supported (language.Russian /
+// language.English) — full-tag equality, not just a matching base. The
+// default US Chrome header "en-US,en;q=0.9" drives Matcher.Match to a
+// region-extended tag ("en-u-rg-uszzzz") that satisfies a base check but
+// fails the `tag == language.English` comparisons run by the tool registry,
+// chat handler, agent loop, draft-reply, and titler — flipping their output
+// to the RU fallback. NormalizeToSupported strips the extension so those
+// callers resolve correctly.
+func TestMatchAcceptLanguage_ReturnsCanonicalTag(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		want   language.Tag
+	}{
+		{name: "US Chrome default flips to English", header: "en-US,en;q=0.9", want: language.English},
+		{name: "British English flips to English", header: "en-GB", want: language.English},
+		{name: "Canadian English flips to English", header: "en-CA,en;q=0.9", want: language.English},
+		{name: "Russian region flips to Russian", header: "ru-RU,ru;q=0.9", want: language.Russian},
+		{name: "unsupported French falls back to default", header: "fr-FR,fr;q=0.9", want: i18n.DefaultTag},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := i18n.MatchAcceptLanguage(tt.header)
+			require.Equal(t, tt.want, got,
+				"header=%q must resolve to canonical %s, got %s", tt.header, tt.want, got)
+		})
+	}
+}
+
 func TestMatchAcceptLanguage_NeverPanics(t *testing.T) {
 	inputs := []string{
 		"",
