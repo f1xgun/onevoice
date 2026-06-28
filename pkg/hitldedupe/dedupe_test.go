@@ -120,6 +120,97 @@ func TestClaim_TTLIsSet(t *testing.T) {
 	assert.False(t, mr.Exists(key), "key must auto-expire after TTL")
 }
 
+func TestClaim_ExecutingSentinel_UsesShortTTL(t *testing.T) {
+	client, mr := newTestClient(t)
+	ctx := context.Background()
+
+	_, _, err := client.Claim(ctx, "biz-1", "appr-short")
+	require.NoError(t, err)
+
+	key := hitldedupe.KeyFor("biz-1", "appr-short")
+	require.True(t, mr.Exists(key), "pre-condition: key exists")
+
+	ttl := mr.TTL(key)
+	assert.Equal(t, hitldedupe.ExecutingTTL, ttl,
+		"executing sentinel must use the short ExecutingTTL, not the 24h DedupeTTL")
+	assert.Less(t, ttl, hitldedupe.DedupeTTL,
+		"executing sentinel TTL must be far below the completed-result DedupeTTL")
+}
+
+func TestStore_CompletedResult_UsesDedupeTTL(t *testing.T) {
+	client, mr := newTestClient(t)
+	ctx := context.Background()
+
+	_, _, err := client.Claim(ctx, "biz-1", "appr-done")
+	require.NoError(t, err)
+
+	require.NoError(t, client.Store(ctx, "biz-1", "appr-done",
+		map[string]interface{}{"task_id": "t", "success": true}))
+
+	key := hitldedupe.KeyFor("biz-1", "appr-done")
+	ttl := mr.TTL(key)
+	assert.Equal(t, hitldedupe.DedupeTTL, ttl,
+		"a completed Store must keep the full 24h DedupeTTL, not the short ExecutingTTL")
+	assert.Greater(t, ttl, hitldedupe.ExecutingTTL,
+		"completed result TTL must outlast the executing sentinel window")
+}
+
+func TestRelease_DeletesExecutingSentinel(t *testing.T) {
+	client, mr := newTestClient(t)
+	ctx := context.Background()
+
+	out, _, err := client.Claim(ctx, "biz-1", "appr-rel")
+	require.NoError(t, err)
+	require.Equal(t, hitldedupe.ClaimOutcomeClaimed, out)
+	key := hitldedupe.KeyFor("biz-1", "appr-rel")
+	require.True(t, mr.Exists(key), "pre-condition: claim wrote the sentinel")
+
+	require.NoError(t, client.Release(ctx, "biz-1", "appr-rel"))
+	assert.False(t, mr.Exists(key), "Release must delete the executing sentinel")
+
+	out2, _, err := client.Claim(ctx, "biz-1", "appr-rel")
+	require.NoError(t, err)
+	assert.Equal(t, hitldedupe.ClaimOutcomeClaimed, out2,
+		"after Release a retry must be able to re-Claim")
+}
+
+func TestRelease_AfterStore_DoesNotDeleteCompletedResult(t *testing.T) {
+	client, mr := newTestClient(t)
+	ctx := context.Background()
+
+	out, _, err := client.Claim(ctx, "biz-1", "appr-fence")
+	require.NoError(t, err)
+	require.Equal(t, hitldedupe.ClaimOutcomeClaimed, out)
+
+	require.NoError(t, client.Store(ctx, "biz-1", "appr-fence",
+		map[string]interface{}{"task_id": "t-fence", "success": true}))
+
+	key := hitldedupe.KeyFor("biz-1", "appr-fence")
+	require.True(t, mr.Exists(key), "pre-condition: Store wrote the completed result")
+
+	require.NoError(t, client.Release(ctx, "biz-1", "appr-fence"))
+	assert.True(t, mr.Exists(key),
+		"Release must NOT delete a completed result — its value is not the executing sentinel")
+
+	out2, cached, err := client.Claim(ctx, "biz-1", "appr-fence")
+	require.NoError(t, err)
+	assert.Equal(t, hitldedupe.ClaimOutcomeDuplicate, out2,
+		"the completed result survives Release, so a replay still dedupes")
+	var decoded map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(cached), &decoded))
+	assert.Equal(t, "t-fence", decoded["task_id"],
+		"the original completed payload is intact after Release")
+}
+
+func TestRelease_EmptyApprovalID_IsNoOp(t *testing.T) {
+	client, mr := newTestClient(t)
+	ctx := context.Background()
+
+	require.NoError(t, client.Release(ctx, "biz-1", ""))
+	assert.Equal(t, 0, len(mr.Keys()),
+		"Release with empty approvalID must NOT touch Redis")
+}
+
 func TestStore_OverwritesExecuting_WithFreshTTL(t *testing.T) {
 	client, mr := newTestClient(t)
 	ctx := context.Background()
@@ -128,11 +219,11 @@ func TestStore_OverwritesExecuting_WithFreshTTL(t *testing.T) {
 	require.NoError(t, err)
 	key := hitldedupe.KeyFor("biz-1", "appr-store")
 
-	mr.FastForward(1 * time.Hour)
+	mr.FastForward(30 * time.Second)
 	ttlBefore := mr.TTL(key)
 	require.Greater(t, ttlBefore, time.Duration(0))
-	require.Less(t, ttlBefore, 24*time.Hour,
-		"TTL must have decreased from 24h after FastForward(1h); got %v", ttlBefore)
+	require.Less(t, ttlBefore, hitldedupe.ExecutingTTL,
+		"sentinel TTL must have decreased from ExecutingTTL after FastForward; got %v", ttlBefore)
 
 	require.NoError(t, client.Store(ctx, "biz-1", "appr-store",
 		map[string]interface{}{"task_id": "t", "success": true}))

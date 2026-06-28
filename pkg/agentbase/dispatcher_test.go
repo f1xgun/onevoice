@@ -181,6 +181,9 @@ func TestDispatch_DedupeGate_InFlight_ShortCircuits(t *testing.T) {
 	assert.Equal(t, "t-replay", resp.TaskID, "response TaskID must reflect THIS request, not the original")
 	assert.Equal(t, "duplicate: already in flight", resp.Error,
 		"in-flight response must carry the canonical error string")
+	assert.False(t, resp.Success, "in-flight response must be a failure")
+	assert.Equal(t, "transient", resp.Code,
+		"in-flight response must carry the transient code so the FE classifies it as retryable")
 }
 
 // TestDispatch_DedupeGate_Duplicate_ReturnsCachedResponse verifies the
@@ -298,11 +301,11 @@ func TestDispatch_StoreOnSuccess_Caches(t *testing.T) {
 
 // TestDispatch_StoreSkippedOnError verifies that failed executions are NOT
 // cached. A subsequent dispatch with the same ApprovalID must be free to
-// retry — the dedupe gate must see the original "executing" sentinel and
-// return ClaimOutcomeInFlight, not a cached failure.
+// retry — the dispatcher releases the "executing" sentinel so the replay
+// re-Claims rather than blocking on a stranded in-flight claim.
 //
-// Rationale (mirrors handler.go:122-125 comment): "Errors and nil responses
-// are NOT cached — a replay should be free to retry when the original failed."
+// Rationale: "Errors and nil responses are NOT cached — a replay should be
+// free to retry when the original failed."
 func TestDispatch_StoreSkippedOnError(t *testing.T) {
 	dedupe, mr := newTestDedupe(t)
 	ctx := context.Background()
@@ -320,10 +323,13 @@ func TestDispatch_StoreSkippedOnError(t *testing.T) {
 	assert.Nil(t, resp)
 
 	key := hitldedupe.KeyFor("biz-1", "appr-fail")
-	val, gerr := mr.Get(key)
-	require.NoError(t, gerr)
-	assert.Equal(t, "executing", val,
-		"failed exec must NOT overwrite the executing sentinel — replay must be free to retry")
+	assert.False(t, mr.Exists(key),
+		"failed exec must release the executing sentinel — replay must be free to re-Claim")
+
+	out, _, cerr := dedupe.Claim(ctx, "biz-1", "appr-fail")
+	require.NoError(t, cerr)
+	assert.Equal(t, hitldedupe.ClaimOutcomeClaimed, out,
+		"a retry after a failed exec must be able to claim, not see a stranded in-flight sentinel")
 }
 
 // TestDispatch_OrderingContract makes the end-to-end sequence assertion
@@ -359,8 +365,6 @@ func TestDispatch_OrderingContract(t *testing.T) {
 	assert.Same(t, wrapped, err, "classifier output must be the dispatcher's returned error")
 	assert.Equal(t, int32(1), classifierCalls.Load(), "classifier must run exactly once per Dispatch")
 
-	val, gerr := mr.Get(hitldedupe.KeyFor("biz-1", "appr-order"))
-	require.NoError(t, gerr)
-	assert.Equal(t, "executing", val,
-		"classified error must still be a non-nil error — store must skip")
+	assert.False(t, mr.Exists(hitldedupe.KeyFor("biz-1", "appr-order")),
+		"classified error must still be a non-nil error — store must skip and release the sentinel")
 }
