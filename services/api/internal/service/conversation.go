@@ -119,6 +119,9 @@ func (s *ConversationService) MoveToProject(
 	if conv.UserID != requesterUserID.String() {
 		return nil, domain.ErrForbidden
 	}
+	if conv.BusinessID != businessID.String() {
+		return nil, domain.ErrConversationNotFound
+	}
 
 	canonicalProjectID, err := NormalizeProjectID(projectID)
 	if err != nil {
