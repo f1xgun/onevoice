@@ -44,9 +44,14 @@ type TokenResolver interface {
 //
 //   - tokenclient.ErrTransient → return as-is so the error stays
 //     retryable (network blip, 5xx upstream — retrying may succeed).
-//   - anything else (ErrIntegrationNotFound, ErrTokenExpired, request-shape
-//     bugs) → wrap in *a2a.NonRetryableError so withRetry + the LLM-side
-//     tool_result both see "permanent failure, do not retry."
+//   - tokenclient.ErrIntegrationNotFound / ErrTokenExpired → wrap as a
+//     NonRetryableError carrying the integration_token_invalid code so the
+//     per-platform classifiers' "if CodeOf(err) != \"\"" guard preserves it
+//     and the frontend renders the "reconnect the channel" CTA instead of a
+//     transient auto-retry message.
+//   - anything else (request-shape bugs) → wrap in *a2a.NonRetryableError so
+//     withRetry + the LLM-side tool_result both see "permanent failure, do
+//     not retry."
 //
 // Callers pass the already-contextualized error (e.g.
 // fmt.Errorf("fetch token: %w", err)) — the sentinel chain survives the
@@ -57,6 +62,9 @@ func WrapTokenFetchError(err error) error {
 	}
 	if errors.Is(err, tokenclient.ErrTransient) {
 		return err
+	}
+	if errors.Is(err, tokenclient.ErrIntegrationNotFound) || errors.Is(err, tokenclient.ErrTokenExpired) {
+		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
 	}
 	return a2a.NewNonRetryableError(err)
 }

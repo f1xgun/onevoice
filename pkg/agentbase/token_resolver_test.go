@@ -190,12 +190,28 @@ func TestWrapTokenFetchError(t *testing.T) {
 			"sentinel chain must survive the wrap")
 	})
 
+	t.Run("not_found_stamps_integration_token_invalid_code", func(t *testing.T) {
+		ctx := fmt.Errorf("fetch token: %w", tokenclient.ErrIntegrationNotFound)
+		out := agentbase.WrapTokenFetchError(ctx)
+		require.Error(t, out)
+		assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out),
+			"a deleted integration must surface as integration_token_invalid so the FE shows reconnect, not auto-retry")
+	})
+
 	t.Run("token_expired_marks_non_retryable", func(t *testing.T) {
 		ctx := fmt.Errorf("fetch token: %w", tokenclient.ErrTokenExpired)
 		out := agentbase.WrapTokenFetchError(ctx)
 		require.Error(t, out)
 		assert.True(t, errors.Is(out, &a2a.NonRetryableError{}),
 			"ErrTokenExpired is permanent until re-auth — must mark NonRetryable")
+	})
+
+	t.Run("token_expired_stamps_integration_token_invalid_code", func(t *testing.T) {
+		ctx := fmt.Errorf("fetch token: %w", tokenclient.ErrTokenExpired)
+		out := agentbase.WrapTokenFetchError(ctx)
+		require.Error(t, out)
+		assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out),
+			"an expired token whose refresh failed must surface as integration_token_invalid so the FE shows reconnect, not auto-retry")
 	})
 
 	t.Run("unclassified_marks_non_retryable", func(t *testing.T) {

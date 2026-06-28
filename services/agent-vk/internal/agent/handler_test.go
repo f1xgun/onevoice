@@ -19,6 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-vk/internal/agent"
 )
@@ -400,6 +401,36 @@ func TestClassifyVKError_TokenFetchFailure(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
+}
+
+func TestClassifyVKError_IntegrationNotFound_StampsTokenInvalid(t *testing.T) {
+	tokens := &mockTokenFetcher{err: tokenclient.ErrIntegrationNotFound}
+	h := agent.NewHandler(tokens, nil, "", nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.VKPublishPost,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "g1"},
+	})
+	require.Error(t, err)
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(err),
+		"a deleted integration must reach the FE as integration_token_invalid (reconnect CTA), not transient auto-retry")
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}),
+		"a deleted integration is permanent until reconnect — must stay NonRetryable")
+}
+
+func TestClassifyVKError_TokenExpired_StampsTokenInvalid(t *testing.T) {
+	tokens := &mockTokenFetcher{err: tokenclient.ErrTokenExpired}
+	h := agent.NewHandler(tokens, nil, "", nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.VKPublishPost,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "g1"},
+	})
+	require.Error(t, err)
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(err),
+		"an expired token whose refresh failed must reach the FE as integration_token_invalid (reconnect CTA), not transient")
 }
 
 // --- Typed code tests (locked-enum contract) ---
