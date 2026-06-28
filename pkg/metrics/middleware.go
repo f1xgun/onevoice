@@ -81,8 +81,11 @@ func (rw *responseWriter) Flush() {
 }
 
 // HTTPMiddleware returns a chi-compatible middleware that records HTTP metrics.
-// It uses chi's RouteContext to get the URL pattern (not the actual URL) to
-// prevent cardinality explosion from path parameters.
+// It labels the {path} metric with chi's matched route pattern (not the actual
+// URL) to prevent cardinality explosion from path parameters. Requests that
+// match no registered route — where chi reports an empty pattern — collapse to
+// the single "<unmatched>" bucket so an attacker-controlled URL can never be
+// turned into an unbounded set of label series.
 func HTTPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -90,7 +93,7 @@ func HTTPMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(rw, r)
 
-		path := r.URL.Path
+		path := "<unmatched>"
 		if rctx := chi.RouteContext(r.Context()); rctx != nil {
 			if pattern := rctx.RoutePattern(); pattern != "" {
 				path = pattern
