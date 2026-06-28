@@ -53,6 +53,26 @@ func NewConversationService(
 // See docs/services/conversation.md.
 var ErrInvalidProjectID = fmt.Errorf("invalid project id")
 
+// NormalizeProjectID canonicalizes a client-supplied project_id before it is
+// persisted. A nil or empty pointer (the "no project" case) is returned
+// unchanged. A non-empty value is parsed as a UUID and re-serialized via its
+// canonical lowercase-hyphenated String(); uuid.Parse also accepts
+// non-canonical forms (uppercase hex, no hyphens, urn:uuid:/{braced}) whose
+// String() differs from the input, so normalizing here keeps the stored value
+// matching the canonical form used by project count and cascade-delete
+// queries. Invalid UUIDs return ErrInvalidProjectID.
+func NormalizeProjectID(projectID *string) (*string, error) {
+	if projectID == nil || *projectID == "" {
+		return projectID, nil
+	}
+	parsed, err := uuid.Parse(*projectID)
+	if err != nil {
+		return nil, ErrInvalidProjectID
+	}
+	canonical := parsed.String()
+	return &canonical, nil
+}
+
 // ChatView is the JSON contract returned by OpenChat (messages + pending approvals).
 // See docs/services/conversation.md.
 type ChatView struct {
@@ -100,9 +120,14 @@ func (s *ConversationService) MoveToProject(
 		return nil, domain.ErrForbidden
 	}
 
+	canonicalProjectID, err := NormalizeProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
 	destName := i18n.Tr(ctx, "api.conversation.move.default_destination")
-	if projectID != nil && *projectID != "" {
-		projUUID, parseErr := uuid.Parse(*projectID)
+	if canonicalProjectID != nil && *canonicalProjectID != "" {
+		projUUID, parseErr := uuid.Parse(*canonicalProjectID)
 		if parseErr != nil {
 			return nil, ErrInvalidProjectID
 		}
@@ -116,7 +141,7 @@ func (s *ConversationService) MoveToProject(
 		destName = proj.Name
 	}
 
-	if err := s.convRepo.UpdateProjectAssignment(ctx, conversationID, projectID); err != nil {
+	if err := s.convRepo.UpdateProjectAssignment(ctx, conversationID, canonicalProjectID); err != nil {
 		return nil, err
 	}
 

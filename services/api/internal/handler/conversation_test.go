@@ -1089,6 +1089,60 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 	assert.Nil(t, capturedConv.PinnedAt)
 }
 
+// TestCreateConversation_NonCanonicalProjectID_PersistsCanonical guards against
+// the data-loss defect where a non-canonical client-supplied project_id was
+// persisted verbatim on the new conversation. The stored value must be the
+// canonical lowercase-hyphenated UUID so project count and cascade-delete
+// queries (which use uuid.String()) still match.
+func TestCreateConversation_NonCanonicalProjectID_PersistsCanonical(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+	canonical := projectID.String()
+
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"uppercase hex", strings.ToUpper(canonical)},
+		{"urn:uuid prefix", "urn:uuid:" + canonical},
+		{"braced", "{" + canonical + "}"},
+		{"no hyphens", strings.ReplaceAll(canonical, "-", "")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var capturedConv *domain.Conversation
+			mockRepo := &MockConversationRepository{
+				CreateFunc: func(_ context.Context, conv *domain.Conversation) error {
+					capturedConv = conv
+					return nil
+				},
+			}
+			proj := &noopProjectService{
+				GetByIDFunc: func(_ context.Context, bizID, id uuid.UUID) (*domain.Project, error) {
+					assert.Equal(t, businessID, bizID)
+					assert.Equal(t, projectID, id, "project lookup must use the parsed UUID")
+					return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Reviews"}, nil
+				},
+			}
+			h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, &noopBusinessService{}, proj, noopConversationService{})
+			require.NoError(t, err)
+
+			body, _ := json.Marshal(map[string]any{"title": "Chat", "projectId": tc.input})
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
+			req = req.WithContext(convBizCtx(businessID, userID))
+			w := httptest.NewRecorder()
+			h.CreateConversation(w, req)
+
+			assert.Equal(t, http.StatusCreated, w.Code)
+			require.NotNil(t, capturedConv)
+			require.NotNil(t, capturedConv.ProjectID)
+			assert.Equal(t, canonical, *capturedConv.ProjectID,
+				"persisted project_id must be the canonical lowercase-hyphenated UUID, not the raw %q", tc.input)
+		})
+	}
+}
+
 // TestCreateConversation_NullAndAbsentProjectIDEquivalent covers Behaviors 2 & 3.
 // Standard encoding/json semantics: both `"projectId": null` and an absent
 // `projectId` key deserialize to *string(nil). Handler must NOT distinguish.
