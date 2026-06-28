@@ -431,7 +431,10 @@ func TestBusinessBrowser_UpdateHours_FormatsHoursPayload(t *testing.T) {
 // Test #13 — formatHoursForYandex: closed-or-empty days are excluded.
 func TestFormatHoursForYandex_Closed(t *testing.T) {
 	in := `{"monday":"closed","tuesday":""}`
-	got := formatHoursForYandex(in)
+	got, err := formatHoursForYandex(in)
+	if err != nil {
+		t.Fatalf("formatHoursForYandex(%q) error: %v", in, err)
+	}
 	if got != "" {
 		t.Fatalf("formatHoursForYandex(%q) = %q, want empty", in, got)
 	}
@@ -440,13 +443,19 @@ func TestFormatHoursForYandex_Closed(t *testing.T) {
 // Test #14 — formatHoursForYandex: a single open slot serializes to "Пн HH:MM-HH:MM".
 func TestFormatHoursForYandex_OpenSlot(t *testing.T) {
 	in := `{"monday":{"open":"09:00","close":"21:00"}}`
-	got := formatHoursForYandex(in)
+	got, err := formatHoursForYandex(in)
+	if err != nil {
+		t.Fatalf("formatHoursForYandex(%q) error: %v", in, err)
+	}
 	if got != "Пн 09:00-21:00" {
 		t.Fatalf("formatHoursForYandex(%q) = %q, want %q", in, got, "Пн 09:00-21:00")
 	}
 
 	in = `{"saturday":{"open":"10:00","close":"15:00"},"sunday":{"open":"10:00","close":"15:00"}}`
-	got = formatHoursForYandex(in)
+	got, err = formatHoursForYandex(in)
+	if err != nil {
+		t.Fatalf("formatHoursForYandex(weekend) error: %v", err)
+	}
 	if got != "Сб-Вс 10:00-15:00" {
 		t.Fatalf("formatHoursForYandex(weekend) = %q, want %q", got, "Сб-Вс 10:00-15:00")
 	}
