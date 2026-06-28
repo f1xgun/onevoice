@@ -31,21 +31,29 @@ func NewIntegrationRepository(pool pgxPool) domain.IntegrationRepository {
 // wrapped_dek MUST be selected here — DecryptToken needs WrappedDEK from the
 // row, so a read path that omits it leaves WrappedDEK nil, silently falls back
 // to the legacy key, and fails to decrypt envelope-encrypted tokens.
-// key_version / encryption_key_fingerprint are intentionally NOT read here:
-// the decrypt path doesn't use them, and the rekey job reads them through its
-// own SelectForRekey query.
+// key_version / encryption_key_fingerprint MUST be selected here too: Update
+// rewrites both columns from the in-memory object, so a read path that omits
+// them loads zero/empty and a later read-modify-write (e.g. a metadata or
+// external_id heal) clobbers a correctly-rotated row back to key_version 0 and
+// an empty fingerprint.
 var integrationColumns = []string{
 	"id", "business_id", "platform", "status",
 	"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 	"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 	"created_at", "updated_at",
-	"wrapped_dek",
+	"wrapped_dek", "key_version", "encryption_key_fingerprint",
 }
 
 // scanIntegration maps one integrations row into a domain.Integration. Shared
 // by the QueryRow Get paths and the CollectRows List paths.
+//
+// key_version and encryption_key_fingerprint are nullable (NULL for legacy rows
+// and during the dual-read window), so they scan through pointers and coalesce
+// NULL to the zero/empty domain values.
 func scanIntegration(row scanner) (domain.Integration, error) {
 	var integration domain.Integration
+	var keyVersion *int16
+	var fingerprint *string
 	err := row.Scan(
 		&integration.ID,
 		&integration.BusinessID,
@@ -61,7 +69,18 @@ func scanIntegration(row scanner) (domain.Integration, error) {
 		&integration.CreatedAt,
 		&integration.UpdatedAt,
 		&integration.WrappedDEK,
+		&keyVersion,
+		&fingerprint,
 	)
+	if err != nil {
+		return integration, err
+	}
+	if keyVersion != nil {
+		integration.KeyVersion = *keyVersion
+	}
+	if fingerprint != nil {
+		integration.EncryptionKeyFingerprint = *fingerprint
+	}
 	return integration, err
 }
 

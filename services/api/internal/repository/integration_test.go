@@ -25,6 +25,13 @@ func newTestIntegrationRepo(t *testing.T) (*integrationRepository, pgxmock.PgxPo
 	return repo, mockPool
 }
 
+// ptrInt16/ptrString back the nullable key_version/encryption_key_fingerprint
+// mock columns: pgxmock scans those into *int16/*string, so a non-NULL AddRow
+// value must itself be a pointer (a bare int16/string is rejected as a kind
+// mismatch); a typed nil pointer models the NULL legacy/dual-read case.
+func ptrInt16(v int16) *int16    { return &v }
+func ptrString(v string) *string { return &v }
+
 func TestListByBusinessAndPlatform(t *testing.T) {
 	ctx := context.Background()
 	businessID := uuid.New()
@@ -43,16 +50,16 @@ func TestListByBusinessAndPlatform(t *testing.T) {
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
-		"wrapped_dek",
+		"wrapped_dek", "key_version", "encryption_key_fingerprint",
 	}).
 		AddRow(id1, businessID, platform, "active",
 			[]byte("tok1"), []byte(nil), []byte(nil),
 			extID1, map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now, []byte("dek1")).
+			now, now, []byte("dek1"), ptrInt16(3), ptrString("fp1")).
 		AddRow(id2, businessID, platform, "active",
 			[]byte("tok2"), []byte(nil), []byte(nil),
 			extID2, map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now, []byte(nil))
+			now, now, []byte(nil), (*int16)(nil), (*string)(nil))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -84,12 +91,12 @@ func TestGetByBusinessPlatformExternal_Found(t *testing.T) {
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
-		"wrapped_dek",
+		"wrapped_dek", "key_version", "encryption_key_fingerprint",
 	}).
 		AddRow(integrationID, businessID, platform, "active",
 			[]byte("tok"), []byte(nil), []byte(nil),
 			externalID, map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now, []byte("dek"))
+			now, now, []byte("dek"), ptrInt16(5), ptrString("fp-found"))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -223,12 +230,12 @@ func TestIntegrationRepo_ListByBusinessID_ExcludesSoftDeleted(t *testing.T) {
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
-		"wrapped_dek",
+		"wrapped_dek", "key_version", "encryption_key_fingerprint",
 	}).
 		AddRow(id1, businessID, "vk", "active",
 			[]byte("tok"), []byte(nil), []byte(nil),
 			"vk_111", map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now, []byte(nil))
+			now, now, []byte(nil), (*int16)(nil), (*string)(nil))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND business_id = \$1`).
 		WithArgs(pgxmock.AnyArg()).
@@ -255,12 +262,12 @@ func TestIntegrationRepo_ListAllActiveByPlatforms_ExcludesSoftDeleted(t *testing
 		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
 		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
-		"wrapped_dek",
+		"wrapped_dek", "key_version", "encryption_key_fingerprint",
 	}).
 		AddRow(id1, businessID, "telegram", "active",
 			[]byte("tok"), []byte(nil), []byte(nil),
 			"tg_999", map[string]interface{}{}, &now, (*time.Time)(nil),
-			now, now, []byte(nil))
+			now, now, []byte(nil), (*int16)(nil), (*string)(nil))
 
 	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND status = \$1 AND platform IN`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -515,5 +522,57 @@ func TestIntegrationRepo_Update_ActiveRowSucceeds(t *testing.T) {
 
 	err := repo.Update(ctx, integration)
 	require.NoError(t, err)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_ReadModifyWrite_PreservesEnvelopeMetadata reproduces the
+// metadata/external_id heal flow (GetByID → mutate one field → Update without
+// re-encrypting) and asserts the envelope metadata round-trips. Update rewrites
+// key_version and encryption_key_fingerprint from the in-memory object, so when
+// the read path omits those columns the scanned object carries 0 / "" and the
+// write clobbers a correctly-rotated row. The UPDATE expectation pins the
+// originally-read key_version (7) and fingerprint ("fp-rotated") as exact args,
+// so omitting them from the SELECT/scan fails this test.
+func TestIntegrationRepo_ReadModifyWrite_PreservesEnvelopeMetadata(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+	businessID := uuid.New()
+	now := time.Now()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	readRows := pgxmock.NewRows([]string{
+		"id", "business_id", "platform", "status",
+		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
+		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
+		"created_at", "updated_at",
+		"wrapped_dek", "key_version", "encryption_key_fingerprint",
+	}).
+		AddRow(id, businessID, "yandex_business", "active",
+			[]byte("ct"), []byte(nil), []byte(nil),
+			"sprav_111", map[string]interface{}{}, (*time.Time)(nil), (*time.Time)(nil),
+			now, now, []byte("wrapped-dek"), ptrInt16(7), ptrString("fp-rotated"))
+
+	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE deleted_at IS NULL AND id = \$1`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(readRows)
+
+	integration, err := repo.GetByID(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, int16(7), integration.KeyVersion)
+	require.Equal(t, "fp-rotated", integration.EncryptionKeyFingerprint)
+
+	integration.Metadata = map[string]interface{}{"business_name": "healed name"}
+
+	mockPool.ExpectExec(`UPDATE integrations SET.*key_version.*encryption_key_fingerprint.*WHERE.*deleted_at IS NULL`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			[]byte("wrapped-dek"), int16(7), "fp-rotated",
+			pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	require.NoError(t, repo.Update(ctx, integration))
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
