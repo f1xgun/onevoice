@@ -17,8 +17,9 @@ import (
 const defaultRateLimitPerSec rate.Limit = 3
 const defaultRateLimitBurst = 1
 
-// vkHTTPTimeout is the per-request timeout used by the photo-upload helper
-// when downloading caller-supplied URLs before re-uploading to VK. 30s is
-// generous enough for slow CDN backends without leaving the agent hung
-// forever on a dead origin.
+// vkHTTPTimeout bounds both the photo-upload helper (downloading
+// caller-supplied URLs before re-uploading to VK) and the VK REST client, so a
+// stalled peer cannot hang a worker goroutine. 30s is generous enough for slow
+// CDN backends and VK API responses without leaving the agent hung forever on a
+// dead origin.
 const vkHTTPTimeout = 30 * time.Second

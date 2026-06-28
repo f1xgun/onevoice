@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -58,8 +59,10 @@ type Client struct {
 // New creates a new Client with the given access token.
 // A rate limiter of 3 requests/sec (burst 1) is applied to all VK API calls.
 func New(accessToken string) *Client {
+	vk := vkapi.NewVK(accessToken)
+	vk.Client = &http.Client{Timeout: vkHTTPTimeout}
 	return &Client{
-		vk:      vkapi.NewVK(accessToken),
+		vk:      vk,
 		limiter: rate.NewLimiter(defaultRateLimitPerSec, defaultRateLimitBurst),
 	}
 }
@@ -68,6 +71,7 @@ func New(accessToken string) *Client {
 // The baseURL should end with a slash, e.g. "http://localhost:1234/method/".
 func NewWithBaseURL(accessToken, baseURL string) *Client {
 	vk := vkapi.NewVK(accessToken)
+	vk.Client = &http.Client{Timeout: vkHTTPTimeout}
 	vk.MethodURL = baseURL
 	return &Client{
 		vk:      vk,
