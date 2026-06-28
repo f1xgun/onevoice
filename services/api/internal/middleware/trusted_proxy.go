@@ -24,6 +24,13 @@ import (
 // XFF header is ignored. This is the "safer-side default" — misconfigured
 // CIDR list never escalates trust.
 
+// ipv6BucketBits is the IPv6 prefix length used for the lockout bucket. /64
+// is the standard single-customer allocation, mirroring the IPv4 /16 intent.
+const (
+	ipv6BucketBits = 64
+	ipv6AddrBits   = 128
+)
+
 var (
 	trustedCIDRs []*net.IPNet
 	trustedMu    sync.RWMutex
@@ -107,25 +114,26 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
-// Net16 returns the /16 prefix in "x.y.0.0/16" string form for a parseable
-// IPv4 address. Returns "" for IPv6 or unparseable input (logged at warn —
-// caller should treat "" as "skip lockout for this request" per the
-// middleware fall-through pattern).
+// Net16 returns the coarse network bucket used to key the account lockout
+// counter. For IPv4 it is the /16 prefix ("x.y.0.0/16"); for IPv6 it is the
+// /64 prefix ("<masked>/64"). Returns "" only for genuinely unparseable input
+// (logged at warn — caller should treat "" as "skip lockout for this request"
+// per the middleware fall-through pattern).
 //
-// /16 blunts shared-NAT collisions while still binding to the network
-// neighborhood. A /32 would let an attacker on a mobile carrier hop IPs
-// and avoid the counter; a /8 would let one bad neighbor on AWS lock out
-// every other AWS customer.
+// The bucket blunts shared-NAT/rotation collisions while still binding to the
+// network neighborhood. A /32 (IPv4) or /128 (IPv6) would let an attacker on a
+// mobile carrier hop addresses and avoid the counter; an over-broad prefix
+// would let one bad neighbor lock out unrelated customers. /64 is the standard
+// single-customer IPv6 allocation, mirroring the IPv4 /16 intent.
 func Net16(ip string) string {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
 		slog.Warn("trusted_proxy: Net16 called on unparseable IP", "ip", ip)
 		return ""
 	}
-	v4 := parsed.To4()
-	if v4 == nil {
-		slog.Warn("trusted_proxy: Net16 called on IPv6 address; skipping", "ip", ip)
-		return ""
+	if v4 := parsed.To4(); v4 != nil {
+		return fmt.Sprintf("%d.%d.0.0/16", v4[0], v4[1])
 	}
-	return fmt.Sprintf("%d.%d.0.0/16", v4[0], v4[1])
+	masked := parsed.Mask(net.CIDRMask(ipv6BucketBits, ipv6AddrBits))
+	return fmt.Sprintf("%s/%d", masked.String(), ipv6BucketBits)
 }

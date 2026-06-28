@@ -71,9 +71,20 @@ func TestNet16_IPv4(t *testing.T) {
 	}
 }
 
-func TestNet16_IPv6_ReturnsEmpty(t *testing.T) {
-	assert.Equal(t, "", middleware.Net16("fe80::1"))
-	assert.Equal(t, "", middleware.Net16("::1"))
+func TestNet16_IPv6_ReturnsNonEmptyBucket(t *testing.T) {
+	assert.NotEmpty(t, middleware.Net16("2001:db8::1"),
+		"IPv6 must yield a non-empty lockout bucket so the account lockout no longer early-returns")
+	assert.NotEmpty(t, middleware.Net16("fe80::1"))
+	assert.NotEmpty(t, middleware.Net16("::1"))
+}
+
+func TestNet16_IPv6_CollapsesToSame64(t *testing.T) {
+	a := middleware.Net16("2001:db8::1")
+	b := middleware.Net16("2001:db8::dead")
+	assert.Equal(t, a, b, "two addresses in the same /64 must collapse to the same bucket")
+
+	other := middleware.Net16("2001:db8:0:1::1")
+	assert.NotEqual(t, a, other, "a different /64 must produce a different bucket")
 }
 
 func TestNet16_Unparseable_ReturnsEmpty(t *testing.T) {
