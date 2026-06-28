@@ -1304,9 +1304,9 @@ func TestMoveConversation_ToNullBezProyekta(t *testing.T) {
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
 			getByIDCall++
 			if getByIDCall == 1 {
-				return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: ptr("old-proj")}, nil
+				return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: ptr("old-proj")}, nil
 			}
-			return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: nil}, nil
+			return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 		},
 		UpdateProjectAssignmentFunc: func(_ context.Context, _ string, pid *string) error {
 			captureUpdateProjID = pid
@@ -1350,9 +1350,9 @@ func TestMoveConversation_EnglishLocale_NullDestination(t *testing.T) {
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
 			getByIDCall++
 			if getByIDCall == 1 {
-				return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: ptr("old-proj")}, nil
+				return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: ptr("old-proj")}, nil
 			}
-			return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: nil}, nil
+			return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String(), ProjectID: nil}, nil
 		},
 		UpdateProjectAssignmentFunc: func(_ context.Context, _ string, _ *string) error {
 			return nil
@@ -1458,7 +1458,7 @@ func TestMoveConversation_ProjectCrossBusiness(t *testing.T) {
 
 	mockRepo := &MockConversationRepository{
 		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
-			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+			return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
 		},
 	}
 	proj := &noopProjectService{

@@ -295,9 +295,10 @@ func TestMoveToProject_HappyPath_WithProject(t *testing.T) {
 
 	conv := &stubConversationRepo{
 		Conv: &domain.Conversation{
-			ID:        convID,
-			UserID:    requesterUser.String(),
-			ProjectID: nil,
+			ID:         convID,
+			UserID:     requesterUser.String(),
+			BusinessID: businessID.String(),
+			ProjectID:  nil,
 		},
 	}
 	msg := &stubMessageRepo{}
@@ -361,9 +362,10 @@ func TestMoveToProject_NonCanonicalProjectID_PersistsCanonical(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			conv := &stubConversationRepo{
 				Conv: &domain.Conversation{
-					ID:        convID,
-					UserID:    requesterUser.String(),
-					ProjectID: nil,
+					ID:         convID,
+					UserID:     requesterUser.String(),
+					BusinessID: businessID.String(),
+					ProjectID:  nil,
 				},
 			}
 			msg := &stubMessageRepo{}
@@ -404,9 +406,10 @@ func TestMoveToProject_HappyPath_NoProject(t *testing.T) {
 
 	conv := &stubConversationRepo{
 		Conv: &domain.Conversation{
-			ID:        convID,
-			UserID:    requesterUser.String(),
-			ProjectID: &originalProj,
+			ID:         convID,
+			UserID:     requesterUser.String(),
+			BusinessID: businessID.String(),
+			ProjectID:  &originalProj,
 		},
 	}
 	msg := &stubMessageRepo{}
@@ -458,14 +461,15 @@ func TestMoveToProject_Forbidden_OtherUserConversation(t *testing.T) {
 
 func TestMoveToProject_ProjectNotFound_NonExistent(t *testing.T) {
 	requesterUser := uuid.New()
+	businessID := uuid.New()
 	conv := &stubConversationRepo{
-		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
+		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String(), BusinessID: businessID.String()},
 	}
 	proj := &stubProjectRepoForConv{Project: nil}
 	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
 
 	projIDStr := uuid.NewString()
-	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, &projIDStr)
+	_, err := svc.MoveToProject(context.Background(), "c1", businessID, requesterUser, &projIDStr)
 	assert.True(t, errors.Is(err, domain.ErrProjectNotFound), "want ErrProjectNotFound, got %v", err)
 	assert.Empty(t, conv.UpdateCalls, "missing project must NOT proceed to UpdateProjectAssignment")
 }
@@ -479,7 +483,7 @@ func TestMoveToProject_ProjectNotFound_CrossTenant(t *testing.T) {
 	otherBiz := uuid.New()
 
 	conv := &stubConversationRepo{
-		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
+		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String(), BusinessID: requesterBiz.String()},
 	}
 	proj := &stubProjectRepoForConv{
 		Project: &domain.Project{
@@ -497,15 +501,99 @@ func TestMoveToProject_ProjectNotFound_CrossTenant(t *testing.T) {
 	assert.Empty(t, conv.UpdateCalls)
 }
 
+// TestMoveToProject_CrossBusinessConversation_Rejected covers the
+// belongs-to-active-business invariant. A user who is a member of two
+// businesses (A and B) cannot move a conversation owned under business A
+// into a project under the active business B: the owner check passes (same
+// user) but the conversation's business_id differs from the active business.
+// The move must be rejected as ErrConversationNotFound (uniform 404, no
+// existence leak) and UpdateProjectAssignment must NOT run — leaving the
+// conversation's project_id untouched. Without the guard the move would
+// persist, leaving conv.business_id=A with a project_id in B, which a later
+// project cascade-delete in B would use to destroy A's conversation and
+// messages.
+func TestMoveToProject_CrossBusinessConversation_Rejected(t *testing.T) {
+	requesterUser := uuid.New()
+	businessA := uuid.New()
+	businessB := uuid.New()
+	destProjID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{
+			ID:         convID,
+			UserID:     requesterUser.String(),
+			BusinessID: businessA.String(),
+			ProjectID:  nil,
+		},
+	}
+	msg := &stubMessageRepo{}
+	proj := &stubProjectRepoForConv{
+		Project: &domain.Project{
+			ID:         destProjID,
+			Name:       "Destination in B",
+			BusinessID: businessB,
+		},
+	}
+	svc := newConvSvc(t, conv, msg, proj, nil)
+
+	destProjIDStr := destProjID.String()
+	_, err := svc.MoveToProject(context.Background(), convID, businessB, requesterUser, &destProjIDStr)
+	assert.True(t, errors.Is(err, domain.ErrConversationNotFound),
+		"moving a conversation owned under another business into the active business must surface as ErrConversationNotFound, got %v", err)
+
+	assert.Empty(t, conv.UpdateCalls,
+		"cross-business move must NOT call UpdateProjectAssignment — project_id must stay unchanged")
+	assert.Empty(t, msg.Created,
+		"cross-business move must NOT append a system note")
+}
+
+// TestMoveToProject_SameBusinessConversation_Succeeds is the positive
+// counterpart to the cross-business rejection: when the conversation's
+// business_id matches the active business, the move proceeds normally.
+func TestMoveToProject_SameBusinessConversation_Succeeds(t *testing.T) {
+	requesterUser := uuid.New()
+	businessID := uuid.New()
+	projID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{
+			ID:         convID,
+			UserID:     requesterUser.String(),
+			BusinessID: businessID.String(),
+			ProjectID:  nil,
+		},
+	}
+	msg := &stubMessageRepo{}
+	proj := &stubProjectRepoForConv{
+		Project: &domain.Project{
+			ID:         projID,
+			Name:       "Marketing",
+			BusinessID: businessID,
+		},
+	}
+	svc := newConvSvc(t, conv, msg, proj, nil)
+
+	projIDStr := projID.String()
+	updated, err := svc.MoveToProject(context.Background(), convID, businessID, requesterUser, &projIDStr)
+	require.NoError(t, err, "same-business move must succeed")
+	require.NotNil(t, updated)
+	require.Len(t, conv.UpdateCalls, 1, "same-business move must persist the new project assignment")
+	require.NotNil(t, conv.UpdateCalls[0].ProjectID)
+	assert.Equal(t, projIDStr, *conv.UpdateCalls[0].ProjectID)
+}
+
 func TestMoveToProject_InvalidProjectID(t *testing.T) {
 	requesterUser := uuid.New()
+	businessID := uuid.New()
 	conv := &stubConversationRepo{
-		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
+		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String(), BusinessID: businessID.String()},
 	}
 	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{}, nil)
 
 	bad := "not-a-uuid"
-	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, &bad)
+	_, err := svc.MoveToProject(context.Background(), "c1", businessID, requesterUser, &bad)
 	assert.True(t, errors.Is(err, service.ErrInvalidProjectID),
 		"malformed UUID must surface as ErrInvalidProjectID, got %v", err)
 	assert.Empty(t, conv.UpdateCalls)
@@ -518,14 +606,15 @@ func TestMoveToProject_InvalidProjectID(t *testing.T) {
 // without an undo path.
 func TestMoveToProject_NoteFailure_DoesNotFailMove(t *testing.T) {
 	requesterUser := uuid.New()
+	businessID := uuid.New()
 	convID := "c1"
 	conv := &stubConversationRepo{
-		Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String()},
+		Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String(), BusinessID: businessID.String()},
 	}
 	msg := &stubMessageRepo{CreateErr: errors.New("mongo timeout")}
 	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
 
-	updated, err := svc.MoveToProject(context.Background(), convID, uuid.New(), requesterUser, nil)
+	updated, err := svc.MoveToProject(context.Background(), convID, businessID, requesterUser, nil)
 	require.NoError(t, err, "note-write failure must NOT fail the move")
 	require.NotNil(t, updated)
 	require.Len(t, conv.UpdateCalls, 1, "UpdateProjectAssignment still ran")
@@ -538,14 +627,15 @@ func TestMoveToProject_NoteFailure_DoesNotFailMove(t *testing.T) {
 // that didn't happen.
 func TestMoveToProject_UpdateAssignmentError_StopsBeforeNote(t *testing.T) {
 	requesterUser := uuid.New()
+	businessID := uuid.New()
 	conv := &stubConversationRepo{
-		Conv:                   &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
+		Conv:                   &domain.Conversation{ID: "c1", UserID: requesterUser.String(), BusinessID: businessID.String()},
 		UpdateProjectAssignErr: errors.New("mongo write failure"),
 	}
 	msg := &stubMessageRepo{}
 	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
 
-	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, nil)
+	_, err := svc.MoveToProject(context.Background(), "c1", businessID, requesterUser, nil)
 	require.Error(t, err, "UpdateProjectAssignment failure must surface")
 	assert.Empty(t, msg.Created, "no note for a move that didn't land")
 }
@@ -555,14 +645,15 @@ func TestMoveToProject_UpdateAssignmentError_StopsBeforeNote(t *testing.T) {
 // (both mean "no project") and must NOT trigger projectRepo.GetByID.
 func TestMoveToProject_EmptyStringProjectID_TreatedAsNoProject(t *testing.T) {
 	requesterUser := uuid.New()
+	businessID := uuid.New()
 	conv := &stubConversationRepo{
-		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
+		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String(), BusinessID: businessID.String()},
 	}
 	proj := &stubProjectRepoForConv{}
 	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
 
 	empty := ""
-	updated, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, &empty)
+	updated, err := svc.MoveToProject(context.Background(), "c1", businessID, requesterUser, &empty)
 	require.NoError(t, err)
 	require.NotNil(t, updated)
 	require.Len(t, conv.UpdateCalls, 1)
