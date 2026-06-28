@@ -40,7 +40,7 @@ func incrWithHeal(ctx context.Context, client *redis.Client, key string, window 
 func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			clientIP := getClientIP(r)
+			clientIP := ClientIP(r)
 			if clientIP == "" {
 				next.ServeHTTP(w, r)
 				return
@@ -108,7 +108,7 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration,
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID, ok := r.Context().Value(UserIDKey).(uuid.UUID)
 			if !ok {
-				clientIP := getClientIP(r)
+				clientIP := ClientIP(r)
 				if clientIP == "" {
 					next.ServeHTTP(w, r)
 					return
@@ -120,7 +120,7 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration,
 			if userID != uuid.Nil {
 				key = fmt.Sprintf("ratelimit:user:%s:%s", userID.String(), scope)
 			} else {
-				key = fmt.Sprintf("ratelimit:ip:%s:%s", getClientIP(r), scope)
+				key = fmt.Sprintf("ratelimit:ip:%s:%s", ClientIP(r), scope)
 			}
 
 			ctx := r.Context()

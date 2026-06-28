@@ -160,7 +160,14 @@ func TestRateLimit_DifferentPaths(t *testing.T) {
 	assert.Equal(t, "1", rr.Header().Get("X-RateLimit-Remaining"))
 }
 
-func TestRateLimit_XForwardedFor(t *testing.T) {
+// TestRateLimit_TrustedProxyXForwardedFor verifies that when the connection
+// peer IS in a trusted-proxy CIDR, the limiter keys on the leftmost
+// X-Forwarded-For entry — two distinct upstream peers forwarding the same
+// real client IP share one bucket.
+func TestRateLimit_TrustedProxyXForwardedFor(t *testing.T) {
+	require.NoError(t, InitTrustedProxies("192.168.0.0/16"))
+	t.Cleanup(func() { _ = InitTrustedProxies("") })
+
 	redisClient, _ := setupTestRedis(t)
 	defer func() { _ = redisClient.Close() }()
 
@@ -190,10 +197,58 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 	handler.ServeHTTP(rr2, req2)
 
 	assert.Equal(t, http.StatusOK, rr2.Code)
-	assert.Equal(t, "0", rr2.Header().Get("X-RateLimit-Remaining"))
+	assert.Equal(t, "0", rr2.Header().Get("X-RateLimit-Remaining"),
+		"a trusted proxy forwarding the same client IP must reuse the same bucket")
 }
 
-func TestRateLimit_XRealIP(t *testing.T) {
+// TestRateLimit_UntrustedPeerIgnoresSpoofedXFF is the security regression
+// guard for the trusted-proxy migration. With the connection peer NOT in any
+// trusted-proxy CIDR, a client-supplied X-Forwarded-For must be ignored and
+// the bucket keyed on the real RemoteAddr. Two requests from the SAME peer
+// carrying DIFFERENT spoofed XFF values must therefore share one bucket and
+// exhaust it — an attacker cannot mint a fresh bucket per request by rotating
+// the header. Reverting the limiter to getClientIP keys on the spoofed XFF,
+// giving each request its own bucket, and this test fails.
+func TestRateLimit_UntrustedPeerIgnoresSpoofedXFF(t *testing.T) {
+	require.NoError(t, InitTrustedProxies("10.0.0.0/8"))
+	t.Cleanup(func() { _ = InitTrustedProxies("") })
+
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 1
+	window := time.Minute
+
+	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	req1 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
+	req1.RemoteAddr = "203.0.113.50:12345"
+	req1.Header.Set("X-Forwarded-For", "1.1.1.1")
+	rr1 := httptest.NewRecorder()
+	handler.ServeHTTP(rr1, req1)
+	assert.Equal(t, http.StatusOK, rr1.Code)
+	assert.Equal(t, "0", rr1.Header().Get("X-RateLimit-Remaining"))
+
+	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
+	req2.RemoteAddr = "203.0.113.50:12345"
+	req2.Header.Set("X-Forwarded-For", "2.2.2.2")
+	rr2 := httptest.NewRecorder()
+	handler.ServeHTTP(rr2, req2)
+	assert.Equal(t, http.StatusTooManyRequests, rr2.Code,
+		"rotating a spoofed X-Forwarded-For from an untrusted peer must NOT mint a fresh bucket")
+}
+
+// TestRateLimit_UntrustedPeerIgnoresSpoofedXRealIP is the X-Real-IP twin of
+// the XFF guard: an untrusted peer's X-Real-IP must be ignored, so two
+// distinct real peers claiming the same spoofed X-Real-IP do NOT collide into
+// one shared bucket.
+func TestRateLimit_UntrustedPeerIgnoresSpoofedXRealIP(t *testing.T) {
+	require.NoError(t, InitTrustedProxies("10.0.0.0/8"))
+	t.Cleanup(func() { _ = InitTrustedProxies("") })
+
 	redisClient, _ := setupTestRedis(t)
 	defer func() { _ = redisClient.Close() }()
 
@@ -206,23 +261,20 @@ func TestRateLimit_XRealIP(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
-	req.RemoteAddr = "192.168.1.100:12345"
-	req.Header.Set("X-Real-IP", "203.0.113.1")
-
+	req.RemoteAddr = "203.0.113.60:12345"
+	req.Header.Set("X-Real-IP", "9.9.9.9")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
-
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "0", rr.Header().Get("X-RateLimit-Remaining"))
 
 	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
-	req2.RemoteAddr = "192.168.1.200:12345"
-	req2.Header.Set("X-Real-IP", "203.0.113.1")
-
+	req2.RemoteAddr = "203.0.113.61:12345"
+	req2.Header.Set("X-Real-IP", "9.9.9.9")
 	rr2 := httptest.NewRecorder()
 	handler.ServeHTTP(rr2, req2)
-
-	assert.Equal(t, http.StatusTooManyRequests, rr2.Code)
+	assert.Equal(t, http.StatusOK, rr2.Code,
+		"a distinct untrusted peer must not share a bucket via a spoofed X-Real-IP")
 }
 
 func TestGetClientIP_XForwardedFor(t *testing.T) {
@@ -360,6 +412,40 @@ func TestRateLimitByUser_FallbackToIP(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
+}
+
+// TestRateLimitByUser_UntrustedPeerIgnoresSpoofedXFF guards the unauthenticated
+// IP-fallback branch of RateLimitByUser: with no authenticated user in context
+// and an untrusted peer, the bucket must key on RemoteAddr, not on a
+// client-supplied X-Forwarded-For. Two anonymous requests from the SAME peer
+// with DIFFERENT spoofed XFF values must share one bucket so the second is
+// throttled. Reverting to getClientIP keys on the spoofed XFF and the second
+// request gets a fresh bucket, failing this test.
+func TestRateLimitByUser_UntrustedPeerIgnoresSpoofedXFF(t *testing.T) {
+	require.NoError(t, InitTrustedProxies("10.0.0.0/8"))
+	t.Cleanup(func() { _ = InitTrustedProxies("") })
+
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	handler := RateLimitByUser(redisClient, 1, time.Minute, "chat")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req1 := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+	req1.RemoteAddr = "203.0.113.70:12345"
+	req1.Header.Set("X-Forwarded-For", "1.1.1.1")
+	rr1 := httptest.NewRecorder()
+	handler.ServeHTTP(rr1, req1)
+	assert.Equal(t, http.StatusOK, rr1.Code)
+
+	req2 := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+	req2.RemoteAddr = "203.0.113.70:12345"
+	req2.Header.Set("X-Forwarded-For", "2.2.2.2")
+	rr2 := httptest.NewRecorder()
+	handler.ServeHTTP(rr2, req2)
+	assert.Equal(t, http.StatusTooManyRequests, rr2.Code,
+		"anonymous IP-keyed bucket must ignore a rotated spoofed X-Forwarded-For from an untrusted peer")
 }
 
 func TestRateLimitByUser_DifferentUsers(t *testing.T) {
