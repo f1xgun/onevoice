@@ -37,10 +37,13 @@ export interface ToolCall {
 
 /**
  * Machine-readable codes carried on stream-level `error` SSE frames
- * (orchestrator step.go / resume.go). The frontend localizes by code and
- * never surfaces the raw Go error string as the headline. Unknown codes fall
- * through to the generic localized fallback. Open set on the wire — keep `string`
- * compatibility by treating any other value as the fallback.
+ * (orchestrator step.go / resume.go) AND the pre-stream codes the chat POST
+ * returns before the SSE body opens (chat_proxy.go / chatturn request.go:
+ * sse_concurrency_exceeded, business_not_found, orchestrator_unavailable). The
+ * frontend localizes by code and never surfaces the raw Go error string as the
+ * headline. Unknown codes fall through to the generic localized fallback. Open
+ * set on the wire — keep `string` compatibility by treating any other value as
+ * the fallback.
  */
 export type ChatErrorCode =
   | 'max_iterations'
@@ -49,7 +52,10 @@ export type ChatErrorCode =
   | 'daily_spend_exceeded'
   | 'rate_limit_unavailable'
   | 'rate_limit_exceeded'
-  | 'approval_expired';
+  | 'approval_expired'
+  | 'sse_concurrency_exceeded'
+  | 'business_not_found'
+  | 'orchestrator_unavailable';
 
 export interface Message {
   id: string;
