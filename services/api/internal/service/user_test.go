@@ -441,6 +441,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
@@ -515,6 +516,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
@@ -544,6 +546,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
@@ -579,6 +582,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
@@ -611,6 +615,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
@@ -652,6 +657,7 @@ func TestUserService_Logout(t *testing.T) {
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
@@ -692,6 +698,7 @@ func TestUserService_Logout(t *testing.T) {
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
@@ -719,6 +726,7 @@ func TestUserService_Logout(t *testing.T) {
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
@@ -749,6 +757,7 @@ func TestUserService_Logout(t *testing.T) {
 		refreshClaims := &auth.RefreshTokenClaims{
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   auth.TokenSubjectRefresh,
 				Issuer:    auth.TokenIssuer,
 				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
@@ -1146,6 +1155,7 @@ func signRefreshToken(t *testing.T, ctx context.Context, rdb *redis.Client, jwtS
 		UserID:  userID,
 		TokenID: tokenID,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   auth.TokenSubjectRefresh,
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),

@@ -318,7 +318,7 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.jwtSecret, nil
-	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience))
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience), jwt.WithSubject(auth.TokenSubjectRefresh))
 
 	if err != nil {
 		return nil, "", "", domain.ErrInvalidToken
@@ -380,7 +380,7 @@ func (s *userService) Logout(ctx context.Context, refreshToken string) error {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.jwtSecret, nil
-	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience))
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience), jwt.WithSubject(auth.TokenSubjectRefresh))
 
 	if err != nil {
 		return domain.ErrInvalidToken
@@ -560,6 +560,7 @@ func generateAccessToken(user *domain.User, secret []byte) (string, error) {
 		UserID: user.ID,
 		Email:  user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   auth.TokenSubjectAccess,
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenExpiry)),
@@ -584,6 +585,7 @@ func generateRefreshToken(userID uuid.UUID, secret []byte) (string, uuid.UUID, e
 		UserID:  userID,
 		TokenID: tokenID,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   auth.TokenSubjectRefresh,
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(RefreshTokenExpiry)),

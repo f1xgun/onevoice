@@ -334,6 +334,7 @@ func mintJWT(t *testing.T, secret []byte, userID uuid.UUID) string {
 		UserID: userID,
 		Email:  fmt.Sprintf("%s@rbac-test.local", userID),
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   auth.TokenSubjectAccess,
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),

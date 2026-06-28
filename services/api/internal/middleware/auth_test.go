@@ -26,6 +26,7 @@ func createTestToken(userID uuid.UUID, email string, expiry time.Duration) strin
 		UserID: userID,
 		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   auth.TokenSubjectAccess,
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),
