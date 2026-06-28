@@ -120,7 +120,8 @@ func TestBusinessRepository_GetByIDIncludingDeletedInTx_ReadsOnTx(t *testing.T) 
 }
 
 // TestBusinessRepository_RequestDeletionInTx_AlreadyPending verifies the
-// classify-read maps an existing deletion_requested_at to the pending sentinel.
+// classify-read maps a still-pending (requested, not canceled) row to the
+// pending sentinel.
 func TestBusinessRepository_RequestDeletionInTx_AlreadyPending(t *testing.T) {
 	ctx := context.Background()
 	r, mock := newTestBusinessRepo(t)
@@ -134,9 +135,9 @@ func TestBusinessRepository_RequestDeletionInTx_AlreadyPending(t *testing.T) {
 	mock.ExpectExec("UPDATE businesses").
 		WithArgs(id).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
-	mock.ExpectQuery("SELECT deletion_requested_at FROM businesses WHERE id =").
+	mock.ExpectQuery("SELECT deletion_requested_at, deletion_canceled_at FROM businesses WHERE id =").
 		WithArgs(id).
-		WillReturnRows(pgxmock.NewRows([]string{"deletion_requested_at"}).AddRow(&requestedAt))
+		WillReturnRows(pgxmock.NewRows([]string{"deletion_requested_at", "deletion_canceled_at"}).AddRow(&requestedAt, nil))
 
 	err = r.RequestDeletionInTx(ctx, tx, id)
 	require.ErrorIs(t, err, domain.ErrBusinessDeletionAlreadyPending)
@@ -157,9 +158,62 @@ func TestBusinessRepository_RequestDeletionInTx_NotFound(t *testing.T) {
 	mock.ExpectExec("UPDATE businesses").
 		WithArgs(id).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
-	mock.ExpectQuery("SELECT deletion_requested_at FROM businesses WHERE id =").
+	mock.ExpectQuery("SELECT deletion_requested_at, deletion_canceled_at FROM businesses WHERE id =").
 		WithArgs(id).
-		WillReturnRows(pgxmock.NewRows([]string{"deletion_requested_at"}).AddRow(nil))
+		WillReturnRows(pgxmock.NewRows([]string{"deletion_requested_at", "deletion_canceled_at"}).AddRow(nil, nil))
+
+	err = r.RequestDeletionInTx(ctx, tx, id)
+	require.ErrorIs(t, err, domain.ErrBusinessNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBusinessRepository_RequestDeletionInTx_ReclaimsRestored is the
+// fail-on-revert guard for the right-to-erasure availability fix. After a
+// restore the row keeps deletion_requested_at set with deletion_canceled_at
+// populated; the re-request UPDATE must re-claim it. The regexp requires the
+// WHERE clause to admit canceled rows (deletion_canceled_at IS NOT NULL).
+// Reverting to the `deletion_requested_at IS NULL`-only predicate makes this
+// UPDATE expectation stop matching, so the call errors and the test fails. The
+// restored row matching one affected row means no classify-read runs and the
+// re-request succeeds.
+func TestBusinessRepository_RequestDeletionInTx_ReclaimsRestored(t *testing.T) {
+	ctx := context.Background()
+	r, mock := newTestBusinessRepo(t)
+	id := uuid.New()
+
+	mock.ExpectBegin()
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	mock.ExpectExec(`UPDATE businesses[\s\S]*deletion_canceled_at IS NOT NULL`).
+		WithArgs(id).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err = r.RequestDeletionInTx(ctx, tx, id)
+	require.NoError(t, err, "a restored organization must be able to re-request deletion")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBusinessRepository_RequestDeletionInTx_RestoredRowZeroMatchesNotFound pins
+// the tightened classify-read: a row that was requested AND canceled but matched
+// zero UPDATE rows (e.g. concurrently purged) must NOT report AlreadyPending — it
+// must fall through to ErrBusinessNotFound.
+func TestBusinessRepository_RequestDeletionInTx_RestoredRowZeroMatchesNotFound(t *testing.T) {
+	ctx := context.Background()
+	r, mock := newTestBusinessRepo(t)
+	id := uuid.New()
+	ts := time.Now()
+
+	mock.ExpectBegin()
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	mock.ExpectExec("UPDATE businesses").
+		WithArgs(id).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+	mock.ExpectQuery("SELECT deletion_requested_at, deletion_canceled_at FROM businesses WHERE id =").
+		WithArgs(id).
+		WillReturnRows(pgxmock.NewRows([]string{"deletion_requested_at", "deletion_canceled_at"}).AddRow(&ts, &ts))
 
 	err = r.RequestDeletionInTx(ctx, tx, id)
 	require.ErrorIs(t, err, domain.ErrBusinessNotFound)

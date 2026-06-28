@@ -9,6 +9,8 @@ import (
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 func TestUserRepository(t *testing.T) {
@@ -30,6 +32,97 @@ func newTestUserRepoForTx(t *testing.T) (repo *userRepository, poolMock, txMock 
 		sb:   newStatementBuilder(),
 	}
 	return repo, poolMock, txMock
+}
+
+// newTestUserRepo returns a userRepository wired to a single mock that backs both
+// the pool (classify-read) and the tx (Begin). RequestDeletionInTx runs its
+// UPDATE on the tx and its classify-read on the pool; using one mock lets a test
+// order both expectations on the same connection.
+func newTestUserRepo(t *testing.T) (*userRepository, pgxmock.PgxPoolIface) {
+	t.Helper()
+	mockPool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	repo := &userRepository{
+		pool: mockPool,
+		sb:   newStatementBuilder(),
+	}
+	return repo, mockPool
+}
+
+// TestUserRepository_RequestDeletionInTx_ReclaimsRestored is the fail-on-revert
+// guard for the right-to-erasure availability fix. After a restore the user row
+// keeps deletion_requested_at set with deletion_canceled_at populated; the
+// re-request UPDATE must re-claim it. The regexp requires the WHERE clause to
+// admit canceled rows (deletion_canceled_at IS NOT NULL). Reverting to the
+// `deletion_requested_at IS NULL`-only predicate makes this UPDATE expectation
+// stop matching, so the call errors and the test fails. The restored row matching
+// one affected row means no classify-read runs and the re-request succeeds.
+func TestUserRepository_RequestDeletionInTx_ReclaimsRestored(t *testing.T) {
+	ctx := context.Background()
+	r, mock := newTestUserRepo(t)
+	id := uuid.New()
+
+	mock.ExpectBegin()
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	mock.ExpectExec(`UPDATE users[\s\S]*deletion_canceled_at IS NOT NULL`).
+		WithArgs(id).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err = r.RequestDeletionInTx(ctx, tx, id)
+	require.NoError(t, err, "a restored user must be able to re-request deletion")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestUserRepository_RequestDeletionInTx_AlreadyPending verifies the classify-read
+// maps a still-pending (requested, not canceled) row to ErrDeletionAlreadyPending.
+func TestUserRepository_RequestDeletionInTx_AlreadyPending(t *testing.T) {
+	ctx := context.Background()
+	r, mock := newTestUserRepo(t)
+	id := uuid.New()
+	requestedAt := time.Now()
+
+	mock.ExpectBegin()
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	mock.ExpectExec("UPDATE users").
+		WithArgs(id).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+	mock.ExpectQuery("SELECT deletion_requested_at, deletion_canceled_at FROM users WHERE id =").
+		WithArgs(id).
+		WillReturnRows(pgxmock.NewRows([]string{"deletion_requested_at", "deletion_canceled_at"}).AddRow(&requestedAt, nil))
+
+	err = r.RequestDeletionInTx(ctx, tx, id)
+	require.ErrorIs(t, err, domain.ErrDeletionAlreadyPending)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestUserRepository_RequestDeletionInTx_RestoredRowZeroMatchesNotFound pins the
+// tightened classify-read: a row that was requested AND canceled but matched zero
+// UPDATE rows (e.g. concurrently purged) must NOT report AlreadyPending — it must
+// fall through to ErrUserNotFound.
+func TestUserRepository_RequestDeletionInTx_RestoredRowZeroMatchesNotFound(t *testing.T) {
+	ctx := context.Background()
+	r, mock := newTestUserRepo(t)
+	id := uuid.New()
+	ts := time.Now()
+
+	mock.ExpectBegin()
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	mock.ExpectExec("UPDATE users").
+		WithArgs(id).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+	mock.ExpectQuery("SELECT deletion_requested_at, deletion_canceled_at FROM users WHERE id =").
+		WithArgs(id).
+		WillReturnRows(pgxmock.NewRows([]string{"deletion_requested_at", "deletion_canceled_at"}).AddRow(&ts, &ts))
+
+	err = r.RequestDeletionInTx(ctx, tx, id)
+	require.ErrorIs(t, err, domain.ErrUserNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func userColumnNames() []string {
