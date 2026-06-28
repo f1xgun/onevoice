@@ -277,9 +277,9 @@ func TestBusinessBrowser_GetInfo_ScrapesAllFields(t *testing.T) {
 // UpdateInfo tests
 // -----------------------------------------------------------------------------
 
-// Test #11 — UpdateInfo only types into fields that are present in the input
-// map; unknown keys are skipped silently. We verify by counting Keyboard.Type
-// calls and inspecting the saved-button click count.
+// Test #11 — UpdateInfo types each mapped field's value into its form input
+// and clicks Save. We verify by counting Keyboard.Type calls and inspecting
+// the typed payload.
 func TestBusinessBrowser_UpdateInfo_FillsFormFields(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/")
 	phoneInput := &mockLocator{}
@@ -289,8 +289,7 @@ func TestBusinessBrowser_UpdateInfo_FillsFormFields(t *testing.T) {
 
 	bb := businessBrowserOnPage(page, "123")
 	err := bb.UpdateInfo(context.Background(), map[string]string{
-		"phone":         "+7 495 111 22 33",
-		"unknown_field": "ignored",
+		"phone": "+7 495 111 22 33",
 	})
 	if err != nil {
 		t.Fatalf("UpdateInfo returned error: %v", err)
@@ -300,6 +299,30 @@ func TestBusinessBrowser_UpdateInfo_FillsFormFields(t *testing.T) {
 	}
 	if page.keyboard.typeCalls[0] != "+7 495 111 22 33" {
 		t.Fatalf("Type[0] = %q", page.keyboard.typeCalls[0])
+	}
+}
+
+// Test #11b — a field with no matching DOM selector must surface a hard error
+// rather than being silently skipped while clickSave reports a false success.
+// This guards against advertising a write the RPA layer cannot perform (the
+// website-field silent-drop regression).
+func TestBusinessBrowser_UpdateInfo_UnknownField_ReturnsError(t *testing.T) {
+	page := newMockPage("https://yandex.ru/sprav/123/p/edit/")
+	page.locators["h1, .InfoBlockCarcass, body"] = &mockLocator{}
+	page.locators[".SaveButton-Button"] = &mockLocator{}
+
+	bb := businessBrowserOnPage(page, "123")
+	err := bb.UpdateInfo(context.Background(), map[string]string{
+		"website": "https://example.com",
+	})
+	if err == nil {
+		t.Fatal("expected error for field with no matching selector, got nil (silent data-loss)")
+	}
+	if !strings.Contains(err.Error(), "no selector for field") {
+		t.Fatalf("expected 'no selector for field' error, got: %v", err)
+	}
+	if len(page.keyboard.typeCalls) != 0 {
+		t.Fatalf("expected 0 Type calls when no selector matches, got %d (%v)", len(page.keyboard.typeCalls), page.keyboard.typeCalls)
 	}
 }
 

@@ -31,7 +31,7 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 		for key, value := range info {
 			sel, ok := fieldMap[key]
 			if !ok {
-				continue
+				return fmt.Errorf("update_info: no selector for field %q", key)
 			}
 
 			input := page.Locator(sel).First()

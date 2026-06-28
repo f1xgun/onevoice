@@ -57,21 +57,19 @@ func yandexTools() []toolregistry.ToolSpec {
 		{
 			DisplayName:     "Обновить данные организации",
 			DisplayNameKey:  "tools.yandex_business.update_info.name",
-			UserDescription: "Изменяет описание, телефон и сайт организации в Яндекс.Бизнесе.",
-			DescriptionEn:   "Updates contact info in Yandex Business (phone, website, description).",
+			UserDescription: "Изменяет описание и телефон организации в Яндекс.Бизнесе.",
+			DescriptionEn:   "Updates contact info in Yandex Business (phone and description).",
 			ParameterDescriptionsEn: map[string]string{
 				"phone":       "Phone number",
-				"website":     "Website URL",
 				"description": "Organization description",
 			},
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUpdateInfo,
-				Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон, сайт, описание)",
+				Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон и описание)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
 						"phone":       map[string]interface{}{"type": "string", "description": "Номер телефона"},
-						"website":     map[string]interface{}{"type": "string", "description": "URL сайта"},
 						"description": map[string]interface{}{"type": "string", "description": "Описание организации"},
 					},
 				},

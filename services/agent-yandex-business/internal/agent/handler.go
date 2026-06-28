@@ -189,7 +189,7 @@ func (h *Handler) updateInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	}
 
 	info := make(map[string]string)
-	for _, key := range []string{"phone", "website", "description"} {
+	for _, key := range []string{"phone", "description"} {
 		if v, ok := req.Args[key].(string); ok {
 			info[key] = v
 		}
