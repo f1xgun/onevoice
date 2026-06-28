@@ -247,7 +247,7 @@ func TestRekeyRow_UnmappedVersionAborts(t *testing.T) {
 
 	err := r.rekeyRow(context.Background(), nil, row)
 	require.Error(t, err, "rekeyRow must abort when KMS version resolves below target")
-	assert.Contains(t, err.Error(), "did not resolve to >= target")
+	assert.ErrorIs(t, err, crypto.ErrUnmappedKMSVersion)
 
 	assert.Equal(t, int16(1), repo.rows[0].KeyVersion,
 		"row must not be written with key_version below target (would re-select forever)")
@@ -285,7 +285,7 @@ func TestRekeyRunAbortsOnUnmappedVersion(t *testing.T) {
 	select {
 	case err := <-done:
 		require.Error(t, err, "Run must abort instead of looping when KMS version is unmapped")
-		assert.Contains(t, err.Error(), "did not resolve to >= target")
+		assert.ErrorIs(t, err, crypto.ErrUnmappedKMSVersion)
 		assert.Equal(t, 0, updateCount, "no row may be written below target version")
 	case <-ctx.Done():
 		t.Fatal("Run did not return: without the no-progress guard it re-selects key_version=0 rows forever")

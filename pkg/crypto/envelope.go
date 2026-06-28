@@ -28,6 +28,13 @@ var unknownVersionWarned sync.Map
 // dual-decrypt version map.
 var ErrUnknownKeyVersion = errors.New("crypto: ciphertext key version not in dual-decrypt set")
 
+// ErrUnmappedKMSVersion is returned by the encrypt paths when the KMS Encrypt
+// response carries a non-empty version ID that is absent from the configured
+// version map. Persisting key_version=0 in that case would silently corrupt the
+// rekey audit metadata and wedge rotation, so the encrypt call fails closed and
+// the operator must add the version to TOKEN_ENCRYPTION_KMS_VERSION_MAP.
+var ErrUnmappedKMSVersion = errors.New("crypto: KMS version ID not in version map")
+
 // Envelope performs per-record DEK envelope encryption. Each call to
 // EncryptToken generates a fresh AES-256 DEK, wraps it via KMS, and seals
 // the plaintext with AES-GCM using the same AAD at both layers.
@@ -89,7 +96,11 @@ func (e *Envelope) EncryptToken(
 	if serr != nil {
 		return nil, nil, 0, "", fmt.Errorf("crypto: aead seal: %w", serr)
 	}
-	return ct, wrapped, e.resolveVersion(versionStr), e.fingerprint, nil
+	ver, verr := e.resolveVersionForEncrypt(versionStr)
+	if verr != nil {
+		return nil, nil, 0, "", verr
+	}
+	return ct, wrapped, ver, e.fingerprint, nil
 }
 
 // DecryptToken unwraps the DEK via KMS, verifies AAD at both layers, and
@@ -182,7 +193,11 @@ func (e *Envelope) EncryptForRow(
 		}
 		cts[i] = ct
 	}
-	return cts, wrapped, e.resolveVersion(versionStr), e.fingerprint, nil
+	ver, verr := e.resolveVersionForEncrypt(versionStr)
+	if verr != nil {
+		return nil, nil, 0, "", verr
+	}
+	return cts, wrapped, ver, e.fingerprint, nil
 }
 
 // DecryptForRow unwraps the shared DEK via KMS and decrypts each ciphertext
@@ -217,6 +232,9 @@ func (e *Envelope) DecryptForRow(
 	return pts, e.resolveVersion(versionStr), nil
 }
 
+// resolveVersion maps a KMS version ID string to its persisted int16. It is the
+// lenient form used on the decrypt paths, where a version absent from the map
+// (legacy/dual-decrypt rows) must still resolve to 0 rather than fail the read.
 func (e *Envelope) resolveVersion(versionStr string) int16 {
 	if v, ok := e.versionMap[versionStr]; ok {
 		return v
@@ -228,6 +246,21 @@ func (e *Envelope) resolveVersion(versionStr string) int16 {
 		}
 	}
 	return 0
+}
+
+// resolveVersionForEncrypt maps a KMS version ID string to its persisted int16
+// for the encrypt paths and fails closed: when the KMS Encrypt response carries
+// a non-empty version ID that is not in the map, it returns ErrUnmappedKMSVersion
+// rather than silently persisting key_version=0. An empty version ID (legacy /
+// non-KMS adapters that do not surface a version) maps to 0 with no error.
+func (e *Envelope) resolveVersionForEncrypt(versionStr string) (int16, error) {
+	if v, ok := e.versionMap[versionStr]; ok {
+		return v, nil
+	}
+	if versionStr != "" {
+		return 0, fmt.Errorf("%w: %q", ErrUnmappedKMSVersion, versionStr)
+	}
+	return 0, nil
 }
 
 func aeadSeal(key, plaintext, aad []byte) ([]byte, error) {
