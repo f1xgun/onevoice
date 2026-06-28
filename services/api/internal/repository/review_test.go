@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -57,6 +58,22 @@ func TestReviewRepository_BulkUpsert(t *testing.T) {
 	t.Run("empty slice is a no-op", func(t *testing.T) {
 		require.NoError(t, repo.BulkUpsert(ctx, nil))
 		require.NoError(t, repo.BulkUpsert(ctx, []*domain.Review{}))
+	})
+
+	t.Run("two same-batch reviews on one natural key collapse to a single doc", func(t *testing.T) {
+		dupBiz := uuid.NewString()
+		first := &domain.Review{BusinessID: dupBiz, Platform: "yandex_business", ExternalID: "dup-1", Text: "stale", ReplyStatus: domain.ReviewReplyStatusPending}
+		second := &domain.Review{BusinessID: dupBiz, Platform: "yandex_business", ExternalID: "dup-1", Text: "fresh", ReplyStatus: domain.ReviewReplyStatusPending}
+		require.NoError(t, repo.BulkUpsert(ctx, []*domain.Review{first, second}))
+
+		count, err := db.Collection("reviews").CountDocuments(ctx, bson.M{"business_id": dupBiz, "external_id": "dup-1"})
+		require.NoError(t, err)
+		require.EqualValues(t, 1, count, "two same-batch entries on one (business, platform, external_id) must yield exactly one document")
+
+		var got bson.M
+		require.NoError(t, db.Collection("reviews").
+			FindOne(ctx, bson.M{"business_id": dupBiz, "external_id": "dup-1"}).Decode(&got))
+		require.Equal(t, "fresh", got["text"], "keep-last: the freshest copy in the batch wins")
 	})
 }
 
@@ -129,12 +146,19 @@ func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 
 	specs, err := db.Collection("reviews").Indexes().ListSpecifications(ctx)
 	require.NoError(t, err)
-	names := map[string]bool{}
-	for _, s := range specs {
-		names[s.Name] = true
+	byName := map[string]*mongo.IndexSpecification{}
+	for i := range specs {
+		byName[specs[i].Name] = &specs[i]
 	}
-	require.True(t, names["reviews_business_platform_external"],
-		"named compound index reviews_business_platform_external must exist")
-	require.True(t, names["reviews_business_reply_status_created_desc"],
-		"named compound index reviews_business_reply_status_created_desc must exist")
+
+	natural := byName["reviews_business_platform_external"]
+	require.NotNil(t, natural, "named compound index reviews_business_platform_external must exist")
+	require.NotNil(t, natural.Unique, "the {business_id, platform, external_id} index must declare uniqueness")
+	require.True(t, *natural.Unique,
+		"the {business_id, platform, external_id} index must be UNIQUE — the upsert natural key, scoped to business_id")
+
+	sort := byName["reviews_business_reply_status_created_desc"]
+	require.NotNil(t, sort, "named compound index reviews_business_reply_status_created_desc must exist")
+	require.False(t, sort.Unique != nil && *sort.Unique,
+		"the reply-status sort index must NOT be unique")
 }

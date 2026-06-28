@@ -269,3 +269,88 @@ func TestBackfillConversationsV19_MarkerSchema(t *testing.T) {
 	assert.Equal(t, SchemaMigrationPhase19, marker["_id"])
 	assert.NotNil(t, marker["applied_at"])
 }
+
+// The legacy {external_id, platform} unique index must be retired in favor of
+// the business-scoped {business_id, platform, external_id} unique index, and two
+// different organizations sharing an (external_id, platform) must coexist after
+// the migration — the cross-tenant drop the legacy index caused.
+func TestMigrateReviewsBusinessScopedUniqueIndex(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	reviews := db.Collection("reviews")
+
+	legacyName, err := reviews.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "external_id", Value: 1}, {Key: "platform", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, MigrateReviewsBusinessScopedUniqueIndex(ctx, db))
+	require.NoError(t, MigrateReviewsBusinessScopedUniqueIndex(ctx, db), "idempotent on second run")
+
+	specs, err := reviews.Indexes().ListSpecifications(ctx)
+	require.NoError(t, err)
+	byName := map[string]*mongo.IndexSpecification{}
+	for i := range specs {
+		byName[specs[i].Name] = &specs[i]
+	}
+	require.Nil(t, byName[legacyName], "legacy {external_id, platform} unique index must be dropped")
+	natural := byName["reviews_business_platform_external"]
+	require.NotNil(t, natural, "business-scoped index must exist after migration")
+	require.NotNil(t, natural.Unique)
+	require.True(t, *natural.Unique, "business-scoped index must be UNIQUE after migration")
+
+	repo := NewReviewRepository(db)
+	require.NoError(t, repo.Upsert(ctx, &domain.Review{
+		BusinessID: "org-a", Platform: "vk", ExternalID: "10_5",
+		Text: "from org A", ReplyStatus: domain.ReviewReplyStatusPending,
+	}))
+	require.NoError(t, repo.Upsert(ctx, &domain.Review{
+		BusinessID: "org-b", Platform: "vk", ExternalID: "10_5",
+		Text: "from org B", ReplyStatus: domain.ReviewReplyStatusPending,
+	}), "a second organization with the same (external_id, platform) must not collide")
+
+	count, err := reviews.CountDocuments(ctx, bson.M{"platform": "vk", "external_id": "10_5"})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, count, "both organizations' reviews must coexist under the business-scoped unique index")
+
+	marker := bson.M{}
+	require.NoError(t, db.Collection("schema_migrations").
+		FindOne(ctx, bson.M{"_id": SchemaMigrationReviewsBusinessScopedUnique}).Decode(&marker))
+	assert.NotNil(t, marker["applied_at"])
+}
+
+// On a non-unique-index path a collection can already hold two documents that
+// share the {business_id, platform, external_id} natural key. The migration must
+// relocate all but one survivor so the UNIQUE build cannot fail with E11000.
+func TestMigrateReviewsBusinessScopedUniqueIndex_QuarantinesPreExistingDuplicates(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	reviews := db.Collection("reviews")
+
+	_, err := reviews.InsertMany(ctx, []interface{}{
+		bson.M{"_id": "id-a", "business_id": "org-x", "platform": "telegram", "external_id": "dup", "text": "survivor"},
+		bson.M{"_id": "id-b", "business_id": "org-x", "platform": "telegram", "external_id": "dup", "text": "loser"},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, MigrateReviewsBusinessScopedUniqueIndex(ctx, db))
+
+	count, err := reviews.CountDocuments(ctx, bson.M{"business_id": "org-x", "external_id": "dup"})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, count, "exactly one document per natural key must remain after quarantine")
+
+	qCount, err := db.Collection("reviews_quarantine").CountDocuments(ctx, bson.M{"external_id": "dup"})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, qCount, "the duplicate must be relocated to reviews_quarantine, not deleted")
+
+	specs, err := reviews.Indexes().ListSpecifications(ctx)
+	require.NoError(t, err)
+	var unique bool
+	for i := range specs {
+		if specs[i].Name == "reviews_business_platform_external" && specs[i].Unique != nil {
+			unique = *specs[i].Unique
+		}
+	}
+	require.True(t, unique, "the unique index must build successfully once duplicates are quarantined")
+}

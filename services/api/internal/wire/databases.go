@@ -161,6 +161,15 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	indexesCancel2()
 
+	migrateReviewsCtx, migrateReviewsCancel := context.WithTimeout(ctx, startupTimeout)
+	if err := repository.MigrateReviewsBusinessScopedUniqueIndex(migrateReviewsCtx, h.Mongo); err != nil {
+		migrateReviewsCancel()
+		slog.ErrorContext(migrateReviewsCtx, "reviews unique-index migration failed", "error", err)
+		h.Close()
+		return nil, fmt.Errorf("wire: migrate reviews unique index: %w", err)
+	}
+	migrateReviewsCancel()
+
 	indexesCtxReviews, indexesCancelReviews := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.EnsureReviewIndexes(indexesCtxReviews, h.Mongo); err != nil {
 		indexesCancelReviews()
