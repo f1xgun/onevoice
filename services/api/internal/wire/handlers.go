@@ -54,6 +54,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		GoogleClientSecret: cfg.GoogleClientSecret,
 		GoogleRedirectURI:  cfg.GoogleRedirectURI,
 	}, nil, h.Redis)
+	oauthHandler.WithSecureCookies(cfg.SecureCookies)
 	if svcs.AgentTaskPublisher != nil {
 		oauthHandler.WithAgentTaskPublisher(svcs.AgentTaskPublisher)
 	}

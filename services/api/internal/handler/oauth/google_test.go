@@ -50,7 +50,7 @@ func TestGetGoogleAuthURL_ReturnsURL(t *testing.T) {
 		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "google_business",
-	}).Return("google-state-token", nil)
+	}).Return("google-state-token", "google-nonce", nil)
 
 	cfg := OAuthConfig{
 		GoogleClientID:    "my_google_client",
@@ -157,6 +157,7 @@ func TestGoogleCallback_SingleLocation_AutoConnects(t *testing.T) {
 	stateData := &service.OAuthStateData{
 		BusinessID: businessID,
 		Platform:   "google_business",
+		Nonce:      "csrf-nonce",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "valid-google-state").Return(stateData, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
@@ -185,6 +186,7 @@ func TestGoogleCallback_SingleLocation_AutoConnects(t *testing.T) {
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, server.Client(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/google_business/callback?code=auth_code&state=valid-google-state", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: oauthCSRFCookieName, Value: "csrf-nonce"})
 	rr := httptest.NewRecorder()
 
 	h.GoogleCallback(rr, req)
@@ -232,6 +234,7 @@ func TestGoogleCallback_MultipleLocations_RedirectsToSelection(t *testing.T) {
 	stateData := &service.OAuthStateData{
 		BusinessID: businessID,
 		Platform:   "google_business",
+		Nonce:      "csrf-nonce",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "valid-google-state").Return(stateData, nil)
 
@@ -247,6 +250,7 @@ func TestGoogleCallback_MultipleLocations_RedirectsToSelection(t *testing.T) {
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, server.Client(), redisClient)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/google_business/callback?code=auth_code&state=valid-google-state", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: oauthCSRFCookieName, Value: "csrf-nonce"})
 	rr := httptest.NewRecorder()
 
 	h.GoogleCallback(rr, req)
@@ -330,6 +334,7 @@ func TestGoogleCallback_NoRefreshToken(t *testing.T) {
 	stateData := &service.OAuthStateData{
 		BusinessID: businessID,
 		Platform:   "google_business",
+		Nonce:      "csrf-nonce",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "state").Return(stateData, nil)
 
@@ -343,6 +348,7 @@ func TestGoogleCallback_NoRefreshToken(t *testing.T) {
 	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), cfg, server.Client(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/google_business/callback?code=code&state=state", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: oauthCSRFCookieName, Value: "csrf-nonce"})
 	rr := httptest.NewRecorder()
 
 	h.GoogleCallback(rr, req)

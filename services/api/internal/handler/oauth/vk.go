@@ -34,7 +34,7 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
+	state, nonce, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     bc.UserID,
 		BusinessID: bc.BusinessID,
 		Platform:   a2a.AgentVK,
@@ -52,6 +52,7 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		url.QueryEscape(state),
 	)
 
+	h.issueOAuthCSRFCookie(w, nonce)
 	writeJSON(w, http.StatusOK, map[string]string{"url": authURL})
 }
 
@@ -72,6 +73,14 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
 		return
 	}
+
+	if !csrfCookieMatches(r, stateData.Nonce) {
+		slog.Warn("VK OAuth CSRF cookie mismatch", "business_id", stateData.BusinessID)
+		h.clearOAuthCSRFCookie(w)
+		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
+		return
+	}
+	h.clearOAuthCSRFCookie(w)
 
 	tokenEndpoint := fmt.Sprintf("%s/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
 		h.vkTokenBaseURL(),
@@ -215,7 +224,7 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
+	state, nonce, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     bc.UserID,
 		BusinessID: bc.BusinessID,
 		Platform:   a2a.AgentVK,
@@ -233,6 +242,7 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 		url.QueryEscape(state),
 	)
 
+	h.issueOAuthCSRFCookie(w, nonce)
 	writeJSON(w, http.StatusOK, map[string]string{"url": authURL})
 }
 
@@ -252,6 +262,14 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
 		return
 	}
+
+	if !csrfCookieMatches(r, stateData.Nonce) {
+		slog.Warn("VK community OAuth CSRF cookie mismatch", "business_id", stateData.BusinessID)
+		h.clearOAuthCSRFCookie(w)
+		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
+		return
+	}
+	h.clearOAuthCSRFCookie(w)
 
 	tokenURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL+"/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
 		h.cfg.VKClientID,

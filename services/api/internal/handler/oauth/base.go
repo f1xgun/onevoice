@@ -10,6 +10,7 @@ package oauth
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -50,9 +51,17 @@ const (
 // radius if a token is stolen pre-binding.
 const tempOAuthCredsTTL = 5 * time.Minute
 
+// oauthCSRFCookieName carries the per-flow nonce that binds an OAuth callback
+// to the browser that requested the authorization URL (double-submit cookie).
+const oauthCSRFCookieName = "oauth_csrf"
+
+// oauthCSRFCookieTTL caps the cookie lifetime; it only needs to outlive the
+// user's trip through the provider's consent screen.
+const oauthCSRFCookieTTL = 10 * time.Minute
+
 // OAuthStateService abstracts OAuth state management.
 type OAuthStateService interface {
-	GenerateState(ctx context.Context, data service.OAuthStateData) (string, error)
+	GenerateState(ctx context.Context, data service.OAuthStateData) (state, nonce string, err error)
 	ValidateState(ctx context.Context, state string) (*service.OAuthStateData, error)
 }
 
@@ -122,6 +131,7 @@ type OAuthHandler struct {
 	httpClient         *http.Client
 	redis              *goredis.Client
 	taskPublisher      AgentTaskPublisher // optional; nil disables refresh-name
+	secureCookies      bool               // gate Secure on the CSRF cookie; off for local http dev
 }
 
 // NewOAuthHandler creates a new OAuthHandler.
@@ -153,6 +163,57 @@ func NewOAuthHandler(
 func (h *OAuthHandler) WithAgentTaskPublisher(p AgentTaskPublisher) *OAuthHandler {
 	h.taskPublisher = p
 	return h
+}
+
+// WithSecureCookies controls the Secure attribute on the OAuth CSRF cookie.
+// Enabled in production (HTTPS); disabled for local http dev so the cookie is
+// still delivered over plain http. Not constructor-injected to keep existing
+// call sites and tests untouched; false is the safe default.
+func (h *OAuthHandler) WithSecureCookies(secure bool) *OAuthHandler {
+	h.secureCookies = secure
+	return h
+}
+
+// issueOAuthCSRFCookie plants the per-flow nonce as a short-lived, HttpOnly
+// cookie. SameSite=Lax (not Strict) so it survives the provider's cross-site
+// top-level redirect back to the callback.
+func (h *OAuthHandler) issueOAuthCSRFCookie(w http.ResponseWriter, nonce string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthCSRFCookieName,
+		Value:    nonce,
+		Path:     "/",
+		MaxAge:   int(oauthCSRFCookieTTL / time.Second),
+		HttpOnly: true,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearOAuthCSRFCookie expires the CSRF cookie after the callback consumes it.
+func (h *OAuthHandler) clearOAuthCSRFCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthCSRFCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// csrfCookieMatches reports whether the request carries an oauth_csrf cookie
+// equal to the nonce stored in the state. A missing or mismatched cookie means
+// the callback was not reached by the browser that started the flow.
+func csrfCookieMatches(r *http.Request, nonce string) bool {
+	if nonce == "" {
+		return false
+	}
+	c, err := r.Cookie(oauthCSRFCookieName)
+	if err != nil || c.Value == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(c.Value), []byte(nonce)) == 1
 }
 
 // vkTokenBaseURL returns the classic VK OAuth base URL.

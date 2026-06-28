@@ -16,9 +16,9 @@ type MockOAuthStateService struct {
 	mock.Mock
 }
 
-func (m *MockOAuthStateService) GenerateState(ctx context.Context, data service.OAuthStateData) (string, error) {
+func (m *MockOAuthStateService) GenerateState(ctx context.Context, data service.OAuthStateData) (state, nonce string, err error) {
 	args := m.Called(ctx, data)
-	return args.String(0), args.Error(1)
+	return args.String(0), args.String(1), args.Error(2)
 }
 
 func (m *MockOAuthStateService) ValidateState(ctx context.Context, state string) (*service.OAuthStateData, error) {
