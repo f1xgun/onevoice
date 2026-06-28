@@ -396,4 +396,79 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 	otherMsgCount, err := msgColl.CountDocuments(ctx, bson.M{"conversation_id": "c-other"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), otherMsgCount)
+
+	// Both Mongo deletes must key off the SAME enumerated convIDs set, so the
+	// project's own conversations are gone by _id (not merely by project_id).
+	for _, gone := range []string{"c1", "c2"} {
+		n, cErr := convColl.CountDocuments(ctx, bson.M{"_id": gone})
+		require.NoError(t, cErr)
+		assert.Equal(t, int64(0), n, "conversation %s should be deleted by _id $in convIDs", gone)
+	}
+}
+
+// TestProjectRepository_HardDeleteCascade_AbortsOnDecodeError proves the
+// fail-on-revert guarantee: a conversation whose _id cannot be decoded as a
+// string (a malformed / non-string _id, standing in for any per-document decode
+// failure or early cursor termination) makes the whole cascade FATAL. The
+// function must abort BEFORE any delete and return an error, leaving every
+// conversation and message intact.
+//
+// On the buggy (pre-fix) code this swallowed the decode error and then deleted
+// conversations by project_id — dropping the malformed conversation while its
+// messages (keyed by that conversation's _id, never enumerated) were left
+// orphaned, and returning nil (success) so nothing retried. Reverting the fix
+// turns the assertions below red.
+func TestProjectRepository_HardDeleteCascade_AbortsOnDecodeError(t *testing.T) {
+	db := setupMongoTestDBForProject(t)
+	ctx := context.Background()
+
+	projectID := uuid.New()
+
+	convColl := db.Collection("conversations")
+	msgColl := db.Collection("messages")
+
+	// "bad" carries an int64 _id, which fails to decode into the `ID string`
+	// cursor struct; "good" is a normal string _id sharing the same project.
+	_, err := convColl.InsertMany(ctx, []any{
+		bson.M{"_id": int64(1), "project_id": projectID.String()},
+		bson.M{"_id": "good", "project_id": projectID.String()},
+	})
+	require.NoError(t, err)
+
+	_, err = msgColl.InsertMany(ctx, []any{
+		bson.M{"_id": "m-bad", "conversation_id": int64(1)},
+		bson.M{"_id": "m-good", "conversation_id": "good"},
+	})
+	require.NoError(t, err)
+
+	// The fix aborts before the Postgres delete, so the project row must NOT be
+	// touched. .Maybe() keeps the expectation optional: zero calls (fixed) pass;
+	// the buggy path that reaches it (revert) is still answered, letting the
+	// orphaning assertions below — not a nil-pool panic — be the failure signal.
+	mockPool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	mockPool.ExpectExec(`DELETE FROM projects WHERE`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("DELETE", 1)).
+		Maybe()
+
+	repo := &projectRepository{
+		pool:     mockPool,
+		sb:       newStatementBuilder(),
+		convColl: convColl,
+		msgColl:  msgColl,
+	}
+
+	deletedConvos, deletedMessages, err := repo.HardDeleteCascade(ctx, projectID)
+	require.Error(t, err, "decode error must abort the cascade")
+	assert.Equal(t, 0, deletedConvos)
+	assert.Equal(t, 0, deletedMessages)
+
+	convCount, err := convColl.CountDocuments(ctx, bson.M{"project_id": projectID.String()})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), convCount, "no conversation may be deleted before a clean enumeration")
+
+	msgCount, err := msgColl.CountDocuments(ctx, bson.M{"conversation_id": bson.M{"$in": bson.A{int64(1), "good"}}})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), msgCount, "no message may be deleted (and none may be orphaned) before a clean enumeration")
 }
