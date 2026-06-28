@@ -173,6 +173,7 @@ func TestLoad_RateLimits(t *testing.T) {
 		assert.Equal(t, 10, cfg.RateLimitChat)
 		assert.Equal(t, 10, cfg.RateLimitHITL)
 		assert.Equal(t, 10, cfg.RateLimitConsents)
+		assert.Equal(t, 30, cfg.RateLimitSearch)
 	})
 
 	t.Run("env override applied", func(t *testing.T) {
@@ -182,6 +183,7 @@ func TestLoad_RateLimits(t *testing.T) {
 		t.Setenv("RATE_LIMIT_CHAT", "30")
 		t.Setenv("RATE_LIMIT_HITL", "40")
 		t.Setenv("RATE_LIMIT_CONSENTS", "50")
+		t.Setenv("RATE_LIMIT_SEARCH", "7")
 
 		cfg, err := config.Load()
 		require.NoError(t, err)
@@ -190,6 +192,7 @@ func TestLoad_RateLimits(t *testing.T) {
 		assert.Equal(t, 30, cfg.RateLimitChat)
 		assert.Equal(t, 40, cfg.RateLimitHITL)
 		assert.Equal(t, 50, cfg.RateLimitConsents)
+		assert.Equal(t, 7, cfg.RateLimitSearch)
 	})
 }
 

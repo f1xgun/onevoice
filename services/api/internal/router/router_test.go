@@ -12,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -111,6 +113,16 @@ func buildTestHandlers() *router.Handlers {
 	}
 }
 
+// setupRouterTestRedis returns a go-redis client backed by an in-process
+// miniredis so router tests can exercise rate-limit middleware wiring without
+// a real Redis server.
+func setupRouterTestRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	return client, mr
+}
+
 func buildTestRouter(t *testing.T) *chi.Mux {
 	t.Helper()
 	cache := authz.NewCacheForTest(&fakeLoader{}, time.Second, time.Second)
@@ -132,6 +144,46 @@ func TestRouter_BusinessScopedRouteCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, count, 30, "expected ≥30 routes under /api/v1/businesses/{id}/")
+}
+
+// TestRouter_SearchRouteRateLimited asserts that GET /api/v1/businesses/{id}/search
+// carries a route-level rate-limit middleware on top of its business-scoped
+// middleware stack. The /search handler fans out into regex scans over scoped messages,
+// so leaving it un-rate-limited is a DoS amplification vector. We compare the
+// search route's middleware chain length against a sibling business-scoped GET
+// route that has no per-route limiter (GET /conversations): the search route
+// must have strictly more middlewares. Reverting the .With(RateLimitByUser)
+// wrapper equalizes the counts and fails this test.
+func TestRouter_SearchRouteRateLimited(t *testing.T) {
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	cache := authz.NewCacheForTest(&fakeLoader{}, time.Second, time.Second)
+	hc := health.New()
+	handlers := buildTestHandlers()
+	r := router.Setup(handlers, []byte("test-secret"), redisClient, hc,
+		[]string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: 1000, Invitations: 1000, Search: 1},
+		cache, nil, nil, nil)
+
+	var searchMW, baselineMW int
+	var searchFound, baselineFound bool
+	err := chi.Walk(r, func(method, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
+		if method == http.MethodGet && route == "/api/v1/businesses/{id}/search" {
+			searchFound = true
+			searchMW = len(mws)
+		}
+		if method == http.MethodGet && route == "/api/v1/businesses/{id}/conversations" {
+			baselineFound = true
+			baselineMW = len(mws)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, searchFound, "GET /api/v1/businesses/{id}/search must be registered")
+	require.True(t, baselineFound, "baseline GET /conversations route must exist")
+	assert.Greater(t, searchMW, baselineMW,
+		"search route must carry an extra rate-limit middleware vs. an un-limited sibling GET")
 }
 
 // TestRouter_SingularBusinessRouteGone asserts that GET /api/v1/business

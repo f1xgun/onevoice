@@ -41,16 +41,23 @@ func NewSearchHandler(searcher *service.Searcher) (*SearchHandler, error) {
 	return &SearchHandler{searcher: searcher}, nil
 }
 
+// maxQueryLength caps the byte length of the q parameter. q arrives in the
+// URL query string (not the request body), so MaxBytesReader does not apply;
+// without this bound a single authenticated user can submit very long,
+// many-token queries that expand into thousands of regex clauses against
+// every scoped message. 200 bytes comfortably covers real search input.
+const maxQueryLength = 200
+
 // Search handles GET /api/v1/search.
 //
 // Query params:
-//   - q (required, length ≥ 2)  — search query
-//   - project_id (optional)     — UUID-shaped scope filter
-//   - limit (optional, ≤ 50)    — max rows (default 20)
+//   - q (required, 2 ≤ length ≤ maxQueryLength) — search query
+//   - project_id (optional)                     — UUID-shaped scope filter
+//   - limit (optional, ≤ 50)                    — max rows (default 20)
 //
 // Response:
 //   - 200 OK + JSON [SearchResult ...] on success
-//   - 400 on missing/short q
+//   - 400 on missing/short/over-long q
 //   - 403 on missing permission
 //   - 500 on missing BusinessContext (middleware misconfiguration)
 //   - 503 + Retry-After: 5 on cold-boot before indexes are ready
@@ -59,6 +66,10 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if len(q) < 2 {
 		writeJSONError(w, http.StatusBadRequest, "query too short")
+		return
+	}
+	if len(q) > maxQueryLength {
+		writeJSONError(w, http.StatusBadRequest, "query too long")
 		return
 	}
 

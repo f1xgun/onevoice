@@ -160,6 +160,11 @@ type Config struct {
 	// RateLimitInvitations is a tighter per-user/minute budget for creating
 	// member invitations, which send email (amplification vector).
 	RateLimitInvitations int
+	// RateLimitSearch is the per-user/minute budget for the search endpoint.
+	// Search fans out into regex scans over scoped messages, so an unlimited
+	// loop is a DoS amplification vector; this caps it without throttling
+	// normal interactive search.
+	RateLimitSearch int
 
 	ShutdownTimeout time.Duration
 
@@ -302,6 +307,7 @@ func Load() (*Config, error) {
 		//nolint:mnd // env-driven default; generous write budget caps abuse without throttling normal use
 		RateLimitWrites:      getEnvInt("RATE_LIMIT_WRITES", 60),
 		RateLimitInvitations: getEnvInt("RATE_LIMIT_INVITATIONS", 10),
+		RateLimitSearch:      getEnvInt("RATE_LIMIT_SEARCH", 30), //nolint:mnd // env-driven default; generous for interactive search, caps DoS amplification loops
 
 		ShutdownTimeout: shutdownTimeout,
 

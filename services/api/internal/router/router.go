@@ -51,6 +51,7 @@ type RateLimits struct {
 	Telemetry   int
 	Writes      int
 	Invitations int
+	Search      int
 }
 
 // Handlers encapsulates all HTTP handlers consumed by Setup / SetupInternal.
@@ -279,7 +280,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/projects/{id}/conversation-count", handlers.Project.ConversationCount)
 
 				if handlers.Search != nil {
-					r.Get("/search", handlers.Search.Search)
+					r.With(middleware.RateLimitByUser(redisClient, rateLimits.Search, time.Minute, "search")).
+						Get("/search", handlers.Search.Search)
 				}
 
 				r.Get("/reviews", handlers.Review.ListReviews)

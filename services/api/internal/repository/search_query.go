@@ -6,9 +6,17 @@ import (
 	"unicode"
 )
 
+// maxQueryTokens caps the number of distinct tokens a single query expands
+// into. Each token becomes one unanchored case-insensitive regex clause in a
+// Mongo $and, so an unbounded token count lets a single query force a residual
+// full scan with thousands of regex predicates over every scoped message.
+// Real search input is a handful of words; 10 is generous.
+const maxQueryTokens = 10
+
 // tokenizeQuery splits a search query into deduplicated lowercase tokens
 // on letter/digit boundaries. Punctuation and whitespace become
 // separators. Returns an empty slice for empty / whitespace-only input.
+// At most maxQueryTokens distinct tokens are returned; extras are dropped.
 //
 // Mirrors service.QueryPrefixes (the snippet/highlight side); both must
 // agree on token boundaries so backend hits and frontend marks line up.
@@ -34,6 +42,9 @@ func tokenizeQuery(query string) []string {
 		}
 		seen[t] = struct{}{}
 		out = append(out, t)
+		if len(out) >= maxQueryTokens {
+			break
+		}
 	}
 	return out
 }
