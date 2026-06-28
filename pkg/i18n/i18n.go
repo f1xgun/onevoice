@@ -150,8 +150,16 @@ func NormalizeToSupported(tag language.Tag) language.Tag {
 //     having to handle the error themselves and prevents a panic from
 //     adversarial input)
 //
-// Caller contract: the returned tag is always one of Supported, never the
-// zero Tag.
+// The matched tag is passed through NormalizeToSupported so the result is a
+// canonical Supported tag (language.Russian / language.English) rather than a
+// region-extended variant. Matcher.Match preserves the client's region
+// extension — e.g. "en-US,en;q=0.9" yields "en-u-rg-uszzzz", not
+// language.English — which would fail the full-tag equality checks downstream
+// callers run against language.English / language.Russian and silently flip
+// their output to the RU fallback branch.
+//
+// Caller contract: the returned tag is always exactly one of Supported, never
+// the zero Tag and never a region-extended variant.
 func MatchAcceptLanguage(header string) language.Tag {
 	if header == "" {
 		return DefaultTag
@@ -167,5 +175,5 @@ func MatchAcceptLanguage(header string) language.Tag {
 	if matched == (language.Tag{}) {
 		return DefaultTag
 	}
-	return matched
+	return NormalizeToSupported(matched)
 }
