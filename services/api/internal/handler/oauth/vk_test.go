@@ -30,7 +30,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 
 	mockOAuth.On("GenerateState", mock.Anything, mock.MatchedBy(func(data service.OAuthStateData) bool {
 		return data.UserID == userID && data.BusinessID == businessID && data.Platform == "vk"
-	})).Return("test-state-token", nil)
+	})).Return("test-state-token", "test-nonce", nil)
 
 	cfg := OAuthConfig{
 		VKClientID:    "my_vk_client",
@@ -127,6 +127,7 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	stateData := &service.OAuthStateData{
 		BusinessID: businessID,
 		Platform:   "vk",
+		Nonce:      "csrf-nonce",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "valid-state").Return(stateData, nil)
 
@@ -140,6 +141,7 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, vkServer.Client(), redisClient)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=auth_code&state=valid-state", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: oauthCSRFCookieName, Value: "csrf-nonce"})
 	rr := httptest.NewRecorder()
 
 	h.VKCallback(rr, req)

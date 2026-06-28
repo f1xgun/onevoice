@@ -30,7 +30,7 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "yandex_business",
-	}).Return("yandex-state-token", nil)
+	}).Return("yandex-state-token", "yandex-nonce", nil)
 
 	cfg := OAuthConfig{
 		YandexClientID:    "my_yandex_client",
@@ -125,6 +125,7 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 	stateData := &service.OAuthStateData{
 		BusinessID: businessID,
 		Platform:   "yandex_business",
+		Nonce:      "csrf-nonce",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "valid-yandex-state").Return(stateData, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
@@ -144,6 +145,7 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, yandexServer.Client(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=auth_code&state=valid-yandex-state", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: oauthCSRFCookieName, Value: "csrf-nonce"})
 	rr := httptest.NewRecorder()
 
 	h.YandexCallback(rr, req)

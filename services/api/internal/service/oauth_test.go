@@ -26,9 +26,10 @@ func TestGenerateState_StoresInRedis(t *testing.T) {
 		BusinessID: uuid.New(),
 		Platform:   "vk",
 	}
-	state, err := svc.GenerateState(ctx, data)
+	state, nonce, err := svc.GenerateState(ctx, data)
 	require.NoError(t, err)
 	assert.Len(t, state, 64)
+	assert.Len(t, nonce, 64)
 }
 
 func TestValidateState_Success(t *testing.T) {
@@ -38,7 +39,7 @@ func TestValidateState_Success(t *testing.T) {
 		BusinessID: uuid.New(),
 		Platform:   "vk",
 	}
-	state, err := svc.GenerateState(ctx, data)
+	state, nonce, err := svc.GenerateState(ctx, data)
 	require.NoError(t, err)
 
 	got, err := svc.ValidateState(ctx, state)
@@ -46,13 +47,14 @@ func TestValidateState_Success(t *testing.T) {
 	assert.Equal(t, data.UserID, got.UserID)
 	assert.Equal(t, data.BusinessID, got.BusinessID)
 	assert.Equal(t, data.Platform, got.Platform)
+	assert.Equal(t, nonce, got.Nonce)
 }
 
 func TestValidateState_SingleUse(t *testing.T) {
 	svc := setupOAuthService(t)
 	ctx := context.Background()
 	data := OAuthStateData{UserID: uuid.New(), BusinessID: uuid.New(), Platform: "vk"}
-	state, _ := svc.GenerateState(ctx, data)
+	state, _, _ := svc.GenerateState(ctx, data)
 
 	_, err := svc.ValidateState(ctx, state)
 	require.NoError(t, err)

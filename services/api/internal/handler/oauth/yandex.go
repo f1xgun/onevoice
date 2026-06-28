@@ -29,7 +29,7 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
+	state, nonce, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     bc.UserID,
 		BusinessID: bc.BusinessID,
 		Platform:   a2a.AgentYandexBusiness,
@@ -46,6 +46,7 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 		url.QueryEscape(state),
 	)
 
+	h.issueOAuthCSRFCookie(w, nonce)
 	writeJSON(w, http.StatusOK, map[string]string{"url": authURL})
 }
 
@@ -65,6 +66,14 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
 		return
 	}
+
+	if !csrfCookieMatches(r, stateData.Nonce) {
+		slog.Warn("Yandex OAuth CSRF cookie mismatch", "business_id", stateData.BusinessID)
+		h.clearOAuthCSRFCookie(w)
+		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
+		return
+	}
+	h.clearOAuthCSRFCookie(w)
 
 	form := url.Values{
 		"grant_type":    {"authorization_code"},

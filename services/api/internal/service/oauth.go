@@ -16,6 +16,12 @@ type OAuthStateData struct {
 	UserID     uuid.UUID `json:"user_id"`
 	BusinessID uuid.UUID `json:"business_id"`
 	Platform   string    `json:"platform"`
+	// Nonce binds the state to the browser that started the flow. It is
+	// generated alongside the state, persisted here, and also returned to the
+	// caller so it can be planted in an HttpOnly cookie. The public callback
+	// requires the cookie to echo this value before any token exchange, which
+	// blocks a login-CSRF where an attacker hands a victim a pre-issued state.
+	Nonce string `json:"nonce,omitempty"`
 }
 
 type OAuthService struct {
@@ -29,23 +35,42 @@ func NewOAuthService(redisClient *redis.Client) *OAuthService {
 const oauthStateTTL = 10 * time.Minute
 const oauthStatePrefix = "oauth:state:"
 
-func (s *OAuthService) GenerateState(ctx context.Context, data OAuthStateData) (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generate random bytes: %w", err)
+// oauthTokenBytes is the entropy (in bytes) of the state and CSRF nonce; each
+// renders to a 64-char hex string.
+const oauthTokenBytes = 32
+
+// GenerateState mints a single-use OAuth state plus a CSRF nonce. The nonce is
+// stored inside the state payload in Redis and returned so the caller can set
+// it as an HttpOnly cookie; the callback later requires the cookie to match.
+func (s *OAuthService) GenerateState(ctx context.Context, data OAuthStateData) (state, nonce string, err error) {
+	state, err = randomHex(oauthTokenBytes)
+	if err != nil {
+		return "", "", fmt.Errorf("generate state: %w", err)
 	}
-	state := hex.EncodeToString(b)
+	nonce, err = randomHex(oauthTokenBytes)
+	if err != nil {
+		return "", "", fmt.Errorf("generate nonce: %w", err)
+	}
+	data.Nonce = nonce
 
 	payload, err := json.Marshal(data)
 	if err != nil {
-		return "", fmt.Errorf("marshal state data: %w", err)
+		return "", "", fmt.Errorf("marshal state data: %w", err)
 	}
 
 	if err := s.redis.Set(ctx, oauthStatePrefix+state, payload, oauthStateTTL).Err(); err != nil {
-		return "", fmt.Errorf("store state: %w", err)
+		return "", "", fmt.Errorf("store state: %w", err)
 	}
 
-	return state, nil
+	return state, nonce, nil
+}
+
+func randomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (s *OAuthService) ValidateState(ctx context.Context, state string) (*OAuthStateData, error) {
