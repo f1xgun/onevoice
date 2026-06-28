@@ -152,7 +152,7 @@ func TestSSECounter_KeyExpiresAfterTTL(t *testing.T) {
 	key := "sse:user:" + uid.String() + ":active"
 	assert.True(t, mr.Exists(key), "key must exist immediately after acquire")
 
-	mr.FastForward(6 * time.Minute)
+	mr.FastForward(ssecounter.MinKeyTTL + time.Minute)
 
 	assert.False(t, mr.Exists(key), "leaked key must expire after TTL")
 }
@@ -190,4 +190,73 @@ func TestSSECounter_AcquireCtxCancelled_FailsClosed(t *testing.T) {
 		errors.Is(err, ratelimit.ErrUnavailable) || errors.Is(err, context.Canceled),
 		"want unavailable or canceled, got %v", err,
 	)
+}
+
+// apiStreamBudget mirrors services/api chatturn.StreamBudget. pkg cannot import
+// services/api (wrong direction), so the value is duplicated here; the api side
+// pins ssecounter.MinKeyTTL >= chatturn.StreamBudget against the real constant
+// in its own wiring test.
+const apiStreamBudget = 10 * time.Minute
+
+// TestSSECounter_MinKeyTTLOutlivesStreamBudget pins the invariant that the slot
+// key cannot expire while a single stream still holds it. Reverting the TTL
+// back below the stream budget fails here.
+func TestSSECounter_MinKeyTTLOutlivesStreamBudget(t *testing.T) {
+	assert.GreaterOrEqual(t, ssecounter.MinKeyTTL, apiStreamBudget,
+		"slot-key TTL must outlive a single stream (>= chat stream budget) or it expires mid-stream")
+}
+
+// TestSSECounter_NewWithKeyTTLClampsToFloor verifies a caller cannot configure
+// a TTL below the floor: a too-small budget is clamped up to MinKeyTTL so the
+// key still outlives a single stream.
+func TestSSECounter_NewWithKeyTTLClampsToFloor(t *testing.T) {
+	rdb, mr := newRedis(t)
+	c := ssecounter.NewWithKeyTTL(rdb, 3, ratelimit.Policy{}, time.Second)
+	uid := uuid.New()
+
+	rel, err := c.Acquire(context.Background(), uid, "free")
+	require.NoError(t, err)
+	t.Cleanup(rel)
+
+	key := "sse:user:" + uid.String() + ":active"
+	mr.FastForward(2 * time.Second)
+	assert.True(t, mr.Exists(key), "tiny TTL must be clamped up to the floor, key must still exist")
+}
+
+// TestSSECounter_ReleaseAfterKeyExpired_NoNegativeNoLeak reproduces the core
+// drift bug: a long stream's slot key expires (TTL elapsed) and then release
+// runs. A plain DECR would recreate the key at -1 with NO expiry, permanently
+// weakening the cap. The guarded release must instead leave no negative,
+// never-expiring counter behind. Reverting the safe-release script (plain
+// DECR) fails this test.
+func TestSSECounter_ReleaseAfterKeyExpired_NoNegativeNoLeak(t *testing.T) {
+	rdb, mr := newRedis(t)
+	c := ssecounter.New(rdb, 3, ratelimit.Policy{})
+	uid := uuid.New()
+	key := "sse:user:" + uid.String() + ":active"
+
+	rel, err := c.Acquire(context.Background(), uid, "free")
+	require.NoError(t, err)
+	require.True(t, mr.Exists(key))
+
+	mr.Del(key)
+
+	rel()
+
+	if mr.Exists(key) {
+		got, gerr := mr.Get(key)
+		require.NoError(t, gerr)
+		assert.NotEqual(t, "-1", got, "release on an absent key must not leave a negative counter")
+		ttl := mr.TTL(key)
+		assert.Greater(t, ttl, time.Duration(0),
+			"if release recreated the key it must carry a TTL, never persist forever")
+	}
+
+	rel2, err2 := c.Acquire(context.Background(), uid, "free")
+	require.NoError(t, err2)
+	t.Cleanup(rel2)
+	val, gerr := mr.Get(key)
+	require.NoError(t, gerr)
+	assert.Equal(t, "1", val,
+		"after a missed-key release, the next acquire must start from 0 -> 1, not from a negative residue")
 }

@@ -18,6 +18,12 @@ import (
 // agent can't pin the connection forever.
 const streamBudget = 10 * time.Minute
 
+// StreamBudget exposes streamBudget to the wiring layer so the SSE
+// concurrency counter can size its slot-key TTL to outlive a single stream
+// (ssecounter.NewWithKeyTTL). Keeping it derived from the same constant means
+// the two cannot drift apart.
+const StreamBudget = streamBudget
+
 // streamState is per-request mutable state populated by the SSE event loop.
 // Owned by Run on its stack; passed by pointer to the per-event handlers so
 // they can mutate it.
