@@ -11,8 +11,42 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/email/templates"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
+
+// fakeOwnerResolver returns a configurable owner user for the T-7 cancel path.
+type fakeOwnerResolver struct {
+	user *domain.User
+	err  error
+}
+
+func (f *fakeOwnerResolver) GetByID(_ context.Context, _ uuid.UUID) (*domain.User, error) {
+	return f.user, f.err
+}
+
+// fakeDeletionOutbox records the (toEmail, subject) pairs passed to the cancel
+// call so a test can assert the pending T-7 row was targeted. Enqueue paths are
+// no-ops — they're only exercised by integration tests.
+type fakeDeletionOutbox struct {
+	canceledSubjectsByEmail map[string][]string
+}
+
+func (f *fakeDeletionOutbox) Enqueue(_ context.Context, _ pgx.Tx, _ repository.OutboxEnqueueInput) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
+
+func (f *fakeDeletionOutbox) EnqueueDeferred(_ context.Context, _ pgx.Tx, _ repository.OutboxEnqueueInput, _ time.Time) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
+
+func (f *fakeDeletionOutbox) CancelPendingBySubjectAndRecipient(_ context.Context, toEmail, subject string) error {
+	if f.canceledSubjectsByEmail == nil {
+		f.canceledSubjectsByEmail = map[string][]string{}
+	}
+	f.canceledSubjectsByEmail[toEmail] = append(f.canceledSubjectsByEmail[toEmail], subject)
+	return nil
+}
 
 // The production adapter must satisfy BusinessDeletionRepo, including the
 // tx-aware read the sweeper now uses. A compile-time check so a signature
@@ -123,10 +157,60 @@ func TestCancelDeletion_OwnerSuccess(t *testing.T) {
 	s := &BusinessDeletionService{
 		businesses: &fakeBusinessDeletionRepo{canceled: true},
 		members:    &fakeOwnerChecker{member: ownerMember(systemOwnerRoleID)},
+		users:      &fakeOwnerResolver{user: &domain.User{Email: "owner@example.com", PreferredLocale: "ru"}},
+		outbox:     &fakeDeletionOutbox{},
 		auditLog:   audit.Nop(),
 		graceDays:  30,
 	}
 	require.NoError(t, s.CancelDeletion(context.Background(), uuid.New(), uuid.New(), "1.2.3.4", "ua"))
+}
+
+// TestCancelDeletion_CancelsPendingT7Warning is the fail-on-revert guard: a
+// successful cancel must cancel the pending deferred T-7 warning row for the
+// owner's resolved locale, so the worker doesn't email a live organization 7
+// days "before" a deletion that was already called off. Reverting the
+// cancelPendingT7Warning call leaves the row uncanceled and fails this test.
+func TestCancelDeletion_CancelsPendingT7Warning(t *testing.T) {
+	owner := &domain.User{Email: "owner@example.com", PreferredLocale: "ru"}
+	outbox := &fakeDeletionOutbox{}
+	s := &BusinessDeletionService{
+		businesses: &fakeBusinessDeletionRepo{canceled: true},
+		members:    &fakeOwnerChecker{member: ownerMember(systemOwnerRoleID)},
+		users:      &fakeOwnerResolver{user: owner},
+		outbox:     outbox,
+		auditLog:   audit.Nop(),
+		graceDays:  30,
+	}
+
+	require.NoError(t, s.CancelDeletion(context.Background(), uuid.New(), uuid.New(), "1.2.3.4", "ua"))
+
+	require.Contains(t, outbox.canceledSubjectsByEmail, owner.Email,
+		"T-7 warning was not canceled for the owner on cancel")
+	require.Contains(t, outbox.canceledSubjectsByEmail[owner.Email],
+		templates.BusinessDeletionT7WarningSubject("ru"),
+		"the ru-locale T-7 subject was not canceled")
+}
+
+// TestCancelDeletion_UnknownLocaleCancelsBothVariants verifies the safety net:
+// when the owner's locale can't be resolved, BOTH the ru and en T-7 subject
+// variants are canceled so the locale-dependent pending row is caught.
+func TestCancelDeletion_UnknownLocaleCancelsBothVariants(t *testing.T) {
+	owner := &domain.User{Email: "owner@example.com"}
+	outbox := &fakeDeletionOutbox{}
+	s := &BusinessDeletionService{
+		businesses: &fakeBusinessDeletionRepo{canceled: true},
+		members:    &fakeOwnerChecker{member: ownerMember(systemOwnerRoleID)},
+		users:      &fakeOwnerResolver{user: owner},
+		outbox:     outbox,
+		auditLog:   audit.Nop(),
+		graceDays:  30,
+	}
+
+	require.NoError(t, s.CancelDeletion(context.Background(), uuid.New(), uuid.New(), "1.2.3.4", "ua"))
+
+	subjects := outbox.canceledSubjectsByEmail[owner.Email]
+	require.Contains(t, subjects, templates.BusinessDeletionT7WarningSubject("ru"))
+	require.Contains(t, subjects, templates.BusinessDeletionT7WarningSubject("en"))
 }
 
 // TestCancelDeletion_NotCanceledMapsToPurged returns ErrBusinessAlreadyPurged
