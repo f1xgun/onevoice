@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/email"
@@ -83,8 +84,18 @@ func BuildEmailSender(log *slog.Logger, cfg *config.Config) (email.Sender, error
 // rows stay in 'pending' state (the atomic UPDATE WHERE
 // status='pending' guarantees at-least-once delivery on restart per
 // T-INF-02).
-func StartOutboxWorker(ctx context.Context, log *slog.Logger, repo *repository.EmailOutboxRepository, sender email.Sender, pollInterval time.Duration, maxAttempts int) {
-	go runOutboxWorker(ctx, log, repo, sender, pollInterval, maxAttempts)
+//
+// The worker is registered on wg so the shutdown sequence can join it before
+// the database pools close. Without that join a Send completing in the
+// SIGTERM window would run MarkSent (intentionally on a detached context)
+// against an already-closed *pgxpool.Pool, leaving the row 'pending' and
+// re-sending the email on the next boot.
+func StartOutboxWorker(ctx context.Context, wg *sync.WaitGroup, log *slog.Logger, repo *repository.EmailOutboxRepository, sender email.Sender, pollInterval time.Duration, maxAttempts int) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runOutboxWorker(ctx, log, repo, sender, pollInterval, maxAttempts)
+	}()
 }
 
 func runOutboxWorker(ctx context.Context, log *slog.Logger, repo *repository.EmailOutboxRepository, sender email.Sender, pollInterval time.Duration, maxAttempts int) {

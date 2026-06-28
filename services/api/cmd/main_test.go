@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 )
@@ -96,5 +97,95 @@ func TestServeAndReport_NonGracefulErrorLogged(t *testing.T) {
 
 	if !bytes.Contains(buf.Bytes(), []byte("internal")) {
 		t.Fatalf("expected the server name in the error log, got %q", buf.String())
+	}
+}
+
+// TestWaitWorkers_JoinsBeforeClose proves the shutdown sequence joins
+// background workers before the database pools close. A fake worker records
+// whether a "pool" was still open at the moment it ran its final write; the
+// pool is only marked closed AFTER waitWorkers returns (mirroring run(), where
+// the deferred handles.Close() runs after runServers returns). With the join,
+// the worker observes the pool open. Reverting the join lets Close race the
+// write.
+//
+// Fail-on-revert: replace the waitWorkers(...) call site with a no-op (or drop
+// the wg.Add/Done tracking) and the close below races the final write — the
+// poolOpen assertion flips false.
+func TestWaitWorkers_JoinsBeforeClose(t *testing.T) {
+	var poolClosed bool
+	var mu sync.Mutex
+	poolIsClosed := func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return poolClosed
+	}
+	closePool := func() {
+		mu.Lock()
+		poolClosed = true
+		mu.Unlock()
+	}
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	observedOpen := make(chan bool, 1)
+
+	goWorker(&wg, func() {
+		<-stop
+		observedOpen <- !poolIsClosed()
+	})
+
+	close(stop)
+
+	if !waitWorkers(&wg, 2*time.Second) {
+		t.Fatal("waitWorkers timed out joining the worker")
+	}
+	closePool()
+
+	if got := <-observedOpen; !got {
+		t.Fatal("worker ran its final write after the pool closed: workers were not joined before Close")
+	}
+}
+
+// TestWaitWorkers_BoundedDoesNotHangOnWedgedWorker proves a worker that never
+// returns cannot block shutdown forever: waitWorkers returns false once the
+// bound elapses so the process can still exit.
+func TestWaitWorkers_BoundedDoesNotHangOnWedgedWorker(t *testing.T) {
+	var wg sync.WaitGroup
+	block := make(chan struct{})
+	defer close(block)
+
+	goWorker(&wg, func() { <-block })
+
+	start := time.Now()
+	if waitWorkers(&wg, 100*time.Millisecond) {
+		t.Fatal("waitWorkers reported a clean join for a wedged worker")
+	}
+	if elapsed := time.Since(start); elapsed < 100*time.Millisecond {
+		t.Fatalf("waitWorkers returned before its bound elapsed: %v", elapsed)
+	}
+}
+
+// TestGoWorker_TracksCompletion proves goWorker registers the worker on the
+// WaitGroup before it starts, so a join immediately after spawning still waits
+// for it (the count is never observed at zero in the spawn window).
+func TestGoWorker_TracksCompletion(t *testing.T) {
+	var wg sync.WaitGroup
+	var ran bool
+	var mu sync.Mutex
+
+	goWorker(&wg, func() {
+		time.Sleep(20 * time.Millisecond)
+		mu.Lock()
+		ran = true
+		mu.Unlock()
+	})
+
+	if !waitWorkers(&wg, time.Second) {
+		t.Fatal("waitWorkers timed out")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !ran {
+		t.Fatal("waitWorkers returned before the tracked worker completed")
 	}
 }

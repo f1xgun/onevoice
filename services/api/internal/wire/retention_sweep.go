@@ -24,6 +24,7 @@ package wire
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -75,8 +76,16 @@ type lockExecutor interface {
 // same process spawns two goroutines, but only one will hold the
 // advisory lock at any tick. In a single-process deployment, do not
 // invoke twice — there is no reason to.
-func StartRetentionSweep(ctx context.Context, pool lockExecutor, repo domain.AuditLogRepository) {
-	go runRetention(ctx, pool, repo)
+//
+// The goroutine is registered on wg so the shutdown sequence can join it
+// before the database pool closes (a sweep mid-pass must not Exec on a closed
+// *pgxpool.Pool).
+func StartRetentionSweep(ctx context.Context, wg *sync.WaitGroup, pool lockExecutor, repo domain.AuditLogRepository) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runRetention(ctx, pool, repo)
+	}()
 }
 
 // runRetention is the goroutine body. Split out so StartRetentionSweep

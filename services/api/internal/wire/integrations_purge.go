@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -35,8 +36,16 @@ type integrationsPurger interface {
 
 // StartIntegrationsPurge spawns the purge goroutine and returns immediately so
 // it never blocks API startup. The goroutine exits when ctx is canceled.
-func StartIntegrationsPurge(ctx context.Context, pool integrationsPurgeExecutor, repo integrationsPurger) {
-	go runIntegrationsPurge(ctx, pool, repo)
+//
+// The goroutine is registered on wg so the shutdown sequence can join it
+// before the database pool closes (a sweep mid-pass must not Exec on a closed
+// *pgxpool.Pool).
+func StartIntegrationsPurge(ctx context.Context, wg *sync.WaitGroup, pool integrationsPurgeExecutor, repo integrationsPurger) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runIntegrationsPurge(ctx, pool, repo)
+	}()
 }
 
 func runIntegrationsPurge(ctx context.Context, pool integrationsPurgeExecutor, repo integrationsPurger) {
