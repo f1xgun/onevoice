@@ -76,7 +76,7 @@ func TestEnvelopeReturnsKeyVersion(t *testing.T) {
 
 func TestEnvelopeReturnsFingerprint(t *testing.T) {
 	fake := kmsfake.New()
-	env := crypto.NewEnvelope(fake, nil, "test-key-id", nil)
+	env := crypto.NewEnvelope(fake, nil, "test-key-id", map[string]int16{"1": 1})
 	ctx := context.Background()
 	id := uuid.New()
 
@@ -225,4 +225,34 @@ func TestEnvelopeAADHelper(t *testing.T) {
 
 	got := crypto.EnvelopeAADForTest(id, platform)
 	assert.Equal(t, expected, got)
+}
+
+func TestEncryptForRow_UnmappedKMSVersionFailsClosed(t *testing.T) {
+	fake := kmsfake.New()
+	fake.RotateToVersion(7)
+	env := crypto.NewEnvelope(fake, nil, "test-key-id", map[string]int16{"1": 1})
+	ctx := context.Background()
+	id := uuid.New()
+
+	cts, wrapped, ver, fp, err := env.EncryptForRow(ctx, id, "yandex_business", [][]byte{[]byte("tok")})
+	require.ErrorIs(t, err, crypto.ErrUnmappedKMSVersion)
+	assert.Nil(t, cts)
+	assert.Nil(t, wrapped)
+	assert.Equal(t, int16(0), ver)
+	assert.Empty(t, fp)
+}
+
+func TestEncryptToken_UnmappedKMSVersionFailsClosed(t *testing.T) {
+	fake := kmsfake.New()
+	fake.RotateToVersion(7)
+	env := crypto.NewEnvelope(fake, nil, "test-key-id", map[string]int16{"1": 1})
+	ctx := context.Background()
+	id := uuid.New()
+
+	ct, wrapped, ver, fp, err := env.EncryptToken(ctx, id, "yandex_business", []byte("tok"))
+	require.ErrorIs(t, err, crypto.ErrUnmappedKMSVersion)
+	assert.Nil(t, ct)
+	assert.Nil(t, wrapped)
+	assert.Equal(t, int16(0), ver)
+	assert.Empty(t, fp)
 }
