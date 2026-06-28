@@ -5,11 +5,43 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestIsDisallowedIP_ThisHostBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		want bool
+	}{
+		{name: "0.0.0.0 unspecified", ip: "0.0.0.0", want: true},
+		{name: "0.0.0.1 this-host loopback-routed", ip: "0.0.0.1", want: true},
+		{name: "0.10.0.1 within 0.0.0.0/8", ip: "0.10.0.1", want: true},
+		{name: "0.255.255.255 top of 0.0.0.0/8", ip: "0.255.255.255", want: true},
+		{name: "loopback 127.0.0.1", ip: "127.0.0.1", want: true},
+		{name: "metadata 169.254.169.254", ip: "169.254.169.254", want: true},
+		{name: "private 10.0.0.5", ip: "10.0.0.5", want: true},
+		{name: "cgnat 100.64.0.1", ip: "100.64.0.1", want: true},
+		{name: "public 93.184.216.34", ip: "93.184.216.34", want: false},
+		{name: "public 1.1.1.1", ip: "1.1.1.1", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := net.ParseIP(tt.ip)
+			if ip == nil {
+				t.Fatalf("ParseIP(%q) returned nil", tt.ip)
+			}
+			if got := isDisallowedIP(ip); got != tt.want {
+				t.Fatalf("isDisallowedIP(%s) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestValidatePhotoURL(t *testing.T) {
 	tests := []struct {
@@ -29,6 +61,8 @@ func TestValidatePhotoURL(t *testing.T) {
 		{name: "private 172.16/12 rejected", rawURL: "https://172.16.0.1/photo.jpg", wantErr: true},
 		{name: "private 192.168/16 rejected", rawURL: "https://192.168.1.1/photo.jpg", wantErr: true},
 		{name: "cgnat 100.64/10 rejected", rawURL: "https://100.64.0.1/photo.jpg", wantErr: true},
+		{name: "this-host 0.0.0.1 rejected", rawURL: "https://0.0.0.1/photo.jpg", wantErr: true},
+		{name: "this-host 0.10.0.1 rejected", rawURL: "https://0.10.0.1/photo.jpg", wantErr: true},
 		{name: "unique local ipv6 rejected", rawURL: "https://[fc00::1]/photo.jpg", wantErr: true},
 		{name: "link-local ipv6 rejected", rawURL: "https://[fe80::1]/photo.jpg", wantErr: true},
 		{name: "unparseable url rejected", rawURL: "https://exa mple.com/photo.jpg", wantErr: true},

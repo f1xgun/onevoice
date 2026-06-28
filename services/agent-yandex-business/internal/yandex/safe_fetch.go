@@ -45,6 +45,12 @@ func validatePhotoURL(rawURL string) error {
 // screened alongside RFC1918.
 var cgnatRange = mustCIDR("100.64.0.0/10")
 
+// thisHostRange is the RFC 1122 "this host on this network" block
+// (0.0.0.0/8). net.IP.IsUnspecified only matches 0.0.0.0 exactly, but on
+// Linux any 0.x.x.x address routes to loopback, so e.g. https://0.0.0.1/ is a
+// real SSRF-to-localhost vector and the whole /8 must be screened.
+var thisHostRange = mustCIDR("0.0.0.0/8")
+
 // mustCIDR parses a static CIDR at package-init; it panics on a malformed
 // constant, which is a programming error, not runtime input.
 func mustCIDR(s string) *net.IPNet {
@@ -57,9 +63,10 @@ func mustCIDR(s string) *net.IPNet {
 
 // isDisallowedIP reports whether ip belongs to a range the RPA worker must
 // never connect to: loopback, link-local (incl. the cloud metadata endpoint),
-// private (RFC1918 / RFC4193), CGNAT shared space (RFC 6598), unspecified, or
-// multicast. It is the single source of truth for both URL-literal screening
-// and connect-time screening.
+// private (RFC1918 / RFC4193), CGNAT shared space (RFC 6598), the 0.0.0.0/8
+// this-host block (loopback-routed on Linux), unspecified, or multicast. It is
+// the single source of truth for both URL-literal screening and connect-time
+// screening.
 func isDisallowedIP(ip net.IP) bool {
 	if ip.IsLoopback() ||
 		ip.IsLinkLocalUnicast() ||
@@ -67,7 +74,8 @@ func isDisallowedIP(ip net.IP) bool {
 		ip.IsMulticast() ||
 		ip.IsUnspecified() ||
 		ip.IsPrivate() ||
-		cgnatRange.Contains(ip) {
+		cgnatRange.Contains(ip) ||
+		thisHostRange.Contains(ip) {
 		return true
 	}
 	return false

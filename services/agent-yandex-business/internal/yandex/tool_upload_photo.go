@@ -54,9 +54,9 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			return err
 		}
 
-		tmpFile := fmt.Sprintf("/tmp/upload_%d.jpg", time.Now().UnixMilli())
-		if err := os.WriteFile(tmpFile, body, tmpFileMode); err != nil {
-			return fmt.Errorf("write temp file: %w", err)
+		tmpFile, err := stageTempPhoto(body)
+		if err != nil {
+			return err
 		}
 		defer func() { _ = os.Remove(tmpFile) }()
 
@@ -83,4 +83,31 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 		}
 		return nil
 	})
+}
+
+// stageTempPhoto writes a downloaded image to a unique temp file and returns its
+// path. It uses os.CreateTemp so concurrent uploads (the BrowserPool runs
+// multiple business contexts in parallel) never share a path: a predictable
+// name would let one upload clobber another tenant's bytes or have a sibling's
+// defer-Remove delete the file before SetInputFiles reads it.
+func stageTempPhoto(body []byte) (string, error) {
+	f, err := os.CreateTemp("", "upload-*.jpg")
+	if err != nil {
+		return "", fmt.Errorf("create temp file: %w", err)
+	}
+	name := f.Name()
+	if _, err := f.Write(body); err != nil {
+		_ = f.Close()
+		_ = os.Remove(name)
+		return "", fmt.Errorf("write temp file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Chmod(name, tmpFileMode); err != nil {
+		_ = os.Remove(name)
+		return "", fmt.Errorf("chmod temp file: %w", err)
+	}
+	return name, nil
 }
