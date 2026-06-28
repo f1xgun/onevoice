@@ -556,6 +556,104 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 		"user-facing content must not leak the raw HITL-not-configured detail")
 }
 
+// TestStepRun_PreambleWithToolCalls_EmitsText guards the narration that an LLM
+// emits alongside tool_calls. The model commonly returns BOTH narrative Content
+// ("Сейчас опубликую пост…") AND tool_calls in the same completion. That
+// preamble must reach the live stream as an EventText so the API proxy
+// accumulates it into the visible/persisted transcript — otherwise it is kept
+// only in the next-turn message history and lost from what the user sees and
+// what is saved.
+func TestStepRun_PreambleWithToolCalls_EmitsText(t *testing.T) {
+	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
+	const preamble = "Сейчас опубликую пост."
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			Content:      preamble,
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{{
+				ID:       "call_a",
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: "auto_tool", Arguments: string(toolCallArgs)},
+			}},
+		},
+		{Content: "Готово!", FinishReason: "stop"},
+	}}
+
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, nil)
+	orch := orchestrator.New(stub, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "go"}},
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+	texts := findEvents(evts, orchestrator.EventText)
+
+	var found bool
+	for _, e := range texts {
+		if e.Content == preamble {
+			found = true
+		}
+	}
+	assert.True(t, found,
+		"preamble Content emitted alongside tool_calls must surface as an EventText (lost from stream + transcript otherwise)")
+	assert.NotEmpty(t, findEvents(evts, orchestrator.EventToolCall),
+		"the tool must still dispatch after the preamble is streamed")
+}
+
+// TestStepRun_RegisteredAutoTool_NotOffered_IsRejected guards the dispatch-time
+// whitelist boundary. The whitelist is applied only at offer time
+// (AvailableForWhitelist → state.AvailableTools). hitl.Bucket keys purely off
+// the registry Floor, which returns Forbidden only for UNREGISTERED names — so
+// a registered Auto-floor tool that the project whitelist withheld
+// (WhitelistMode=none yields an empty offered list) would dispatch if the model
+// recalled it from a prior turn or via prompt injection. It must instead be
+// routed through the forbidden path and rejected, never dispatched.
+func TestStepRun_RegisteredAutoTool_NotOffered_IsRejected(t *testing.T) {
+	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{{
+				ID:       "call_a",
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: "auto_tool", Arguments: string(toolCallArgs)},
+			}},
+		},
+		{Content: "Done.", FinishReason: "stop"},
+	}}
+
+	var executed int32
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, toolregistry.ExecutorFunc(
+		func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+			executed = 1
+			return map[string]interface{}{"ok": true}, nil
+		}))
+
+	orch := orchestrator.New(stub, reg)
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "go"}},
+		WhitelistMode:   domain.WhitelistModeNone,
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	assert.Equal(t, int32(0), executed,
+		"a registered Auto tool that was not offered (whitelist=none) must NOT be dispatched")
+	assert.Empty(t, findEvents(evts, orchestrator.EventToolCall),
+		"no tool_call event should be emitted for a withheld tool")
+
+	rejections := findEvents(evts, orchestrator.EventToolRejected)
+	require.Len(t, rejections, 1, "the withheld Auto tool must be rejected via the forbidden path")
+	assert.Equal(t, "auto_tool", rejections[0].ToolName)
+	assert.Equal(t, "call_a", rejections[0].ToolCallID)
+	assert.Equal(t, "policy_forbidden", rejections[0].Content)
+}
+
 // --- end-to-end billing smoke ---
 
 // TestStepRun_BillingPostedE2E exercises the full chain from stepRun →

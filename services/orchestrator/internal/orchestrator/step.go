@@ -253,6 +253,14 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeDone, "", nil
 		}
 
+		if resp.Content != "" {
+			select {
+			case out <- Event{Type: EventText, Content: resp.Content}:
+			case <-ctx.Done():
+				return OutcomeError, "", ctx.Err()
+			}
+		}
+
 		state.Messages = append(state.Messages, llm.Message{
 			Role:      "assistant",
 			Content:   resp.Content,
@@ -265,6 +273,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			state.ProjectApprovalOverrides,
 			resp.ToolCalls,
 		)
+
+		offered := offeredToolSet(state.AvailableTools)
+		autoCalls, forbiddenCalls = enforceOfferedAuto(autoCalls, forbiddenCalls, offered)
 
 		for _, tc := range forbiddenCalls {
 			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
@@ -409,6 +420,40 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 		ModelMessages:  msgSnapshot,
 		IterationIdx:   state.Iter,
 	}
+}
+
+// offeredToolSet collapses the tool definitions actually offered to the model
+// this turn into a name set. hitl.Bucket classifies purely off the registry
+// Floor, which only knows whether a name is registered — it cannot tell that a
+// registered Auto-floor tool was withheld by the project whitelist (e.g.
+// WhitelistMode=none yields an empty offered list, or an explicit list omits
+// it). The set lets the dispatch path re-assert the whitelist boundary.
+func offeredToolSet(defs []llm.ToolDefinition) map[string]bool {
+	set := make(map[string]bool, len(defs))
+	for _, d := range defs {
+		set[d.Function.Name] = true
+	}
+	return set
+}
+
+// enforceOfferedAuto moves any auto-bucketed call whose name was not offered to
+// the model this turn into the forbidden bucket. This closes the gap where a
+// model recalls (or is injected with) a registered Auto tool that the project
+// whitelist withheld: hitl.Bucket would dispatch it because Floor returns
+// Forbidden only for UNREGISTERED names. Manual-floor calls already pause and
+// unregistered calls are already forbidden, so only the offered-Auto gap needs
+// closing here.
+func enforceOfferedAuto(autoCalls, forbiddenCalls []llm.ToolCall, offered map[string]bool) (allowed, forbidden []llm.ToolCall) {
+	allowed = autoCalls[:0:0]
+	forbidden = forbiddenCalls
+	for _, tc := range autoCalls {
+		if offered[tc.Function.Name] {
+			allowed = append(allowed, tc)
+			continue
+		}
+		forbidden = append(forbidden, tc)
+	}
+	return allowed, forbidden
 }
 
 // summarizeManualCalls projects raw tool_calls into tool_approval_required wire shape.
