@@ -53,6 +53,14 @@ func (m *MockBusinessService) Update(ctx context.Context, business *domain.Busin
 	return args.Get(0).(*domain.Business), args.Error(1)
 }
 
+func (m *MockBusinessService) UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}, actorUserID uuid.UUID) (*domain.Business, error) {
+	args := m.Called(ctx, businessID, keys, actorUserID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Business), args.Error(1)
+}
+
 func (m *MockBusinessService) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]service.MembershipSummary, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
@@ -479,11 +487,9 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 		mockSvc := new(MockBusinessService)
 		syncer := &fakeScheduleSyncer{called: make(chan *domain.Business, 1)}
 
-		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(existing(), nil)
-
-		var captured *domain.Business
-		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
-			captured = b
+		var captured map[string]interface{}
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			captured = keys
 			return true
 		}), mock.Anything).Return(&domain.Business{
 			ID:       testBusinessID,
@@ -503,8 +509,8 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		require.NotNil(t, captured)
-		require.NotNil(t, captured.Settings["schedule"])
-		require.NotNil(t, captured.Settings["specialDates"])
+		require.Contains(t, captured, "schedule")
+		require.Contains(t, captured, "specialDates")
 
 		select {
 		case b := <-syncer.called:
@@ -557,8 +563,7 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 
 	t.Run("nil syncer is allowed (skip dispatch)", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
-		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(existing(), nil)
-		mockSvc.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(existing(), nil)
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.Anything, mock.Anything).Return(existing(), nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
@@ -580,8 +585,9 @@ func TestBusinessHandler_UpdateVoiceTone(t *testing.T) {
 	t.Run("happy path persists tones", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
 		existing := &domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}
-		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(existing, nil)
-		mockSvc.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(existing, nil)
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			return keys["voiceTone"] != nil
+		}), mock.Anything).Return(existing, nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
@@ -933,11 +939,6 @@ func TestBusinessHandler_BodyAndFieldLimits(t *testing.T) {
 	// (the multi-KB blob is persisted into Settings).
 	t.Run("UpdateSchedule rejects over-large schedule blob with 400", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
-		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
-			ID:       testBusinessID,
-			Name:     "Cafe",
-			Settings: map[string]interface{}{},
-		}, nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
@@ -952,6 +953,6 @@ func TestBusinessHandler_BodyAndFieldLimits(t *testing.T) {
 		h.UpdateSchedule(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		mockSvc.AssertNotCalled(t, "Update")
+		mockSvc.AssertNotCalled(t, "UpdateSettingsKeys")
 	})
 }

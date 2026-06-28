@@ -31,6 +31,12 @@ type BusinessService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	// Update applies a business profile edit and emits business.updated keyed on actorUserID.
 	Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error)
+	// UpdateSettingsKeys writes only the named settings sub-keys (e.g. schedule,
+	// voiceTone) via a targeted jsonb_set, then re-reads and returns the row.
+	// Other settings sub-keys (including tool_approvals) are preserved verbatim
+	// so a concurrent writer of a different sub-key is never clobbered. Emits
+	// business.updated keyed on actorUserID.
+	UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}, actorUserID uuid.UUID) (*domain.Business, error)
 	// ListMembershipsByUser returns memberships hydrated with business and role names.
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipSummary, error)
 	// GetToolApprovals returns the persisted tool_approvals map (non-nil empty when unset).
@@ -247,4 +253,33 @@ func (s *businessService) Update(ctx context.Context, business *domain.Business,
 	audit.LogBusinessUpdated(ctx, s.audit, business.ID, actorUserID)
 
 	return business, nil
+}
+
+// UpdateSettingsKeys writes only the supplied settings sub-keys via a targeted
+// jsonb_set and returns the re-read row, emitting business.updated keyed on
+// actorUserID. See docs/services/business.md.
+func (s *businessService) UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}, actorUserID uuid.UUID) (*domain.Business, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if businessID == uuid.Nil {
+		return nil, fmt.Errorf("business id is required")
+	}
+
+	if err := s.repo.UpdateSettingsKeys(ctx, businessID, keys); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("update business settings: %w", err)
+	}
+
+	updated, err := s.repo.GetByID(ctx, businessID)
+	if err != nil {
+		return nil, fmt.Errorf("reload business after settings update: %w", err)
+	}
+
+	audit.LogBusinessUpdated(ctx, s.audit, businessID, actorUserID)
+
+	return updated, nil
 }

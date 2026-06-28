@@ -250,6 +250,9 @@ func (s *noopBusinessService) GetByID(ctx context.Context, id uuid.UUID) (*domai
 func (s *noopBusinessService) Update(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }
+func (s *noopBusinessService) UpdateSettingsKeys(_ context.Context, _ uuid.UUID, _ map[string]interface{}, _ uuid.UUID) (*domain.Business, error) {
+	return nil, nil
+}
 func (s *noopBusinessService) GetToolApprovals(_ context.Context, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
 	return map[string]domain.ToolFloor{}, nil
 }

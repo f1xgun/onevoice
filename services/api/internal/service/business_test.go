@@ -23,6 +23,7 @@ type mockBusinessRepository struct {
 	createInTxFunc          func(ctx context.Context, tx pgx.Tx, business *domain.Business) error
 	getByIDFunc             func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	updateFunc              func(ctx context.Context, business *domain.Business) error
+	updateSettingsKeysFunc  func(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}) error
 	updateToolApprovalsFunc func(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
@@ -56,6 +57,13 @@ func (m *mockBusinessRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 func (m *mockBusinessRepository) Update(ctx context.Context, business *domain.Business) error {
 	if m.updateFunc != nil {
 		return m.updateFunc(ctx, business)
+	}
+	return nil
+}
+
+func (m *mockBusinessRepository) UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}) error {
+	if m.updateSettingsKeysFunc != nil {
+		return m.updateSettingsKeysFunc(ctx, businessID, keys)
 	}
 	return nil
 }

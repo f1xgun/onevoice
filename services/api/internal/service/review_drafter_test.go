@@ -102,6 +102,9 @@ func (f *fakeBusinessRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Busi
 	return f.business, nil
 }
 func (f *fakeBusinessRepo) Update(context.Context, *domain.Business) error { panic("unused") }
+func (f *fakeBusinessRepo) UpdateSettingsKeys(context.Context, uuid.UUID, map[string]interface{}) error {
+	panic("unused")
+}
 func (f *fakeBusinessRepo) UpdateToolApprovals(context.Context, uuid.UUID, map[string]domain.ToolFloor) error {
 	panic("unused")
 }
