@@ -14,6 +14,7 @@ import { authFetch } from '@/lib/api/authFetch';
 import { applySSEEvent, consumeSSEStream } from '@/lib/sse';
 import { trackEvent } from '@/lib/telemetry';
 import { useResolveErrorMap } from '@/lib/resolveErrorMap';
+import { mapPreStreamChatError } from '@/lib/chatError';
 import type {
   ApprovalDecision,
   Message,
@@ -189,6 +190,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
   const tCommon = useTranslations('common');
   const tCommonErrors = useTranslations('common.errors');
+  const tStreamError = useTranslations('chat.streamError');
   const locale = useLocale();
   const { resolveError, resumeStreamError } = useResolveErrorMap();
 
@@ -439,6 +441,35 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           signal: controller.signal,
         });
 
+        // The chat POST can fail with a typed pre-stream error before the SSE
+        // body opens (429 sse_concurrency_exceeded + Retry-After, 503
+        // rate_limit_unavailable, 404 business_not_found, 502
+        // orchestrator_unavailable, 400). consumeSSEStream would collapse all of
+        // these to a bare "HTTP <status>" throw, losing the code and retry hint.
+        // Map them to the same `error` SSE shape the renderer localizes instead.
+        if (!response.ok) {
+          let body: unknown = null;
+          try {
+            body = await response.json();
+          } catch {
+            body = null;
+          }
+          const headerRetryAfter = Number(response.headers.get('Retry-After'));
+          const mapped = mapPreStreamChatError(response.status, body);
+          applyEventToLastAssistant({
+            type: 'error',
+            code: mapped.code,
+            content: mapped.code ? mapped.detail : (mapped.detail ?? `HTTP ${response.status}`),
+          });
+          const retryAfterSeconds = Number.isFinite(headerRetryAfter)
+            ? headerRetryAfter
+            : mapped.retryAfterSeconds;
+          if (retryAfterSeconds && retryAfterSeconds > 0) {
+            toast.error(tStreamError('retryAfter', { seconds: retryAfterSeconds }));
+          }
+          return;
+        }
+
         await consumeSSEStream(response, controller.signal, onEventRef.current);
       } catch (error: unknown) {
         if ((error as Error).name === 'AbortError') return;
@@ -462,7 +493,15 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         }
       }
     },
-    [conversationId, activeBusinessId, finalizeStreamingAssistant, tCommon, locale]
+    [
+      conversationId,
+      activeBusinessId,
+      finalizeStreamingAssistant,
+      applyEventToLastAssistant,
+      tCommon,
+      tStreamError,
+      locale,
+    ]
   );
 
   const stop = useCallback(() => {

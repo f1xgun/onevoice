@@ -421,6 +421,10 @@
       "rateLimitUnavailable": "The service is temporarily unavailable. Please try again later.",
       "rateLimitExceeded": "Too many requests. Wait a minute and try again.",
       "approvalExpired": "The approval window for this action has expired. Send a new message to continue.",
+      "sseConcurrencyExceeded": "Another request is already running in this account. Wait for it to finish and try again.",
+      "businessNotFound": "Organization not found. Refresh the page or pick another organization.",
+      "orchestratorUnavailable": "The assistant service is temporarily unavailable. Please try again in a moment.",
+      "retryAfter": "Try again in {seconds}s.",
       "fallback": "Something went wrong. Please try again in a moment.",
       "detailsLabel": "Details"
     },
