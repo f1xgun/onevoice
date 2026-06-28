@@ -26,10 +26,13 @@ func (f *fakeOwnerResolver) GetByID(_ context.Context, _ uuid.UUID) (*domain.Use
 }
 
 // fakeDeletionOutbox records the (toEmail, subject) pairs passed to the cancel
-// call so a test can assert the pending T-7 row was targeted. Enqueue paths are
-// no-ops — they're only exercised by integration tests.
+// call so a test can assert the pending T-7 row was targeted, and tallies the
+// per-business cancel calls so a test can assert sibling organizations are not
+// over-canceled. Enqueue paths are no-ops — they're only exercised by
+// integration tests.
 type fakeDeletionOutbox struct {
 	canceledSubjectsByEmail map[string][]string
+	canceledByBusiness      map[uuid.UUID]int
 }
 
 func (f *fakeDeletionOutbox) Enqueue(_ context.Context, _ pgx.Tx, _ repository.OutboxEnqueueInput) (uuid.UUID, error) {
@@ -40,11 +43,15 @@ func (f *fakeDeletionOutbox) EnqueueDeferred(_ context.Context, _ pgx.Tx, _ repo
 	return uuid.Nil, nil
 }
 
-func (f *fakeDeletionOutbox) CancelPendingBySubjectAndRecipient(_ context.Context, toEmail, subject string) error {
+func (f *fakeDeletionOutbox) CancelPendingBusinessT7ByRecipient(_ context.Context, toEmail, subject string, businessID uuid.UUID) error {
 	if f.canceledSubjectsByEmail == nil {
 		f.canceledSubjectsByEmail = map[string][]string{}
 	}
+	if f.canceledByBusiness == nil {
+		f.canceledByBusiness = map[uuid.UUID]int{}
+	}
 	f.canceledSubjectsByEmail[toEmail] = append(f.canceledSubjectsByEmail[toEmail], subject)
+	f.canceledByBusiness[businessID]++
 	return nil
 }
 
@@ -211,6 +218,36 @@ func TestCancelDeletion_UnknownLocaleCancelsBothVariants(t *testing.T) {
 	subjects := outbox.canceledSubjectsByEmail[owner.Email]
 	require.Contains(t, subjects, templates.BusinessDeletionT7WarningSubject("ru"))
 	require.Contains(t, subjects, templates.BusinessDeletionT7WarningSubject("en"))
+}
+
+// TestCancelDeletion_CancelScopedToOwnBusiness is the fail-on-revert guard for
+// the sibling-overcancel bug: an owner with two pending organization deletions
+// (orgA + orgB, same owner email + identical locale-keyed T-7 subject) restores
+// orgA; the cancel must target ONLY orgA's business_id so orgB's still-scheduled
+// T-7 warning survives. Reverting cancelPendingT7Warning to the unscoped
+// (to_email, subject)-only cancel makes a single CancelDeletion call address
+// both rows; the per-business tally would then be wrong and this test fails.
+func TestCancelDeletion_CancelScopedToOwnBusiness(t *testing.T) {
+	owner := &domain.User{Email: "owner@example.com", PreferredLocale: "ru"}
+	outbox := &fakeDeletionOutbox{}
+	s := &BusinessDeletionService{
+		businesses: &fakeBusinessDeletionRepo{canceled: true},
+		members:    &fakeOwnerChecker{member: ownerMember(systemOwnerRoleID)},
+		users:      &fakeOwnerResolver{user: owner},
+		outbox:     outbox,
+		auditLog:   audit.Nop(),
+		graceDays:  30,
+	}
+
+	orgA := uuid.New()
+	orgB := uuid.New()
+
+	require.NoError(t, s.CancelDeletion(context.Background(), uuid.New(), orgA, "1.2.3.4", "ua"))
+
+	require.Equal(t, 1, outbox.canceledByBusiness[orgA],
+		"restoring orgA must cancel exactly orgA's T-7 warning row")
+	require.Equal(t, 0, outbox.canceledByBusiness[orgB],
+		"orgB's still-scheduled T-7 warning must survive orgA's restore")
 }
 
 // TestCancelDeletion_NotCanceledMapsToPurged returns ErrBusinessAlreadyPurged

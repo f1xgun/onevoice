@@ -50,7 +50,7 @@ type BusinessOwnerEmailResolver interface {
 type BusinessDeletionOutbox interface {
 	Enqueue(ctx context.Context, tx pgx.Tx, in repository.OutboxEnqueueInput) (uuid.UUID, error)
 	EnqueueDeferred(ctx context.Context, tx pgx.Tx, in repository.OutboxEnqueueInput, nextAttemptAt time.Time) (uuid.UUID, error)
-	CancelPendingBySubjectAndRecipient(ctx context.Context, toEmail, subject string) error
+	CancelPendingBusinessT7ByRecipient(ctx context.Context, toEmail, subject string, businessID uuid.UUID) error
 }
 
 // BusinessDeletionService orchestrates the organization request/cancel/sweep
@@ -170,20 +170,22 @@ func (s *BusinessDeletionService) RequestDeletion(ctx context.Context, actorUser
 
 	if ownerEmail != "" {
 		confirmIn := repository.OutboxEnqueueInput{
-			ToEmail:  ownerEmail,
-			Subject:  templates.BusinessDeletionConfirmationSubject(ownerLocale),
-			BodyText: templates.BusinessDeletionConfirmationText(ownerLocale, business.Name, scheduledDeletionAt),
-			BodyHTML: templates.BusinessDeletionConfirmationHTML(ownerLocale, business.Name, scheduledDeletionAt),
+			ToEmail:    ownerEmail,
+			Subject:    templates.BusinessDeletionConfirmationSubject(ownerLocale),
+			BodyText:   templates.BusinessDeletionConfirmationText(ownerLocale, business.Name, scheduledDeletionAt),
+			BodyHTML:   templates.BusinessDeletionConfirmationHTML(ownerLocale, business.Name, scheduledDeletionAt),
+			BusinessID: &businessID,
 		}
 		if _, err := s.outbox.Enqueue(ctx, tx, confirmIn); err != nil {
 			return fmt.Errorf("enqueue confirmation email: %w", err)
 		}
 
 		warnIn := repository.OutboxEnqueueInput{
-			ToEmail:  ownerEmail,
-			Subject:  templates.BusinessDeletionT7WarningSubject(ownerLocale),
-			BodyText: templates.BusinessDeletionT7WarningText(ownerLocale, business.Name, scheduledDeletionAt),
-			BodyHTML: templates.BusinessDeletionT7WarningHTML(ownerLocale, business.Name, scheduledDeletionAt),
+			ToEmail:    ownerEmail,
+			Subject:    templates.BusinessDeletionT7WarningSubject(ownerLocale),
+			BodyText:   templates.BusinessDeletionT7WarningText(ownerLocale, business.Name, scheduledDeletionAt),
+			BodyHTML:   templates.BusinessDeletionT7WarningHTML(ownerLocale, business.Name, scheduledDeletionAt),
+			BusinessID: &businessID,
 		}
 		t7At := time.Now().Add(time.Duration(s.t7OffsetDays) * 24 * time.Hour)
 		if _, err := s.outbox.EnqueueDeferred(ctx, tx, warnIn, t7At); err != nil {
@@ -226,10 +228,14 @@ func (s *BusinessDeletionService) CancelDeletion(ctx context.Context, actorUserI
 
 // cancelPendingT7Warning best-effort cancels the deferred T-7 warning row that
 // RequestDeletion enqueued, so the worker doesn't email "your organization will
-// be deleted in 7 days" ~23 days after the owner cancels. The T-7 subject is
-// locale-dependent: when the owner's locale resolves, cancel that variant; when
-// the owner email or locale can't be resolved, cancel both subject variants so
-// the pending row is caught regardless. Non-fatal — never fails the cancel.
+// be deleted in 7 days" ~23 days after the owner cancels. The cancel is scoped
+// to this organization's business_id so a sibling organization with its own
+// still-scheduled T-7 warning (same owner email + subject) is left untouched —
+// an owner with two pending organization deletions who restores one must not
+// lose the other's advance-notice email. The T-7 subject is locale-dependent:
+// when the owner's locale resolves, cancel that variant; when the owner email or
+// locale can't be resolved, cancel both subject variants so the pending row is
+// caught regardless. Non-fatal — never fails the cancel.
 func (s *BusinessDeletionService) cancelPendingT7Warning(ctx context.Context, actorUserID, businessID uuid.UUID) {
 	owner, ownerErr := s.users.GetByID(ctx, actorUserID)
 	if ownerErr != nil || owner == nil || owner.Email == "" {
@@ -247,7 +253,7 @@ func (s *BusinessDeletionService) cancelPendingT7Warning(ctx context.Context, ac
 		}
 	}
 	for _, subject := range subjects {
-		if cancelErr := s.outbox.CancelPendingBySubjectAndRecipient(ctx, owner.Email, subject); cancelErr != nil {
+		if cancelErr := s.outbox.CancelPendingBusinessT7ByRecipient(ctx, owner.Email, subject, businessID); cancelErr != nil {
 			slog.WarnContext(ctx, "cancel pending T-7 warning failed (non-fatal)", "businessID", businessID, "userID", actorUserID, "err", cancelErr)
 		}
 	}

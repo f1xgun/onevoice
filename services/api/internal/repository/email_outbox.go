@@ -37,12 +37,17 @@ type OutboxRow struct {
 }
 
 // OutboxEnqueueInput is the minimum a caller needs to schedule a send.
-// BodyHTML may be empty for text-only mail.
+// BodyHTML may be empty for text-only mail. BusinessID scopes a row to one
+// organization so the organization-deletion cancel can target a single pending
+// T-7 warning when an owner has multiple pending deletions; it is nil (column
+// NULL) for the single-per-recipient flows (account deletion, password reset,
+// email verification, feedback).
 type OutboxEnqueueInput struct {
-	ToEmail  string
-	Subject  string
-	BodyText string
-	BodyHTML string
+	ToEmail    string
+	Subject    string
+	BodyText   string
+	BodyHTML   string
+	BusinessID *uuid.UUID
 }
 
 // ErrEmailOutboxNotFound is a forward-compatibility sentinel for a future
@@ -67,17 +72,17 @@ func NewEmailOutboxRepository(pool pgxPool) *EmailOutboxRepository {
 // to pool.QueryRow for sweeper paths with no surrounding business tx.
 func (r *EmailOutboxRepository) Enqueue(ctx context.Context, tx pgx.Tx, in OutboxEnqueueInput) (uuid.UUID, error) {
 	const q = `
-		INSERT INTO email_outbox (to_email, subject, body_text, body_html)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO email_outbox (to_email, subject, body_text, body_html, business_id)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`
 	var id uuid.UUID
 	if tx == nil {
-		if err := r.pool.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML).Scan(&id); err != nil {
+		if err := r.pool.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, in.BusinessID).Scan(&id); err != nil {
 			return uuid.Nil, fmt.Errorf("email_outbox: enqueue (nil tx): %w", err)
 		}
 		return id, nil
 	}
-	if err := tx.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML).Scan(&id); err != nil {
+	if err := tx.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, in.BusinessID).Scan(&id); err != nil {
 		return uuid.Nil, fmt.Errorf("email_outbox: enqueue: %w", err)
 	}
 	return id, nil
@@ -88,17 +93,17 @@ func (r *EmailOutboxRepository) Enqueue(ctx context.Context, tx pgx.Tx, in Outbo
 // Also accepts a nil tx (sweeper fallback path), mirroring Enqueue.
 func (r *EmailOutboxRepository) EnqueueDeferred(ctx context.Context, tx pgx.Tx, in OutboxEnqueueInput, nextAttemptAt time.Time) (uuid.UUID, error) {
 	const q = `
-		INSERT INTO email_outbox (to_email, subject, body_text, body_html, next_attempt_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO email_outbox (to_email, subject, body_text, body_html, next_attempt_at, business_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`
 	var id uuid.UUID
 	if tx == nil {
-		if err := r.pool.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, nextAttemptAt).Scan(&id); err != nil {
+		if err := r.pool.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, nextAttemptAt, in.BusinessID).Scan(&id); err != nil {
 			return uuid.Nil, fmt.Errorf("email_outbox: enqueue deferred (nil tx): %w", err)
 		}
 		return id, nil
 	}
-	if err := tx.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, nextAttemptAt).Scan(&id); err != nil {
+	if err := tx.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, nextAttemptAt, in.BusinessID).Scan(&id); err != nil {
 		return uuid.Nil, fmt.Errorf("email_outbox: enqueue deferred: %w", err)
 	}
 	return id, nil
@@ -132,6 +137,27 @@ func (r *EmailOutboxRepository) CancelPendingBySubjectAndRecipient(ctx context.C
 	            WHERE to_email = $1 AND subject = $2 AND status = 'pending'`
 	if _, err := r.pool.Exec(ctx, q, toEmail, subject); err != nil {
 		return fmt.Errorf("email_outbox: cancel pending: %w", err)
+	}
+	return nil
+}
+
+// CancelPendingBusinessT7ByRecipient transitions a pending row to 'canceled'
+// when an owner restores ONE organization, scoped to that organization's
+// business_id so a sibling organization's still-scheduled T-7 warning (same
+// to_email + subject, different business_id) is left untouched. Without the
+// business_id predicate, restoring one of two pending organization deletions
+// would cancel both rows and silently drop the other's advance-notice email.
+// Idempotent: nil even when 0 rows match. Scrubs body for terminal-state
+// consistency with the other transitions.
+func (r *EmailOutboxRepository) CancelPendingBusinessT7ByRecipient(ctx context.Context, toEmail, subject string, businessID uuid.UUID) error {
+	const q = `UPDATE email_outbox
+	              SET status = 'canceled',
+	                  last_error = 'canceled: deletion restored',
+	                  body_text = '',
+	                  body_html = NULL
+	            WHERE to_email = $1 AND subject = $2 AND business_id = $3 AND status = 'pending'`
+	if _, err := r.pool.Exec(ctx, q, toEmail, subject, businessID); err != nil {
+		return fmt.Errorf("email_outbox: cancel pending business T-7: %w", err)
 	}
 	return nil
 }

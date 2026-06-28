@@ -67,7 +67,7 @@ func TestFeedbackService_Submit_WithNotify(t *testing.T) {
 		WithArgs(anyArgs(8)...).
 		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(uuid.New()))
 	mock.ExpectQuery(`INSERT INTO email_outbox`).
-		WithArgs(anyArgs(4)...).
+		WithArgs(anyArgs(5)...).
 		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(uuid.New()))
 	mock.ExpectCommit()
 
