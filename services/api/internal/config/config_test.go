@@ -196,6 +196,40 @@ func TestLoad_RateLimits(t *testing.T) {
 	})
 }
 
+func TestLoad_UserRateLimits_NonPositiveFailsLoud(t *testing.T) {
+	keys := []string{
+		"RATE_LIMIT_CHAT",
+		"RATE_LIMIT_HITL",
+		"RATE_LIMIT_CONSENTS",
+		"RATE_LIMIT_TELEMETRY",
+		"RATE_LIMIT_WRITES",
+		"RATE_LIMIT_INVITATIONS",
+		"RATE_LIMIT_SEARCH",
+	}
+	for _, key := range keys {
+		for _, value := range []string{"0", "-1", "notanint"} {
+			t.Run(key+"="+value, func(t *testing.T) {
+				minTestEnv(t)
+				t.Setenv(key, value)
+				_, err := config.Load()
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), key)
+			})
+		}
+	}
+}
+
+func TestLoad_UserRateLimits_PositiveLoadsCleanly(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("RATE_LIMIT_SEARCH", "1")
+	t.Setenv("RATE_LIMIT_WRITES", "120")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.RateLimitSearch)
+	assert.Equal(t, 120, cfg.RateLimitWrites)
+}
+
 func TestLoad_HTTPTimeouts(t *testing.T) {
 	t.Run("defaults when env unset", func(t *testing.T) {
 		minTestEnv(t)

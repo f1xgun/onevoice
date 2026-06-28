@@ -298,16 +298,8 @@ func Load() (*Config, error) {
 		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", defaultHTTPIdleTimeout),
 		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", defaultOrchestratorFetchTO),
 
-		RateLimitRegister:  getEnvInt("RATE_LIMIT_REGISTER", 5), //nolint:mnd // env-driven default
-		RateLimitLogin:     getEnvInt("RATE_LIMIT_LOGIN", 10),
-		RateLimitChat:      getEnvInt("RATE_LIMIT_CHAT", 10),
-		RateLimitHITL:      getEnvInt("RATE_LIMIT_HITL", 10),
-		RateLimitConsents:  getEnvInt("RATE_LIMIT_CONSENTS", 10),
-		RateLimitTelemetry: getEnvInt("RATE_LIMIT_TELEMETRY", 60), //nolint:mnd // env-driven default; telemetry batches ~12/min so the cap is generous
-		//nolint:mnd // env-driven default; generous write budget caps abuse without throttling normal use
-		RateLimitWrites:      getEnvInt("RATE_LIMIT_WRITES", 60),
-		RateLimitInvitations: getEnvInt("RATE_LIMIT_INVITATIONS", 10),
-		RateLimitSearch:      getEnvInt("RATE_LIMIT_SEARCH", 30), //nolint:mnd // env-driven default; generous for interactive search, caps DoS amplification loops
+		RateLimitRegister: getEnvInt("RATE_LIMIT_REGISTER", 5), //nolint:mnd // env-driven default
+		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
 
 		ShutdownTimeout: shutdownTimeout,
 
@@ -418,6 +410,39 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("MESSAGE_HISTORY_LIMIT must be <= %d, got %d", maxMessageHistoryLimit, n)
 		}
 		cfg.MessageHistoryLimit = n
+	}
+
+	const (
+		defaultRateLimitChat        = 10
+		defaultRateLimitHITL        = 10
+		defaultRateLimitConsents    = 10
+		defaultRateLimitTelemetry   = 60
+		defaultRateLimitWrites      = 60
+		defaultRateLimitInvitations = 10
+		defaultRateLimitSearch      = 30
+	)
+	userRateLimits := []struct {
+		key    string
+		def    int
+		target *int
+	}{
+		{"RATE_LIMIT_CHAT", defaultRateLimitChat, &cfg.RateLimitChat},
+		{"RATE_LIMIT_HITL", defaultRateLimitHITL, &cfg.RateLimitHITL},
+		{"RATE_LIMIT_CONSENTS", defaultRateLimitConsents, &cfg.RateLimitConsents},
+		{"RATE_LIMIT_TELEMETRY", defaultRateLimitTelemetry, &cfg.RateLimitTelemetry},
+		{"RATE_LIMIT_WRITES", defaultRateLimitWrites, &cfg.RateLimitWrites},
+		{"RATE_LIMIT_INVITATIONS", defaultRateLimitInvitations, &cfg.RateLimitInvitations},
+		{"RATE_LIMIT_SEARCH", defaultRateLimitSearch, &cfg.RateLimitSearch},
+	}
+	for _, rl := range userRateLimits {
+		n, perr := parseIntEnv(rl.key, rl.def)
+		if perr != nil {
+			return nil, perr
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("%s must be > 0, got %d", rl.key, n)
+		}
+		*rl.target = n
 	}
 
 	pgMaxConns, err := parseIntEnv("PG_MAX_CONNS", defaultPGMaxConns)
