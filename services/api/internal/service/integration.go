@@ -75,6 +75,19 @@ type NATSPublisher interface {
 	Publish(subject string, data []byte) error
 }
 
+// ActorLookup is the narrow slice of domain.UserRepository the connect-actor
+// gate needs. Connect uses it to re-assert the same email-verified and
+// account-deletion-grace predicates the RequireVerifiedEmailDay0 and
+// BlockWritesDuringGrace middlewares enforce, so credential-persisting entry
+// paths that sit outside those middlewares (the public OAuth callbacks) cannot
+// bypass the gates. It reads the actor INCLUDING soft-deleted rows
+// (GetByIDIncludingDeleted): RequestDeletion stamps both deletion_requested_at
+// and deleted_at, so a user inside the grace window is soft-deleted and the
+// `deleted_at IS NULL`-filtered GetByID would miss it — failing the gate open.
+type ActorLookup interface {
+	GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error)
+}
+
 // IntegrationService defines the interface for platform integration management.
 // See docs/services/integration.md.
 type IntegrationService interface {
@@ -98,6 +111,7 @@ type integrationService struct {
 	refresher TokenRefresher // nil for platforms that don't need refresh
 	audit     audit.Logger
 	nats      NATSPublisher // nil when NATS is unreachable — revoke publish is skipped (fail-open)
+	actors    ActorLookup   // nil disables the connect-actor gate (in-process callers already gated upstream)
 }
 
 // Compile-time check that integrationService implements IntegrationService
@@ -130,6 +144,23 @@ func NewIntegrationService(repo domain.IntegrationRepository, envelope *crypto.E
 func WithNATSPublisher(svc IntegrationService, p NATSPublisher) IntegrationService {
 	if s, ok := svc.(*integrationService); ok {
 		s.nats = p
+	}
+	return svc
+}
+
+// WithActorGate attaches the user lookup that lets Connect re-assert the
+// email-verified and account-deletion-grace predicates against the acting
+// user, returning svc for chaining. When the lookup is unset (or nil), or svc
+// is not the concrete service, Connect skips the gate — safe for callers that
+// are already gated by the RequireVerifiedEmailDay0 / BlockWritesDuringGrace
+// middlewares. Attached so the public OAuth callbacks, which persist a live
+// integration outside those middlewares, cannot bypass them. The check is
+// idempotent on already-gated paste-flow routes (they reject upstream before
+// Connect is reached). Constructed separately from the constructor so existing
+// call sites that do not need the gate are unaffected.
+func WithActorGate(svc IntegrationService, actors ActorLookup) IntegrationService {
+	if s, ok := svc.(*integrationService); ok {
+		s.actors = actors
 	}
 	return svc
 }
@@ -296,6 +327,10 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, fmt.Errorf("platform is required")
 	}
 
+	if err := s.gateActor(ctx, params.ActorID); err != nil {
+		return nil, err
+	}
+
 	if params.ExternalID != "" {
 		existing, lookupErr := s.repo.GetByBusinessPlatformExternal(ctx, params.BusinessID, params.Platform, params.ExternalID)
 		switch {
@@ -362,6 +397,37 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID, params.ActorIP, params.UserAgent, params.ParsedFormat)
 
 	return integration, nil
+}
+
+// gateActor re-asserts, against the acting user, the same predicates the
+// RequireVerifiedEmailDay0 and BlockWritesDuringGrace middlewares enforce:
+// reject when the email is unverified (ErrActorEmailNotVerified) or when the
+// account is inside the deletion grace window — deletion_requested_at set and
+// deletion_canceled_at null (ErrActorPendingDeletion). The lookup reads the
+// actor including soft-deleted rows, so a grace-window user (whose deleted_at
+// is stamped alongside deletion_requested_at) is still found and rejected. It
+// is a no-op when no ActorLookup is attached (in-process callers already gated
+// upstream) or when actorID is the nil UUID (no identified actor to gate). A
+// genuinely missing user row is treated as not-gated rather than a hard error,
+// mirroring the middlewares' fail-open posture on an absent record.
+func (s *integrationService) gateActor(ctx context.Context, actorID uuid.UUID) error {
+	if s.actors == nil || actorID == uuid.Nil {
+		return nil
+	}
+	u, err := s.actors.GetByIDIncludingDeleted(ctx, actorID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil
+		}
+		return fmt.Errorf("load connect actor: %w", err)
+	}
+	if !u.EmailVerified {
+		return domain.ErrActorEmailNotVerified
+	}
+	if u.DeletionRequestedAt != nil && u.DeletionCanceledAt == nil {
+		return domain.ErrActorPendingDeletion
+	}
+	return nil
 }
 
 // GetDecryptedToken returns decrypted tokens, refreshing on expiry; empty externalID falls back to first-active.

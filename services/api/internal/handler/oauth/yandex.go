@@ -118,7 +118,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("failed to connect Yandex.Business integration", "error", err)
-		http.Redirect(w, r, "/integrations?error=connect_failed", http.StatusFound)
+		http.Redirect(w, r, "/integrations?error="+connectErrorRedirectCode(err), http.StatusFound)
 		return
 	}
 

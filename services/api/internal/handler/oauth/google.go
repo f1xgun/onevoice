@@ -170,7 +170,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			slog.ErrorContext(r.Context(), "failed to connect Google Business integration", "error", err)
-			http.Redirect(w, r, "/integrations?error=connect_failed", http.StatusFound)
+			http.Redirect(w, r, "/integrations?error="+connectErrorRedirectCode(err), http.StatusFound)
 			return
 		}
 		http.Redirect(w, r, "/integrations?connected=google_business", http.StatusFound)

@@ -1095,6 +1095,8 @@
       "internal": "Something went wrong. Please try again.",
       "noRefreshToken": "Google didn't return a refresh token. Try connecting again.",
       "noLocations": "This Google account has no business locations.",
+      "emailVerificationRequired": "Verify your email first to connect channels.",
+      "accountPendingDeletion": "Your account is pending deletion. Restore it to connect channels.",
       "fallback": "Couldn't connect: {error}"
     }
   },

@@ -1604,3 +1604,165 @@ func TestWipeRefreshPlaintexts_NotRotatedLeavesRefreshAlias(t *testing.T) {
 	assert.Equal(t, original, pts[1],
 		"non-rotated refresh aliases refreshPts and must be left for its own deferred wipe")
 }
+
+// fakeUserStore mirrors the production users table for the two lookup
+// semantics the connect-actor gate cares about: GetByID filters out
+// soft-deleted rows (deleted_at IS NOT NULL → ErrUserNotFound), exactly like
+// repository.userRepository.GetByID, while GetByIDIncludingDeleted returns the
+// row regardless of deleted_at, like GetByIDIncludingDeleted. A nil user models
+// a genuinely absent row (both lookups return ErrUserNotFound).
+type fakeUserStore struct {
+	user *domain.User
+}
+
+func (f fakeUserStore) GetByID(_ context.Context, _ uuid.UUID) (*domain.User, error) {
+	if f.user == nil || f.user.DeletedAt != nil {
+		return nil, domain.ErrUserNotFound
+	}
+	return f.user, nil
+}
+
+func (f fakeUserStore) GetByIDIncludingDeleted(_ context.Context, _ uuid.UUID) (*domain.User, error) {
+	if f.user == nil {
+		return nil, domain.ErrUserNotFound
+	}
+	return f.user, nil
+}
+
+// filteredActorLookup adapts a fakeUserStore to the ActorLookup surface but
+// resolves the actor through the deleted_at-FILTERED GetByID — i.e. the
+// production-broken lookup the fix replaced. The service-level fail-on-revert
+// sub-test wires the gate through this to prove that a grace-window
+// (soft-deleted) actor slips past the gate when the filtered lookup is used.
+type filteredActorLookup struct {
+	store fakeUserStore
+}
+
+func (f filteredActorLookup) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	return f.store.GetByID(ctx, id)
+}
+
+// TestConnect_ActorGate is the fail-on-revert guard for the OAuth-callback
+// gating bypass: integrationService.Connect, when a WithActorGate lookup is
+// attached, must re-assert the same email-verified and account-deletion-grace
+// predicates the RequireVerifiedEmailDay0 / BlockWritesDuringGrace middlewares
+// enforce — because the public OAuth callbacks (Yandex true-OAuth, Google
+// single-location, VK community) persist a live integration outside those
+// middlewares. An unverified actor, or an actor mid-deletion, must be rejected
+// BEFORE the row is created; a verified, non-deleting actor still connects.
+//
+// The pending-deletion actor is modeled exactly as RequestDeletion leaves it:
+// deletion_requested_at set AND deleted_at set (the row is soft-deleted). The
+// gate therefore MUST read the actor including soft-deleted rows; the
+// production lookup uses GetByIDIncludingDeleted. The grace_window_filtered_lookup
+// sub-test wires the gate through the deleted_at-filtered GetByID instead (the
+// pre-fix lookup) and proves it fails open — the soft-deleted actor reads as
+// not-found, the gate falls through, and the integration persists.
+func TestConnect_ActorGate(t *testing.T) {
+	ctx := context.Background()
+	actorID := uuid.New()
+	now := time.Now()
+	requestedAt := now.Add(-24 * time.Hour)
+	deletedAt := now.Add(-24 * time.Hour)
+	canceledAt := now.Add(-time.Hour)
+
+	baseParams := func() ConnectParams {
+		return ConnectParams{
+			BusinessID:   uuid.New(),
+			ActorID:      actorID,
+			Platform:     "yandex_business",
+			ExternalID:   "default",
+			AccessToken:  "tok",
+			ParsedFormat: ParsedFormatOAuthCode,
+		}
+	}
+
+	gracePendingUser := &domain.User{
+		ID:                  actorID,
+		EmailVerified:       true,
+		DeletedAt:           &deletedAt,
+		DeletionRequestedAt: &requestedAt,
+	}
+
+	tests := []struct {
+		name        string
+		user        *domain.User
+		wantErr     error
+		wantCreated bool
+	}{
+		{
+			name:        "unverified actor is rejected before persist",
+			user:        &domain.User{ID: actorID, EmailVerified: false},
+			wantErr:     domain.ErrActorEmailNotVerified,
+			wantCreated: false,
+		},
+		{
+			name:        "pending-deletion actor (soft-deleted) is rejected before persist",
+			user:        gracePendingUser,
+			wantErr:     domain.ErrActorPendingDeletion,
+			wantCreated: false,
+		},
+		{
+			name:        "verified non-deleting actor connects",
+			user:        &domain.User{ID: actorID, EmailVerified: true},
+			wantCreated: true,
+		},
+		{
+			name:        "canceled deletion is not pending and connects",
+			user:        &domain.User{ID: actorID, EmailVerified: true, DeletionRequestedAt: &requestedAt, DeletionCanceledAt: &canceledAt},
+			wantCreated: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var created bool
+			repo := &mockIntegrationRepository{
+				createFunc: func(_ context.Context, integration *domain.Integration) error {
+					created = true
+					integration.ID = uuid.New()
+					return nil
+				},
+			}
+
+			svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, audit.Nop())
+			svc = WithActorGate(svc, fakeUserStore{user: tc.user})
+
+			_, err := svc.Connect(ctx, baseParams())
+
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantCreated, created,
+				"repo.Create call expectation mismatch — the gate must reject before persisting")
+		})
+	}
+
+	// grace_window_filtered_lookup pins the fail-on-revert: wiring the gate
+	// through the deleted_at-FILTERED lookup (the pre-fix GetByID) lets the
+	// soft-deleted grace-window actor slip past — Create fires. Reverting the
+	// gate's lookup to GetByID reproduces exactly this, so the
+	// "pending-deletion actor is rejected" case above turns red.
+	t.Run("grace_window_filtered_lookup fails open and persists", func(t *testing.T) {
+		var created bool
+		repo := &mockIntegrationRepository{
+			createFunc: func(_ context.Context, integration *domain.Integration) error {
+				created = true
+				integration.ID = uuid.New()
+				return nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, audit.Nop())
+		svc = WithActorGate(svc, filteredActorLookup{store: fakeUserStore{user: gracePendingUser}})
+
+		_, err := svc.Connect(ctx, baseParams())
+
+		require.NoError(t, err,
+			"the deleted_at-filtered lookup reads the grace-window actor as not-found → gate fails open")
+		assert.True(t, created,
+			"reverting the gate to the deleted_at-filtered lookup lets a mid-deletion actor persist a live integration — the bug this PR fixes")
+	})
+}
