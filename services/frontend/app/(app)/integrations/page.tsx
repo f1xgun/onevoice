@@ -78,6 +78,7 @@ export default function IntegrationsPage() {
   const [activeModalPlatform, setActiveModalPlatform] = useState<ModalPlatform | null>(null);
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
+  const baselineBusinessIdRef = useRef<string | null>(null);
 
   const { platforms } = usePlatforms();
   const activePlatforms = platforms.filter((p) => p.status === 'active');
@@ -154,11 +155,20 @@ export default function IntegrationsPage() {
   });
 
   useEffect(() => {
+    prevIntegrationIdsRef.current = null;
+    baselineBusinessIdRef.current = null;
+    setLastRegistered(null);
+  }, [activeBusinessId]);
+
+  useEffect(() => {
+    if (integrationsLoading) return;
+
     const currentIds = new Set(integrations.map((i) => i.id));
     const prev = prevIntegrationIdsRef.current;
 
-    if (prev == null) {
+    if (prev == null || baselineBusinessIdRef.current !== activeBusinessId) {
       prevIntegrationIdsRef.current = currentIds;
+      baselineBusinessIdRef.current = activeBusinessId;
       return;
     }
 
@@ -172,7 +182,7 @@ export default function IntegrationsPage() {
       });
     }
     prevIntegrationIdsRef.current = currentIds;
-  }, [integrations, business?.id]);
+  }, [integrations, business?.id, integrationsLoading, activeBusinessId]);
 
   const disconnectMutation = useMutation({
     mutationFn: (integrationId: string) => {
