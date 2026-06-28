@@ -208,6 +208,41 @@ func TestSelector_Record_RecoveryAfterThreeSuccesses(t *testing.T) {
 	assert.Equal(t, "healthy", providers[0].HealthStatus)
 }
 
+// TestSelector_Record_RecoveryRequiresConsecutiveSuccesses guards the hysteresis
+// against the cumulative-count regression: a provider with prior successes that
+// then drops to "down" must climb back only after healthRecoverySuccessMin
+// successes IN A ROW. A single success after a failure burst must NOT flip it
+// healthy just because its lifetime successCount already exceeds the threshold.
+func TestSelector_Record_RecoveryRequiresConsecutiveSuccesses(t *testing.T) {
+	entry := healthyEntry("test-model", "test-provider", 0, 0, 0)
+	s, registry, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "test-provider")
+	providers := registry.GetModelProviders("test-model")
+
+	for i := 0; i < 3; i++ {
+		s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
+	}
+	require.Equal(t, "healthy", providers[0].HealthStatus,
+		"3 fresh successes keep the provider healthy")
+
+	for i := 0; i < 4; i++ {
+		s.Record(entry, llm.Outcome{Success: false})
+	}
+	require.Equal(t, "down", providers[0].HealthStatus,
+		"a 4-failure burst (4/7 > 0.5) drives the provider down")
+
+	s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
+	assert.Equal(t, "down", providers[0].HealthStatus,
+		"1st post-burst success must NOT recover despite a high lifetime successCount")
+
+	s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
+	assert.Equal(t, "down", providers[0].HealthStatus,
+		"2nd consecutive success still below healthRecoverySuccessMin — stays down")
+
+	s.Record(entry, llm.Outcome{Success: true, Latency: 100 * time.Millisecond})
+	assert.Equal(t, "healthy", providers[0].HealthStatus,
+		"only the 3rd CONSECUTIVE success flips the provider back to healthy")
+}
+
 func TestSelector_Record_LatencyRollingWindow(t *testing.T) {
 	entry := healthyEntry("test-model", "test-provider", 0, 0, 0)
 	s, registry, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "test-provider")
