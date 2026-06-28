@@ -80,9 +80,12 @@ type NATSPublisher interface {
 // account-deletion-grace predicates the RequireVerifiedEmailDay0 and
 // BlockWritesDuringGrace middlewares enforce, so credential-persisting entry
 // paths that sit outside those middlewares (the public OAuth callbacks) cannot
-// bypass the gates.
+// bypass the gates. It reads the actor INCLUDING soft-deleted rows
+// (GetByIDIncludingDeleted): RequestDeletion stamps both deletion_requested_at
+// and deleted_at, so a user inside the grace window is soft-deleted and the
+// `deleted_at IS NULL`-filtered GetByID would miss it — failing the gate open.
 type ActorLookup interface {
-	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error)
 }
 
 // IntegrationService defines the interface for platform integration management.
@@ -400,16 +403,18 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 // RequireVerifiedEmailDay0 and BlockWritesDuringGrace middlewares enforce:
 // reject when the email is unverified (ErrActorEmailNotVerified) or when the
 // account is inside the deletion grace window — deletion_requested_at set and
-// deletion_canceled_at null (ErrActorPendingDeletion). It is a no-op when no
-// ActorLookup is attached (in-process callers already gated upstream) or when
-// actorID is the nil UUID (no identified actor to gate). A missing user row is
-// treated as not-gated rather than a hard error, mirroring the middlewares'
-// fail-open posture on an absent record.
+// deletion_canceled_at null (ErrActorPendingDeletion). The lookup reads the
+// actor including soft-deleted rows, so a grace-window user (whose deleted_at
+// is stamped alongside deletion_requested_at) is still found and rejected. It
+// is a no-op when no ActorLookup is attached (in-process callers already gated
+// upstream) or when actorID is the nil UUID (no identified actor to gate). A
+// genuinely missing user row is treated as not-gated rather than a hard error,
+// mirroring the middlewares' fail-open posture on an absent record.
 func (s *integrationService) gateActor(ctx context.Context, actorID uuid.UUID) error {
 	if s.actors == nil || actorID == uuid.Nil {
 		return nil
 	}
-	u, err := s.actors.GetByID(ctx, actorID)
+	u, err := s.actors.GetByIDIncludingDeleted(ctx, actorID)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
 			return nil
