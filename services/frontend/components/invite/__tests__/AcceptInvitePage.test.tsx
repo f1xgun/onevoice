@@ -12,14 +12,18 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace, push }),
   useParams: () => ({ token: 'abc123' }),
 }));
+const setAuth = vi.fn();
+const setAccessToken = vi.fn();
 vi.mock('@/lib/auth', () => {
   const useAuthStore = vi.fn();
   (useAuthStore as unknown as { getState: () => unknown }).getState = () => ({
     isAuthenticated: authedAtMount,
+    setAuth,
+    setAccessToken,
   });
   return { useAuthStore };
 });
-vi.mock('@/lib/api/authFetch', () => ({ refreshAccessToken: vi.fn() }));
+vi.mock('@/lib/api', () => ({ api: { post: vi.fn() } }));
 vi.mock('@/lib/hooks/useInvitations', () => ({
   useInvitationPreview: vi.fn(),
   useAcceptInvitation: vi.fn(),
@@ -30,7 +34,7 @@ vi.mock('@/lib/stores/business', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 import { useAuthStore } from '@/lib/auth';
-import { refreshAccessToken } from '@/lib/api/authFetch';
+import { api } from '@/lib/api';
 import { useInvitationPreview, useAcceptInvitation } from '@/lib/hooks/useInvitations';
 import { useBusinessStore } from '@/lib/stores/business';
 import { toast } from 'sonner';
@@ -69,7 +73,9 @@ beforeEach(() => {
   replace.mockReset();
   push.mockReset();
   authedAtMount = false;
-  vi.mocked(refreshAccessToken).mockReset();
+  setAuth.mockReset();
+  setAccessToken.mockReset();
+  vi.mocked(api.post).mockReset();
   vi.mocked(toast.error).mockReset();
   vi.mocked(useBusinessStore).mockImplementation(
     (
@@ -82,27 +88,54 @@ beforeEach(() => {
 });
 
 describe('AcceptInvitePage', () => {
-  it('redirects anonymous users to /login?next=/invite/{token} when refresh fails', async () => {
-    mockAuth(false);
-    vi.mocked(refreshAccessToken).mockRejectedValue(new Error('401'));
-    vi.mocked(useInvitationPreview).mockReturnValue({ isLoading: true } as never);
-    vi.mocked(useAcceptInvitation).mockReturnValue({
-      mutateAsync: vi.fn(),
-      isPending: false,
-    } as never);
-    render(wrap(<AcceptInvitePage />));
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?next=/invite/abc123'));
+  it('redirects anonymous users to /login?next=/invite/{token} preserving next when the refresh 401s', async () => {
+    const hardNav = vi.fn();
+    const realLocation = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...realLocation,
+        pathname: '/invite/abc123',
+        set href(v: string) {
+          hardNav(v);
+        },
+      },
+    });
+    try {
+      mockAuth(false);
+      // Anonymous visitor: POST /auth/refresh -> 401. Drive the REAL bootstrap
+      // path (raw api.post) rather than stubbing refreshAccessToken so the
+      // regression — a next-stripping hard nav to /login — would surface.
+      vi.mocked(api.post).mockRejectedValue({ response: { status: 401 } });
+      vi.mocked(useInvitationPreview).mockReturnValue({ isLoading: true } as never);
+      vi.mocked(useAcceptInvitation).mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: false,
+      } as never);
+      render(wrap(<AcceptInvitePage />));
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?next=/invite/abc123'));
+      // FAIL-ON-REVERT guard: the deep link must survive. No next-less hard
+      // navigation to /login may occur, and EVERY router.replace must carry
+      // the ?next= back to the invite (reverting the page fix routes through
+      // refreshAccessToken's hard nav to a bare /login, tripping both asserts).
+      expect(hardNav).not.toHaveBeenCalled();
+      for (const call of replace.mock.calls) {
+        expect(call).toEqual(['/login?next=/invite/abc123']);
+      }
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: realLocation,
+      });
+    }
   });
 
   it('bootstraps the session from the refresh cookie and renders the authed view without redirecting', async () => {
     mockAuth(false);
-    let resolveRefresh: (token: string) => void = () => {};
-    vi.mocked(refreshAccessToken).mockImplementation(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveRefresh = resolve;
-        })
-    );
+    // Already-logged-in visitor with only the httpOnly refresh cookie: the
+    // raw /auth/refresh resolves a fresh session. The page must set the token
+    // and render the invite view — no redirect to /login.
+    vi.mocked(api.post).mockResolvedValue({ data: { accessToken: 'new-access-token' } } as never);
     vi.mocked(useInvitationPreview).mockReturnValue({
       isLoading: false,
       isError: false,
@@ -113,8 +146,8 @@ describe('AcceptInvitePage', () => {
       isPending: false,
     } as never);
     const { rerender } = render(wrap(<AcceptInvitePage />));
+    await waitFor(() => expect(setAccessToken).toHaveBeenCalledWith('new-access-token'));
     mockAuth(true);
-    resolveRefresh('new-access-token');
     rerender(wrap(<AcceptInvitePage />));
     await waitFor(() => expect(screen.getByText('Acme')).toBeInTheDocument());
     expect(replace).not.toHaveBeenCalled();
