@@ -120,7 +120,7 @@ type BusinessMembershipRepository interface {
 	// DeleteInTx shares the tx with the last-owner invariant lock window.
 	DeleteInTx(ctx context.Context, tx pgx.Tx, businessID, userID uuid.UUID) error
 
-	// ListUserIDsByRole feeds post-commit authz.InvalidateMember fan-out; captured BEFORE tx.Commit.
+	// ListUserIDsByRole enumerates the user_ids holding roleID in a business (non-tx snapshot).
 	ListUserIDsByRole(ctx context.Context, businessID, roleID uuid.UUID) ([]uuid.UUID, error)
 }
 
@@ -150,7 +150,9 @@ type RoleRepository interface {
 	DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error
 
 	// DeleteWithReassignInTx reassigns then deletes — FK business_members.role_id is ON DELETE RESTRICT.
-	DeleteWithReassignInTx(ctx context.Context, tx pgx.Tx, businessID, oldRoleID, reassignToID, actorUserID uuid.UUID) error
+	// Returns the user_ids actually reassigned by the in-tx UPDATE (RETURNING) so the caller fans out
+	// authz.InvalidateMember over the authoritative set, not a racy pre-tx snapshot.
+	DeleteWithReassignInTx(ctx context.Context, tx pgx.Tx, businessID, oldRoleID, reassignToID, actorUserID uuid.UUID) ([]uuid.UUID, error)
 
 	// Reassign is the legacy non-tx signature; prefer DeleteWithReassignInTx.
 	Reassign(ctx context.Context, businessID, oldRoleID, newRoleID uuid.UUID) error

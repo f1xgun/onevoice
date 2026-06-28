@@ -383,15 +383,23 @@ func (r *roleRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID
 // (DATA-08); role_changed_at is set to now(). Returns ErrRoleNotFound if the
 // role is missing OR is_system=true. Returns an error if oldRoleID ==
 // reassignToID (defensive — handler also rejects via 400).
+//
+// The returned user_ids are the rows ACTUALLY reassigned by the in-tx UPDATE
+// (RETURNING user_id), not a pre-tx snapshot. The caller must drive the
+// post-commit authz.InvalidateMember fan-out off this authoritative set: a
+// member whose role was concurrently set to oldRoleID between any earlier
+// snapshot and this tx is reassigned here and so appears in the returned slice,
+// preventing a stale membership-cache entry (RoleID=oldRoleID) from surviving
+// until the cache TTL and 500-ing requests once the role row is gone.
 func (r *roleRepository) DeleteWithReassignInTx(
 	ctx context.Context, tx pgx.Tx,
 	businessID, oldRoleID, reassignToID, actorUserID uuid.UUID,
-) error {
+) ([]uuid.UUID, error) {
 	if tx == nil {
-		return fmt.Errorf("DeleteWithReassignInTx: tx is required")
+		return nil, fmt.Errorf("DeleteWithReassignInTx: tx is required")
 	}
 	if oldRoleID == reassignToID {
-		return fmt.Errorf("DeleteWithReassignInTx: reassignTo cannot equal oldRoleID")
+		return nil, fmt.Errorf("DeleteWithReassignInTx: reassignTo cannot equal oldRoleID")
 	}
 	now := time.Now().UTC()
 	reassignSQL, reassignArgs, err := r.sb.
@@ -400,28 +408,38 @@ func (r *roleRepository) DeleteWithReassignInTx(
 		Set("role_changed_at", now).
 		Set("role_changed_by", actorUserID).
 		Where(squirrel.Eq{"business_id": businessID, "role_id": oldRoleID}).
+		Suffix("RETURNING user_id").
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("build reassign members: %w", err)
+		return nil, fmt.Errorf("build reassign members: %w", err)
 	}
-	if _, err := tx.Exec(ctx, reassignSQL, reassignArgs...); err != nil {
-		return fmt.Errorf("reassign members: %w", err)
+	rows, err := tx.Query(ctx, reassignSQL, reassignArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("reassign members: %w", err)
+	}
+	reassignedUserIDs, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (uuid.UUID, error) {
+		var id uuid.UUID
+		err := row.Scan(&id)
+		return id, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reassign members: %w", err)
 	}
 	delSQL, delArgs, err := r.sb.
 		Delete("roles").
 		Where(squirrel.Eq{"id": oldRoleID, "is_system": false}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("build delete role: %w", err)
+		return nil, fmt.Errorf("build delete role: %w", err)
 	}
 	tag, err := tx.Exec(ctx, delSQL, delArgs...)
 	if err != nil {
-		return fmt.Errorf("delete role: %w", err)
+		return nil, fmt.Errorf("delete role: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return domain.ErrRoleNotFound
+		return nil, domain.ErrRoleNotFound
 	}
-	return nil
+	return reassignedUserIDs, nil
 }
 
 // Reassign is the legacy non-tx variant. Performs ONLY the membership

@@ -362,15 +362,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var affectedUserIDs []uuid.UUID
-	if memberCount > 0 && reassignTo != nil {
-		affectedUserIDs, err = h.membershipRepo.ListUserIDsByRole(r.Context(), bc.BusinessID, roleID)
-		if err != nil {
-			writeAuthzInvariantError(r.Context(), w, "delete_role.list_affected", err)
-			return
-		}
-	}
-
 	tx, err := h.pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		writeAuthzInvariantError(r.Context(), w, "delete_role.begin", err)
@@ -383,8 +374,10 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	var affectedUserIDs []uuid.UUID
 	if memberCount > 0 {
-		if err := h.roleRepo.DeleteWithReassignInTx(r.Context(), tx, bc.BusinessID, roleID, *reassignTo, bc.UserID); err != nil {
+		affectedUserIDs, err = h.roleRepo.DeleteWithReassignInTx(r.Context(), tx, bc.BusinessID, roleID, *reassignTo, bc.UserID)
+		if err != nil {
 			writeAuthzInvariantError(r.Context(), w, "delete_role.reassign_exec", err)
 			return
 		}
