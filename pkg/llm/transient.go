@@ -32,6 +32,9 @@ func isTransientLLMError(err error) bool {
 	if err == nil {
 		return false
 	}
+	if errors.Is(err, errNilProviderResponse) {
+		return true
+	}
 	var netErr net.Error
 	//nolint:staticcheck // SA1019: net.Error.Temporary() still useful for retry classification.
 	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {

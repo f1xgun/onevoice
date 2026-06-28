@@ -1013,6 +1013,55 @@ func nonTransientAPIError(status int) error {
 	return fmt.Errorf("provider chat: %w", &openai.APIError{HTTPStatusCode: status, Message: "client error"})
 }
 
+// TestRouter_NilResponse_NoPanic_TakesTransientPath — a provider that violates
+// the contract by returning (nil, nil) must NOT panic on the success path (the
+// `resp.Provider = ...` deref). The router treats the nil response as a
+// transient failure and walks to the next candidate; a single bad candidate
+// exhausts and surfaces the error. Reverting the nil-guard at router.go makes
+// this test panic (and crash the agent-loop goroutine in production).
+func TestRouter_NilResponse_NoPanic_TakesTransientPath(t *testing.T) {
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, nil}, // contract violation: nil response, nil error
+	}}
+	provB := &sequenceProvider{name: "anthropic", responses: []seqResponse{
+		{&llm.ChatResponse{Content: "recovered"}, nil},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	resp, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.NoError(t, err, "a (nil,nil) provider response must be treated transient, not panic")
+	require.NotNil(t, resp)
+	assert.Equal(t, "recovered", resp.Content,
+		"router must fall through to the next candidate after a nil response")
+	assert.Equal(t, "anthropic", resp.Provider)
+	assert.Equal(t, 1, provA.callCount)
+	assert.Equal(t, 1, provB.callCount)
+}
+
+// TestRouter_NilResponse_SingleCandidate_NoProvider — a single candidate that
+// returns (nil, nil) must surface a no-provider-class error rather than panic.
+func TestRouter_NilResponse_SingleCandidate_NoProvider(t *testing.T) {
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, nil},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	resp, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.Error(t, err, "a sole (nil,nil) provider must error, not panic")
+	assert.Nil(t, resp)
+	assert.Equal(t, 1, provA.callCount)
+}
+
 func TestRouter_RetryOnce_TransientThenSuccess(t *testing.T) {
 	before := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("success", "second"))
 
