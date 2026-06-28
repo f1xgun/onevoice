@@ -21,6 +21,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
 )
 
 // PasswordResetService composes a pgxpool.Pool + repository pointers.
@@ -158,10 +159,7 @@ const stubRateLimitMax = resetRateLimitMax
 func (s *stubbedReset) RequestReset(ctx context.Context, emailAddr, ip, ua string) error {
 	emailHash := sha256.Sum256([]byte(emailAddr))
 	rateKey := fmt.Sprintf("reset:email:%x", emailHash)
-	count, _ := s.redis.Incr(ctx, rateKey).Result()
-	if count == 1 {
-		_ = s.redis.Expire(ctx, rateKey, resetRateLimitWindow).Err()
-	}
+	count, _ := ratelimit.IncrWithHeal(ctx, s.redis, rateKey, resetRateLimitWindow)
 	rateLimited := count > int64(stubRateLimitMax)
 
 	user, err := s.userRepo.GetByEmail(ctx, emailAddr)
@@ -377,6 +375,39 @@ func TestPasswordResetService_RateLimit_ConcurrentRequests(t *testing.T) {
 	wg.Wait()
 
 	require.Equal(t, int64(N-resetRateLimitMax), limitedCount.Load())
+}
+
+// TestPasswordResetService_RateLimit_SelfHealsMissingTTL reproduces the
+// lost-EXPIRE failure on the reset counter: the key loses its TTL (a transient
+// Redis blip when it was first stamped), so without the heal it stays at value
+// 1 with no expiry and every later request INCRs to >max → reset silently
+// blocked forever. The heal re-stamps the TTL on the next call so the window
+// recovers. With the raw INCR + conditional-Expire this test fails: the counter
+// stays TTL-less ("reset counter must always carry a TTL so the window can
+// recover").
+func TestPasswordResetService_RateLimit_SelfHealsMissingTTL(t *testing.T) {
+	m := miniredis.RunT(t)
+	rd := redis.NewClient(&redis.Options{Addr: m.Addr()})
+	t.Cleanup(func() { _ = rd.Close() })
+	svc := &PasswordResetService{redis: rd}
+
+	emailHash := sha256.Sum256([]byte("blip@example.com"))
+	rateKey := fmt.Sprintf("reset:email:%x", emailHash)
+
+	require.False(t, svc.bumpRateLimit(context.Background(), "blip@example.com"))
+	require.Positive(t, m.TTL(rateKey).Nanoseconds(), "first call must stamp a TTL")
+
+	require.NoError(t, rd.Persist(context.Background(), rateKey).Err())
+	require.Equal(t, time.Duration(0), m.TTL(rateKey), "precondition: counter has no TTL")
+
+	svc.bumpRateLimit(context.Background(), "blip@example.com")
+	require.Positive(t, m.TTL(rateKey).Nanoseconds(),
+		"reset counter must always carry a TTL so the window can recover")
+
+	m.FastForward(resetRateLimitWindow + time.Second)
+	require.False(t, m.Exists(rateKey), "repaired window must expire so reset recovers")
+	require.False(t, svc.bumpRateLimit(context.Background(), "blip@example.com"),
+		"after the window the user can request a reset again")
 }
 
 // --- wipeRefreshTokens behavior ----------------------------------------

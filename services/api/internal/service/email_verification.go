@@ -33,6 +33,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -104,24 +105,20 @@ func (s *EmailVerificationService) RequestResend(ctx context.Context, userID uui
 	}
 
 	minKey := fmt.Sprintf("verify_resend:user:%s:min", userID)
-	cnt, err := s.redis.Incr(ctx, minKey).Result()
+	cnt, err := ratelimit.IncrWithHeal(ctx, s.redis, minKey, verifyResendMinWindow)
 	if err != nil {
 		return fmt.Errorf("verify_resend min incr: %w", err)
 	}
-	if cnt == 1 {
-		_ = s.redis.Expire(ctx, minKey, verifyResendMinWindow).Err()
-	} else if cnt > 1 {
+	if cnt > 1 {
 		return domain.ErrResendThrottled
 	}
 
 	hrKey := fmt.Sprintf("verify_resend:user:%s:hr", userID)
-	cnt, err = s.redis.Incr(ctx, hrKey).Result()
+	cnt, err = ratelimit.IncrWithHeal(ctx, s.redis, hrKey, verifyResendHourWindow)
 	if err != nil {
 		return fmt.Errorf("verify_resend hr incr: %w", err)
 	}
-	if cnt == 1 {
-		_ = s.redis.Expire(ctx, hrKey, verifyResendHourWindow).Err()
-	} else if cnt > int64(verifyResendHourMax) {
+	if cnt > int64(verifyResendHourMax) {
 		return domain.ErrResendThrottled
 	}
 
