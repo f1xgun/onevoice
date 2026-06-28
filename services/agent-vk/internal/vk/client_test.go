@@ -545,3 +545,51 @@ func TestClient_UpdateGroupInfo_InvalidGroupID(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid group_id")
 }
+
+// --- HTTP-timeout tests ---
+//
+// The VK SDK defaults vk.Client to http.DefaultClient, which has no Timeout.
+// Without an explicit bound, a peer that accepts the TCP connection but never
+// responds blocks the calling goroutine forever, exhausting the agent's NATS
+// worker semaphore. New/NewWithBaseURL must install a bounded client.
+
+func TestNew_SetsBoundedHTTPTimeout(t *testing.T) {
+	c := vk.New("test-token")
+	assert.NotZero(t, c.HTTPTimeout(),
+		"vk.New must set a non-zero HTTP timeout so a stalled VK peer cannot hang a worker")
+}
+
+func TestNewWithBaseURL_SetsBoundedHTTPTimeout(t *testing.T) {
+	c := vk.NewWithBaseURL("test-token", "http://127.0.0.1:1/method/")
+	assert.NotZero(t, c.HTTPTimeout(),
+		"vk.NewWithBaseURL must set a non-zero HTTP timeout so a stalled VK peer cannot hang a worker")
+}
+
+// TestClient_StalledPeer_TimesOut proves the timeout actually bounds a REST
+// call: the server accepts the connection but never writes a response. With a
+// short injected timeout the call must return an error promptly; if the client
+// has no timeout (the reverted bug) the request would block indefinitely.
+func TestClient_StalledPeer_TimesOut(t *testing.T) {
+	blocked := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		<-blocked
+	}))
+	defer srv.Close()
+	defer close(blocked)
+
+	c := vk.NewWithBaseURL("test-token", srv.URL+"/method/")
+	c.SetHTTPTimeout(200 * time.Millisecond)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.PublishPost("-123456", "Hello")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "stalled peer must surface a timeout error, not a success")
+	case <-time.After(5 * time.Second):
+		t.Fatal("PublishPost blocked past the injected HTTP timeout: VK REST client is not bounded")
+	}
+}
