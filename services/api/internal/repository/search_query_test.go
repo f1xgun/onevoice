@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,6 +37,25 @@ func TestTokenizeQuery_HandlesEdges(t *testing.T) {
 	for _, q := range []string{"", "   ", ".,!?"} {
 		assert.Empty(t, tokenizeQuery(q), "input %q must produce no tokens", q)
 	}
+}
+
+// TestTokenizeQuery_CapsTokenCount — each distinct token becomes one
+// unanchored regex clause in a Mongo $and, so an unbounded token count is a
+// DoS amplification vector. The tokenizer must cap the result at
+// maxQueryTokens distinct tokens regardless of how many the query contains.
+func TestTokenizeQuery_CapsTokenCount(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < maxQueryTokens*5; i++ {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "t%d", i)
+	}
+
+	got := tokenizeQuery(b.String())
+	assert.Len(t, got, maxQueryTokens,
+		"token count must be capped at maxQueryTokens")
+	assert.Equal(t, "t0", got[0], "cap must keep first-seen tokens, in order")
 }
 
 // TestWordPrefixRegex_LiteralEscaping — wordPrefixRegex must escape its

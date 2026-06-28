@@ -130,6 +130,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		Telemetry:   cfg.RateLimitTelemetry,
 		Writes:      cfg.RateLimitWrites,
 		Invitations: cfg.RateLimitInvitations,
+		Search:      cfg.RateLimitSearch,
 	}
 	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG, svcs.Lockout)
 

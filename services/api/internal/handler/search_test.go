@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -105,6 +106,38 @@ func TestSearchHandler_400OnShortQuery(t *testing.T) {
 		h.Search(rec, req)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
+}
+
+// TestSearchHandler_400OnOverLongQuery — a q longer than maxQueryLength must
+// surface as 400 before the searcher is touched. q arrives in the URL query
+// (no MaxBytesReader), so without this cap a single user can submit very long,
+// many-token queries that amplify into a Mongo regex full scan.
+func TestSearchHandler_400OnOverLongQuery(t *testing.T) {
+	h := newSearchHandlerForTest(t, true)
+	businessID := uuid.New()
+	userID := uuid.New()
+
+	q := strings.Repeat("a", maxQueryLength+1)
+	req := requestWithBiz(http.MethodGet, "/api/v1/search?q="+q, businessID, userID)
+	rec := httptest.NewRecorder()
+	h.Search(rec, req)
+	assert.Equal(t, http.StatusBadRequest, rec.Code,
+		"q longer than maxQueryLength must be rejected with 400")
+}
+
+// TestSearchHandler_AcceptsQueryAtLengthCap — a q exactly at the cap is still
+// accepted, so the bound rejects only genuinely over-long input.
+func TestSearchHandler_AcceptsQueryAtLengthCap(t *testing.T) {
+	h := newSearchHandlerForTest(t, true)
+	businessID := uuid.New()
+	userID := uuid.New()
+
+	q := strings.Repeat("a", maxQueryLength)
+	req := requestWithBiz(http.MethodGet, "/api/v1/search?q="+q, businessID, userID)
+	rec := httptest.NewRecorder()
+	h.Search(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"q exactly at maxQueryLength must be accepted")
 }
 
 // TestSearchHandler_500OnMissingBusinessContext — without middleware injecting a
