@@ -64,7 +64,7 @@ func (h *ChatProxyHandler) Turn() *chatturn.Turn { return h.turn }
 func (h *ChatProxyHandler) SetSSECounter(c *ssecounter.Counter, defaultTier string) {
 	h.sseCounter = c
 	if defaultTier == "" {
-		defaultTier = "free"
+		defaultTier = defaultSSETier
 	}
 	h.defaultTier = defaultTier
 }
@@ -73,9 +73,15 @@ func (h *ChatProxyHandler) SetSSECounter(c *ssecounter.Counter, defaultTier stri
 // honest because the counter releases on any same-user stream completion.
 const retryAfterSeconds = 1
 
+// defaultSSETier is the fallback label for the SSE concurrency block metric
+// when no tier is configured. Shared by every SSE-streaming handler.
+const defaultSSETier = "free"
+
 // writeConcurrencyError maps SSE counter sentinels to the JSON wire shape.
-// See docs/api/handlers/chat-proxy.md §"Per-user SSE concurrency cap".
-func (h *ChatProxyHandler) writeConcurrencyError(w http.ResponseWriter, err error) {
+// Package-level so every SSE-streaming handler (ChatProxyHandler.Chat,
+// HITLHandler.Resume) maps the same Acquire failures to identical HTTP
+// responses. See docs/api/handlers/chat-proxy.md §"Per-user SSE concurrency cap".
+func writeConcurrencyError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ssecounter.ErrConcurrencyExceeded):
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSeconds))
@@ -178,11 +184,11 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	if h.sseCounter != nil {
 		tier := h.defaultTier
 		if tier == "" {
-			tier = "free"
+			tier = defaultSSETier
 		}
 		release, acqErr := h.sseCounter.Acquire(r.Context(), bc.UserID, tier)
 		if acqErr != nil {
-			h.writeConcurrencyError(w, acqErr)
+			writeConcurrencyError(w, acqErr)
 			return
 		}
 		defer release()

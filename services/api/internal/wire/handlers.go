@@ -137,18 +137,22 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		cfg.MessageHistoryLimit,
 	)
 
+	var sseCounter *ssecounter.Counter
 	if h.Redis != nil && cfg.SSEMaxPerUser > 0 {
 		policy, perr := ratelimit.PolicyFromEnv(cfg.RedisDownPolicy, cfg.LocalFallbackRequestsPerHour)
 		if perr != nil {
 			return nil, fmt.Errorf("wire: build ratelimit policy: %w", perr)
 		}
-		sseCounter := ssecounter.New(h.Redis, cfg.SSEMaxPerUser, policy)
+		sseCounter = ssecounter.New(h.Redis, cfg.SSEMaxPerUser, policy)
 		chatProxyHandler.SetSSECounter(sseCounter, cfg.LLMTier)
 	}
 
 	hitlHandler, err := handler.NewHITLHandler(svcs.HITL, svcs.Business, repos.Conversation, chatProxyHandler.Turn())
 	if err != nil {
 		return nil, fmt.Errorf("wire: create hitl handler: %w", err)
+	}
+	if sseCounter != nil {
+		hitlHandler.SetSSECounter(sseCounter, cfg.LLMTier)
 	}
 
 	businessHandler.SetToolsCache(svcs.ToolsCache)
