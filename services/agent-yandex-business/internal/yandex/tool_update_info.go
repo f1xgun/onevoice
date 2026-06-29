@@ -60,6 +60,20 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 			return err
 		}
 		debugScreenshot(page, "updateinfo_after_save")
+
+		for key, value := range info {
+			actual, err := page.Locator(fieldMap[key]).First().InputValue(playwright.LocatorInputValueOptions{
+				Timeout: playwright.Float(uiPollTimeoutMs),
+			})
+			if err != nil {
+				debugScreenshot(page, "updateinfo_readback_failed_"+key)
+				return a2a.NewNonRetryableError(fmt.Errorf("update_info: could not confirm %q saved", key))
+			}
+			if cerr := confirmFieldSaved(value, actual); cerr != nil {
+				debugScreenshot(page, "updateinfo_not_confirmed_"+key)
+				return cerr
+			}
+		}
 		return nil
 	})
 }

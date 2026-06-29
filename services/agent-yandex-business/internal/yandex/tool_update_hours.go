@@ -67,6 +67,18 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 			return err
 		}
 		debugScreenshot(page, "hours_after_save")
+
+		actual, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{
+			Timeout: playwright.Float(uiPollTimeoutMs),
+		})
+		if err != nil {
+			debugScreenshot(page, "hours_readback_failed")
+			return a2a.NewNonRetryableError(fmt.Errorf("update_hours: could not confirm hours saved"))
+		}
+		if cerr := confirmFieldSaved(hoursText, actual); cerr != nil {
+			debugScreenshot(page, "hours_not_confirmed")
+			return cerr
+		}
 		return nil
 	})
 }
