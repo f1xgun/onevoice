@@ -17,6 +17,7 @@ export const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_URL || '/api/v1'
 export const API_PATHS = {
   AUTH: {
     LOGIN: '/auth/login',
+    LOGOUT: '/auth/logout',
     REGISTER: '/auth/register',
     PASSWORD: '/auth/password',
     PROFILE: '/auth/profile',

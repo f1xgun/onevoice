@@ -21,15 +21,13 @@ import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { FeedbackDialog } from '@/components/feedback/FeedbackDialog';
 import { BusinessSwitcher } from '@/components/business-switcher/BusinessSwitcher';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/lib/auth';
 import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePlatformFullLabels } from '@/lib/platforms';
-import { queryClient } from '@/lib/queryClient';
-import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
+import { useLogout } from '@/lib/hooks/useLogout';
 
 interface Integration {
   platform: string;
@@ -71,7 +69,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const tNav = useTranslations('nav');
   const tSidebar = useTranslations('sidebar');
   const platformFullLabels = usePlatformFullLabels();
-  const logout = useAuthStore((s) => s.logout);
+  const logout = useLogout();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
@@ -86,10 +84,8 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
     placeholderData: [],
   });
 
-  function handleLogout() {
-    queryClient.removeQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
-    queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
-    logout();
+  async function handleLogout() {
+    await logout();
     router.push('/login');
   }
 

@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { NavRail } from '../NavRail';
+import { api } from '@/lib/api';
+import { queryClient } from '@/lib/queryClient';
 
 // Mock next/navigation
 const pushMock = vi.fn();
@@ -22,7 +24,7 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/api', () => ({
   api: {
     get: vi.fn(() => Promise.resolve({ data: [] })),
-    post: vi.fn(),
+    post: vi.fn(() => Promise.resolve({ data: {} })),
     put: vi.fn(),
     delete: vi.fn(),
   },
@@ -122,7 +124,8 @@ describe('NavRail', () => {
     expect(active.querySelector('span.bg-ochre')).not.toBeNull();
   });
 
-  it('logout button calls useAuthStore.logout()', async () => {
+  it('logout button revokes the server session via POST /auth/logout then clears local state', async () => {
+    const clearSpy = vi.spyOn(queryClient, 'clear');
     render(
       <Wrapper>
         <NavRail />
@@ -131,6 +134,8 @@ describe('NavRail', () => {
     const user = userEvent.setup();
     const logoutBtn = screen.getByRole('button', { name: 'Выйти' });
     await user.click(logoutBtn);
+    expect(api.post).toHaveBeenCalledWith('/auth/logout');
+    expect(clearSpy).toHaveBeenCalled();
     expect(logoutMock).toHaveBeenCalled();
   });
 });

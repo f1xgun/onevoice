@@ -21,8 +21,8 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { postReconsent, type ConsentError } from '@/lib/api/consents';
-import { useAuthStore, type PolicyDiff } from '@/lib/auth';
-import { api } from '@/lib/api';
+import { type PolicyDiff } from '@/lib/auth';
+import { useLogout } from '@/lib/hooks/useLogout';
 import { legalDocHref } from '@/lib/legal/routes';
 
 interface ReConsentModalProps {
@@ -34,7 +34,7 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const logout = useAuthStore.getState().logout;
+  const logout = useLogout();
 
   async function handleAccept() {
     if (!checked || submitting) return;
@@ -60,9 +60,8 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      await api.post('/auth/logout').catch(() => undefined);
+      await logout();
     } finally {
-      logout();
       window.location.href = '/login';
     }
   }
