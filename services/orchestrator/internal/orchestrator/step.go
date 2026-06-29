@@ -275,7 +275,8 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		)
 
 		offered := offeredToolSet(state.AvailableTools)
-		autoCalls, forbiddenCalls = enforceOfferedAuto(autoCalls, forbiddenCalls, offered)
+		autoCalls, forbiddenCalls = enforceOffered(autoCalls, forbiddenCalls, offered)
+		manualCalls, forbiddenCalls = enforceOffered(manualCalls, forbiddenCalls, offered)
 
 		for _, tc := range forbiddenCalls {
 			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
@@ -436,17 +437,19 @@ func offeredToolSet(defs []llm.ToolDefinition) map[string]bool {
 	return set
 }
 
-// enforceOfferedAuto moves any auto-bucketed call whose name was not offered to
-// the model this turn into the forbidden bucket. This closes the gap where a
-// model recalls (or is injected with) a registered Auto tool that the project
-// whitelist withheld: hitl.Bucket would dispatch it because Floor returns
-// Forbidden only for UNREGISTERED names. Manual-floor calls already pause and
-// unregistered calls are already forbidden, so only the offered-Auto gap needs
-// closing here.
-func enforceOfferedAuto(autoCalls, forbiddenCalls []llm.ToolCall, offered map[string]bool) (allowed, forbidden []llm.ToolCall) {
-	allowed = autoCalls[:0:0]
+// enforceOffered moves any classified call whose name was not offered to the
+// model this turn into the forbidden bucket. This closes the gap where a model
+// recalls (or is injected with) a registered tool that the project whitelist
+// withheld: hitl.Bucket keys purely off the registry Floor, which returns
+// Forbidden only for UNREGISTERED names, so a registered Auto- or Manual-floor
+// tool the whitelist omitted (WhitelistMode=none yields an empty offered list,
+// or an explicit list omits it) would otherwise dispatch (Auto) or surface an
+// approval card (Manual). Applied symmetrically to the auto and manual buckets
+// so a withheld tool can never reach NATS — directly or via a HITL approval.
+func enforceOffered(classified, forbiddenCalls []llm.ToolCall, offered map[string]bool) (allowed, forbidden []llm.ToolCall) {
+	allowed = classified[:0:0]
 	forbidden = forbiddenCalls
-	for _, tc := range autoCalls {
+	for _, tc := range classified {
 		if offered[tc.Function.Name] {
 			allowed = append(allowed, tc)
 			continue

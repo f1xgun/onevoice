@@ -654,6 +654,56 @@ func TestStepRun_RegisteredAutoTool_NotOffered_IsRejected(t *testing.T) {
 	assert.Equal(t, "policy_forbidden", rejections[0].Content)
 }
 
+// TestStepRun_RegisteredManualTool_NotOffered_IsRejected guards the same
+// dispatch-time whitelist boundary for the MANUAL bucket. hitl.Bucket keys
+// purely off the registry Floor, which returns Forbidden only for UNREGISTERED
+// names — so a registered Manual-floor tool that the project whitelist withheld
+// (WhitelistMode=none yields an empty offered list) would be bucketed "manual",
+// persisted into a PendingToolCallBatch, and surfaced as an approval card if
+// the model recalled it from a prior turn or via prompt injection. A withheld
+// tool must NEVER surface a card — it must be routed through the forbidden path
+// and rejected, with no batch persisted. ALL Telegram write tools are
+// Manual-floor, so this is exactly the write surface a read-only project locks
+// down.
+func TestStepRun_RegisteredManualTool_NotOffered_IsRejected(t *testing.T) {
+	toolCallArgs, _ := json.Marshal(map[string]interface{}{"text": "hi"})
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{{
+				ID:       "call_m",
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: "manual_tool", Arguments: string(toolCallArgs)},
+			}},
+		},
+		{Content: "Done.", FinishReason: "stop"},
+	}}
+
+	reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, nil)
+	repo := newMockPendingRepo()
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "post it"}},
+		WhitelistMode:   domain.WhitelistModeNone,
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	assert.Empty(t, findEvents(evts, orchestrator.EventToolApprovalRequired),
+		"a registered Manual tool that was not offered (whitelist=none) must NOT surface an approval card")
+	assert.Empty(t, repo.insertedBatches,
+		"no approval batch may be persisted for a withheld Manual tool")
+
+	rejections := findEvents(evts, orchestrator.EventToolRejected)
+	require.Len(t, rejections, 1, "the withheld Manual tool must be rejected via the forbidden path")
+	assert.Equal(t, "manual_tool", rejections[0].ToolName)
+	assert.Equal(t, "call_m", rejections[0].ToolCallID)
+	assert.Equal(t, "policy_forbidden", rejections[0].Content)
+}
+
 // --- end-to-end billing smoke ---
 
 // TestStepRun_BillingPostedE2E exercises the full chain from stepRun →
