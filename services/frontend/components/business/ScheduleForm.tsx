@@ -5,12 +5,14 @@
 //   <HoursForm />          — weekly hours (Часы работы)
 //   <SpecialDatesForm />   — date overrides (Особые даты)
 // Both share the same PUT /business/schedule mutation: backend stores the
-// `{schedule, specialDates}` payload under business.settings.schedule, so
-// each section sends its slice alongside the other section's current value
-// to avoid clobbering. Parent owns the source of truth.
+// `{schedule, specialDates}` payload under business.settings.schedule. Each
+// section owns ONLY its own slice; the other slice is re-read from the freshest
+// BUSINESS_PROFILE query cache at save time so a Hours save never clobbers a
+// just-saved Special Dates value (and vice versa) across the two independent
+// form instances.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { CalendarIcon, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -28,7 +30,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Badge } from '@/components/ui/badge';
-import type { ScheduleDay, SpecialDate } from '@/types/business';
+import type { Business, ScheduleDay, SpecialDate } from '@/types/business';
 
 const DEFAULT_SCHEDULE: ScheduleDay[] = [
   { day: 'mon', open: '09:00', close: '21:00', closed: false },
@@ -63,6 +65,28 @@ interface SchedulePayload {
   specialDates: SpecialDate[];
 }
 
+// Which schedule slice a form instance owns. The non-owned slice is merged
+// from the freshest BUSINESS_PROFILE cache at save time, never from the form's
+// frozen local copy — that is what prevents the cross-form lost-update.
+type ScheduleSlice = 'schedule' | 'specialDates';
+
+// Reads the live schedule slices out of the cached Business profile, handling
+// both the legacy bare-array shape and the `{schedule, specialDates}` object.
+// Returns undefined for a slice when the cache has nothing for it so callers
+// fall back to the form's own value.
+function readCachedSchedule(
+  queryClient: QueryClient,
+  businessId: string | null
+): { schedule?: ScheduleDay[]; specialDates?: SpecialDate[] } {
+  const cached = queryClient.getQueryData<Business>(QUERY_KEYS.BUSINESS_PROFILE(businessId));
+  const raw = cached?.settings?.schedule as
+    | { schedule?: ScheduleDay[]; specialDates?: SpecialDate[] }
+    | ScheduleDay[]
+    | undefined;
+  if (Array.isArray(raw)) return { schedule: raw, specialDates: undefined };
+  return { schedule: raw?.schedule, specialDates: raw?.specialDates };
+}
+
 function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: SpecialDate[]) {
   const [schedule, setSchedule] = useState<ScheduleDay[]>(initialSchedule ?? DEFAULT_SCHEDULE);
   const [specialDates, setSpecialDates] = useState<SpecialDate[]>(initialSpecialDates ?? []);
@@ -76,13 +100,21 @@ function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: Spec
   return { schedule, setSchedule, specialDates, setSpecialDates };
 }
 
-function useScheduleMutation(successMsg: string, errorMsg: string) {
+// owns names the slice this form edits. The PUT keeps the owned slice from the
+// caller's `data` and overrides the other slice with the freshest cached value,
+// so two independent form instances never overwrite each other's last save.
+function useScheduleMutation(owns: ScheduleSlice, successMsg: string, errorMsg: string) {
   const queryClient = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation({
     mutationFn: (data: SchedulePayload) => {
       if (!activeBusinessId) return Promise.reject(new Error('No active business'));
-      return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.SCHEDULE, data);
+      const cached = readCachedSchedule(queryClient, activeBusinessId);
+      const merged: SchedulePayload =
+        owns === 'schedule'
+          ? { schedule: data.schedule, specialDates: cached.specialDates ?? data.specialDates }
+          : { schedule: cached.schedule ?? data.schedule, specialDates: data.specialDates };
+      return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.SCHEDULE, merged);
     },
     onSuccess: () => {
       toast.success(successMsg);
@@ -103,7 +135,7 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
   const tSchedule = useTranslations('business.scheduleForm');
   const dayLabels = useDayLabels();
   const { schedule, setSchedule, specialDates } = useSchedule(initialSchedule, initialSpecialDates);
-  const mutation = useScheduleMutation(tSchedule('hoursSaved'), tSchedule('saveError'));
+  const mutation = useScheduleMutation('schedule', tSchedule('hoursSaved'), tSchedule('saveError'));
   const canEdit = usePermission('business.update').allowed;
 
   function updateDay(index: number, updates: Partial<ScheduleDay>) {
@@ -222,7 +254,11 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
     initialSpecialDates
   );
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const mutation = useScheduleMutation(tSchedule('datesSaved'), tSchedule('saveError'));
+  const mutation = useScheduleMutation(
+    'specialDates',
+    tSchedule('datesSaved'),
+    tSchedule('saveError')
+  );
   const canEdit = usePermission('business.update').allowed;
 
   function addSpecialDate(date: Date) {
