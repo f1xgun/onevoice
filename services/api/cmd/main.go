@@ -224,7 +224,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		})
 	}()
 
-	svcs.StartReviewSyncer(ctx, log, cfg.ReviewSyncInterval)
+	svcs.StartReviewSyncer(ctx, workers, log, cfg.ReviewSyncInterval)
 
 	select {
 	case <-ctx.Done():

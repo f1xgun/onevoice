@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -122,13 +123,22 @@ func (s *Services) Close() {
 // StartReviewSyncer starts the background review-syncer ticker. Idempotent
 // no-op when the syncer is nil. The ticker stops when either the parent ctx
 // cancels or Services.Close is called.
-func (s *Services) StartReviewSyncer(ctx context.Context, log *slog.Logger, intervalMinutes int) {
+//
+// The goroutine is registered on wg (wg.Add before the spawn, wg.Done on
+// return) so the shutdown sequence joins an in-flight sync pass before the
+// database pools close — without enrollment the syncer would race against
+// mongoClient.Disconnect / NATS.Close / PG.Close and write to a closed pool.
+func (s *Services) StartReviewSyncer(ctx context.Context, wg *sync.WaitGroup, log *slog.Logger, intervalMinutes int) {
 	if s == nil || s.ReviewSyncer == nil {
 		return
 	}
 	syncCtx, syncCancel := context.WithCancel(ctx)
 	s.reviewSyncerCancel = syncCancel
-	go s.ReviewSyncer.Start(syncCtx)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.ReviewSyncer.Start(syncCtx)
+	}()
 	log.Info("review syncer started", "interval_minutes", intervalMinutes)
 }
 
