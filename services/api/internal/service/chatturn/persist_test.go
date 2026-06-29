@@ -16,16 +16,24 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
-// fakeMessageRepo records Create calls so the pause-persist tests can assert on
-// the persisted Message shape. Unimplemented methods nil-panic — these tests
-// only drive persistAfterStream's pause branch.
+// fakeMessageRepo records Create/Update calls so the pause-persist tests can
+// assert on the persisted Message shape. Unimplemented methods nil-panic —
+// these tests only drive persistAfterStream's branches. The fresh-turn
+// lifecycle reserves an in_progress placeholder via Create, then finalizes it
+// via Update, so the finalize assertions read from `updated`.
 type fakeMessageRepo struct {
 	domain.MessageRepository
 	created []domain.Message
+	updated []domain.Message
 }
 
 func (f *fakeMessageRepo) Create(_ context.Context, m *domain.Message) error {
 	f.created = append(f.created, *m)
+	return nil
+}
+
+func (f *fakeMessageRepo) Update(_ context.Context, m *domain.Message) error {
+	f.updated = append(f.updated, *m)
 	return nil
 }
 
@@ -99,10 +107,10 @@ func TestPersistAfterStream_Pause_PersistsApprovalRequiredToolCalls(t *testing.T
 	}
 	req := TurnRequest{ConversationID: "conv-1", Locale: language.Russian}
 
-	turn.persistAfterStream(context.Background(), req, &enrichmentResult{}, "msg-1", state)
+	turn.persistAfterStream(context.Background(), req, &enrichmentResult{}, "msg-1", time.Now(), state)
 
-	require.Len(t, repo.created, 1, "pause branch must persist exactly one message")
-	msg := repo.created[0]
+	require.Len(t, repo.updated, 1, "pause branch must finalize exactly one message")
+	msg := repo.updated[0]
 	assert.Equal(t, domain.MessageStatusPendingApproval, msg.Status)
 	require.Len(t, msg.ToolCalls, 1, "approval-required call must be persisted on the message")
 	assert.Equal(t, "call-1", msg.ToolCalls[0].ID)
@@ -141,10 +149,10 @@ func TestPersistAfterStream_Pause_MergesAutoAndPendingCalls(t *testing.T) {
 	}
 	req := TurnRequest{ConversationID: "conv-2", Locale: language.English}
 
-	turn.persistAfterStream(context.Background(), req, &enrichmentResult{}, "msg-2", state)
+	turn.persistAfterStream(context.Background(), req, &enrichmentResult{}, "msg-2", time.Now(), state)
 
-	require.Len(t, repo.created, 1)
-	msg := repo.created[0]
+	require.Len(t, repo.updated, 1)
+	msg := repo.updated[0]
 	require.Len(t, msg.ToolCalls, 2, "both the auto and the pending call must persist")
 	assert.Equal(t, "auto-1", msg.ToolCalls[0].ID)
 	assert.Empty(t, msg.ToolCalls[0].Status, "auto-executed call is not pending approval")
@@ -180,10 +188,10 @@ func TestPersistAfterStream_Pause_DedupesCallInBothStreams(t *testing.T) {
 	}
 	req := TurnRequest{ConversationID: "conv-3", Locale: language.Russian}
 
-	turn.persistAfterStream(context.Background(), req, &enrichmentResult{}, "msg-3", state)
+	turn.persistAfterStream(context.Background(), req, &enrichmentResult{}, "msg-3", time.Now(), state)
 
-	require.Len(t, repo.created, 1)
-	msg := repo.created[0]
+	require.Len(t, repo.updated, 1)
+	msg := repo.updated[0]
 	require.Len(t, msg.ToolCalls, 1, "a call in both streams must persist exactly once")
 	assert.Equal(t, "toolu_abc", msg.ToolCalls[0].ID)
 	assert.Equal(t, "batch-1-toolu_abc", msg.ToolCalls[0].ApprovalID)

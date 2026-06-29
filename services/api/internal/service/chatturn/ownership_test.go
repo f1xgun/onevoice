@@ -196,8 +196,21 @@ func TestRun_NotFoundConversation_ProceedsToFirstTurn(t *testing.T) {
 
 	assert.NotEqual(t, OutcomeConversationNotFound, outcome,
 		"a not-yet-created conversation must not be rejected by the ownership gate")
-	require.Len(t, msgRepo.created, 1,
+	assert.True(t, hasUserMessage(msgRepo.created),
 		"the first-turn path must persist the user message")
+}
+
+// hasUserMessage reports whether the recorded Create calls include the user's
+// message. The fresh-turn lifecycle also reserves an in_progress assistant
+// placeholder via Create, so the ownership proceed-path tests assert on the
+// presence of the user role rather than an exact Create count.
+func hasUserMessage(created []domain.Message) bool {
+	for i := range created {
+		if created[i].Role == domain.MessageRoleUser {
+			return true
+		}
+	}
+	return false
 }
 
 // TestResumeApproved_CrossTenantConversation_Rejected is the resume-path arm of
@@ -272,5 +285,5 @@ func TestRun_OwnerMatches_Proceeds(t *testing.T) {
 
 	assert.NotEqual(t, OutcomeConversationNotFound, outcome,
 		"the owner's own conversation must not be rejected")
-	require.Len(t, msgRepo.created, 1, "the owner's message must be persisted")
+	assert.True(t, hasUserMessage(msgRepo.created), "the owner's message must be persisted")
 }

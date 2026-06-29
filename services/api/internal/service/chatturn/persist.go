@@ -36,20 +36,36 @@ func (t *Turn) persistUserMessage(ctx context.Context, msg *domain.Message) erro
 	return err
 }
 
-// persistAssistantPause writes the assistant Message at the
-// tool_approval_required pause point. Status=PendingApproval; ToolCalls
-// already carry ApprovalID=<batch>-<call> + Status=Pending.
-func (t *Turn) persistAssistantPause(ctx context.Context, msg *domain.Message) error {
+// persistAssistantPlaceholder writes the in_progress assistant Message reserved
+// before the stream opens. It serializes concurrent fresh turns: a second
+// POST /chat/{id} for the same conversation finds this active message via
+// FindByConversationActive and gates on the in-flight turn instead of running a
+// second parallel fresh turn. The finalize paths (persistAssistantComplete /
+// persistAssistantPause) reuse this same _id so the turn never strands; a crash
+// before finalize is reclaimed by the gateHealStranded heal path.
+func (t *Turn) persistAssistantPlaceholder(ctx context.Context, msg *domain.Message) error {
 	err := t.deps.Messages.Create(ctx, msg)
 	t.bumpLastMessageAt(ctx, msg)
 	return err
 }
 
-// persistAssistantComplete writes the assistant Message at done / error. The
-// caller has already merged streamErrContent into msg.Content via the i18n
-// wrapper so chat history renders in the writer's language forever.
+// persistAssistantPause finalizes the reserved assistant Message at the
+// tool_approval_required pause point. Status=PendingApproval; ToolCalls
+// already carry ApprovalID=<batch>-<call> + Status=Pending. Update (not Create)
+// because persistAssistantPlaceholder already inserted the row by this _id.
+func (t *Turn) persistAssistantPause(ctx context.Context, msg *domain.Message) error {
+	err := t.deps.Messages.Update(ctx, msg)
+	t.bumpLastMessageAt(ctx, msg)
+	return err
+}
+
+// persistAssistantComplete finalizes the reserved assistant Message at done /
+// error. The caller has already merged streamErrContent into msg.Content via the
+// i18n wrapper so chat history renders in the writer's language forever. Update
+// (not Create) because persistAssistantPlaceholder already inserted the row by
+// this _id.
 func (t *Turn) persistAssistantComplete(ctx context.Context, msg *domain.Message) error {
-	err := t.deps.Messages.Create(ctx, msg)
+	err := t.deps.Messages.Update(ctx, msg)
 	t.bumpLastMessageAt(ctx, msg)
 	return err
 }

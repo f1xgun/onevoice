@@ -203,11 +203,16 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	var created []*domain.Message
+	var created, updated []*domain.Message
 	msgRepo := &MockMessageRepository{
 		CreateFunc: func(_ context.Context, m *domain.Message) error {
 			cp := *m
 			created = append(created, &cp)
+			return nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			updated = append(updated, &cp)
 			return nil
 		},
 		ListByConversationIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
@@ -230,14 +235,15 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"type":"error"`, "error event must be forwarded to the client")
 
-	require.GreaterOrEqual(t, len(created), 2, "user + assistant must both be persisted")
+	require.GreaterOrEqual(t, len(created), 2, "user + in_progress assistant placeholder must both be persisted")
+	require.NotEmpty(t, updated, "the assistant placeholder must be finalized on error")
 	var assistant *domain.Message
-	for _, m := range created {
+	for _, m := range updated {
 		if m.Role == "assistant" {
 			assistant = m
 		}
 	}
-	require.NotNil(t, assistant, "assistant message must be persisted on error")
+	require.NotNil(t, assistant, "assistant message must be finalized on error")
 	assert.NotEmpty(t, assistant.Content, "assistant content must NOT be empty on error (poisons OpenAI history)")
 	assert.Contains(t, assistant.Content, "openrouter chat", "error reason must be carried in content")
 	assert.Equal(t, domain.MessageStatusComplete, assistant.Status)
@@ -579,7 +585,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 
 	var persistedMsg *domain.Message
 	msgRepo := &MockMessageRepository{
-		CreateFunc: func(_ context.Context, m *domain.Message) error {
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
 			if m.Role == "assistant" {
 				persistedMsg = m
 			}
@@ -600,7 +606,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 	h.Chat(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	require.NotNil(t, persistedMsg, "assistant message should be persisted")
+	require.NotNil(t, persistedMsg, "assistant message should be finalized")
 	require.Len(t, persistedMsg.ToolResults, 1, "the large tool_result should be captured without truncation")
 	inner, ok := persistedMsg.ToolResults[0].Content["echo"].(string)
 	require.True(t, ok)
@@ -631,7 +637,7 @@ func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
 
 	var persistedMsg *domain.Message
 	msgRepo := &MockMessageRepository{
-		CreateFunc: func(_ context.Context, m *domain.Message) error {
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
 			if m.Role == "assistant" {
 				persistedMsg = m
 			}
@@ -683,12 +689,16 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	var persistedMsg *domain.Message
+	var placeholderMsg, persistedMsg *domain.Message
 	msgRepo := &MockMessageRepository{
 		CreateFunc: func(_ context.Context, m *domain.Message) error {
 			if m.Role == "assistant" {
-				persistedMsg = m
+				placeholderMsg = m
 			}
+			return nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			persistedMsg = m
 			return nil
 		},
 	}
@@ -709,7 +719,11 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	assert.Contains(t, rr.Body.String(), `"type":"tool_approval_required"`)
 	assert.Contains(t, rr.Body.String(), `"batch_id":"batch-1"`)
 
-	require.NotNil(t, persistedMsg, "assistant message must be persisted at pause time")
+	require.NotNil(t, placeholderMsg, "an in_progress assistant placeholder must be reserved before the stream opens")
+	assert.Equal(t, domain.MessageStatusInProgress, placeholderMsg.Status)
+
+	require.NotNil(t, persistedMsg, "assistant message must be finalized at pause time")
+	assert.Equal(t, placeholderMsg.ID, persistedMsg.ID, "the pause finalize must reuse the reserved placeholder _id")
 	assert.Equal(t, domain.MessageStatusPendingApproval, persistedMsg.Status)
 	assert.Equal(t, "Here I'll post:", persistedMsg.Content)
 	require.Len(t, persistedMsg.ToolCalls, 1)
