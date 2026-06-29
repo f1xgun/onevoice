@@ -271,14 +271,15 @@ func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, 
 
 // MongoBusinessCleanup is the soft-delete sweeper for a departing organization.
 // Snapshots the original name and marks deleted_business=true on every
-// conversation, post, and review scoped to the organization. Documents
-// themselves are NOT dropped — forensic history persists. Mirrors
+// conversation, post, agent_task, and review scoped to the organization.
+// Documents themselves are NOT dropped — forensic history persists. Mirrors
 // MongoConversationsCleanup. Messages carry no business_id (they are scoped via
 // the conversation allowlist) so they are left intact alongside the
 // conversations, matching the user-deletion template.
 //
-// conversations and posts have business_id nulled; reviews do NOT. The reviews
-// collection has a UNIQUE index on {business_id, platform, external_id} with no
+// conversations, posts, and agent_tasks have business_id nulled; reviews do
+// NOT. The reviews collection has a UNIQUE index on {business_id, platform,
+// external_id} with no
 // partial filter, so an explicit null is indexed. external_id is per-business
 // (VK builds "{post_id}_{comment_id}" from per-community ints), so two orgs can
 // share a (platform, external_id) — nulling both their business_ids would
@@ -305,7 +306,7 @@ func (r *conversationRepository) MongoBusinessCleanup(ctx context.Context, busin
 	}}
 
 	var total int64
-	for _, name := range []string{"conversations", "posts"} {
+	for _, name := range []string{"conversations", "posts", "agent_tasks"} {
 		result, err := db.Collection(name).UpdateMany(ctx, filter, nullingUpdate)
 		if err != nil {
 			return total, fmt.Errorf("mongo business cleanup (%s): %w", name, err)

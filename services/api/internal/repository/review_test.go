@@ -139,6 +139,45 @@ func TestReviewRepository_SyncDoesNotDowngradeRepliedStatus(t *testing.T) {
 	})
 }
 
+// agent_tasks carries a first-class business_id plus Input (raw tool-call args:
+// post text, channel IDs, DM contents) — operator/customer PII. It has no unique
+// index, so MongoBusinessCleanup must give it the same nulling tombstone as
+// conversations/posts: business_id=null + deleted_business=true. Without it,
+// every agent_task survives a hard delete with the live business_id and payload,
+// leaving erasure incomplete.
+func TestMongoBusinessCleanup_TombstonesAgentTasks(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+
+	biz := uuid.NewString()
+	taskID := uuid.NewString()
+	_, err := db.Collection("agent_tasks").InsertOne(ctx, bson.M{
+		"_id":         taskID,
+		"business_id": biz,
+		"type":        "send_channel_post",
+		"status":      "completed",
+		"platform":    "telegram",
+		"input":       bson.M{"channel_id": "-1001234567890", "text": "operator-authored post body"},
+		"created_at":  time.Now().UTC(),
+	})
+	require.NoError(t, err)
+
+	repo := NewConversationRepository(db)
+	_, err = repo.MongoBusinessCleanup(ctx, biz, "Acme")
+	require.NoError(t, err)
+
+	var got bson.M
+	require.NoError(t, db.Collection("agent_tasks").
+		FindOne(ctx, bson.M{"_id": taskID}).Decode(&got))
+
+	require.Equal(t, true, got["deleted_business"],
+		"a hard-deleted org's agent_task must be flagged deleted_business")
+	require.Equal(t, "Acme", got["business_name_at_delete"],
+		"the original org name must be snapshotted on the tombstone")
+	require.Nil(t, got["business_id"],
+		"agent_task business_id must be nulled (no unique index → safe) so no live business_id survives erasure")
+}
+
 // When org A is hard-deleted AFTER org B, and A owns a review that shares a
 // (platform, external_id) with one of B's already-flagged reviews, the cleanup
 // must not collide on the reviews UNIQUE index {business_id, platform,
