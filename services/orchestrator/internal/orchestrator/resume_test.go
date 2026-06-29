@@ -310,6 +310,46 @@ func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T)
 	assert.Equal(t, "policy_revoked", rejects[0].Content)
 }
 
+// TestResume_WhitelistWithheld_DropsApprovedCall re-asserts the project tool
+// whitelist at the resume dispatch chokepoint. hitl.Resolve there only checks
+// floor strictness — it has no whitelist knowledge — so an approved call whose
+// tool the project no longer offers (WhitelistMode=none yields an empty offered
+// set) would dispatch over NATS purely on its floor. The offered-set re-check
+// must drop it as policy_forbidden before it reaches the executor.
+func TestResume_WhitelistWithheld_DropsApprovedCall(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	var dispatched int32
+	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
+	reg := toolregistry.NewRegistry()
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: "withheld_tool", Description: "d", Parameters: map[string]interface{}{}},
+	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-wl", []domain.PendingCall{
+		{CallID: "c-wl", ToolName: "withheld_tool", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
+	})
+	repo.store["batch-wl"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{
+		BatchID:       "batch-wl",
+		WhitelistMode: domain.WhitelistModeNone,
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatched),
+		"a whitelist-withheld tool must NOT be dispatched even after approval")
+	rejects := findEvents(evts, orchestrator.EventToolRejected)
+	require.Len(t, rejects, 1)
+	assert.Equal(t, "withheld_tool", rejects[0].ToolName)
+	assert.Equal(t, "policy_forbidden", rejects[0].Content)
+}
+
 func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
