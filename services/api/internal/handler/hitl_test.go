@@ -114,10 +114,21 @@ func (f *fakeHITLPendingRepo) RecordDecisions(_ context.Context, batchID string,
 	}
 	return nil
 }
+func (f *fakeHITLPendingRepo) ResetResolvingToPending(_ context.Context, batchID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if b, ok := f.batches[batchID]; ok && b.Status == "resolving" {
+		b.Status = "pending"
+	}
+	return nil
+}
 func (f *fakeHITLPendingRepo) MarkDispatched(_ context.Context, _, _ string) error { return nil }
 func (f *fakeHITLPendingRepo) MarkResolved(_ context.Context, _ string) error      { return nil }
 func (f *fakeHITLPendingRepo) MarkExpired(_ context.Context, _ string) error       { return nil }
 func (f *fakeHITLPendingRepo) ReconcileOrphanPreparing(_ context.Context, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+func (f *fakeHITLPendingRepo) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
 

@@ -87,6 +87,10 @@ func (m *mockPendingRepo) AtomicTransitionToResolving(_ context.Context, _ strin
 	return nil, errors.New("not implemented in mock")
 }
 
+func (m *mockPendingRepo) ResetResolvingToPending(_ context.Context, _ string) error {
+	return nil
+}
+
 func (m *mockPendingRepo) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
 	return nil
 }
@@ -108,6 +112,10 @@ func (m *mockPendingRepo) MarkResolved(_ context.Context, batchID string) error 
 func (m *mockPendingRepo) MarkExpired(_ context.Context, _ string) error { return nil }
 
 func (m *mockPendingRepo) ReconcileOrphanPreparing(_ context.Context, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockPendingRepo) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
 

@@ -26,9 +26,11 @@ type stubPendingRepo struct {
 	mu                 sync.Mutex
 	Batches            map[string]*domain.PendingToolCallBatch
 	ResolvingCounter   int
+	ResetCounter       int
 	RecordedBatchID    string
 	RecordedDecisions  []domain.PendingCall
 	AtomicTransitionFn func(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error)
+	RecordDecisionsFn  func(ctx context.Context, batchID string, calls []domain.PendingCall) error
 }
 
 func newStubPendingRepo() *stubPendingRepo {
@@ -69,7 +71,12 @@ func (s *stubPendingRepo) AtomicTransitionToResolving(ctx context.Context, batch
 	s.ResolvingCounter++
 	return b, nil
 }
-func (s *stubPendingRepo) RecordDecisions(_ context.Context, batchID string, calls []domain.PendingCall) error {
+func (s *stubPendingRepo) RecordDecisions(ctx context.Context, batchID string, calls []domain.PendingCall) error {
+	if s.RecordDecisionsFn != nil {
+		if err := s.RecordDecisionsFn(ctx, batchID, calls); err != nil {
+			return err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.RecordedBatchID = batchID
@@ -81,10 +88,29 @@ func (s *stubPendingRepo) RecordDecisions(_ context.Context, batchID string, cal
 	}
 	return nil
 }
+func (s *stubPendingRepo) ResetResolvingToPending(_ context.Context, batchID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ResetCounter++
+	b, ok := s.Batches[batchID]
+	if !ok || b.Status != "resolving" {
+		return nil
+	}
+	for _, c := range b.Calls {
+		if c.Verdict == "approve" || c.Verdict == "edit" || c.Verdict == "reject" {
+			return nil
+		}
+	}
+	b.Status = "pending"
+	return nil
+}
 func (s *stubPendingRepo) MarkDispatched(_ context.Context, _, _ string) error { return nil }
 func (s *stubPendingRepo) MarkResolved(_ context.Context, _ string) error      { return nil }
 func (s *stubPendingRepo) MarkExpired(_ context.Context, _ string) error       { return nil }
 func (s *stubPendingRepo) ReconcileOrphanPreparing(_ context.Context, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+func (s *stubPendingRepo) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
 
@@ -236,6 +262,65 @@ func TestHITLService_Resolve_Happy(t *testing.T) {
 	}
 	if pr.RecordedBatchID != "batch-1" {
 		t.Errorf("RecordDecisions not called with batch-1, got %q", pr.RecordedBatchID)
+	}
+}
+
+// TestHITLService_Resolve_RecordDecisionsFailure_RollsBackAndRetrySucceeds is
+// the recovery guard. AtomicTransitionToResolving wins, then RecordDecisions
+// fails (transient Mongo blip / request-context deadline). Without the
+// compensating reset the batch is stranded in status="resolving" with empty
+// verdicts: a retried resolve only matches status="pending" so it 409s forever
+// (until the 24h TTL), and resume's fail-closed path silently turns the user's
+// explicit approve into a reject. The fix must (a) roll the batch back to
+// pending and surface the error, and (b) let a second resolve win the
+// transition again and record the approve verdict.
+func TestHITLService_Resolve_RecordDecisionsFailure_RollsBackAndRetrySucceeds(t *testing.T) {
+	bizID := uuid.New().String()
+	pr := newStubPendingRepo()
+	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+	})
+	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
+
+	injected := errors.New("mongo: transient write blip")
+	var failOnce bool
+	pr.RecordDecisionsFn = func(_ context.Context, _ string, _ []domain.PendingCall) error {
+		if !failOnce {
+			failOnce = true
+			return injected
+		}
+		return nil
+	}
+
+	in := service.ResolveInput{
+		ConversationID:  "conv-1",
+		BatchID:         "batch-1",
+		ActorUserID:     uuid.New().String(),
+		ActorBusinessID: bizID,
+		Decisions:       []service.DecisionInput{{ID: "tc_a", Action: "approve"}},
+	}
+
+	_, err := svc.Resolve(context.Background(), in)
+	if !errors.Is(err, injected) {
+		t.Fatalf("first Resolve: want injected RecordDecisions error, got %v", err)
+	}
+	if pr.ResetCounter == 0 {
+		t.Fatalf("compensating ResetResolvingToPending was never called")
+	}
+	rolledBack, _ := pr.GetByBatchID(context.Background(), "batch-1")
+	if rolledBack.Status != "pending" {
+		t.Fatalf("batch not rolled back: status = %q, want pending", rolledBack.Status)
+	}
+
+	res, err := svc.Resolve(context.Background(), in)
+	if err != nil {
+		t.Fatalf("second Resolve: want success after rollback, got %v", err)
+	}
+	if len(res.Decisions) != 1 || res.Decisions[0].Action != "approve" {
+		t.Fatalf("second Resolve decisions = %v, want one approve", res.Decisions)
+	}
+	if len(pr.RecordedDecisions) != 1 || pr.RecordedDecisions[0].Verdict != "approve" {
+		t.Fatalf("recorded verdict = %+v, want approve", pr.RecordedDecisions)
 	}
 }
 
