@@ -365,3 +365,57 @@ func TestRun_PerToolTimeout_BoundsSingleTool(t *testing.T) {
 	assert.Contains(t, results["call_hang"].ToolError, "deadline exceeded")
 	assert.Empty(t, results["call_fast"].ToolError)
 }
+
+// TestRun_ToolPanic_RecoversToErrorEvent asserts that a panic inside one tool's
+// executor in a parallel batch is contained to THAT tool — the run completes,
+// emits a tool_result error event for the panicking call, and the sibling tools
+// still produce their normal results. Without the per-goroutine recover in
+// dispatchToolCalls the panic propagates uncaught and aborts the whole process
+// (the parent-goroutine recoverToError cannot catch a child-goroutine panic).
+func TestRun_ToolPanic_RecoversToErrorEvent(t *testing.T) {
+	args, _ := json.Marshal(map[string]interface{}{})
+
+	stub := &safeStubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{
+				{ID: "call_ok_a", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "tool_ok_a", Arguments: string(args)}},
+				{ID: "call_panic", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "tool_panic", Arguments: string(args)}},
+				{ID: "call_ok_b", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "tool_ok_b", Arguments: string(args)}},
+			},
+		},
+		{Content: "ok", FinishReason: "stop"},
+	}}
+
+	reg := toolregistry.NewRegistry()
+	okExec := toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		return map[string]interface{}{"ok": true}, nil
+	})
+	panicExec := toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		panic("boom in tool executor")
+	})
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, okExec)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_panic"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, panicExec)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_b"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, okExec)
+
+	orch := orchestrator.New(stub, reg)
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		UserID:          uuid.New(),
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "do three"}},
+	})
+	require.NoError(t, err)
+
+	results := make(map[string]orchestrator.Event)
+	for e := range events {
+		if e.Type == orchestrator.EventToolResult {
+			results[e.ToolCallID] = e
+		}
+	}
+
+	require.Len(t, results, 3, "the run must complete and emit a tool_result for every call, including the panicking one")
+	assert.NotEmpty(t, results["call_panic"].ToolError,
+		"the panicking tool must surface as that call's tool_result error, not crash the process")
+	assert.Empty(t, results["call_ok_a"].ToolError, "sibling tools must still produce their normal results")
+	assert.Empty(t, results["call_ok_b"].ToolError, "sibling tools must still produce their normal results")
+}

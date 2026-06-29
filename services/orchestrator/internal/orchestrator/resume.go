@@ -281,6 +281,30 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		wg.Add(1)
 		go func(c domain.PendingCall) {
 			defer wg.Done()
+			resultProduced := false
+			defer func() {
+				execErr := recoverToolPanic(ctx, recover())
+				if execErr == nil || resultProduced {
+					return
+				}
+				errStr := execErr.Error()
+				mu.Lock()
+				state.Messages = append(state.Messages, llm.Message{
+					Role:       "tool",
+					Content:    fmt.Sprintf(`{"error":%q}`, errStr),
+					ToolCallID: c.CallID,
+				})
+				mu.Unlock()
+				_ = sendOrCancel(Event{
+					Type:               EventToolResult,
+					ToolCallID:         c.CallID,
+					ToolName:           c.ToolName,
+					ToolDisplayName:    o.tools.DisplayName(c.ToolName),
+					ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
+					ToolError:          errStr,
+					Code:               a2a.CodeOf(execErr),
+				})
+			}()
 
 			args := c.Arguments
 			if c.Verdict == "edit" && c.EditedArgs != nil {
@@ -329,6 +353,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				Content:    string(resultJSON),
 				ToolCallID: c.CallID,
 			})
+			resultProduced = true
 			mu.Unlock()
 
 			if markErr := o.pendingRepo.MarkDispatched(ctx, batch.ID, c.CallID); markErr != nil {
