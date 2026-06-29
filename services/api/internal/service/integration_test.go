@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/crypto/kmsfake"
@@ -1861,5 +1862,99 @@ func TestConnect_ActorGate(t *testing.T) {
 			"the deleted_at-filtered lookup reads the grace-window actor as not-found → gate fails open")
 		assert.True(t, created,
 			"reverting the gate to the deleted_at-filtered lookup lets a mid-deletion actor persist a live integration — the bug this PR fixes")
+	})
+}
+
+// TestGetDecryptedToken_RefresherIsPlatformGated proves the Google OAuth
+// refresher is applied only to google_business rows. A yandex_business row also
+// persists a refresh token + expiry, but its refresh token must never be POSTed
+// to Google's token endpoint (cross-vendor credential leak); it falls through to
+// ErrTokenExpired until a Yandex refresher is wired. The google_business case
+// pins the no-over-block side: an expired Google row still refreshes.
+func TestGetDecryptedToken_RefresherIsPlatformGated(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+	past := time.Now().Add(-1 * time.Hour)
+
+	newIntegration := func(platform, refreshPlain string) *domain.Integration {
+		encAccess, err := enc.Encrypt([]byte("expired_access"))
+		require.NoError(t, err)
+		encRefresh, err := enc.Encrypt([]byte(refreshPlain))
+		require.NoError(t, err)
+		return &domain.Integration{
+			ID:                    uuid.New(),
+			BusinessID:            uuid.New(),
+			Platform:              platform,
+			ExternalID:            "ext/1",
+			Status:                "active",
+			EncryptedAccessToken:  encAccess,
+			EncryptedRefreshToken: encRefresh,
+			TokenExpiresAt:        &past,
+		}
+	}
+
+	t.Run("yandex_business row never reaches the Google refresher", func(t *testing.T) {
+		yandexRefresh := "yandex_refresh_token"
+		integration := newIntegration(a2a.AgentYandexBusiness, yandexRefresh)
+		repo := &mockIntegrationRepository{
+			getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+				return integration, nil
+			},
+			getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Integration, error) {
+				return integration, nil
+			},
+		}
+
+		var seen []string
+		refresher := &mockTokenRefresher{
+			refreshFunc: func(_ context.Context, rt string) (string, string, int64, error) {
+				seen = append(seen, rt)
+				return "new_access", "", 3600, nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, refresher, audit.Nop())
+		resp, err := svc.GetDecryptedToken(ctx, integration.BusinessID, a2a.AgentYandexBusiness, "ext/1", "test")
+
+		assert.Nil(t, resp)
+		assert.ErrorIs(t, err, domain.ErrTokenExpired)
+		assert.Zero(t, refresher.callCount,
+			"Google refresher must not be invoked for a yandex_business row")
+		assert.NotContains(t, seen, yandexRefresh,
+			"the Yandex refresh token must never be POSTed to Google's token endpoint")
+	})
+
+	t.Run("google_business row still refreshes (no over-block)", func(t *testing.T) {
+		googleRefresh := "google_refresh_token"
+		integration := newIntegration(a2a.AgentGoogleBusiness, googleRefresh)
+		repo := &mockIntegrationRepository{
+			getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+				return integration, nil
+			},
+			getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Integration, error) {
+				return integration, nil
+			},
+			updateFunc: func(_ context.Context, _ *domain.Integration) error {
+				return nil
+			},
+		}
+
+		var seen []string
+		refresher := &mockTokenRefresher{
+			refreshFunc: func(_ context.Context, rt string) (string, string, int64, error) {
+				seen = append(seen, rt)
+				return "new_access", "", 3600, nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, refresher, audit.Nop())
+		resp, err := svc.GetDecryptedToken(ctx, integration.BusinessID, a2a.AgentGoogleBusiness, "ext/1", "test")
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, "new_access", resp.AccessToken)
+		assert.Equal(t, 1, refresher.callCount,
+			"Google refresher must still refresh an expired google_business row")
+		assert.Contains(t, seen, googleRefresh)
 	})
 }

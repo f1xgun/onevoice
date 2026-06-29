@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	pgx "github.com/jackc/pgx/v5"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -170,6 +171,17 @@ func WithActorGate(svc IntegrationService, actors ActorLookup) IntegrationServic
 func (s *integrationService) getRefreshMutex(id uuid.UUID) *sync.Mutex {
 	val, _ := s.refreshMu.LoadOrStore(id, &sync.Mutex{})
 	return val.(*sync.Mutex)
+}
+
+// refresherSupports reports whether the wired refresher may be applied to the
+// given platform. The configured refresher is the Google OAuth refresher, which
+// POSTs to Google's token endpoint with the Google client_id/secret; applying
+// it to a non-Google row would ship that row's refresh token to Google. Other
+// platforms (e.g. yandex_business, which also persists a refresh token + expiry)
+// must not borrow it — they fall through to ErrTokenExpired until their own
+// refresher is wired.
+func (s *integrationService) refresherSupports(platform string) bool {
+	return platform == a2a.AgentGoogleBusiness
 }
 
 // ListByBusinessID retrieves all integrations for a business
@@ -476,7 +488,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 	}
 
 	if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
-		if len(integration.EncryptedRefreshToken) == 0 || s.refresher == nil {
+		if len(integration.EncryptedRefreshToken) == 0 || s.refresher == nil || !s.refresherSupports(integration.Platform) {
 			return nil, domain.ErrTokenExpired
 		}
 
