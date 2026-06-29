@@ -130,6 +130,11 @@ func (t *Turn) Run(
 	case gateReemitApproval:
 		t.reemitApprovalEvent(w, batch)
 		return OutcomeReemittedApproval, nil
+	case gateRejectInProgress:
+		// A fresh turn is already streaming (RECENT in_progress placeholder).
+		// Reject this concurrent request rather than running a second parallel
+		// fresh turn — do NOT fall through into the stream body.
+		return OutcomeTurnInProgress, nil
 	case gateHealStranded:
 		t.finalizeStranded(ctx, activeMsg)
 	case gateFresh:

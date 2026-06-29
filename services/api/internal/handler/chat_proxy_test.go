@@ -1778,3 +1778,83 @@ func TestFireAutoTitleIfPendingResume(t *testing.T) {
 		})
 	})
 }
+
+// TestChatProxy_FreshTurn_ConcurrentInFlight_Returns409 is the HTTP-contract arm
+// of the fresh-turn serialization guard. A fresh POST /chat/{id} (no resume
+// header) lands on a conversation that already has a RECENT in_progress assistant
+// placeholder — i.e. a first fresh turn is still streaming. The handler must
+// reject with 409 turn_already_in_progress and must NOT invoke the orchestrator
+// (no second parallel turn).
+//
+// Reverting the gateRejectInProgress action makes the second turn stream against
+// the orchestrator and force-complete the in-flight placeholder; this test fails
+// (orchHits > 0 and status != 409).
+func TestChatProxy_FreshTurn_ConcurrentInFlight_Returns409(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-in-flight"
+
+	business := &domain.Business{ID: businessID, Name: "Biz"}
+
+	inFlight := &domain.Message{
+		ID:             "placeholder-1",
+		ConversationID: convID,
+		Role:           domain.MessageRoleAssistant,
+		Status:         domain.MessageStatusInProgress,
+		CreatedAt:      time.Now(),
+	}
+
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		orchHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var created, updated []*domain.Message
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			cp := *inFlight
+			return &cp, nil
+		},
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			created = append(created, &cp)
+			return nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			updated = append(updated, &cp)
+			return nil
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String()}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{"message":"second concurrent message"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chatProxyBizCtx(businessID, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusConflict, rr.Code,
+		"a concurrent fresh turn landing on a RECENT in_progress placeholder must be rejected with 409")
+	assert.Contains(t, rr.Body.String(), "turn_already_in_progress")
+	assert.Zero(t, orchHits, "the rejected turn must NOT invoke the orchestrator (no second parallel stream)")
+	assert.Empty(t, created, "the rejected turn must not persist a user message or a second placeholder")
+	assert.Empty(t, updated, "the rejected turn must not force-complete the in-flight placeholder")
+}
