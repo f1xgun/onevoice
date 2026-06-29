@@ -203,6 +203,23 @@ func TestSendPhoto_InvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "download photo")
 }
 
+func TestSendPhoto_RejectsNonImageContentType(t *testing.T) {
+	stubFetcher(t, func(_ context.Context, _ string) ([]byte, string, error) {
+		return []byte("<html>not an image</html>"), "text/html", nil
+	})
+
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not call Telegram API when fetched content-type is not an image")
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+	err := bot.SendPhoto("-1001234567890", "https://images.example.test/page.html", "caption")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "content-type")
+}
+
 // TestSendPhoto_RejectsSSRF asserts the real safefetch guard blocks
 // LLM-supplied internal/non-https photo URLs before any download or Telegram
 // API call happens. The mock Telegram handler fails the test if reached.

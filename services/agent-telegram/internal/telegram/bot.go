@@ -159,9 +159,12 @@ func newTextMessage(chat, text string) tgbotapi.MessageConfig {
 // SendPhoto downloads the image from photoURL and sends it to Telegram as file
 // bytes, avoiding Telegram-server-side URL fetching failures.
 func (b *Bot) SendPhoto(chat, photoURL, caption string) error {
-	data, _, err := photoFetcher.Get(context.Background(), photoURL)
+	data, ct, err := photoFetcher.Get(context.Background(), photoURL)
 	if err != nil {
 		return fmt.Errorf("download photo: %w", err)
+	}
+	if !strings.HasPrefix(ct, "image/") {
+		return fmt.Errorf("telegram: unexpected content-type %q, expected image/*", ct)
 	}
 
 	name := path.Base(photoURL)
