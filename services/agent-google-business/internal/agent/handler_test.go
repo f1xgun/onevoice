@@ -118,6 +118,32 @@ func TestHandler_GetReviews_Success(t *testing.T) {
 	assert.Equal(t, "Thanks for feedback!", reviews[1]["reply"])
 }
 
+func TestHandler_GetReviews_SurfacesHasMore(t *testing.T) {
+	client := &mockGBPClient{
+		reviews: &gbp.ListReviewsResponse{
+			Reviews: []gbp.Review{
+				{ReviewID: "rev-1", StarRating: "FIVE", Comment: "Great"},
+			},
+			AverageRating:    4.2,
+			TotalReviewCount: 73,
+		},
+	}
+
+	h := newTestHandler(&mockTokenFetcher{}, client)
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "task-1",
+		Tool:       tools.GoogleBusinessGetReviews,
+		BusinessID: "biz-1",
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, 1, resp.Result["count"])
+	assert.Equal(t, 73, resp.Result["total_count"])
+	assert.Equal(t, true, resp.Result["has_more"],
+		"count < total_count must surface has_more so the LLM knows the result is partial")
+}
+
 func TestHandler_GetReviews_APIError(t *testing.T) {
 	client := &mockGBPClient{
 		reviewsErr: fmt.Errorf("google api error 403: PERMISSION_DENIED"),
@@ -272,6 +298,30 @@ func TestClassifyGBPError_Generic_StampsTransient(t *testing.T) {
 	out := classifyGBPError(fmt.Errorf("connection refused"))
 	assert.Equal(t, "transient", a2a.CodeOf(out))
 	assert.False(t, assertNonRetryable(out))
+}
+
+func TestClassifyGBPError_429_StampsRateLimit(t *testing.T) {
+	out := classifyGBPError(&gbp.APIError{Code: 429, Status: "RESOURCE_EXHAUSTED", Message: "Quota exceeded"})
+	assert.Equal(t, "rate_limit_exceeded", a2a.CodeOf(out))
+	assert.True(t, assertNonRetryable(out))
+}
+
+func TestClassifyGBPError_403RateLimit_StampsRateLimitNotTokenInvalid(t *testing.T) {
+	out := classifyGBPError(&gbp.APIError{Code: 403, Status: "PERMISSION_DENIED", Message: "Rate Limit Exceeded"})
+	assert.Equal(t, "rate_limit_exceeded", a2a.CodeOf(out))
+	assert.True(t, assertNonRetryable(out))
+}
+
+func TestClassifyGBPError_403Auth_StampsTokenInvalid(t *testing.T) {
+	out := classifyGBPError(&gbp.APIError{Code: 403, Status: "PERMISSION_DENIED", Message: "The caller does not have permission"})
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+	assert.True(t, assertNonRetryable(out))
+}
+
+func TestClassifyGBPError_RateLimitMessage_StampsRateLimit(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("google api error: rateLimitExceeded"))
+	assert.Equal(t, "rate_limit_exceeded", a2a.CodeOf(out))
+	assert.True(t, assertNonRetryable(out))
 }
 
 func TestClassifyGBPError_Nil_ReturnsNil(t *testing.T) {

@@ -55,9 +55,13 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 	if resp.StatusCode >= http.StatusBadRequest {
 		var errResp ErrorResponse
 		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error.Message != "" {
-			return nil, fmt.Errorf("google api error %d: %s", errResp.Error.Code, errResp.Error.Message)
+			code := errResp.Error.Code
+			if code == 0 {
+				code = resp.StatusCode
+			}
+			return nil, &APIError{Code: code, Status: errResp.Error.Status, Message: errResp.Error.Message}
 		}
-		return nil, fmt.Errorf("google api error: status %d, body: %s", resp.StatusCode, string(respBody))
+		return nil, &APIError{Code: resp.StatusCode, Message: string(respBody)}
 	}
 
 	return respBody, nil
@@ -91,21 +95,57 @@ func (c *Client) ListLocations(ctx context.Context, accountName string) ([]Locat
 	return resp.Locations, nil
 }
 
-// GetReviews fetches reviews for a location (accountName format: "accounts/X/locations/Y").
+// GetReviews fetches up to limit reviews for a location (locationName format:
+// "accounts/X/locations/Y"). Google caps page size at maxReviewLimit per
+// request, so larger limits are satisfied by following NextPageToken across
+// pages until limit reviews are collected or the API runs out. AverageRating
+// and TotalReviewCount are taken from the first page (Google reports both as
+// location-wide totals).
 func (c *Client) GetReviews(ctx context.Context, locationName string, limit int) (*ListReviewsResponse, error) {
-	if limit <= 0 || limit > maxReviewLimit {
+	if limit <= 0 {
 		limit = maxReviewLimit
 	}
-	url := fmt.Sprintf("%s/v4/%s/reviews?pageSize=%d", c.ReviewsBaseURL, locationName, limit)
-	body, err := c.doRequest(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("get reviews: %w", err)
+
+	out := &ListReviewsResponse{}
+	var pageToken string
+	for len(out.Reviews) < limit {
+		pageSize := limit - len(out.Reviews)
+		if pageSize > maxReviewLimit {
+			pageSize = maxReviewLimit
+		}
+
+		url := fmt.Sprintf("%s/v4/%s/reviews?pageSize=%d", c.ReviewsBaseURL, locationName, pageSize)
+		if pageToken != "" {
+			url += "&pageToken=" + pageToken
+		}
+
+		body, err := c.doRequest(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("get reviews: %w", err)
+		}
+		var page ListReviewsResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("parse reviews response: %w", err)
+		}
+
+		if out.AverageRating == 0 {
+			out.AverageRating = page.AverageRating
+		}
+		if out.TotalReviewCount == 0 {
+			out.TotalReviewCount = page.TotalReviewCount
+		}
+		out.Reviews = append(out.Reviews, page.Reviews...)
+
+		pageToken = page.NextPageToken
+		if pageToken == "" || len(page.Reviews) == 0 {
+			break
+		}
 	}
-	var resp ListReviewsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse reviews response: %w", err)
+
+	if len(out.Reviews) > limit {
+		out.Reviews = out.Reviews[:limit]
 	}
-	return &resp, nil
+	return out, nil
 }
 
 // ReplyReview posts or updates a reply to a review.

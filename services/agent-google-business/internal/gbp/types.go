@@ -1,5 +1,7 @@
 package gbp
 
+import "fmt"
+
 // Account represents a Google Business Profile account.
 type Account struct {
 	Name        string `json:"name"`        // e.g., "accounts/123456"
@@ -70,4 +72,22 @@ type ErrorResponse struct {
 		Message string `json:"message"`
 		Status  string `json:"status"`
 	} `json:"error"`
+}
+
+// APIError is a typed Google API failure carrying the numeric HTTP status and
+// the canonical Status string (e.g. "RESOURCE_EXHAUSTED", "PERMISSION_DENIED").
+// Callers classify on Code/Status instead of substring-matching the message,
+// which lets a 429/RESOURCE_EXHAUSTED quota error be told apart from a genuine
+// 403 auth failure.
+type APIError struct {
+	Code    int
+	Status  string
+	Message string
+}
+
+func (e *APIError) Error() string {
+	if e.Status != "" {
+		return fmt.Sprintf("google api error %d (%s): %s", e.Code, e.Status, e.Message)
+	}
+	return fmt.Sprintf("google api error %d: %s", e.Code, e.Message)
 }

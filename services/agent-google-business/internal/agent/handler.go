@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -73,9 +74,12 @@ func ClassifyGBPError(err error) error {
 }
 
 // classifyGBPError stamps permanent Google API errors with a typed Code and
-// composes with NonRetryableError. 401/403/PERMISSION_DENIED/UNAUTHENTICATED
-// map to integration_token_invalid; 404/NOT_FOUND map to channel_not_found;
-// everything else is treated as transient (retryable).
+// composes with NonRetryableError. 429/RESOURCE_EXHAUSTED (and a 403 quota
+// error) map to rate_limit_exceeded; a genuine 401/403/PERMISSION_DENIED/
+// UNAUTHENTICATED maps to integration_token_invalid; 404/NOT_FOUND map to
+// channel_not_found; everything else is treated as transient (retryable).
+// A typed *gbp.APIError is classified on its numeric Code/Status; only when no
+// typed error is present does it fall back to substring matching.
 func classifyGBPError(err error) error {
 	if err == nil {
 		return nil
@@ -83,7 +87,16 @@ func classifyGBPError(err error) error {
 	if a2a.CodeOf(err) != "" {
 		return err
 	}
+
+	var apiErr *gbp.APIError
+	if errors.As(err, &apiErr) {
+		return classifyGBPAPIError(err, apiErr)
+	}
+
 	msg := err.Error()
+	if isRateLimitMessage(msg) {
+		return a2a.NewCodedError("rate_limit_exceeded", a2a.NewNonRetryableError(err))
+	}
 	if strings.Contains(msg, "401") || strings.Contains(msg, "403") ||
 		strings.Contains(msg, "PERMISSION_DENIED") || strings.Contains(msg, "UNAUTHENTICATED") {
 		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
@@ -92,6 +105,35 @@ func classifyGBPError(err error) error {
 		return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
 	}
 	return a2a.NewCodedError("transient", err)
+}
+
+// classifyGBPAPIError classifies a typed Google API error on its numeric Code
+// and canonical Status. The rate-limit branch is checked before the auth
+// branch so a 429/RESOURCE_EXHAUSTED (or 403 quota) condition is reported as a
+// transient rate_limit_exceeded rather than a permanent reconnect prompt.
+func classifyGBPAPIError(err error, apiErr *gbp.APIError) error {
+	if apiErr.Code == 429 || apiErr.Status == "RESOURCE_EXHAUSTED" ||
+		(apiErr.Code == 403 && isRateLimitMessage(apiErr.Status+" "+apiErr.Message)) {
+		return a2a.NewCodedError("rate_limit_exceeded", a2a.NewNonRetryableError(err))
+	}
+	if apiErr.Code == 401 || apiErr.Code == 403 ||
+		apiErr.Status == "PERMISSION_DENIED" || apiErr.Status == "UNAUTHENTICATED" {
+		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
+	}
+	if apiErr.Code == 404 || apiErr.Status == "NOT_FOUND" {
+		return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
+	}
+	return a2a.NewCodedError("transient", err)
+}
+
+// isRateLimitMessage reports whether a free-text error string signals a Google
+// quota / rate-limit condition.
+func isRateLimitMessage(msg string) bool {
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "ratelimitexceeded") ||
+		strings.Contains(lower, "rate limit exceeded") ||
+		strings.Contains(lower, "resource_exhausted") ||
+		strings.Contains(msg, "429")
 }
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (GBPClient, string, error) {
@@ -145,6 +187,7 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		"count":          len(reviews),
 		"average_rating": resp.AverageRating,
 		"total_count":    resp.TotalReviewCount,
+		"has_more":       len(reviews) < resp.TotalReviewCount,
 	}), nil
 }
 
