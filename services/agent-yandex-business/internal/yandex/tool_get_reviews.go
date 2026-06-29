@@ -2,6 +2,8 @@ package yandex
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -135,11 +137,10 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 // scrapeReviewCards extracts review data from every currently-rendered review
 // card. It re-reads the full card list on each call (callers invoke it after a
 // "load more" click), so the returned slice always reflects the whole rendered
-// DOM in document order. Each card carries a stable "id": the real
-// data-review-id when present, or a position-derived synthetic id otherwise.
-// Because "load more" only appends cards below the existing ones, a card's
-// document index is stable across re-scrapes, which lets callers dedup
-// re-rendered top cards against newly appended ones.
+// DOM in document order. Each card carries a stable "id" from reviewExternalID:
+// the real data-review-id when present, or a content-derived hash otherwise.
+// The id is the natural key the review pipeline upserts on, so it must identify
+// the same review across sync ticks regardless of its position in the list.
 func scrapeReviewCards(page playwright.Page) ([]map[string]interface{}, error) { //nolint:unparam // error return reserved for future DOM validation errors
 	cardSelectors := []string{
 		".Review",
@@ -162,14 +163,8 @@ func scrapeReviewCards(page playwright.Page) ([]map[string]interface{}, error) {
 	}
 
 	results := make([]map[string]interface{}, 0, len(cards))
-	for i, card := range cards {
+	for _, card := range cards {
 		review := map[string]interface{}{}
-
-		if id, err := card.GetAttribute("data-review-id"); err == nil && id != "" {
-			review["id"] = id
-		} else {
-			review["id"] = fmt.Sprintf("review-%d", i)
-		}
 
 		review["rating"] = extractRating(card)
 
@@ -180,7 +175,8 @@ func scrapeReviewCards(page playwright.Page) ([]map[string]interface{}, error) {
 			"[class*='Author']",
 			"[class*='author']",
 		}
-		review["author"] = extractText(card, authorSelectors, "Unknown")
+		author := extractText(card, authorSelectors, "Unknown")
+		review["author"] = author
 
 		textSelectors := []string{
 			".Review-Text",
@@ -189,7 +185,8 @@ func scrapeReviewCards(page playwright.Page) ([]map[string]interface{}, error) {
 			"[class*='ReviewText']",
 			"[class*='review-body']",
 		}
-		review["text"] = extractText(card, textSelectors, "")
+		text := extractText(card, textSelectors, "")
+		review["text"] = text
 
 		dateSelectors := []string{
 			".Review-Date",
@@ -198,11 +195,29 @@ func scrapeReviewCards(page playwright.Page) ([]map[string]interface{}, error) {
 			"[class*='Date']",
 			"time",
 		}
-		review["date"] = extractText(card, dateSelectors, "")
+		date := extractText(card, dateSelectors, "")
+		review["date"] = date
+
+		dataReviewID, _ := card.GetAttribute("data-review-id")
+		review["id"] = reviewExternalID(dataReviewID, author, date, text)
 
 		results = append(results, review)
 	}
 	return results, nil
+}
+
+// reviewExternalID returns the stable key a scraped review is persisted under.
+// It prefers the real data-review-id (which the reply tool needs to locate the
+// card) and otherwise derives a content hash from the author, date and body so
+// the key tracks the same review across sync ticks. A position-derived key
+// would shift when a newer review is posted above, causing one review's content
+// to overwrite a different review's stored document.
+func reviewExternalID(dataReviewID, author, dateText, bodyText string) string {
+	if strings.TrimSpace(dataReviewID) != "" {
+		return dataReviewID
+	}
+	sum := sha256.Sum256([]byte(author + "\x00" + dateText + "\x00" + bodyText))
+	return "yreview-" + hex.EncodeToString(sum[:])[:16]
 }
 
 // extractText tries multiple selectors on a parent locator and returns the first non-empty text.
