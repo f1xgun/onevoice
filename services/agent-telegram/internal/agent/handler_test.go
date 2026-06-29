@@ -182,6 +182,34 @@ func TestHandler_SendNotification_FetchesTokenPerRequest(t *testing.T) {
 	assert.Equal(t, "telegram", fetcher.lastPlatform)
 }
 
+// TestHandler_SendNotification_NoChatID_DoesNotLeakToChannel is the regression
+// for the confidentiality leak: telegram__send_notification is advertised to the
+// LLM as a private owner notification and its tool spec exposes no chat_id, so in
+// production Args carries only {text}. The integration's resolved external_id is
+// the connected PUBLIC channel. The notification path must NOT fall back to that
+// external_id (which would broadcast owner-private content — and any quoted
+// third-party PII — to all channel subscribers); it must fail closed with a
+// coded, non-retryable notification_recipient_unconfigured error.
+func TestHandler_SendNotification_NoChatID_DoesNotLeakToChannel(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "@publicchannel"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		BusinessID: "biz-1",
+		Tool:       tools.TelegramSendNotification,
+		Args:       map[string]interface{}{"text": "private owner alert"},
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, "notification_recipient_unconfigured", a2a.CodeOf(err))
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}),
+		"missing private recipient is permanent until configured — must be NonRetryable")
+	assert.Empty(t, sender.sentChat, "notification must NOT be sent anywhere when no private recipient is configured")
+	assert.NotEqual(t, "@publicchannel", sender.sentChat,
+		"owner-private notification must never be broadcast to the connected public channel")
+}
+
 func TestHandler_TokenFetchError_ReturnsError(t *testing.T) {
 	fetcher := &fakeTokenFetcher{err: fmt.Errorf("integration not found")}
 	sender := &fakeSender{}
