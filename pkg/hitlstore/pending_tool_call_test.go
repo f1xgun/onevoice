@@ -559,6 +559,119 @@ func TestPendingToolCall_ReconcileOrphanPreparing(t *testing.T) {
 	assert.Equal(t, "resolving", resolvingDoc["status"], "resolving untouched")
 }
 
+func TestPendingToolCall_ReconcileOrphanResolving(t *testing.T) {
+	db := setupPendingToolCallDB(t, "reconcile_resolving")
+	ctx := context.Background()
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "resolving-stale-empty",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+		Status:         "resolving",
+		CreatedAt:      now.Add(-10 * time.Minute),
+		UpdatedAt:      now.Add(-10 * time.Minute),
+		ExpiresAt:      now.Add(24 * time.Hour),
+		Calls: []domain.PendingCall{
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost},
+		},
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "resolving-fresh-empty",
+		ConversationID: "conv-2",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-2",
+		Status:         "resolving",
+		CreatedAt:      now.Add(-1 * time.Minute),
+		UpdatedAt:      now.Add(-1 * time.Minute),
+		ExpiresAt:      now.Add(24 * time.Hour),
+		Calls: []domain.PendingCall{
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost},
+		},
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "resolving-stale-recorded",
+		ConversationID: "conv-3",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-3",
+		Status:         "resolving",
+		CreatedAt:      now.Add(-10 * time.Minute),
+		UpdatedAt:      now.Add(-10 * time.Minute),
+		ExpiresAt:      now.Add(24 * time.Hour),
+		Calls: []domain.PendingCall{
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost, Verdict: "approve"},
+		},
+	})
+
+	count, err := repo.ReconcileOrphanResolving(ctx, 5*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), count, "only the stale all-empty resolving batch must be reset")
+
+	var staleEmpty, freshEmpty, staleRecorded bson.M
+	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resolving-stale-empty"}).Decode(&staleEmpty))
+	assert.Equal(t, "pending", staleEmpty["status"], "stale all-empty resolving must be reset to pending")
+	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resolving-fresh-empty"}).Decode(&freshEmpty))
+	assert.Equal(t, "resolving", freshEmpty["status"], "fresh resolving must be left alone (may be legitimately in-flight)")
+	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resolving-stale-recorded"}).Decode(&staleRecorded))
+	assert.Equal(t, "resolving", staleRecorded["status"], "resolving with a recorded verdict must be left alone")
+}
+
+// TestPendingToolCall_ResetResolvingToPending covers the compensating write:
+// a resolving batch with no recorded verdicts flips back to pending, while a
+// batch that already carries a verdict (a concurrent winner's persisted
+// decision) is never clobbered.
+func TestPendingToolCall_ResetResolvingToPending(t *testing.T) {
+	db := setupPendingToolCallDB(t, "reset_resolving")
+	ctx := context.Background()
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "reset-empty",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+		Status:         "resolving",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ExpiresAt:      now.Add(24 * time.Hour),
+		Calls: []domain.PendingCall{
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost},
+		},
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID:             "reset-recorded",
+		ConversationID: "conv-2",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-2",
+		Status:         "resolving",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ExpiresAt:      now.Add(24 * time.Hour),
+		Calls: []domain.PendingCall{
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost, Verdict: "approve"},
+		},
+	})
+
+	require.NoError(t, repo.ResetResolvingToPending(ctx, "reset-empty"))
+	require.NoError(t, repo.ResetResolvingToPending(ctx, "reset-recorded"))
+
+	var empty, recorded bson.M
+	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "reset-empty"}).Decode(&empty))
+	assert.Equal(t, "pending", empty["status"], "empty-verdict resolving batch must reset to pending")
+	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "reset-recorded"}).Decode(&recorded))
+	assert.Equal(t, "resolving", recorded["status"], "a batch with a recorded verdict must not be reset")
+}
+
 func TestPendingToolCall_MarkDispatched_PositionalUpdate(t *testing.T) {
 	db := setupPendingToolCallDB(t, "markdispatched")
 	ctx := context.Background()

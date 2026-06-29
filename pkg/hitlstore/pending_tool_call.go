@@ -211,6 +211,34 @@ func (r *pendingToolCallRepo) AtomicTransitionToResolving(ctx context.Context, b
 	return &doc, nil
 }
 
+// recordedVerdicts is the set of per-call verdict values RecordDecisions
+// persists. A resolving batch whose calls carry none of these has had no
+// verdicts recorded, so resetting it to pending cannot drop a decision.
+var recordedVerdicts = []string{"approve", "edit", "reject"}
+
+// ResetResolvingToPending is the compensating write for a RecordDecisions
+// failure that lands after AtomicTransitionToResolving already flipped the
+// batch to "resolving". The filter excludes any batch whose calls already
+// carry a recorded verdict, so a concurrent winner's persisted decisions are
+// never clobbered. A no-op (MatchedCount == 0) is not an error: the verdicts
+// raced in, or the batch already moved on.
+//
+// See docs/pkg/hitlstore.md.
+func (r *pendingToolCallRepo) ResetResolvingToPending(ctx context.Context, batchID string) error {
+	_, err := r.coll.UpdateOne(ctx,
+		bson.M{
+			"_id":           batchID,
+			"status":        "resolving",
+			"calls.verdict": bson.M{"$nin": recordedVerdicts},
+		},
+		bson.M{"$set": bson.M{
+			"status":     "pending",
+			"updated_at": time.Now().UTC(),
+		}},
+	)
+	return err
+}
+
 // RecordDecisions persists per-call verdicts (approve / edit / reject).
 // Status is normally already "resolving" via AtomicTransitionToResolving.
 func (r *pendingToolCallRepo) RecordDecisions(ctx context.Context, batchID string, calls []domain.PendingCall) error {
@@ -299,6 +327,35 @@ func (r *pendingToolCallRepo) ReconcileOrphanPreparing(ctx context.Context, olde
 		},
 		bson.M{"$set": bson.M{
 			"status":     "expired",
+			"updated_at": time.Now().UTC(),
+		}},
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.ModifiedCount, nil
+}
+
+// ReconcileOrphanResolving resets batches stuck in status="resolving" with no
+// recorded verdicts and older than olderThan back to "pending". Crash-recovery
+// for the gap between a RecordDecisions failure and ResetResolvingToPending: a
+// process death there leaves the batch resolving with empty verdicts, which a
+// retried /resolve can never re-acquire (its filter wants status="pending")
+// and which resume treats as a fail-closed reject. The olderThan window keeps
+// the sweep from racing a legitimately in-flight resolve, which holds
+// "resolving" only momentarily. Called once at API startup; idempotent.
+//
+// See docs/pkg/hitlstore.md.
+func (r *pendingToolCallRepo) ReconcileOrphanResolving(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().UTC().Add(-olderThan)
+	res, err := r.coll.UpdateMany(ctx,
+		bson.M{
+			"status":        "resolving",
+			"updated_at":    bson.M{"$lt": cutoff},
+			"calls.verdict": bson.M{"$nin": recordedVerdicts},
+		},
+		bson.M{"$set": bson.M{
+			"status":     "pending",
 			"updated_at": time.Now().UTC(),
 		}},
 	)

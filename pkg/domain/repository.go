@@ -406,9 +406,18 @@ type PendingToolCallRepository interface {
 	ListPendingByConversation(ctx context.Context, conversationID string) ([]*PendingToolCallBatch, error)
 	// AtomicTransitionToResolving uses findOneAndUpdate{_id, status:"pending"} for exactly-one-wins.
 	AtomicTransitionToResolving(ctx context.Context, batchID string) (*PendingToolCallBatch, error)
+	// ResetResolvingToPending compensates a RecordDecisions failure that lands
+	// after a successful transition: it flips status resolving→pending only while
+	// no verdicts were recorded, so a retried resolve can win the transition again.
+	ResetResolvingToPending(ctx context.Context, batchID string) error
 	RecordDecisions(ctx context.Context, batchID string, calls []PendingCall) error
 	MarkDispatched(ctx context.Context, batchID, callID string) error
 	MarkResolved(ctx context.Context, batchID string) error
 	MarkExpired(ctx context.Context, batchID string) error
 	ReconcileOrphanPreparing(ctx context.Context, olderThan time.Duration) (int64, error)
+	// ReconcileOrphanResolving heals batches stranded in status="resolving" with
+	// no recorded verdicts after a crash between a RecordDecisions failure and
+	// the compensating reset. olderThan gates it off a legitimately in-flight
+	// resolve, which holds "resolving" only momentarily.
+	ReconcileOrphanResolving(ctx context.Context, olderThan time.Duration) (int64, error)
 }

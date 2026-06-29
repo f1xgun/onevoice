@@ -229,6 +229,9 @@ func (s *stubPendingToolCallRepo) GetByBatchID(_ context.Context, _ string) (*do
 func (s *stubPendingToolCallRepo) AtomicTransitionToResolving(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
 	return nil, nil
 }
+func (s *stubPendingToolCallRepo) ResetResolvingToPending(_ context.Context, _ string) error {
+	return nil
+}
 func (s *stubPendingToolCallRepo) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
 	return nil
 }
@@ -236,6 +239,9 @@ func (s *stubPendingToolCallRepo) MarkDispatched(_ context.Context, _, _ string)
 func (s *stubPendingToolCallRepo) MarkResolved(_ context.Context, _ string) error      { return nil }
 func (s *stubPendingToolCallRepo) MarkExpired(_ context.Context, _ string) error       { return nil }
 func (s *stubPendingToolCallRepo) ReconcileOrphanPreparing(_ context.Context, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+func (s *stubPendingToolCallRepo) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
 

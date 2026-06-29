@@ -305,16 +305,27 @@ func kmsSelfTest(ctx context.Context, kms crypto.KMSEncrypter) error {
 	return nil
 }
 
-// runOrphanReconcile sweeps stale "preparing" pending_tool_calls batches after startup (crash recovery).
+// runOrphanReconcile sweeps stale pending_tool_calls batches after startup
+// (crash recovery): "preparing" rows orphaned in the Persist gap, and
+// "resolving" rows with no recorded verdicts orphaned between a RecordDecisions
+// failure and its compensating reset.
 func runOrphanReconcile(repo domain.PendingToolCallRepository) {
 	sweepCtx, sweepCancel := context.WithTimeout(context.Background(), startupTimeout)
 	defer sweepCancel()
+
 	n, reconcileErr := repo.ReconcileOrphanPreparing(sweepCtx, orphanReconcileWindow)
 	if reconcileErr != nil {
 		slog.ErrorContext(sweepCtx, "pending_tool_calls orphan reconcile failed", "error", reconcileErr)
+	} else if n > 0 {
+		slog.InfoContext(sweepCtx, "pending_tool_calls: reconciled orphan preparing batches", "count", n)
+	}
+
+	m, resolvingErr := repo.ReconcileOrphanResolving(sweepCtx, orphanReconcileWindow)
+	if resolvingErr != nil {
+		slog.ErrorContext(sweepCtx, "pending_tool_calls orphan resolving reconcile failed", "error", resolvingErr)
 		return
 	}
-	if n > 0 {
-		slog.InfoContext(sweepCtx, "pending_tool_calls: reconciled orphan preparing batches", "count", n)
+	if m > 0 {
+		slog.InfoContext(sweepCtx, "pending_tool_calls: reconciled orphan resolving batches", "count", m)
 	}
 }

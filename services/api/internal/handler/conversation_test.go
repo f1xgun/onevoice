@@ -173,6 +173,9 @@ func (m *MockPendingToolCallRepository) ListPendingByConversation(ctx context.Co
 func (m *MockPendingToolCallRepository) AtomicTransitionToResolving(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
 	return nil, domain.ErrBatchNotFound
 }
+func (m *MockPendingToolCallRepository) ResetResolvingToPending(_ context.Context, _ string) error {
+	return nil
+}
 func (m *MockPendingToolCallRepository) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
 	return nil
 }
@@ -182,6 +185,9 @@ func (m *MockPendingToolCallRepository) MarkDispatched(_ context.Context, _, _ s
 func (m *MockPendingToolCallRepository) MarkResolved(_ context.Context, _ string) error { return nil }
 func (m *MockPendingToolCallRepository) MarkExpired(_ context.Context, _ string) error  { return nil }
 func (m *MockPendingToolCallRepository) ReconcileOrphanPreparing(_ context.Context, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *MockPendingToolCallRepository) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
 

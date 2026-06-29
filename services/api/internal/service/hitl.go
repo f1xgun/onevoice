@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -282,6 +283,7 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 	}
 
 	if err := s.pendingRepo.RecordDecisions(ctx, in.BatchID, finalized); err != nil {
+		s.compensateResolving(in.BatchID)
 		return nil, fmt.Errorf("record decisions: %w", err)
 	}
 
@@ -290,6 +292,25 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 	}
 
 	return result, nil
+}
+
+// resolveCompensationTimeout bounds the compensating reset issued when
+// RecordDecisions fails after a successful transition. It runs on a fresh
+// context so a deadline-exceeded request can still roll the batch back.
+const resolveCompensationTimeout = 5 * time.Second
+
+// compensateResolving rolls a batch back resolving→pending after a
+// RecordDecisions failure so a retried resolve can win the transition again.
+// It runs detached from the request context — the failure may itself be a
+// request-context deadline — and is best-effort: a residual orphan is healed
+// at startup by ReconcileOrphanResolving.
+func (s *HITLService) compensateResolving(batchID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), resolveCompensationTimeout)
+	defer cancel()
+	if err := s.pendingRepo.ResetResolvingToPending(ctx, batchID); err != nil {
+		slog.ErrorContext(ctx, "hitl: compensating reset of resolving batch failed",
+			"batch_id", batchID, "error", err)
+	}
 }
 
 // missingCallIDs returns the call_ids in the batch not covered by decisions.
