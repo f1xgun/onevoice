@@ -245,6 +245,48 @@ func TestReplyToReview_ReviewNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rr.Code)
 }
 
+func TestRefreshReviews_Success(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockReviewService{
+		refreshFn: func(_ context.Context, uid uuid.UUID) error {
+			called = true
+			assert.Equal(t, userID, uid)
+			return nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reviews/refresh", http.NoBody)
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.RefreshReviews(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, called, "Refresh should run for a caller with PermContentUpdate")
+}
+
+func TestRefreshReviews_ViewerForbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		refreshFn: func(_ context.Context, _ uuid.UUID) error {
+			t.Fatal("Refresh must not be invoked for a read-only viewer")
+			return nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reviews/refresh", http.NoBody)
+	req = req.WithContext(reviewReadCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.RefreshReviews(rr, req)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+	assert.Contains(t, rr.Body.String(), "forbidden")
+}
+
 func TestReplyToReview_ServiceError(t *testing.T) {
 	businessID := uuid.New()
 	userID := uuid.New()
