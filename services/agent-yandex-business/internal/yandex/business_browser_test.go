@@ -357,7 +357,7 @@ func TestBusinessBrowser_GetInfo_ScrapesAllFields(t *testing.T) {
 // the typed payload.
 func TestBusinessBrowser_UpdateInfo_FillsFormFields(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/")
-	phoneInput := &mockLocator{}
+	phoneInput := &mockLocator{inputValue: "+7 495 111 22 33"}
 	page.locators[".InfoPhones input.ya-business-input__control"] = phoneInput
 	page.locators["h1, .InfoBlockCarcass, body"] = &mockLocator{}
 	page.locators[".SaveButton-Button"] = &mockLocator{}
@@ -410,7 +410,9 @@ func TestBusinessBrowser_UpdateInfo_UnknownField_ReturnsError(t *testing.T) {
 // format produced by formatHoursForYandex.
 func TestBusinessBrowser_UpdateHours_FormatsHoursPayload(t *testing.T) {
 	page := newMockPage("https://yandex.ru/sprav/123/p/edit/")
-	page.locators[".WorkIntervalsUnificationInput-Input input.ya-business-input__control"] = &mockLocator{}
+	page.locators[".WorkIntervalsUnificationInput-Input input.ya-business-input__control"] = &mockLocator{
+		inputValue: "Пн-Вт 09:00-18:00",
+	}
 	page.locators["h1, .InfoWorkIntervals, body"] = &mockLocator{}
 	page.locators[".SaveButton-Button"] = &mockLocator{}
 

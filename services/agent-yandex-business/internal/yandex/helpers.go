@@ -2,10 +2,12 @@ package yandex
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
@@ -59,4 +61,35 @@ func clickSave(page playwright.Page) error {
 	}
 	humanDelay()
 	return nil
+}
+
+// confirmFieldSaved re-checks that the value read back from an edit-page input
+// after clickSave matches what we typed, returning a NonRetryableError when it
+// does not. A click that the SPA accepts client-side can still be rejected by
+// the server (inline moderation/validation toast or a transient save XHR
+// failure), in which case the input reverts and nothing persists — so a click
+// alone is not proof the write landed. This mirrors the confirmReplyPosted
+// read-back used by ReplyReview.
+func confirmFieldSaved(expected, actual string) error {
+	if !fieldSavedMatches(expected, actual) {
+		return a2a.NewNonRetryableError(fmt.Errorf(
+			"update not confirmed — field still reads %q after save, expected %q", actual, expected))
+	}
+	return nil
+}
+
+// fieldSavedMatches reports whether the value read back from an edit-page input
+// reflects the value we typed, comparing on whitespace- and case-normalized
+// content so benign formatting differences in the re-rendered input (layout
+// whitespace, NBSP, casing) don't cause a false negative. The read-back is
+// treated as confirming the write when it contains the typed value, which
+// tolerates SPA reformatting (e.g. a phone re-rendered with grouping) while
+// still failing when the field reverted to a different value.
+func fieldSavedMatches(expected, actual string) bool {
+	want := strings.ToLower(normalizeWhitespace(expected))
+	if want == "" {
+		return false
+	}
+	got := strings.ToLower(normalizeWhitespace(actual))
+	return strings.Contains(got, want)
 }
