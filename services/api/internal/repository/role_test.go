@@ -552,6 +552,23 @@ func TestRoleRepository_DeleteInTx_NilTx(t *testing.T) {
 	assert.Contains(t, err.Error(), "tx is required")
 }
 
+func TestRoleRepository_DeleteInTx_ForeignKeyViolation(t *testing.T) {
+	ctx := context.Background()
+	r, mockPool := newTestRoleRepo(t)
+
+	mockPool.ExpectBegin()
+	tx, err := mockPool.Begin(ctx)
+	require.NoError(t, err)
+
+	mockPool.ExpectExec(`DELETE FROM roles`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnError(&pgconn.PgError{Code: "23503"})
+
+	err = r.DeleteInTx(ctx, tx, uuid.New())
+	assert.ErrorIs(t, err, domain.ErrRoleInUse)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
 // --- DeleteWithReassignInTx ----------------------------------------
 
 func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
@@ -787,6 +804,52 @@ func TestRoleRepository_CountMembersByRole(t *testing.T) {
 		_, err := r.CountMembersByRole(ctx, uuid.New(), uuid.New())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "count members")
+	})
+}
+
+// --- CountInvitationsByRole ----------------------------------------
+
+func TestRoleRepository_CountInvitationsByRole(t *testing.T) {
+	t.Run("returns_count_for_any_referencing_invitation", func(t *testing.T) {
+		ctx := context.Background()
+		r, mockPool := newTestRoleRepo(t)
+
+		rows := pgxmock.NewRows([]string{"count"}).AddRow(3)
+		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE`).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnRows(rows)
+
+		count, err := r.CountInvitationsByRole(ctx, uuid.New())
+		require.NoError(t, err)
+		assert.Equal(t, 3, count)
+		require.NoError(t, mockPool.ExpectationsWereMet())
+	})
+
+	t.Run("returns_zero_when_unreferenced", func(t *testing.T) {
+		ctx := context.Background()
+		r, mockPool := newTestRoleRepo(t)
+
+		rows := pgxmock.NewRows([]string{"count"}).AddRow(0)
+		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE`).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnRows(rows)
+
+		count, err := r.CountInvitationsByRole(ctx, uuid.New())
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+		require.NoError(t, mockPool.ExpectationsWereMet())
+	})
+
+	t.Run("generic_error", func(t *testing.T) {
+		ctx := context.Background()
+		r, mockPool := newTestRoleRepo(t)
+
+		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE`).
+			WillReturnError(errors.New("connection lost"))
+
+		_, err := r.CountInvitationsByRole(ctx, uuid.New())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "count invitations")
 	})
 }
 

@@ -807,6 +807,10 @@ func (m *mockRoleRepository) CountMembersByRole(_ context.Context, _, _ uuid.UUI
 	return 0, nil
 }
 
+func (m *mockRoleRepository) CountInvitationsByRole(_ context.Context, _ uuid.UUID) (int, error) {
+	return 0, nil
+}
+
 func (m *mockRoleRepository) GetByMemberInBusiness(_ context.Context, _, _ uuid.UUID) (*domain.Role, error) {
 	return nil, domain.ErrMembershipNotFound
 }

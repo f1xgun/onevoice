@@ -367,6 +367,10 @@ func (r *roleRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID
 	}
 	tag, err := tx.Exec(ctx, sqlStr, args...)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return domain.ErrRoleInUse
+		}
 		return fmt.Errorf("delete role: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
@@ -434,6 +438,10 @@ func (r *roleRepository) DeleteWithReassignInTx(
 	}
 	tag, err := tx.Exec(ctx, delSQL, delArgs...)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return nil, domain.ErrRoleInUse
+		}
 		return nil, fmt.Errorf("delete role: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
@@ -487,6 +495,28 @@ func (r *roleRepository) CountMembersByRole(ctx context.Context, businessID, rol
 	var count int
 	if err := r.pool.QueryRow(ctx, sqlStr, args...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("count members: %w", err)
+	}
+	return count, nil
+}
+
+// CountInvitationsByRole counts every invitations row referencing roleID in any
+// state. The FK invitations.role_id REFERENCES roles(id) ON DELETE RESTRICT
+// (migrations/postgres/000007_rbac_data_model.up.sql:51) pins the role for ALL
+// rows — terminal (accepted/revoked/expired) invitations are never hard-deleted,
+// so they would still raise a restrict_violation on DELETE. Counting any row lets
+// the handler refuse with ErrRoleInUse (422) instead of letting the FK 500.
+func (r *roleRepository) CountInvitationsByRole(ctx context.Context, roleID uuid.UUID) (int, error) {
+	sqlStr, args, err := r.sb.
+		Select("COUNT(*)").
+		From("invitations").
+		Where(squirrel.Eq{"role_id": roleID}).
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("build count invitations: %w", err)
+	}
+	var count int
+	if err := r.pool.QueryRow(ctx, sqlStr, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count invitations: %w", err)
 	}
 	return count, nil
 }

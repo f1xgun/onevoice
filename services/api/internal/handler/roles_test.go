@@ -772,6 +772,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 			IsSystem:   false,
 		}, nil)
 		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(0, nil)
+		rr.On("CountInvitationsByRole", mock.Anything, roleID).Return(0, nil)
 		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		mockPool.ExpectCommit()
 		rr.On("DeleteInTx", mock.Anything, mock.Anything, roleID).Return(nil)
@@ -816,6 +817,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 			IsSystem:    false,
 		}, nil).Once()
 		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(3, nil)
+		rr.On("CountInvitationsByRole", mock.Anything, roleID).Return(0, nil)
 		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		mockPool.ExpectCommit()
 		reassigned := []uuid.UUID{user1, user2, user3}
@@ -864,6 +866,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 			IsSystem:    false,
 		}, nil).Once()
 		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(1, nil)
+		rr.On("CountInvitationsByRole", mock.Anything, roleID).Return(0, nil)
 
 		mr.On("ListUserIDsByRole", mock.Anything, bizID, roleID).
 			Return([]uuid.UUID{snapshotUser}, nil).Maybe()
@@ -1042,6 +1045,36 @@ func TestRolesHandler_Delete(t *testing.T) {
 		rr.AssertNotCalled(t, "DeleteWithReassignInTx")
 	})
 
+	t.Run("invitation_referencing_role_returns_422_not_500", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		mr := &MockBusinessMembershipRepository{}
+		inv := &recordingInvalidator{}
+
+		bizID := uuid.New()
+		roleID := uuid.New()
+
+		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
+			ID:         roleID,
+			BusinessID: &bizID,
+			IsSystem:   false,
+		}, nil)
+		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(0, nil)
+		rr.On("CountInvitationsByRole", mock.Anything, roleID).Return(1, nil)
+
+		h := newRolesHandlerForTest(rr, mr, mustPool(t), inv)
+
+		ctx := businessContextFull(context.Background(), bizID, uuid.New(), ownerRoleUUID(t), authz.PermRolesDelete)
+		req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
+		req = withRoleIDParam(req, roleID.String())
+		w := httptest.NewRecorder()
+		h.Delete(w, req)
+
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		assertErrorCode(t, w, "role_in_use")
+		rr.AssertNotCalled(t, "DeleteInTx")
+		rr.AssertNotCalled(t, "DeleteWithReassignInTx")
+	})
+
 	t.Run("reassign_target_cross_tenant", func(t *testing.T) {
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}
@@ -1058,6 +1091,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 			IsSystem:   false,
 		}, nil).Once()
 		rr.On("CountMembersByRole", mock.Anything, bizA, roleID).Return(2, nil)
+		rr.On("CountInvitationsByRole", mock.Anything, roleID).Return(0, nil)
 		rr.On("GetByID", mock.Anything, reassignToID).Return(&domain.Role{
 			ID:         reassignToID,
 			BusinessID: &bizB,
@@ -1092,6 +1126,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 			IsSystem:   false,
 		}, nil).Once()
 		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(2, nil)
+		rr.On("CountInvitationsByRole", mock.Anything, roleID).Return(0, nil)
 		rr.On("GetByID", mock.Anything, reassignToID).Return(&domain.Role{
 			ID:          reassignToID,
 			BusinessID:  &bizID,
@@ -1128,6 +1163,7 @@ func TestRolesHandler_Delete(t *testing.T) {
 			IsSystem:   false,
 		}, nil)
 		rr.On("CountMembersByRole", mock.Anything, bizID, roleID).Return(0, nil)
+		rr.On("CountInvitationsByRole", mock.Anything, roleID).Return(0, nil)
 		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		mockPool.ExpectCommit().WillReturnError(errors.New("commit fail"))
 		mockPool.ExpectRollback()
