@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -49,7 +51,16 @@ type RunConfig struct {
 // It owns the boot+health+signal+shutdown sequence shared by every platform
 // agent; per-agent specifics arrive via cfg.Exec.
 func Run(cfg RunConfig) error {
-	nc, err := natslib.Connect(cfg.NATSURL)
+	var shuttingDown atomic.Bool
+	opts := resilientNATSOptions()
+	opts = append(opts, natslib.ClosedHandler(func(_ *natslib.Conn) {
+		if shuttingDown.Load() {
+			return
+		}
+		slog.Error(cfg.Name + " agent: NATS connection closed unexpectedly — exiting so the supervisor restarts the pod")
+		os.Exit(1)
+	}))
+	nc, err := natslib.Connect(cfg.NATSURL, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to NATS (url=%s): %w", cfg.NATSURL, err)
 	}
@@ -88,6 +99,7 @@ func Run(cfg RunConfig) error {
 
 	slog.Info(cfg.Name+" agent started", "subject", a2a.Subject(cfg.AgentID))
 	<-ctx.Done()
+	shuttingDown.Store(true)
 	slog.Info(cfg.Name + " agent shutting down — draining in-flight requests")
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), runShutdownTimeout)
 	defer shutCancel()
