@@ -255,7 +255,7 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	log.Info("kms client initialized", "key_id", cfg.TokenEncryptionKMSKeyID)
 
 	if cfg.NATSUrl != "" {
-		nc, natsErr := natslib.Connect(cfg.NATSUrl)
+		nc, natsErr := natslib.Connect(cfg.NATSUrl, resilientNATSOptions(log)...)
 		if natsErr != nil {
 			log.Warn("NATS unavailable — yandex sync and review sync disabled", "url", cfg.NATSUrl, "error", natsErr)
 		} else {
@@ -264,6 +264,35 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 
 	return h, nil
+}
+
+// natsReconnectWait is the backoff between NATS reconnect attempts. It mirrors
+// the orchestrator's and platform agents' dial posture so every NATS client in
+// the cluster shares the same reconnect cadence.
+const natsReconnectWait = 2 * time.Second
+
+// resilientNATSOptions returns the NATS dial options that keep the API's NATS
+// connection (revoke publisher, review syncer, agent-task publisher) alive
+// across an outage of any duration. MaxReconnects(-1) is infinite, so a NATS
+// restart/upgrade or partition longer than the nats.go default budget
+// (MaxReconnect=60 × ReconnectWait=2s ≈ 2 min) no longer exhausts the budget and
+// closes the conn, which would otherwise turn every later publish into a silent
+// failure. RetryOnFailedConnect makes a NATS that is down at boot non-fatal.
+// This mirrors the helper in pkg/agentbase and the orchestrator's dial; it is a
+// standalone helper so it can be unit tested and any drift back to a bare
+// Connect is caught.
+func resilientNATSOptions(log *slog.Logger) []natslib.Option {
+	return []natslib.Option{
+		natslib.RetryOnFailedConnect(true),
+		natslib.MaxReconnects(-1),
+		natslib.ReconnectWait(natsReconnectWait),
+		natslib.DisconnectErrHandler(func(_ *natslib.Conn, e error) {
+			log.Warn("NATS disconnected", "error", e)
+		}),
+		natslib.ReconnectHandler(func(c *natslib.Conn) {
+			log.Info("NATS reconnected", "url", c.ConnectedUrl())
+		}),
+	}
 }
 
 // kmsSelfTest performs a single Encrypt call against the KMS client to
