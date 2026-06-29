@@ -24,6 +24,19 @@ vi.mock('@/lib/auth', () => {
   return { useAuthStore };
 });
 vi.mock('@/lib/api', () => ({ api: { post: vi.fn() } }));
+// hardNav records every next-less hard navigation to a bare '/login'. The
+// regressed bootstrap path calls refreshAccessToken(); the real function does
+// `window.location.href = '/login'` on a session-terminal 401, which STRIPS
+// the ?next= deep link. We mock refreshAccessToken to reproduce that exact
+// side effect (reject AND fire the bare-'/login' hard nav), so reverting the
+// page from the raw `api.post('/auth/refresh')` back to refreshAccessToken()
+// makes the anonymous next-preservation assertions fail. Under the merged fix
+// the page never touches refreshAccessToken, so the mock stays untouched.
+const hardNav = vi.fn();
+const refreshAccessToken = vi.fn();
+vi.mock('@/lib/api/authFetch', () => ({
+  refreshAccessToken: (...args: unknown[]) => refreshAccessToken(...args),
+}));
 vi.mock('@/lib/hooks/useInvitations', () => ({
   useInvitationPreview: vi.fn(),
   useAcceptInvitation: vi.fn(),
@@ -76,6 +89,16 @@ beforeEach(() => {
   setAuth.mockReset();
   setAccessToken.mockReset();
   vi.mocked(api.post).mockReset();
+  hardNav.mockReset();
+  // Faithful stand-in for the real refreshAccessToken on a session-terminal
+  // 401: it rejects AND hard-navigates to a bare '/login', dropping ?next=.
+  // The merged page never calls this; a regressed page that calls it instead
+  // of `api.post('/auth/refresh')` will trip the next-preservation guards.
+  refreshAccessToken.mockReset();
+  refreshAccessToken.mockImplementation(() => {
+    hardNav('/login');
+    return Promise.reject({ response: { status: 401 } });
+  });
   vi.mocked(toast.error).mockReset();
   vi.mocked(useBusinessStore).mockImplementation(
     (
@@ -88,45 +111,34 @@ beforeEach(() => {
 });
 
 describe('AcceptInvitePage', () => {
-  it('redirects anonymous users to /login?next=/invite/{token} preserving next when the refresh 401s', async () => {
-    const hardNav = vi.fn();
-    const realLocation = window.location;
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: {
-        ...realLocation,
-        pathname: '/invite/abc123',
-        set href(v: string) {
-          hardNav(v);
-        },
-      },
-    });
-    try {
-      mockAuth(false);
-      // Anonymous visitor: POST /auth/refresh -> 401. Drive the REAL bootstrap
-      // path (raw api.post) rather than stubbing refreshAccessToken so the
-      // regression — a next-stripping hard nav to /login — would surface.
-      vi.mocked(api.post).mockRejectedValue({ response: { status: 401 } });
-      vi.mocked(useInvitationPreview).mockReturnValue({ isLoading: true } as never);
-      vi.mocked(useAcceptInvitation).mockReturnValue({
-        mutateAsync: vi.fn(),
-        isPending: false,
-      } as never);
-      render(wrap(<AcceptInvitePage />));
-      await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?next=/invite/abc123'));
-      // FAIL-ON-REVERT guard: the deep link must survive. No next-less hard
-      // navigation to /login may occur, and EVERY router.replace must carry
-      // the ?next= back to the invite (reverting the page fix routes through
-      // refreshAccessToken's hard nav to a bare /login, tripping both asserts).
-      expect(hardNav).not.toHaveBeenCalled();
-      for (const call of replace.mock.calls) {
-        expect(call).toEqual(['/login?next=/invite/abc123']);
-      }
-    } finally {
-      Object.defineProperty(window, 'location', {
-        configurable: true,
-        value: realLocation,
-      });
+  it('redirects anonymous users to /login?next=/invite/{token} preserving next via raw refresh (no next-less hard nav)', async () => {
+    mockAuth(false);
+    // Anonymous visitor: the cold-load bootstrap POSTs /auth/refresh -> 401.
+    // The merged page does this through the raw, NON-redirecting api.post
+    // (lib/api classifies /auth/refresh as an auth endpoint, so its 401
+    // interceptor rejects LOCALLY) and then owns the redirect itself,
+    // preserving ?next=. We mock api.post to reject 401 so that path runs.
+    vi.mocked(api.post).mockRejectedValue({ response: { status: 401 } });
+    vi.mocked(useInvitationPreview).mockReturnValue({ isLoading: true } as never);
+    vi.mocked(useAcceptInvitation).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as never);
+    render(wrap(<AcceptInvitePage />));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?next=/invite/abc123'));
+    // FAIL-ON-REVERT guards. The deep link must survive the redirect:
+    //  1. The page must NOT route through refreshAccessToken — that function
+    //     hard-navigates to a bare '/login' on a 401, STRIPPING ?next=. The
+    //     mock (beforeEach) fires `hardNav('/login')` if called, so any call
+    //     trips both guards below. The merged fix leaves it untouched.
+    //  2. Every router.replace must carry ?next= back to the invite.
+    // Reverting the page from `api.post('/auth/refresh')` to
+    // `refreshAccessToken()` makes (a) refreshAccessToken get called and
+    // (b) hardNav fire to a next-less '/login', failing this test.
+    expect(refreshAccessToken).not.toHaveBeenCalled();
+    expect(hardNav).not.toHaveBeenCalled();
+    for (const call of replace.mock.calls) {
+      expect(call).toEqual(['/login?next=/invite/abc123']);
     }
   });
 
