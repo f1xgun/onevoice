@@ -62,17 +62,26 @@ func (r *conversationRepository) GetByID(ctx context.Context, id string) (*domai
 }
 
 // ListByUserID returns conversations for a user within one organization,
-// newest-first, paginated. Scoped by (user_id, business_id) so a member of
-// multiple organizations never sees another organization's conversations.
+// most-recently-active first, paginated. Scoped by (user_id, business_id) so a
+// member of multiple organizations never sees another organization's
+// conversations. Ordering mirrors the search read paths (SearchTitles /
+// ScopedConversationIDs): it coalesces last_message_at to created_at via the
+// shared recencySortStage so legacy / field-absent documents never sort as BSON
+// null and drop out of the limit window, then breaks ties on _id so skip/limit
+// pagination is stable.
 func (r *conversationRepository) ListByUserID(ctx context.Context, userID, businessID string, limit, offset int) ([]domain.Conversation, error) {
 	conversations := make([]domain.Conversation, 0)
 
-	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(offset)).
-		SetSort(bson.M{"created_at": -1})
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"user_id": userID, "business_id": businessID}}},
+		recencySortStage,
+		{{Key: "$sort", Value: bson.D{{Key: recencySortKey, Value: -1}, {Key: "_id", Value: -1}}}},
+		{{Key: "$skip", Value: int64(offset)}},
+		{{Key: "$limit", Value: int64(limit)}},
+		{{Key: "$unset", Value: recencySortKey}},
+	}
 
-	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userID, "business_id": businessID}, opts)
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
 	if err != nil {
 		return conversations, fmt.Errorf("find conversations: %w", err)
 	}

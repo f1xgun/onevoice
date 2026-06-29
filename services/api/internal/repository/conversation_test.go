@@ -293,6 +293,31 @@ func TestConversationRepository_ListByUserID(t *testing.T) {
 		assert.Len(t, conversations, 3)
 	})
 
+	// orders by recency, not creation time, is the fail-on-revert guard for the
+	// sidebar ordering bug: a recently-active OLD conversation (old created_at,
+	// fresh last_message_at) must sort ABOVE a newer-created-but-idle one and so
+	// survive a tight limit window. Restoring the SetSort({created_at:-1}) Find
+	// returns the newer-created idle conversation first and fails this subtest.
+	t.Run("orders by recency (last_message_at), not creation time", func(t *testing.T) {
+		userID := "user-recency-order"
+		const biz = "biz-recency"
+
+		now := time.Now().UTC().Truncate(time.Millisecond)
+		oldCreated := now.Add(-100 * 24 * time.Hour)
+
+		idA := insertConvWithCreatedAt(t, db, userID, biz, "Old but recently active", oldCreated)
+		insertConvWithCreatedAt(t, db, userID, biz, "Newly created but idle", now)
+
+		bumpTo := now.Add(1 * time.Second)
+		require.NoError(t, repo.BumpLastMessageAt(ctx, idA, bumpTo))
+
+		got, err := repo.ListByUserID(ctx, userID, biz, 1, 0)
+		require.NoError(t, err)
+		require.Len(t, got, 1, "limit=1 must return exactly one conversation")
+		assert.Equal(t, idA, got[0].ID,
+			"the most-recently-active conversation (A) must sort first, not the newer-created idle one (B)")
+	})
+
 	// TestConversationRepository_ListByUserID/scopes by business_id is the
 	// repo-level fail-on-revert guard for the cross-organization leak: a user
 	// who is a member of two organizations must only see the active
@@ -517,6 +542,27 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 		err := repo.UpdateProjectAssignment(ctx, "nonexistent-id", &projID)
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
 	})
+}
+
+// insertConvWithCreatedAt inserts a conversation document directly via the
+// Mongo driver with an explicit created_at (and a matching last_message_at) so
+// recency-ordering tests can control the creation timestamp — Create always
+// stamps created_at = now and would otherwise erase the back-dating.
+func insertConvWithCreatedAt(t *testing.T, db *mongo.Database, userID, businessID, title string, createdAt time.Time) string {
+	t.Helper()
+	id := bson.NewObjectID().Hex()
+	_, err := db.Collection("conversations").InsertOne(context.Background(), bson.M{
+		"_id":             id,
+		"user_id":         userID,
+		"business_id":     businessID,
+		"project_id":      nil,
+		"title":           title,
+		"created_at":      createdAt,
+		"updated_at":      createdAt,
+		"last_message_at": createdAt,
+	})
+	require.NoError(t, err)
+	return id
 }
 
 // insertConvWithStatus inserts a conversation document directly via the Mongo
