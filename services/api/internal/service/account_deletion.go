@@ -242,7 +242,13 @@ func (s *AccountDeletionService) CancelDeletion(ctx context.Context, userID uuid
 }
 
 // EnumerateSoleOwnerBusinesses returns businesses where the user is the sole
-// holder of the system owner role. Pool-based, read-only — no tx needed.
+// EFFECTIVE holder of the system owner role. Pool-based, read-only — no tx
+// needed. The inner owner count excludes co-owners who are themselves pending
+// deletion (deleted_at stamped by RequestDeletionInTx) so a second co-owner
+// requesting deletion is correctly seen as the last remaining owner: a stale
+// soft-deleted membership row must not mask the sole-owner invariant and let
+// both owners reach the hard-delete sweeper, where the BEFORE-DELETE trigger
+// would abort the whole batch.
 func (s *AccountDeletionService) EnumerateSoleOwnerBusinesses(ctx context.Context, userID uuid.UUID) ([]SoleOwnerBusiness, error) {
 	const q = `SELECT b.id, b.name
 	             FROM businesses b
@@ -251,8 +257,10 @@ func (s *AccountDeletionService) EnumerateSoleOwnerBusinesses(ctx context.Contex
 	              AND m.role_id = $2::uuid
 	              AND (
 	                  SELECT COUNT(*) FROM business_members m2
+	                   JOIN users u2 ON u2.id = m2.user_id
 	                   WHERE m2.business_id = b.id
 	                     AND m2.role_id = $2::uuid
+	                     AND (u2.deletion_requested_at IS NULL OR u2.deletion_canceled_at IS NOT NULL)
 	              ) = 1
 	            ORDER BY b.name ASC`
 	rows, err := s.pool.Query(ctx, q, userID, systemOwnerRoleID)
@@ -322,12 +330,25 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 		}
 		originalEmail := user.Email
 
-		if err := audit.LogUserSelfDeletedTx(ctx, tx, uid, originalEmail); err != nil {
-			slog.ErrorContext(ctx, "hard delete sweeper: audit insert failed", "userID", uid, "err", err)
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "hard delete sweeper: savepoint begin failed", "userID", uid, "err", err)
 			continue
 		}
-		if err := s.users.HardDeleteInTx(ctx, tx, uid); err != nil {
+
+		if err := audit.LogUserSelfDeletedTx(ctx, sp, uid, originalEmail); err != nil {
+			slog.ErrorContext(ctx, "hard delete sweeper: audit insert failed", "userID", uid, "err", err)
+			_ = sp.Rollback(ctx)
+			continue
+		}
+		if err := s.users.HardDeleteInTx(ctx, sp, uid); err != nil {
 			slog.ErrorContext(ctx, "hard delete sweeper: user delete failed", "userID", uid, "err", err)
+			_ = sp.Rollback(ctx)
+			continue
+		}
+		if err := sp.Commit(ctx); err != nil {
+			slog.ErrorContext(ctx, "hard delete sweeper: savepoint commit failed", "userID", uid, "err", err)
+			_ = sp.Rollback(ctx)
 			continue
 		}
 		purged = append(purged, purgedPair{userID: uid, email: originalEmail})
