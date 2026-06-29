@@ -95,6 +95,13 @@ const (
 	// it to 404 — a uniform not-found over 403 so a member of one organization
 	// cannot probe the existence of another tenant's conversation IDs.
 	OutcomeConversationNotFound
+
+	// OutcomeTurnInProgress is returned when a fresh turn is rejected because the
+	// conversation already has a RECENT in_progress assistant placeholder — a
+	// concurrent fresh turn is still streaming. The handler maps it to 409
+	// Conflict (turn_already_in_progress). Nothing is written to the wire and no
+	// second parallel turn is started.
+	OutcomeTurnInProgress
 )
 
 // String is for log lines; the value names are part of the
@@ -119,6 +126,8 @@ func (o TurnOutcome) String() string {
 		return "business_not_found"
 	case OutcomeConversationNotFound:
 		return "conversation_not_found"
+	case OutcomeTurnInProgress:
+		return "turn_already_in_progress"
 	case OutcomeInlineError:
 		return "inline_error"
 	default:

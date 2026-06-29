@@ -2,6 +2,7 @@ package chatturn
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -36,22 +37,54 @@ func (t *Turn) persistUserMessage(ctx context.Context, msg *domain.Message) erro
 	return err
 }
 
-// persistAssistantPause writes the assistant Message at the
-// tool_approval_required pause point. Status=PendingApproval; ToolCalls
-// already carry ApprovalID=<batch>-<call> + Status=Pending.
-func (t *Turn) persistAssistantPause(ctx context.Context, msg *domain.Message) error {
+// persistAssistantPlaceholder writes the in_progress assistant Message reserved
+// before the stream opens. It serializes concurrent fresh turns: a second
+// POST /chat/{id} for the same conversation finds this active message via
+// FindByConversationActive and gates on the in-flight turn instead of running a
+// second parallel fresh turn. The finalize paths (persistAssistantComplete /
+// persistAssistantPause) reuse this same _id so the turn never strands; a crash
+// before finalize is reclaimed by the gateHealStranded heal path.
+func (t *Turn) persistAssistantPlaceholder(ctx context.Context, msg *domain.Message) error {
 	err := t.deps.Messages.Create(ctx, msg)
 	t.bumpLastMessageAt(ctx, msg)
 	return err
 }
 
-// persistAssistantComplete writes the assistant Message at done / error. The
-// caller has already merged streamErrContent into msg.Content via the i18n
-// wrapper so chat history renders in the writer's language forever.
-func (t *Turn) persistAssistantComplete(ctx context.Context, msg *domain.Message) error {
-	err := t.deps.Messages.Create(ctx, msg)
+// finalizeAssistantMessage upserts the assistant Message by _id. The reservation
+// (persistAssistantPlaceholder) normally inserted the row already, so the finalize
+// is an Update. But the reservation is best-effort — if its Create failed (Mongo
+// blip / timeout / dup-key) the row is ABSENT and Update returns ErrMessageNotFound
+// with MatchedCount==0, which would otherwise SILENTLY DROP the assistant message.
+// On that not-found we fall back to Create so the message is still persisted,
+// preserving the pre-reservation behavior (always insert when no placeholder
+// exists). A genuine transient Update error (not not-found) is returned unchanged.
+func (t *Turn) finalizeAssistantMessage(ctx context.Context, msg *domain.Message) error {
+	err := t.deps.Messages.Update(ctx, msg)
+	if errors.Is(err, domain.ErrMessageNotFound) {
+		slog.WarnContext(ctx, "chatturn: assistant placeholder absent at finalize, inserting (reservation likely failed)",
+			"message_id", msg.ID, "conversation_id", msg.ConversationID)
+		err = t.deps.Messages.Create(ctx, msg)
+	}
 	t.bumpLastMessageAt(ctx, msg)
 	return err
+}
+
+// persistAssistantPause finalizes the reserved assistant Message at the
+// tool_approval_required pause point. Status=PendingApproval; ToolCalls
+// already carry ApprovalID=<batch>-<call> + Status=Pending. Upserts by _id: the
+// reservation already inserted the row, but a failed reservation falls back to
+// Create so the message is never dropped.
+func (t *Turn) persistAssistantPause(ctx context.Context, msg *domain.Message) error {
+	return t.finalizeAssistantMessage(ctx, msg)
+}
+
+// persistAssistantComplete finalizes the reserved assistant Message at done /
+// error. The caller has already merged streamErrContent into msg.Content via the
+// i18n wrapper so chat history renders in the writer's language forever. Upserts
+// by _id: the reservation already inserted the row, but a failed reservation
+// falls back to Create so the message is never dropped.
+func (t *Turn) persistAssistantComplete(ctx context.Context, msg *domain.Message) error {
+	return t.finalizeAssistantMessage(ctx, msg)
 }
 
 // bumpLastMessageAt advances the conversation's recency sort key to the just-

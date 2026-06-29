@@ -203,11 +203,16 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	var created []*domain.Message
+	var created, updated []*domain.Message
 	msgRepo := &MockMessageRepository{
 		CreateFunc: func(_ context.Context, m *domain.Message) error {
 			cp := *m
 			created = append(created, &cp)
+			return nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			updated = append(updated, &cp)
 			return nil
 		},
 		ListByConversationIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
@@ -230,14 +235,15 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"type":"error"`, "error event must be forwarded to the client")
 
-	require.GreaterOrEqual(t, len(created), 2, "user + assistant must both be persisted")
+	require.GreaterOrEqual(t, len(created), 2, "user + in_progress assistant placeholder must both be persisted")
+	require.NotEmpty(t, updated, "the assistant placeholder must be finalized on error")
 	var assistant *domain.Message
-	for _, m := range created {
+	for _, m := range updated {
 		if m.Role == "assistant" {
 			assistant = m
 		}
 	}
-	require.NotNil(t, assistant, "assistant message must be persisted on error")
+	require.NotNil(t, assistant, "assistant message must be finalized on error")
 	assert.NotEmpty(t, assistant.Content, "assistant content must NOT be empty on error (poisons OpenAI history)")
 	assert.Contains(t, assistant.Content, "openrouter chat", "error reason must be carried in content")
 	assert.Equal(t, domain.MessageStatusComplete, assistant.Status)
@@ -579,7 +585,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 
 	var persistedMsg *domain.Message
 	msgRepo := &MockMessageRepository{
-		CreateFunc: func(_ context.Context, m *domain.Message) error {
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
 			if m.Role == "assistant" {
 				persistedMsg = m
 			}
@@ -600,7 +606,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 	h.Chat(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	require.NotNil(t, persistedMsg, "assistant message should be persisted")
+	require.NotNil(t, persistedMsg, "assistant message should be finalized")
 	require.Len(t, persistedMsg.ToolResults, 1, "the large tool_result should be captured without truncation")
 	inner, ok := persistedMsg.ToolResults[0].Content["echo"].(string)
 	require.True(t, ok)
@@ -631,7 +637,7 @@ func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
 
 	var persistedMsg *domain.Message
 	msgRepo := &MockMessageRepository{
-		CreateFunc: func(_ context.Context, m *domain.Message) error {
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
 			if m.Role == "assistant" {
 				persistedMsg = m
 			}
@@ -683,12 +689,16 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	var persistedMsg *domain.Message
+	var placeholderMsg, persistedMsg *domain.Message
 	msgRepo := &MockMessageRepository{
 		CreateFunc: func(_ context.Context, m *domain.Message) error {
 			if m.Role == "assistant" {
-				persistedMsg = m
+				placeholderMsg = m
 			}
+			return nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			persistedMsg = m
 			return nil
 		},
 	}
@@ -709,7 +719,11 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	assert.Contains(t, rr.Body.String(), `"type":"tool_approval_required"`)
 	assert.Contains(t, rr.Body.String(), `"batch_id":"batch-1"`)
 
-	require.NotNil(t, persistedMsg, "assistant message must be persisted at pause time")
+	require.NotNil(t, placeholderMsg, "an in_progress assistant placeholder must be reserved before the stream opens")
+	assert.Equal(t, domain.MessageStatusInProgress, placeholderMsg.Status)
+
+	require.NotNil(t, persistedMsg, "assistant message must be finalized at pause time")
+	assert.Equal(t, placeholderMsg.ID, persistedMsg.ID, "the pause finalize must reuse the reserved placeholder _id")
 	assert.Equal(t, domain.MessageStatusPendingApproval, persistedMsg.Status)
 	assert.Equal(t, "Here I'll post:", persistedMsg.Content)
 	require.Len(t, persistedMsg.ToolCalls, 1)
@@ -1763,4 +1777,84 @@ func TestFireAutoTitleIfPendingResume(t *testing.T) {
 			h.fireAutoTitleIfPendingResume(persistCtx, convID, assistantMsg)
 		})
 	})
+}
+
+// TestChatProxy_FreshTurn_ConcurrentInFlight_Returns409 is the HTTP-contract arm
+// of the fresh-turn serialization guard. A fresh POST /chat/{id} (no resume
+// header) lands on a conversation that already has a RECENT in_progress assistant
+// placeholder — i.e. a first fresh turn is still streaming. The handler must
+// reject with 409 turn_already_in_progress and must NOT invoke the orchestrator
+// (no second parallel turn).
+//
+// Reverting the gateRejectInProgress action makes the second turn stream against
+// the orchestrator and force-complete the in-flight placeholder; this test fails
+// (orchHits > 0 and status != 409).
+func TestChatProxy_FreshTurn_ConcurrentInFlight_Returns409(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-in-flight"
+
+	business := &domain.Business{ID: businessID, Name: "Biz"}
+
+	inFlight := &domain.Message{
+		ID:             "placeholder-1",
+		ConversationID: convID,
+		Role:           domain.MessageRoleAssistant,
+		Status:         domain.MessageStatusInProgress,
+		CreatedAt:      time.Now(),
+	}
+
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		orchHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var created, updated []*domain.Message
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			cp := *inFlight
+			return &cp, nil
+		},
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			created = append(created, &cp)
+			return nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			updated = append(updated, &cp)
+			return nil
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: userID.String(), BusinessID: businessID.String()}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil, nil, 0)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{"message":"second concurrent message"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := chatProxyBizCtx(businessID, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusConflict, rr.Code,
+		"a concurrent fresh turn landing on a RECENT in_progress placeholder must be rejected with 409")
+	assert.Contains(t, rr.Body.String(), "turn_already_in_progress")
+	assert.Zero(t, orchHits, "the rejected turn must NOT invoke the orchestrator (no second parallel stream)")
+	assert.Empty(t, created, "the rejected turn must not persist a user message or a second placeholder")
+	assert.Empty(t, updated, "the rejected turn must not force-complete the in-flight placeholder")
 }

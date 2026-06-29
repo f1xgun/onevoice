@@ -20,10 +20,13 @@ import (
 )
 
 // capturingMessageRepo records every Create call so the test can inspect the
-// accumulated tool_calls / tool_results.
+// accumulated tool_calls / tool_results. The fresh-turn lifecycle reserves an
+// in_progress assistant placeholder via Create, then finalizes it via Update,
+// so updated records the finalized assistant message the assertions inspect.
 type capturingMessageRepo struct {
 	mu       sync.Mutex
 	messages []*domain.Message
+	updated  []*domain.Message
 }
 
 func (r *capturingMessageRepo) Create(_ context.Context, m *domain.Message) error {
@@ -41,7 +44,10 @@ func (r *capturingMessageRepo) CountByConversationID(_ context.Context, _ string
 	return 0, nil
 }
 
-func (r *capturingMessageRepo) Update(_ context.Context, _ *domain.Message) error {
+func (r *capturingMessageRepo) Update(_ context.Context, m *domain.Message) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.updated = append(r.updated, m)
 	return nil
 }
 
@@ -123,8 +129,13 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 	msgRepo.mu.Lock()
 	defer msgRepo.mu.Unlock()
 
-	require.Len(t, msgRepo.messages, 2)
-	assistant := msgRepo.messages[1]
+	require.Len(t, msgRepo.messages, 2, "the fresh turn must Create the user message and the in_progress assistant placeholder")
+	require.Equal(t, "assistant", msgRepo.messages[1].Role)
+	assert.Equal(t, domain.MessageStatusInProgress, msgRepo.messages[1].Status,
+		"the reserved placeholder must be in_progress so a concurrent fresh turn gates on it")
+
+	require.Len(t, msgRepo.updated, 1, "the turn must finalize the reserved placeholder via Update")
+	assistant := msgRepo.updated[0]
 	require.Equal(t, "assistant", assistant.Role)
 	require.Len(t, assistant.ToolCalls, 2)
 	require.Len(t, assistant.ToolResults, 2)

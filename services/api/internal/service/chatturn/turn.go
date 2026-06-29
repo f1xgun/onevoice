@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -129,6 +130,11 @@ func (t *Turn) Run(
 	case gateReemitApproval:
 		t.reemitApprovalEvent(w, batch)
 		return OutcomeReemittedApproval, nil
+	case gateRejectInProgress:
+		// A fresh turn is already streaming (RECENT in_progress placeholder).
+		// Reject this concurrent request rather than running a second parallel
+		// fresh turn — do NOT fall through into the stream body.
+		return OutcomeTurnInProgress, nil
 	case gateHealStranded:
 		t.finalizeStranded(ctx, activeMsg)
 	case gateFresh:
@@ -151,6 +157,8 @@ func (t *Turn) Run(
 	}
 
 	streamStartID := streamStartMessageID()
+	streamStartAt := time.Now()
+	t.reserveAssistantPlaceholder(ctx, req.ConversationID, streamStartID, streamStartAt)
 	state := newStreamState()
 	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), streamBudget)
 	if corrID := logger.CorrelationIDFromContext(ctx); corrID != "" {
@@ -165,7 +173,7 @@ func (t *Turn) Run(
 		return OutcomeOrchestratorUnavailable, streamErr
 	}
 
-	t.persistAfterStream(ctx, req, enriched, streamStartID, state)
+	t.persistAfterStream(ctx, req, enriched, streamStartID, streamStartAt, state)
 	if t.deps.Posts != nil || t.deps.Reviews != nil || t.deps.Audit != nil {
 		sideCtx, cancel := t.persistContext(ctx)
 		defer cancel()
@@ -180,6 +188,32 @@ func (t *Turn) Run(
 		return OutcomeError, nil
 	}
 	return OutcomeDone, nil
+}
+
+// reserveAssistantPlaceholder writes the in_progress assistant Message before
+// the stream opens so a concurrent fresh POST /chat/{id} for the same
+// conversation gates on the in-flight turn (via FindByConversationActive)
+// instead of running a second parallel fresh turn — two parallel fresh turns
+// would each build a history snapshot missing the other, double-fire the
+// titler, and tie on created_at. The reservation reuses streamStartID so the
+// post-stream finalize (persistAfterStream) Updates the same row; a crash
+// before finalize leaves it in_progress and is reclaimed by gateHealStranded on
+// the next request. Best-effort: a failed reservation is logged, not fatal —
+// the turn still proceeds (degrading to the pre-reservation behavior).
+func (t *Turn) reserveAssistantPlaceholder(parentCtx context.Context, conversationID, messageID string, createdAt time.Time) {
+	saveCtx, cancel := t.persistContext(parentCtx)
+	defer cancel()
+	placeholder := &domain.Message{
+		ID:             messageID,
+		ConversationID: conversationID,
+		Role:           domain.MessageRoleAssistant,
+		Status:         domain.MessageStatusInProgress,
+		CreatedAt:      createdAt,
+	}
+	if err := t.persistAssistantPlaceholder(saveCtx, placeholder); err != nil {
+		slog.WarnContext(saveCtx, "chatturn: failed to reserve in_progress assistant placeholder",
+			"error", err, "conversation_id", conversationID, "message_id", messageID)
+	}
 }
 
 // ownsConversation is the cross-tenant access gate for the chat turn. The router
@@ -229,6 +263,7 @@ func (t *Turn) persistAfterStream(
 	req TurnRequest,
 	enriched *enrichmentResult,
 	streamStartID string,
+	streamStartAt time.Time,
 	state *streamState,
 ) {
 	if state.pauseEvent != nil {
@@ -268,6 +303,7 @@ func (t *Turn) persistAfterStream(
 			ToolCalls:      toolCalls,
 			ToolResults:    state.toolResults,
 			Status:         domain.MessageStatusPendingApproval,
+			CreatedAt:      streamStartAt,
 		}
 		if err := t.persistAssistantPause(saveCtx, assistantMsg); err != nil {
 			slog.WarnContext(saveCtx, "chatturn: failed to persist assistant pending_approval message",
@@ -276,9 +312,6 @@ func (t *Turn) persistAfterStream(
 		return
 	}
 
-	if state.assistantText.Len() == 0 && len(state.toolCalls) == 0 && state.streamErrContent == "" {
-		return
-	}
 	saveCtx, cancel := t.persistContext(parentCtx)
 	defer cancel()
 	content := state.assistantText.String()
@@ -293,11 +326,12 @@ func (t *Turn) persistAfterStream(
 		ToolCalls:      state.toolCalls,
 		ToolResults:    state.toolResults,
 		Status:         domain.MessageStatusComplete,
+		CreatedAt:      streamStartAt,
 	}
 	if err := t.persistAssistantComplete(saveCtx, assistantMsg); err != nil {
 		slog.ErrorContext(saveCtx, "chatturn: failed to save assistant message", "error", err)
 	}
-	if state.streamErrContent == "" {
+	if state.streamErrContent == "" && (state.assistantText.Len() > 0 || len(state.toolCalls) > 0) {
 		t.fireAutoTitleIfPending(parentCtx, req.ConversationID, enriched.business.ID.String(), req.Message, state.assistantText.String())
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
@@ -16,7 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
-// gateAction enumerates the four outcomes of gateOnRequest.
+// gateAction enumerates the outcomes of gateOnRequest.
 // See docs/services/chatturn-hitl.md.
 type gateAction int
 
@@ -28,16 +29,26 @@ const (
 	// gateReemitApproval — pending batch + UI lost the approval card → reemitApprovalEvent.
 	gateReemitApproval
 	// gateHealStranded — active message whose approval batch already resolved (or
-	// vanished) but whose resume never wrote back. Finalize the stranded message,
-	// then proceed as a fresh turn instead of dead-ending every later request with
-	// turn_already_in_progress. See docs/services/chatturn-hitl.md.
+	// vanished) but whose resume never wrote back, OR a STALE in_progress fresh-turn
+	// placeholder left by a crashed/dropped turn (older than streamBudget). Finalize
+	// the stranded message, then proceed as a fresh turn instead of dead-ending every
+	// later request with turn_already_in_progress. See docs/services/chatturn-hitl.md.
 	gateHealStranded
+	// gateRejectInProgress — a fresh (non-HITL) turn is still streaming: its
+	// in_progress assistant placeholder is RECENT (younger than streamBudget) and
+	// has no pending/resolving approval batch behind it. A second concurrent
+	// POST /chat/{id} for the same conversation must be REJECTED (no second parallel
+	// fresh turn) so the two turns cannot each build a history snapshot missing the
+	// other, double-fire the titler, and tie on created_at. Distinct from
+	// gateHealStranded: only a STALE placeholder (crashed turn) is healed-and-run;
+	// a RECENT one is in flight and the conversation is busy.
+	gateRejectInProgress
 )
 
 // sseEventError is the SSE event-type string for the inline-error path.
 const sseEventError = "error"
 
-// gateOnRequest selects one of four actions from the conversation's active message + pending batches.
+// gateOnRequest selects an action from the conversation's active message + pending batches.
 // See docs/services/chatturn-hitl.md.
 func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID string) (gateAction, *domain.Message, *domain.PendingToolCallBatch, string) {
 	activeMsg, activeErr := t.deps.Messages.FindByConversationActive(ctx, conversationID)
@@ -72,7 +83,15 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 			return gateRejoinResume, activeMsg, resolving, resolving.ID
 		case pending != nil:
 			return gateReemitApproval, activeMsg, pending, ""
+		case t.isRecentInProgress(activeMsg):
+			// A fresh turn's in_progress placeholder that is still within the
+			// stream budget: the first turn is in flight. Reject the second
+			// concurrent fresh turn rather than running it in parallel.
+			return gateRejectInProgress, activeMsg, nil, ""
 		default:
+			// A stale in_progress placeholder (crashed/dropped turn) or a
+			// resolved-HITL message that never wrote back: heal and proceed so a
+			// crashed turn never wedges the conversation forever.
 			return gateHealStranded, activeMsg, nil, ""
 		}
 	}
@@ -81,6 +100,25 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 		return gateRejoinResume, activeMsg, nil, headerBatchID
 	}
 	return gateFresh, nil, nil, ""
+}
+
+// isRecentInProgress reports whether msg is a fresh-turn in_progress placeholder
+// still within the stream budget — i.e. a turn that is genuinely in flight, not a
+// crashed one. Only in_progress messages qualify: a stranded pending_approval
+// (resolved-HITL) message is always healed regardless of age, so the HITL
+// self-heal path is unchanged. The reservation stamps CreatedAt at stream-open;
+// a placeholder older than streamBudget belongs to a turn that can no longer be
+// streaming (the orchestrator stream is itself bounded by streamBudget), so it is
+// treated as stranded and healed. A zero/absent timestamp is treated as NOT
+// recent so a malformed row self-heals rather than wedging the conversation.
+func (t *Turn) isRecentInProgress(msg *domain.Message) bool {
+	if msg == nil || msg.Status != domain.MessageStatusInProgress {
+		return false
+	}
+	if msg.CreatedAt.IsZero() {
+		return false
+	}
+	return time.Since(msg.CreatedAt) < streamBudget
 }
 
 // finalizeStranded marks an orphaned active message complete so a stranded
