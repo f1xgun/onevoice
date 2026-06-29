@@ -109,6 +109,69 @@ func TestClient_GetReviews_DefaultLimit(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClient_GetReviews_FollowsNextPageToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("pageToken")
+		switch token {
+		case "":
+			_ = json.NewEncoder(w).Encode(ListReviewsResponse{
+				Reviews: []Review{
+					{ReviewID: "rev-1", StarRating: "FIVE"},
+					{ReviewID: "rev-2", StarRating: "ONE"},
+				},
+				AverageRating:    4.0,
+				TotalReviewCount: 4,
+				NextPageToken:    "page-2",
+			})
+		case "page-2":
+			_ = json.NewEncoder(w).Encode(ListReviewsResponse{
+				Reviews: []Review{
+					{ReviewID: "rev-3", StarRating: "TWO"},
+					{ReviewID: "rev-4", StarRating: "THREE"},
+				},
+				AverageRating:    4.0,
+				TotalReviewCount: 4,
+			})
+		default:
+			t.Fatalf("unexpected pageToken %q", token)
+		}
+	}))
+	defer srv.Close()
+
+	c := New("test-token")
+	c.ReviewsBaseURL = srv.URL
+
+	resp, err := c.GetReviews(context.Background(), "accounts/1/locations/2", 4)
+	require.NoError(t, err)
+	require.Len(t, resp.Reviews, 4, "both pages must be accumulated, not just page 1")
+	assert.Equal(t, "rev-1", resp.Reviews[0].ReviewID)
+	assert.Equal(t, "rev-4", resp.Reviews[3].ReviewID)
+	assert.Equal(t, 4, resp.TotalReviewCount)
+	assert.Equal(t, 4.0, resp.AverageRating)
+}
+
+func TestClient_GetReviews_StopsAtLimit(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		assert.Equal(t, "1", r.URL.Query().Get("pageSize"))
+		_ = json.NewEncoder(w).Encode(ListReviewsResponse{
+			Reviews:          []Review{{ReviewID: "rev-1", StarRating: "FIVE"}},
+			TotalReviewCount: 10,
+			NextPageToken:    "page-2",
+		})
+	}))
+	defer srv.Close()
+
+	c := New("test-token")
+	c.ReviewsBaseURL = srv.URL
+
+	resp, err := c.GetReviews(context.Background(), "accounts/1/locations/2", 1)
+	require.NoError(t, err)
+	require.Len(t, resp.Reviews, 1)
+	assert.Equal(t, 1, calls, "must not fetch a second page once the limit is satisfied")
+}
+
 func TestClient_ReplyReview(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
