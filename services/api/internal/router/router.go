@@ -118,10 +118,13 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		}
 		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
-		r.Post("/auth/password-reset/request", handlers.Auth.RequestPasswordReset)
-		r.Post("/auth/password-reset/confirm", handlers.Auth.ConfirmPasswordReset)
+		r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).
+			Post("/auth/password-reset/request", handlers.Auth.RequestPasswordReset)
+		r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).
+			Post("/auth/password-reset/confirm", handlers.Auth.ConfirmPasswordReset)
 
-		r.Post("/auth/verify-email/confirm", handlers.Auth.VerifyConfirm)
+		r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).
+			Post("/auth/verify-email/confirm", handlers.Auth.VerifyConfirm)
 
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
 		r.Get("/oauth/vk/community-callback", handlers.OAuth.VKCommunityCallback)
@@ -195,7 +198,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				// Per-user rate limits for state-changing routes. writeLimit
 				// guards routes that trigger external work (integration
 				// connect/refresh, RPA probes, review reply/refresh, business
-				// update); inviteLimit is tighter for email-sending invites.
+				// update, logo upload + schedule edits — both fan out to every
+				// connected platform); inviteLimit is tighter for email-sending
+				// invites.
 				writeLimit := middleware.RateLimitByUser(redisClient, rateLimits.Writes, time.Minute, "writes")
 				inviteLimit := middleware.RateLimitByUser(redisClient, rateLimits.Invitations, time.Minute, "invitations")
 
@@ -205,9 +210,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 					r.Delete("/", handlers.BusinessDeletion.Delete)
 					r.Post("/restore", handlers.BusinessDeletion.Restore)
 				}
-				r.Put("/schedule", handlers.Business.UpdateSchedule)
+				r.With(writeLimit).Put("/schedule", handlers.Business.UpdateSchedule)
 				r.Put("/voice-tone", handlers.Business.UpdateVoiceTone)
-				r.Put("/logo", handlers.Business.UploadLogo)
+				r.With(writeLimit).Put("/logo", handlers.Business.UploadLogo)
 				r.Get("/tool-approvals", handlers.Business.GetBusinessToolApprovals)
 				r.Put("/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
 

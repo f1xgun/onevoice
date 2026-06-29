@@ -313,6 +313,163 @@ func TestRouter_HITLResumeHasDistinctRateLimitScope(t *testing.T) {
 		"resume route must increment the distinct hitl-scope key, not the chat key")
 }
 
+// replayLogoChain rebuilds the PUT /logo route's exact route-scoped middleware
+// chain (as registered by router.Setup, including the per-user writeLimit)
+// onto a fresh chi router terminating in a benign 200 handler, so the real
+// limiter wiring is exercised without invoking the production handler body
+// (which streams to object storage). The outer-group Auth middleware is
+// prepended explicitly (chi.Walk does not report parent-group Use middlewares)
+// so the captured RequireBusinessAccess middleware receives an authenticated
+// userID, and the route is mounted under /api/v1/businesses/{id} so the
+// business UUID resolves from the "id" param exactly as in production.
+func replayLogoChain(t *testing.T, src *chi.Mux, jwtSecret []byte) *chi.Mux {
+	t.Helper()
+	const wantPattern = "/api/v1/businesses/{id}/logo"
+	var chain []func(http.Handler) http.Handler
+	var found bool
+	err := chi.Walk(src, func(method, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
+		if method == http.MethodPut && route == wantPattern {
+			found = true
+			chain = mws
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, found, "route %s must be registered", wantPattern)
+
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := chi.NewRouter()
+	mux.Use(apimiddleware.Auth(jwtSecret))
+	mux.Route("/api/v1/businesses/{id}", func(r chi.Router) {
+		r.With(chain...).Put("/logo", terminal)
+	})
+	return mux
+}
+
+// TestRouter_LogoUploadRateLimited is the fail-on-revert guard for GAP A: the
+// PUT /logo route streams to object storage and fans out to every connected
+// platform via SyncBusiness, so it must carry the per-user writeLimit like its
+// siblings (PUT /, integration connect/refresh). Here we drive Writes+1
+// requests for one user through the route's real middleware chain: the first
+// Writes pass (200) and the (Writes+1)th is throttled (429). Reverting the
+// .With(writeLimit) wrapper lets every request through (200), failing the
+// final assertion.
+func TestRouter_LogoUploadRateLimited(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&permissiveLoader{roleID: uuid.New()}, time.Minute, time.Minute)
+	hc := health.New()
+	handlers := buildTestHandlers()
+	const writesLimit = 3
+	r := router.Setup(handlers, jwtSecret, redisClient, hc,
+		[]string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: writesLimit, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	logo := replayLogoChain(t, r, jwtSecret)
+
+	userID := uuid.New()
+	token := mintAccessToken(t, jwtSecret, userID)
+	bizID := uuid.New()
+	url := "/api/v1/businesses/" + bizID.String() + "/logo"
+
+	var lastCode int
+	for i := 0; i <= writesLimit; i++ {
+		req := httptest.NewRequest(http.MethodPut, url, http.NoBody)
+		req.RemoteAddr = "203.0.113.10:5555"
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		logo.ServeHTTP(rec, req)
+		lastCode = rec.Code
+		if i < writesLimit {
+			require.Equal(t, http.StatusOK, rec.Code,
+				"request %d/%d (within budget) must pass the writeLimit", i+1, writesLimit)
+		}
+	}
+	assert.Equal(t, http.StatusTooManyRequests, lastCode,
+		"the (Writes+1)th PUT /logo from one user must be throttled by writeLimit")
+}
+
+// replayResetRequestChain rebuilds the public POST /auth/password-reset/request
+// route's middleware chain (the per-IP RateLimit added in GAP B) onto a fresh
+// chi router terminating in a benign 200 handler, so the real limiter wiring is
+// exercised without invoking the production handler body (which would send a
+// real reset email). This route lives at the top of /api/v1 with no parent Use
+// middleware, so the captured chain is mounted directly.
+func replayResetRequestChain(t *testing.T, src *chi.Mux) *chi.Mux {
+	t.Helper()
+	const wantPattern = "/api/v1/auth/password-reset/request"
+	var chain []func(http.Handler) http.Handler
+	var found bool
+	err := chi.Walk(src, func(method, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
+		if method == http.MethodPost && route == wantPattern {
+			found = true
+			chain = mws
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, found, "route %s must be registered", wantPattern)
+
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := chi.NewRouter()
+	mux.With(chain...).Post(wantPattern, terminal)
+	return mux
+}
+
+// TestRouter_PasswordResetRequestRateLimited is the fail-on-revert guard for
+// GAP B: the unauthenticated POST /auth/password-reset/request route sends a
+// real reset email per known address, so it must carry a per-IP RateLimit like
+// its siblings (/auth/register, /auth/login). The per-EMAIL throttle does not
+// cap aggregate outbound mail from one source across DISTINCT addresses. Here
+// we fire Register+1 requests from one RemoteAddr through the route's real
+// middleware chain: the first Register pass (200) and the (Register+1)th is
+// throttled (429). Reverting the per-IP RateLimit wrapper lets every request
+// through (200), failing the final assertion.
+func TestRouter_PasswordResetRequestRateLimited(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	cache := authz.NewCacheForTest(&fakeLoader{}, time.Minute, time.Minute)
+	hc := health.New()
+	handlers := buildTestHandlers()
+	const registerLimit = 3
+	r := router.Setup(handlers, []byte("test-secret"), redisClient, hc,
+		[]string{"http://localhost:3000"},
+		router.RateLimits{Register: registerLimit, Login: 10, Chat: 10, HITL: 10, Writes: 1000, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	reset := replayResetRequestChain(t, r)
+
+	url := "/api/v1/auth/password-reset/request"
+	var lastCode int
+	for i := 0; i <= registerLimit; i++ {
+		req := httptest.NewRequest(http.MethodPost, url, http.NoBody)
+		req.RemoteAddr = "198.51.100.7:4444"
+		rec := httptest.NewRecorder()
+		reset.ServeHTTP(rec, req)
+		lastCode = rec.Code
+		if i < registerLimit {
+			require.Equal(t, http.StatusOK, rec.Code,
+				"request %d/%d (within budget) must pass the per-IP RateLimit", i+1, registerLimit)
+		}
+	}
+	assert.Equal(t, http.StatusTooManyRequests, lastCode,
+		"the (Register+1)th POST /auth/password-reset/request from one IP must be throttled")
+}
+
 // TestRouter_SingularBusinessRouteGone asserts that GET /api/v1/business
 // returns 404 (the old singular route was deleted).
 func TestRouter_SingularBusinessRouteGone(t *testing.T) {
