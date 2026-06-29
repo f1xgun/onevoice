@@ -337,6 +337,16 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	inviteCount, err := h.roleRepo.CountInvitationsByRole(r.Context(), roleID)
+	if err != nil {
+		writeAuthzInvariantError(r.Context(), w, "delete_role.count_invitations", err)
+		return
+	}
+	if inviteCount > 0 {
+		writeAuthzInvariantError(r.Context(), w, "delete_role.invitation_in_use", domain.ErrRoleInUse)
+		return
+	}
+
 	if reassignTo != nil && memberCount > 0 {
 		target, err := h.roleRepo.GetByID(r.Context(), *reassignTo)
 		if err != nil {

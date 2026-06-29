@@ -174,6 +174,11 @@ func (m *MockRoleRepository) CountMembersByRole(ctx context.Context, businessID,
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockRoleRepository) CountInvitationsByRole(ctx context.Context, roleID uuid.UUID) (int, error) {
+	args := m.Called(ctx, roleID)
+	return args.Int(0), args.Error(1)
+}
+
 func (m *MockRoleRepository) GetByMemberInBusiness(ctx context.Context, businessID, userID uuid.UUID) (*domain.Role, error) {
 	args := m.Called(ctx, businessID, userID)
 	if args.Get(0) == nil {

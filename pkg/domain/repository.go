@@ -159,6 +159,11 @@ type RoleRepository interface {
 
 	CountMembersByRole(ctx context.Context, businessID, roleID uuid.UUID) (int, error)
 
+	// CountInvitationsByRole counts ALL invitations referencing roleID, in any
+	// state. invitations.role_id is ON DELETE RESTRICT, so terminal
+	// (accepted/revoked/expired) rows pin the role just as pending ones do.
+	CountInvitationsByRole(ctx context.Context, roleID uuid.UUID) (int, error)
+
 	GetByMemberInBusiness(ctx context.Context, businessID, userID uuid.UUID) (*Role, error)
 }
 
