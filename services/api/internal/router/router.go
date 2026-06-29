@@ -253,7 +253,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 						Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
 				}
 				if handlers.HITL != nil {
-					r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute, "chat")).
+					r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute, "hitl")).
 						Post("/chat/{id}/resume", handlers.HITL.Resume)
 					r.Post("/conversations/{id}/pending-tool-calls/{batch_id}/resolve", handlers.HITL.ResolvePendingToolCalls)
 					r.Get("/tools", handlers.HITL.GetTools)

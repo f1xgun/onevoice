@@ -28,8 +28,8 @@ Backed by Redis. Defaults surfaced as env vars and passed to `Setup` via a `Rate
 |---|---|---|
 | `Register` | `RATE_LIMIT_REGISTER` | Tightest — automated signup abuse is the primary cost of getting this wrong. |
 | `Login` | `RATE_LIMIT_LOGIN` | Looser than register to absorb retry storms after backend hiccups. Also reused for `/auth/refresh` and the public invitation preview (same threat model). |
-| `Chat` | `RATE_LIMIT_CHAT` | Per-user budget. Shared with HITL because the chat-proxy fans out into HITL resolve calls under the same auth. |
-| `HITL` | `RATE_LIMIT_HITL` | Per-user budget for `/chat/{id}/resume`. Scope shared with `chat` for the budget bucket. |
+| `Chat` | `RATE_LIMIT_CHAT` | Per-user budget for `POST /chat/{conversationID}` (scope `chat`). |
+| `HITL` | `RATE_LIMIT_HITL` | Per-user budget for `/chat/{id}/resume` on its own scope (`hitl`), so this budget governs an independent bucket from `chat`. |
 | `Consents` | `RATE_LIMIT_CONSENTS` | Per-user budget for `/auth/consents` + `/users/me/consents/pdn/withdraw`. GET stays unthrottled. |
 
 ## Public mux: `/api/v1/...`
@@ -92,7 +92,7 @@ Single chokepoint: `authz.RequireBusinessAccess(authzCache, GetUserID)` parses a
 
 #### Chat + HITL
 - `POST /chat/{conversationID}` — `RateLimitByUser(Chat, scope="chat")` + `RequireVerifiedEmailDay7` (day-7 soft-restrict). Rate limit comes **before** verify so a throttled request short-circuits before the DB lookup.
-- `POST /chat/{id}/resume` — HITL resume. `RateLimitByUser(HITL, scope="chat")` (shared chat bucket).
+- `POST /chat/{id}/resume` — HITL resume. `RateLimitByUser(HITL, scope="hitl")` (own bucket, independent of `chat`).
 - `POST /conversations/{id}/pending-tool-calls/{batch_id}/resolve` — HITL resolve.
 - `GET /tools` — orchestrator tools registry passthrough.
 
