@@ -118,7 +118,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"duration_ms", time.Since(metricStart).Milliseconds(),
 			"error", err,
 		)
-		recordAttempt("failure", "llm_error")
+		t.settleFallback(ctx, businessID, conversationID, promptLen, tag, "llm_error")
 		return
 	}
 
@@ -133,7 +133,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"rejected_by", "empty_response",
 			"duration_ms", time.Since(metricStart).Milliseconds(),
 		)
-		recordAttempt("failure", "empty_response")
+		t.settleFallback(ctx, businessID, conversationID, promptLen, tag, "empty_response")
 		return
 	}
 
@@ -208,6 +208,40 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 		"duration_ms", time.Since(metricStart).Milliseconds(),
 	)
 	recordAttempt("success", "ok")
+}
+
+// settleFallback writes the localized "Untitled chat" fallback via the same
+// atomic UpdateTitleIfPending used by the PII-reject path, flipping the row off
+// title_status=auto_pending so the chat-turn fire-gate stops re-spawning (and
+// re-billing) the titler on every subsequent turn after a transient failure.
+// outcome is the originating failure reason ("llm_error" | "empty_response")
+// used for the metric label; on a successful settle the recorded outcome
+// becomes that reason, on a no-op/error it records the settle-write result.
+func (t *Titler) settleFallback(ctx context.Context, businessID, conversationID string, promptLen int, tag language.Tag, outcome string) {
+	fallbackTitle := untitledChatLocalized(time.Now(), tag)
+	if writeErr := t.repo.UpdateTitleIfPending(ctx, conversationID, fallbackTitle); writeErr != nil {
+		if errors.Is(writeErr, domain.ErrConversationNotFound) {
+			slog.InfoContext(ctx, "auto-title: fallback no-op (manual rename or deleted)",
+				"conversation_id", conversationID,
+				"business_id", businessID,
+				"prompt_length", promptLen,
+				"rejected_by", outcome,
+				"outcome", "manual_won_race",
+			)
+			recordAttempt("failure", "manual_won_race")
+			return
+		}
+		slog.WarnContext(ctx, "auto-title: fallback write failed",
+			"conversation_id", conversationID,
+			"business_id", businessID,
+			"prompt_length", promptLen,
+			"rejected_by", outcome,
+			"error", writeErr,
+		)
+		recordAttempt("failure", "terminal_write_error")
+		return
+	}
+	recordAttempt("failure", outcome)
 }
 
 // sanitizeTitle strips quotes/trailing punctuation/whitespace and caps at titleMaxChars RUNES.

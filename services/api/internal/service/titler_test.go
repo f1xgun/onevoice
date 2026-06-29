@@ -128,6 +128,10 @@ func TestGenerateAndSave_Success(t *testing.T) {
 	}
 }
 
+// TestGenerateAndSave_LLMError pins the no-re-fire invariant: a transient LLM
+// failure MUST still settle the row off title_status=auto_pending by writing
+// the localized "Untitled chat" fallback via UpdateTitleIfPending, so the
+// chat-turn fire-gate stops re-spawning (re-billing) the titler every turn.
 func TestGenerateAndSave_LLMError(t *testing.T) {
 	captureLogs(t)
 
@@ -137,11 +141,17 @@ func TestGenerateAndSave_LLMError(t *testing.T) {
 
 	tt.GenerateAndSave(context.Background(), "biz-1", "conv-1", "u", "a")
 
-	if len(repo.updateCalls) != 0 {
-		t.Fatalf("UpdateTitleIfPending must NOT be called on llm error; got %d calls", len(repo.updateCalls))
+	if len(repo.updateCalls) != 1 {
+		t.Fatalf("UpdateTitleIfPending must settle row off auto_pending on llm error; got %d calls, want 1", len(repo.updateCalls))
+	}
+	if !strings.HasPrefix(repo.updateCalls[0].Title, "Untitled chat ") {
+		t.Fatalf("fallback title got=%q want prefix %q", repo.updateCalls[0].Title, "Untitled chat ")
 	}
 }
 
+// TestGenerateAndSave_EmptyResponse pins the same no-re-fire invariant for the
+// empty-after-sanitize path: the row is settled with the fallback title so the
+// fire-gate does not keep re-spawning the titler.
 func TestGenerateAndSave_EmptyResponse(t *testing.T) {
 	captureLogs(t)
 
@@ -151,8 +161,11 @@ func TestGenerateAndSave_EmptyResponse(t *testing.T) {
 
 	tt.GenerateAndSave(context.Background(), "biz-1", "conv-1", "u", "a")
 
-	if len(repo.updateCalls) != 0 {
-		t.Fatalf("UpdateTitleIfPending must NOT be called on empty response; got %d calls", len(repo.updateCalls))
+	if len(repo.updateCalls) != 1 {
+		t.Fatalf("UpdateTitleIfPending must settle row off auto_pending on empty response; got %d calls, want 1", len(repo.updateCalls))
+	}
+	if !strings.HasPrefix(repo.updateCalls[0].Title, "Untitled chat ") {
+		t.Fatalf("fallback title got=%q want prefix %q", repo.updateCalls[0].Title, "Untitled chat ")
 	}
 }
 
