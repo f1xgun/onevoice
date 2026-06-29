@@ -845,3 +845,63 @@ func TestResume_MalformedUserID_DegradesToNil(t *testing.T) {
 	assert.Equal(t, uuid.Nil, got.UserID,
 		"malformed batch user_id must degrade to uuid.Nil, not panic or fabricate an id")
 }
+
+// panicOrOKExecutor panics on dispatch when ToolName matches panicTool, and
+// otherwise returns a healthy result. Used to drive the resume panic-recovery
+// test so one bad approved call is contained without crashing the process.
+type panicOrOKExecutor struct {
+	panicArg string
+}
+
+func (e *panicOrOKExecutor) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	return e.ExecuteWithApproval(ctx, args, "")
+}
+
+func (e *panicOrOKExecutor) ExecuteWithApproval(_ context.Context, args map[string]interface{}, _ string) (interface{}, error) {
+	if v, ok := args["text"].(string); ok && v == e.panicArg {
+		panic("boom in approved tool executor")
+	}
+	return map[string]interface{}{"ok": true}, nil
+}
+
+var _ toolregistry.ApprovalExecutor = (*panicOrOKExecutor)(nil)
+
+// TestResume_ApprovedToolPanic_RecoversToErrorEvent asserts that a panic inside
+// one approved tool's executor on the resume fan-out is contained to THAT call —
+// Resume completes, emits a tool_result error event for the panicking call, and
+// the sibling approved call still produces its normal result. Without the
+// per-goroutine recover in dispatchApprovedCalls the panic propagates uncaught
+// and aborts the whole process (the parent-goroutine recoverToError cannot catch
+// a child-goroutine panic).
+func TestResume_ApprovedToolPanic_RecoversToErrorEvent(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	exec := &panicOrOKExecutor{panicArg: "boom"}
+	reg := registryWithExecutor("panic_tool", domain.ToolFloorManual, exec)
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-panic", []domain.PendingCall{
+		{CallID: "c-ok", ToolName: "panic_tool", Arguments: map[string]interface{}{"text": "fine"}, Verdict: "approve"},
+		{CallID: "c-panic", ToolName: "panic_tool", Arguments: map[string]interface{}{"text": "boom"}, Verdict: "approve"},
+	})
+	repo.store["batch-panic"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-panic"})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+	results := findEvents(evts, orchestrator.EventToolResult)
+
+	resultByID := map[string]orchestrator.Event{}
+	for _, r := range results {
+		resultByID[r.ToolCallID] = r
+	}
+
+	require.Contains(t, resultByID, "c-panic",
+		"the panicking approved call must emit a tool_result, not crash the process")
+	assert.NotEmpty(t, resultByID["c-panic"].ToolError,
+		"the panicking approved call must surface as that call's tool_result error")
+	require.Contains(t, resultByID, "c-ok", "the sibling approved call must still produce a result")
+	assert.Empty(t, resultByID["c-ok"].ToolError, "the sibling approved call must succeed normally")
+}

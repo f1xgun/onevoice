@@ -185,6 +185,29 @@ func recoverToError(ctx context.Context, ch chan<- Event) {
 	}
 }
 
+// recoverToolPanic converts a panic on a single per-tool dispatch goroutine into
+// an execErr for THAT tool instead of crashing the whole process. A panic must
+// be recovered in the goroutine that raised it, so recoverToError (deferred in
+// the parent Run/Resume goroutine) cannot catch a child-goroutine panic — one
+// bad tool would otherwise terminate every other in-flight SSE stream. Pass the
+// result of recover(): nil means no panic and a nil error is returned; otherwise
+// it counts the panic on app_errors_total{service="orchestrator"}, logs the full
+// stack mirroring recoverToError, and returns a generic execErr the dispatch loop
+// surfaces as that call's tool_result error event.
+func recoverToolPanic(ctx context.Context, r any) error {
+	if r == nil {
+		return nil
+	}
+
+	metrics.IncAppError(metrics.ServiceOrchestrator)
+	slog.ErrorContext(ctx, "orchestrator: recovered panic on tool-dispatch goroutine",
+		slog.Any("panic", r),
+		slog.String("stack", string(debug.Stack())),
+	)
+
+	return fmt.Errorf("internal tool error")
+}
+
 // Run starts a fresh agent turn and returns a channel of events. The channel
 // is closed when stepRun returns (done / paused / error).
 // See docs/orchestrator/run.md.
@@ -264,6 +287,17 @@ func (o *Orchestrator) dispatchToolCalls(
 		go func(i int) {
 			defer wg.Done()
 			name := outcomes[i].tc.Function.Name
+			defer func() {
+				if execErr := recoverToolPanic(ctx, recover()); execErr != nil {
+					outcomes[i].result = nil
+					outcomes[i].execErr = execErr
+					ev := buildToolResultEvent(outcomes[i].tc, o.tools.DisplayName(name), o.tools.DisplayNameKey(name), nil, execErr)
+					select {
+					case ch <- ev:
+					case <-ctx.Done():
+					}
+				}
+			}()
 			result, execErr := o.executeOne(ctx, name, outcomes[i].args)
 			outcomes[i].result = result
 			outcomes[i].execErr = execErr
