@@ -349,7 +349,8 @@ func replayLogoChain(t *testing.T, src *chi.Mux, jwtSecret []byte) *chi.Mux {
 	return mux
 }
 
-// TestRouter_LogoUploadRateLimited is the fail-on-revert guard for GAP A: the
+// TestRouter_LogoUploadRateLimited is the fail-on-revert guard for the logo
+// write rate-limit: the
 // PUT /logo route streams to object storage and fans out to every connected
 // platform via SyncBusiness, so it must carry the per-user writeLimit like its
 // siblings (PUT /, integration connect/refresh). Here we drive Writes+1
@@ -398,7 +399,7 @@ func TestRouter_LogoUploadRateLimited(t *testing.T) {
 }
 
 // replayResetRequestChain rebuilds the public POST /auth/password-reset/request
-// route's middleware chain (the per-IP RateLimit added in GAP B) onto a fresh
+// route's middleware chain (the per-IP RateLimit for password-reset) onto a fresh
 // chi router terminating in a benign 200 handler, so the real limiter wiring is
 // exercised without invoking the production handler body (which would send a
 // real reset email). This route lives at the top of /api/v1 with no parent Use
@@ -428,7 +429,8 @@ func replayResetRequestChain(t *testing.T, src *chi.Mux) *chi.Mux {
 }
 
 // TestRouter_PasswordResetRequestRateLimited is the fail-on-revert guard for
-// GAP B: the unauthenticated POST /auth/password-reset/request route sends a
+// the password-reset per-IP rate-limit: the unauthenticated
+// POST /auth/password-reset/request route sends a
 // real reset email per known address, so it must carry a per-IP RateLimit like
 // its siblings (/auth/register, /auth/login). The per-EMAIL throttle does not
 // cap aggregate outbound mail from one source across DISTINCT addresses. Here

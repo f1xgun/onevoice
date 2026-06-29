@@ -656,8 +656,12 @@ func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 // RequestPasswordReset handles POST /api/v1/auth/password-reset/request.
 // Returns 204 ALWAYS regardless of whether the email is registered — the
 // service handles per-email rate-limit + dummy-audit-on-unknown-email +
-// outbox enqueue with symmetric timing across branches. Adding a chi.RateLimit
-// wrapper here would short-circuit and skew the timing-parity contract.
+// outbox enqueue with symmetric timing across branches. The router also wraps
+// this route in an IP-scoped rate limit (keyed on client IP + path, NOT on the
+// email), which caps abusive mail-trigger volume from one source. Because that
+// limiter throttles uniformly — 429 before the handler whether or not the email
+// is registered — it does not weaken the no-enumeration parity: it leaks nothing
+// about which addresses exist.
 func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	req, ok := decodeAndValidate[openapi.RequestPasswordResetRequest](w, r, "invalid request body")
 	if !ok {
