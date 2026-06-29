@@ -286,6 +286,40 @@ func TestGetScheduledDeletionAt_NoPending(t *testing.T) {
 	require.True(t, got.IsZero())
 }
 
+// fakeObjectPurger records the prefixes passed to DeletePrefix so a test can
+// assert hard-delete reclaims the businesses/{id}/ object-storage prefix.
+type fakeObjectPurger struct {
+	prefixes []string
+	err      error
+}
+
+func (f *fakeObjectPurger) DeletePrefix(_ context.Context, prefix string) error {
+	f.prefixes = append(f.prefixes, prefix)
+	return f.err
+}
+
+// TestPurgeObjects_DeletesBusinessPrefix is the fail-on-revert guard for the
+// 152-ФЗ erasure-completeness gap: hard-deleting an organization must remove its
+// publicly-readable storage objects under the businesses/{id}/ prefix. Reverting
+// the purgeObjects call in HardDeleteSweeper leaves DeletePrefix uncalled and
+// fails this test.
+func TestPurgeObjects_DeletesBusinessPrefix(t *testing.T) {
+	purger := &fakeObjectPurger{}
+	s := &BusinessDeletionService{objectStore: purger}
+
+	businessID := uuid.New()
+	s.purgeObjects(context.Background(), businessID)
+
+	require.Equal(t, []string{"businesses/" + businessID.String() + "/"}, purger.prefixes)
+}
+
+// TestPurgeObjects_NoStoreIsNoOp verifies the cleanup is skipped (no panic) when
+// no object store is wired.
+func TestPurgeObjects_NoStoreIsNoOp(t *testing.T) {
+	s := &BusinessDeletionService{}
+	s.purgeObjects(context.Background(), uuid.New())
+}
+
 // TestBusinessWithGraceDays_ReturnsCopy mirrors the account-deletion test:
 // the override returns a NEW value, leaving the original at defaults.
 func TestBusinessWithGraceDays_ReturnsCopy(t *testing.T) {

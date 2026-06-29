@@ -638,6 +638,21 @@ func (m *mockUploader) PublicURL(key string) string {
 	return args.String(0)
 }
 
+func (m *mockUploader) KeyFromPublicURL(url string) string {
+	args := m.Called(url)
+	return args.String(0)
+}
+
+func (m *mockUploader) Delete(ctx context.Context, key string) error {
+	args := m.Called(ctx, key)
+	return args.Error(0)
+}
+
+func (m *mockUploader) DeletePrefix(ctx context.Context, prefix string) error {
+	args := m.Called(ctx, prefix)
+	return args.Error(0)
+}
+
 // pngMagic is the 8-byte PNG signature — enough for http.DetectContentType to identify image/png.
 var pngMagic = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
 
@@ -680,6 +695,7 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 			"image/png",
 		).Return(nil)
 		mockUp.On("PublicURL", mock.Anything).Return("/media/businesses/x/logo.png")
+		mockUp.On("KeyFromPublicURL", "").Return("")
 
 		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
 			return b.LogoURL == "/media/businesses/x/logo.png"
@@ -705,6 +721,45 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 		assert.Equal(t, "/media/businesses/x/logo.png", got.LogoURL)
 
+		mockSvc.AssertExpectations(t)
+		mockUp.AssertExpectations(t)
+	})
+
+	t.Run("replacing an existing logo deletes the prior object", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockUp := new(mockUploader)
+
+		const priorURL = "/media/businesses/old/logo-111.png"
+		const priorKey = "businesses/old/logo-111.png"
+		existing := &domain.Business{
+			ID:      testBusinessID,
+			Name:    "Cafe",
+			LogoURL: priorURL,
+		}
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(existing, nil)
+		mockUp.On("Upload", mock.Anything, mock.Anything, pngMagic, int64(len(pngMagic)), "image/png").Return(nil)
+		mockUp.On("PublicURL", mock.Anything).Return("/media/businesses/x/logo-222.png")
+		mockUp.On("KeyFromPublicURL", priorURL).Return(priorKey)
+		mockUp.On("Delete", mock.Anything, priorKey).Return(nil)
+		mockSvc.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(&domain.Business{
+			ID:      testBusinessID,
+			Name:    "Cafe",
+			LogoURL: "/media/businesses/x/logo-222.png",
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, mockUp)
+		require.NoError(t, err)
+
+		body, contentType := buildLogoMultipart(t, pngMagic)
+		req := httptest.NewRequest(http.MethodPut, "/logo", body)
+		req.Header.Set("Content-Type", contentType)
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UploadLogo(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		mockUp.AssertCalled(t, "Delete", mock.Anything, priorKey)
 		mockSvc.AssertExpectations(t)
 		mockUp.AssertExpectations(t)
 	})

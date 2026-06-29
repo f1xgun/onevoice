@@ -503,6 +503,7 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	priorLogoURL := business.LogoURL
 	business.LogoURL = h.storage.PublicURL(key)
 	business.UpdatedAt = time.Now()
 	updatedBusiness, err := h.businessService.Update(r.Context(), business, bc.UserID)
@@ -510,6 +511,12 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(r.Context(), "upload logo: update business failed", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
+	}
+
+	if priorKey := h.storage.KeyFromPublicURL(priorLogoURL); priorKey != "" && priorKey != key {
+		if delErr := h.storage.Delete(r.Context(), priorKey); delErr != nil {
+			slog.WarnContext(r.Context(), "upload logo: delete prior object failed (non-fatal)", "key", priorKey, "error", delErr)
+		}
 	}
 
 	if h.syncer != nil {
