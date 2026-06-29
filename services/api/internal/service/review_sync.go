@@ -61,7 +61,7 @@ type DraftPassRunner interface {
 // ReviewSyncer periodically fetches reviews from all active integrations
 // that support reviews and upserts them into MongoDB.
 type ReviewSyncer struct {
-	nc           *natslib.Conn
+	nc           natsRequester
 	integRepo    domain.IntegrationRepository
 	reviewRepo   domain.ReviewRepository
 	drafter      DraftPassRunner // nil = AI drafts disabled
@@ -78,8 +78,12 @@ func NewReviewSyncer(
 	drafter DraftPassRunner,
 	syncInterval time.Duration,
 ) *ReviewSyncer {
+	var requester natsRequester
+	if nc != nil {
+		requester = nc
+	}
 	return &ReviewSyncer{
-		nc:           nc,
+		nc:           requester,
 		integRepo:    integRepo,
 		reviewRepo:   reviewRepo,
 		drafter:      drafter,
@@ -233,6 +237,7 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 			"count", len(reviews),
 			"error", err,
 		)
+		return fmt.Errorf("bulk upsert reviews: %w", err)
 	}
 
 	if s.drafter != nil {
