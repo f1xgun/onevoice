@@ -117,6 +117,42 @@ func TestFormatHoursForYandexRejectsGarbage(t *testing.T) {
 	}
 }
 
+// TestFormatHoursForYandexRejectsInvalidStructuredHours is the fail-on-revert
+// guard for the structured-JSON branches: a day with one endpoint missing must
+// NOT be silently dropped, and inverted ranges, impossible clocks, and free-text
+// values must be rejected rather than typed into the hours field. Before the fix
+// these inputs returned (text, nil) — the partial day vanished and the bad
+// ranges/clocks passed straight through.
+func TestFormatHoursForYandexRejectsInvalidStructuredHours(t *testing.T) {
+	invalid := []struct {
+		name string
+		in   string
+	}{
+		{name: "partial day (open without close) is not silently dropped", in: `{"monday":{"open":"09:00","close":"18:00"},"tuesday":{"open":"10:00"}}`},
+		{name: "partial day (close without open)", in: `{"monday":{"close":"18:00"}}`},
+		{name: "inverted range", in: `{"monday":{"open":"18:00","close":"09:00"}}`},
+		{name: "zero-length range", in: `{"monday":{"open":"09:00","close":"09:00"}}`},
+		{name: "impossible clock", in: `{"monday":{"open":"25:00","close":"99:99"}}`},
+		{name: "free-text string value", in: `{"monday":"banana"}`},
+		{name: "inverted string-range value", in: `{"monday":"18:00-09:00"}`},
+		{name: "impossible clock in array of range strings", in: `{"monday":["25:00-26:00"]}`},
+		{name: "inverted range in array of objects", in: `{"monday":[{"open":"18:00","close":"09:00"}]}`},
+		{name: "partial day in array of objects", in: `{"monday":[{"open":"09:00"}]}`},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := formatHoursForYandex(tt.in)
+			if err == nil {
+				t.Fatalf("formatHoursForYandex(%q) = %q, nil; want error "+
+					"(invalid hours must be rejected, not silently dropped or typed verbatim)", tt.in, got)
+			}
+			if got != "" {
+				t.Errorf("formatHoursForYandex(%q) returned non-empty %q alongside error", tt.in, got)
+			}
+		})
+	}
+}
+
 // TestUpdateHoursRejectsMalformedBeforeRPA verifies UpdateHours surfaces the
 // validation error as a non-retryable A2A error without ever reaching the
 // Playwright step. A nil *BusinessBrowser is safe here because the guard

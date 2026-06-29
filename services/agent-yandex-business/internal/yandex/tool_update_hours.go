@@ -24,6 +24,75 @@ var yandexHoursShape = regexp.MustCompile(
 		`(, ((Пн|Вт|Ср|Чт|Пт|Сб|Вс)(-(Пн|Вт|Ср|Чт|Пт|Сб|Вс))? )?\d{1,2}:\d{2}-\d{1,2}:\d{2})*$`,
 )
 
+// hhmmShape matches a single 24h clock endpoint "H:MM"/"HH:MM" with the hour in
+// 0–23 and the minute in 00–59. It rejects impossible clocks like "25:00" or
+// "99:99" that the LLM may emit.
+var hhmmShape = regexp.MustCompile(`^([01]?\d|2[0-3]):[0-5]\d$`)
+
+// parseClockMinutes validates a single HH:MM endpoint and returns it as minutes
+// since midnight so callers can compare ranges.
+func parseClockMinutes(s string) (int, error) {
+	if !hhmmShape.MatchString(s) {
+		return 0, fmt.Errorf("invalid time %q (expected HH:MM, 00:00–23:59)", s)
+	}
+	var h, m int
+	if _, err := fmt.Sscanf(s, "%d:%d", &h, &m); err != nil {
+		return 0, fmt.Errorf("invalid time %q", s)
+	}
+	return h*60 + m, nil
+}
+
+// validateRange rejects an inverted or zero-length "open-close" range where the
+// close endpoint is not strictly after the open endpoint.
+func validateRange(open, closeT string) error {
+	o, err := parseClockMinutes(open)
+	if err != nil {
+		return err
+	}
+	c, err := parseClockMinutes(closeT)
+	if err != nil {
+		return err
+	}
+	if c <= o {
+		return fmt.Errorf("invalid range %s-%s (close must be after open)", open, closeT)
+	}
+	return nil
+}
+
+// validateRangeString validates a single "HH:MM-HH:MM" range token (the form
+// carried verbatim in a day's open field for string-range / array-of-strings
+// inputs).
+func validateRangeString(rng string) error {
+	open, closeT, ok := strings.Cut(rng, "-")
+	if !ok {
+		return fmt.Errorf("invalid range %q (expected HH:MM-HH:MM)", rng)
+	}
+	return validateRange(open, closeT)
+}
+
+// dayObjectRange extracts and validates the open/close (or start/end) endpoints
+// of a per-day object. An object with neither endpoint set is treated as absent
+// (returns "", "", nil); an object with exactly one endpoint set is rejected so
+// a partial day is never silently dropped.
+func dayObjectRange(m map[string]interface{}) (open, closeT string, err error) {
+	open, _ = m["open"].(string)
+	closeT, _ = m["close"].(string)
+	if open == "" && closeT == "" {
+		open, _ = m["start"].(string)
+		closeT, _ = m["end"].(string)
+	}
+	if open == "" && closeT == "" {
+		return "", "", nil
+	}
+	if open == "" || closeT == "" {
+		return "", "", fmt.Errorf("incomplete hours: both open and close are required")
+	}
+	if err := validateRange(open, closeT); err != nil {
+		return "", "", err
+	}
+	return open, closeT, nil
+}
+
 // UpdateHours updates business operating hours in Yandex.Business via RPA.
 // The Yandex.Business edit page has a single text input for hours with
 // placeholder "Введите в формате «Пн-Пт 9:00-18:00»".
@@ -126,42 +195,43 @@ func formatHoursForYandex(hoursJSON string) (string, error) {
 			if v == "closed" || v == "" {
 				continue
 			}
+			if err := validateRangeString(v); err != nil {
+				return "", fmt.Errorf("%s: %w", ruDay, err)
+			}
 			days[ruDay] = &dayHrs{open: v}
 		case map[string]interface{}:
-			o, _ := v["open"].(string)
-			c, _ := v["close"].(string)
+			o, c, err := dayObjectRange(v)
+			if err != nil {
+				return "", fmt.Errorf("%s: %w", ruDay, err)
+			}
 			if o == "" && c == "" {
-				o, _ = v["start"].(string)
-				c, _ = v["end"].(string)
+				continue
 			}
-			if o != "" && c != "" {
-				days[ruDay] = &dayHrs{open: o, close: c}
-			}
+			days[ruDay] = &dayHrs{open: o, close: c}
 		case []interface{}:
 			if len(v) == 0 {
 				continue
 			}
 			if m, ok := v[0].(map[string]interface{}); ok {
-				o, _ := m["open"].(string)
-				c, _ := m["close"].(string)
-				if o == "" && c == "" {
-					o, _ = m["start"].(string)
-					c, _ = m["end"].(string)
+				o, c, err := dayObjectRange(m)
+				if err != nil {
+					return "", fmt.Errorf("%s: %w", ruDay, err)
 				}
-				if o != "" && c != "" {
+				if o != "" || c != "" {
 					days[ruDay] = &dayHrs{open: o, close: c}
 				}
 				continue
 			}
-			// Array of range strings: ["09:00-22:00"] or split shifts
-			// ["09:00-13:00","14:00-18:00"]. Each element already carries its
-			// own dash-separated range, so keep it verbatim in `open` (the
-			// formatter emits "<day> <open>" when close is empty).
 			ranges := make([]string, 0, len(v))
 			for _, item := range v {
-				if s, ok := item.(string); ok && s != "" && s != "closed" {
-					ranges = append(ranges, s)
+				s, ok := item.(string)
+				if !ok || s == "" || s == "closed" {
+					continue
 				}
+				if err := validateRangeString(s); err != nil {
+					return "", fmt.Errorf("%s: %w", ruDay, err)
+				}
+				ranges = append(ranges, s)
 			}
 			if len(ranges) > 0 {
 				days[ruDay] = &dayHrs{open: strings.Join(ranges, ", ")}
@@ -200,5 +270,9 @@ func formatHoursForYandex(hoursJSON string) (string, error) {
 		i = j
 	}
 
-	return strings.Join(parts, ", "), nil
+	result := strings.Join(parts, ", ")
+	if result != "" && !yandexHoursShape.MatchString(result) {
+		return "", fmt.Errorf("formatted hours %q do not match Yandex.Business format", result)
+	}
+	return result, nil
 }
