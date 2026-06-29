@@ -35,11 +35,18 @@ type chatResumer interface {
 	ResumeApproved(ctx context.Context, w http.ResponseWriter, conversationID, batchID string, body []byte) (chatturn.TurnOutcome, error)
 }
 
+// integrationLister is the narrow slice of the integration repository Resume
+// needs to derive the business's active platforms for the resume body.
+type integrationLister interface {
+	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
+}
+
 // HITLHandler serves the three HITL HTTP endpoints. See docs/api/handlers/hitl.md.
 type HITLHandler struct {
 	hitlService      *service.HITLService
 	businessService  BusinessService
 	conversationRepo domain.ConversationRepository
+	integrationRepo  integrationLister
 	resumer          chatResumer
 
 	// sseCounter caps in-flight SSE streams per user; nil disables the gate.
@@ -61,13 +68,16 @@ func (h *HITLHandler) SetSSECounter(c *ssecounter.Counter, defaultTier string) {
 	h.defaultTier = defaultTier
 }
 
-// NewHITLHandler constructs a HITLHandler; all four deps are required. resumer
-// is the shared chat-turn lifecycle — Resume delegates to it so the approved-tool
+// NewHITLHandler constructs a HITLHandler; all deps are required. resumer is the
+// shared chat-turn lifecycle — Resume delegates to it so the approved-tool
 // result is persisted (the bare SSE proxy this replaces never wrote it back).
+// integrationRepo lets Resume derive the active-platform list the orchestrator
+// needs to keep post-approval platform tools available.
 func NewHITLHandler(
 	hitlService *service.HITLService,
 	businessService BusinessService,
 	conversationRepo domain.ConversationRepository,
+	integrationRepo integrationLister,
 	resumer chatResumer,
 ) (*HITLHandler, error) {
 	if hitlService == nil {
@@ -79,6 +89,9 @@ func NewHITLHandler(
 	if conversationRepo == nil {
 		return nil, fmt.Errorf("NewHITLHandler: conversationRepo cannot be nil")
 	}
+	if integrationRepo == nil {
+		return nil, fmt.Errorf("NewHITLHandler: integrationRepo cannot be nil")
+	}
 	if resumer == nil {
 		return nil, fmt.Errorf("NewHITLHandler: resumer cannot be nil")
 	}
@@ -86,6 +99,7 @@ func NewHITLHandler(
 		hitlService:      hitlService,
 		businessService:  businessService,
 		conversationRepo: conversationRepo,
+		integrationRepo:  integrationRepo,
 		resumer:          resumer,
 	}, nil
 }
@@ -295,10 +309,14 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	bizApprovals := business.ToolApprovals()
 	var projectOverrides map[string]domain.ToolFloor
+	var whitelistMode string
+	var allowedTools []string
 	if batch.ProjectID != "" {
 		if projUUID, perr := uuid.Parse(batch.ProjectID); perr == nil {
 			if proj, perr := h.hitlService.ProjectRepo().GetByID(r.Context(), projUUID); perr == nil && proj != nil {
 				projectOverrides = proj.ApprovalOverrides
+				whitelistMode = string(proj.WhitelistMode)
+				allowedTools = proj.AllowedTools
 			}
 		}
 	}
@@ -306,6 +324,9 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	body := map[string]interface{}{
 		"business_approvals":         bizApprovals,
 		"project_approval_overrides": projectOverrides,
+		"active_integrations":        h.activeIntegrations(r.Context(), business.ID),
+		"whitelist_mode":             whitelistMode,
+		"allowed_tools":              allowedTools,
 	}
 	raw, _ := json.Marshal(body)
 
@@ -338,6 +359,28 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		slog.WarnContext(r.Context(), "resume: stream ended with error",
 			"error", streamErr, "conversation_id", conversationID)
 	}
+}
+
+// activeIntegrations returns the distinct platforms with an active integration
+// for the business, mirroring the fresh-turn enrichment so the orchestrator's
+// resume body keeps post-approval platform tools available. A lookup failure
+// degrades to an empty slice — the resume still streams the approved tool's
+// result; only the post-approval LLM continuation loses its platform offers.
+func (h *HITLHandler) activeIntegrations(ctx context.Context, businessID uuid.UUID) []string {
+	integrations, err := h.integrationRepo.ListByBusinessID(ctx, businessID)
+	if err != nil {
+		slog.WarnContext(ctx, "resume: failed to list integrations for active-platform body", "error", err)
+		return []string{}
+	}
+	active := make([]string, 0, len(integrations))
+	seen := make(map[string]bool, len(integrations))
+	for _, integ := range integrations {
+		if integ.Status == domain.IntegrationStatusActive && !seen[integ.Platform] {
+			active = append(active, integ.Platform)
+			seen[integ.Platform] = true
+		}
+	}
+	return active
 }
 
 // GetTools handles GET /tools — registry projection via 5-min cache.

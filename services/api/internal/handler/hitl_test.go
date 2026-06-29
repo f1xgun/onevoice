@@ -168,6 +168,16 @@ func (f *fakeProjectRepoHITL) HardDeleteCascade(_ context.Context, _ uuid.UUID) 
 	return 0, 0, nil
 }
 
+// fakeIntegrationRepoHITL stubs the integration lookup the resume body builder
+// uses to derive the business's active platforms.
+type fakeIntegrationRepoHITL struct {
+	integrations []domain.Integration
+}
+
+func (f *fakeIntegrationRepoHITL) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]domain.Integration, error) {
+	return f.integrations, nil
+}
+
 // hitlBusinessService stubs BusinessService for the handler-level tests.
 type hitlBusinessService struct {
 	biz *domain.Business
@@ -278,6 +288,11 @@ func seededToolsCache() *service.ToolsRegistryCache {
 
 func buildHITLHandler(t *testing.T, pr *fakeHITLPendingRepo, biz *domain.Business, proj *domain.Project, orchURL string) *handler.HITLHandler {
 	t.Helper()
+	return buildHITLHandlerWithIntegrations(t, pr, biz, proj, orchURL, nil)
+}
+
+func buildHITLHandlerWithIntegrations(t *testing.T, pr *fakeHITLPendingRepo, biz *domain.Business, proj *domain.Project, orchURL string, integrations []domain.Integration) *handler.HITLHandler {
+	t.Helper()
 	svc := service.NewHITLService(
 		pr,
 		&fakeBusinessRepoHITL{biz: biz},
@@ -294,7 +309,7 @@ func buildHITLHandler(t *testing.T, pr *fakeHITLPendingRepo, biz *domain.Busines
 		Pending:       pr,
 		Orch:          orchestratorclient.New(orchURL, http.DefaultClient),
 	})
-	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{}, turn)
+	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{}, &fakeIntegrationRepoHITL{integrations: integrations}, turn)
 	if err != nil {
 		t.Fatalf("NewHITLHandler: %v", err)
 	}
@@ -835,6 +850,80 @@ func TestResume_Happy_OpensSSEStream_ForwardingOrchestratorEvents(t *testing.T) 
 	}
 }
 
+// TestResume_Body_CarriesActiveIntegrations asserts the approve-path Resume
+// forwards the business's active platforms to the orchestrator. Without these
+// the orchestrator rebuilds AvailableTools from an empty active set and drops
+// every {platform}__action tool, so the post-approval LLM continuation can no
+// longer emit a second platform post (e.g. "post to Telegram AND VK" breaks
+// after the first approval).
+func TestResume_Body_CarriesActiveIntegrations(t *testing.T) {
+	biz := &domain.Business{ID: uuid.New()}
+	pr := newFakeHITLPendingRepo()
+	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
+	})
+
+	var gotBody string
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		gotBody = string(raw)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		_, _ = fmt.Fprint(w, `data: {"type":"done"}`+"\n\n")
+		flusher.Flush()
+	}))
+	defer orch.Close()
+
+	integrations := []domain.Integration{
+		{Platform: "telegram", Status: domain.IntegrationStatusActive},
+		{Platform: "vk", Status: domain.IntegrationStatusActive},
+		{Platform: "yandex_business", Status: domain.IntegrationStatusTokenExpired},
+	}
+	h := buildHITLHandlerWithIntegrations(t, pr, biz, nil, orch.URL, integrations)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/c1/resume?batch_id=b1", http.NoBody)
+	req = req.WithContext(hitlBizCtx(biz.ID, uuid.New()))
+	r := chi.NewRouter()
+	r.Post("/api/v1/chat/{id}/resume", h.Resume)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(gotBody), &parsed); err != nil {
+		t.Fatalf("orchestrator body is not JSON: %v (%q)", err, gotBody)
+	}
+	rawActive, ok := parsed["active_integrations"]
+	if !ok {
+		t.Fatalf("resume body missing active_integrations: %q", gotBody)
+	}
+	var active []string
+	if err := json.Unmarshal(rawActive, &active); err != nil {
+		t.Fatalf("active_integrations not a string array: %v (%q)", err, gotBody)
+	}
+	if len(active) == 0 {
+		t.Fatalf("active_integrations is empty for a business with active integrations: %q", gotBody)
+	}
+	hasTelegram, hasVK := false, false
+	for _, p := range active {
+		switch p {
+		case "telegram":
+			hasTelegram = true
+		case "vk":
+			hasVK = true
+		case "yandex_business":
+			t.Errorf("inactive integration leaked into active_integrations: %q", gotBody)
+		}
+	}
+	if !hasTelegram || !hasVK {
+		t.Errorf("active_integrations = %v, want both telegram and vk", active)
+	}
+}
+
 // -- GET /tools tests --------------------------------------------------------
 
 func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
@@ -861,7 +950,7 @@ func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
 		cache,
 		orchestratorclient.New(orch.URL, orch.Client()),
 	)
-	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{}, noopResumer{})
+	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{}, &fakeIntegrationRepoHITL{}, noopResumer{})
 	if err != nil {
 		t.Fatal(err)
 	}
