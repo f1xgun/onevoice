@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -217,6 +218,61 @@ func TestMongoBusinessCleanup_ReviewsNoUniqueKeyCollision(t *testing.T) {
 		require.Equal(t, "Org A", got["business_name_at_delete"],
 			"every review of the deleted org must snapshot the original name")
 	}
+}
+
+// ListByBusinessID paginates with offset/skip over a created_at sort. created_at
+// is second-resolution (time.Unix), so a queue of reviews synced in one pass all
+// share it. Sorting on created_at alone leaves the tie order unstable across
+// separate Find calls, so a document at a page boundary can be skipped (never
+// shown to the operator) or repeated across consecutive pages. Appending _id as a
+// unique tiebreak makes the total order deterministic so offset paging is stable.
+func TestReviewRepository_ListByBusinessID_OffsetPagination_StableTiebreak(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	biz := uuid.NewString()
+
+	const total = 25
+	const pageSize = 10
+	sameInstant := time.Unix(1700000000, 0).UTC()
+
+	for i := 0; i < total; i++ {
+		_, err := db.Collection("reviews").InsertOne(ctx, bson.M{
+			"_id":          uuid.NewString(),
+			"business_id":  biz,
+			"platform":     "telegram",
+			"external_id":  uuid.NewString(),
+			"text":         "queued review",
+			"reply_status": domain.ReviewReplyStatusPending,
+			"created_at":   sameInstant,
+		})
+		require.NoError(t, err)
+	}
+
+	cursor, err := db.Collection("reviews").Find(ctx, bson.M{"business_id": biz},
+		options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}}))
+	require.NoError(t, err)
+	var reference []domain.Review
+	require.NoError(t, cursor.All(ctx, &reference))
+	require.Len(t, reference, total)
+	wantOrder := make([]string, len(reference))
+	for i, r := range reference {
+		wantOrder[i] = r.ID
+	}
+
+	var paged []string
+	for offset := 0; offset < total; offset += pageSize {
+		page, count, err := repo.ListByBusinessID(ctx, biz, domain.ReviewFilter{Limit: pageSize, Offset: offset})
+		require.NoError(t, err)
+		require.Equal(t, total, count)
+		for _, r := range page {
+			paged = append(paged, r.ID)
+		}
+	}
+
+	require.Equal(t, wantOrder, paged,
+		"offset pages must reproduce the full {created_at desc, _id desc} order exactly — "+
+			"a single-key created_at sort skips or repeats boundary documents when created_at ties")
 }
 
 func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
