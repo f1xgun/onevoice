@@ -139,7 +139,7 @@ func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID s
 	opts := options.Find().
 		SetLimit(int64(filter.Limit)).
 		SetSkip(int64(filter.Offset)).
-		SetSort(bson.M{"created_at": -1})
+		SetSort(bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}})
 
 	cursor, err := r.collection.Find(ctx, f, opts)
 	if err != nil {
