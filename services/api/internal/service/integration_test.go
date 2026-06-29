@@ -30,6 +30,7 @@ type mockIntegrationRepository struct {
 	listByBusinessIDFunc              func(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
 	listByBusinessAndPlatformFunc     func(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	getByBusinessPlatformExternalFunc func(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error)
+	getActiveByPlatformExternalFunc   func(ctx context.Context, platform, externalID string) (*domain.Integration, error)
 	updateFunc                        func(ctx context.Context, integration *domain.Integration) error
 	deleteFunc                        func(ctx context.Context, id uuid.UUID) error
 	softDeleteFunc                    func(ctx context.Context, id uuid.UUID) error
@@ -75,6 +76,13 @@ func (m *mockIntegrationRepository) ListByBusinessAndPlatform(ctx context.Contex
 func (m *mockIntegrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error) {
 	if m.getByBusinessPlatformExternalFunc != nil {
 		return m.getByBusinessPlatformExternalFunc(ctx, businessID, platform, externalID)
+	}
+	return nil, domain.ErrIntegrationNotFound
+}
+
+func (m *mockIntegrationRepository) GetActiveByPlatformExternal(ctx context.Context, platform, externalID string) (*domain.Integration, error) {
+	if m.getActiveByPlatformExternalFunc != nil {
+		return m.getActiveByPlatformExternalFunc(ctx, platform, externalID)
 	}
 	return nil, domain.ErrIntegrationNotFound
 }
@@ -750,6 +758,95 @@ func TestConnect_NoExistingRow_SkipsSoftDelete(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.False(t, softDeleteCalled, "soft-delete must not run when no live row exists")
+}
+
+// TestConnect_RejectsCrossTenantClaim is the fail-on-revert guard for the
+// cross-tenant duplicate defense. An ACTIVE integration for the same
+// (platform, external_id) already belongs to a DIFFERENT business; Connect must
+// refuse with ErrIntegrationClaimedByOtherTenant and never create a row.
+// Reverting the GetActiveByPlatformExternal guard lets the second tenant claim
+// the same external channel, failing the test.
+func TestConnect_RejectsCrossTenantClaim(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	tenantA := uuid.New()
+	tenantB := uuid.New()
+	created := false
+	repo := &mockIntegrationRepository{
+		getActiveByPlatformExternalFunc: func(_ context.Context, plat, extID string) (*domain.Integration, error) {
+			if plat == "telegram" && extID == "@victimshop" {
+				return &domain.Integration{
+					ID:         uuid.New(),
+					BusinessID: tenantA,
+					Platform:   "telegram",
+					ExternalID: "@victimshop",
+					Status:     domain.IntegrationStatusActive,
+				}, nil
+			}
+			return nil, domain.ErrIntegrationNotFound
+		},
+		createFunc: func(_ context.Context, _ *domain.Integration) error {
+			created = true
+			return nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, nil, audit.Nop())
+	_, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:  tenantB,
+		Platform:    "telegram",
+		ExternalID:  "@victimshop",
+		AccessToken: "tok",
+	})
+
+	require.ErrorIs(t, err, domain.ErrIntegrationClaimedByOtherTenant)
+	assert.False(t, created, "no integration row may be created for a cross-tenant claim")
+}
+
+// TestConnect_SameTenantReconnectNotBlockedByClaimGuard ensures the
+// cross-tenant guard does not block the SAME business reconnecting its own
+// channel: GetActiveByPlatformExternal returns a row owned by the connecting
+// business, so the claim check is a no-op and the reconnect proceeds.
+func TestConnect_SameTenantReconnectNotBlockedByClaimGuard(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	existingID := uuid.New()
+	created := false
+	repo := &mockIntegrationRepository{
+		getActiveByPlatformExternalFunc: func(_ context.Context, _, _ string) (*domain.Integration, error) {
+			return &domain.Integration{
+				ID:         existingID,
+				BusinessID: businessID,
+				Platform:   "telegram",
+				ExternalID: "@mine",
+				Status:     domain.IntegrationStatusActive,
+			}, nil
+		},
+		getByBusinessPlatformExternalFunc: func(_ context.Context, bid uuid.UUID, _, _ string) (*domain.Integration, error) {
+			if bid == businessID {
+				return &domain.Integration{ID: existingID, BusinessID: businessID, Platform: "telegram", ExternalID: "@mine"}, nil
+			}
+			return nil, domain.ErrIntegrationNotFound
+		},
+		createFunc: func(_ context.Context, _ *domain.Integration) error {
+			created = true
+			return nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, enc), nil, nil, audit.Nop())
+	_, err := svc.Connect(ctx, ConnectParams{
+		BusinessID:  businessID,
+		Platform:    "telegram",
+		ExternalID:  "@mine",
+		AccessToken: "tok",
+	})
+
+	require.NoError(t, err)
+	assert.True(t, created, "same-tenant reconnect must still create a fresh active row")
 }
 
 func TestConnect_Duplicate(t *testing.T) {

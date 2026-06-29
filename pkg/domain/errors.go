@@ -50,6 +50,13 @@ var (
 	// BlockWritesDuringGrace middleware so the public OAuth callbacks cannot
 	// persist a live integration for a user mid-deletion.
 	ErrActorPendingDeletion = errors.New("actor account pending deletion")
+	// ErrIntegrationClaimedByOtherTenant is returned by Connect when an active
+	// integration for the same (platform, external_id) already belongs to a
+	// different business. The active-uniqueness index is scoped per business, so
+	// without this guard two tenants could each hold an active integration for
+	// the same external channel — a cross-tenant takeover. Surfaces as 409 at
+	// the handler boundary.
+	ErrIntegrationClaimedByOtherTenant = errors.New("integration already claimed by another organization")
 )
 
 // Auth errors.

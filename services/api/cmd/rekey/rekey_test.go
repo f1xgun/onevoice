@@ -86,6 +86,9 @@ func (f *fakeRepo) ListByBusinessAndPlatform(_ context.Context, _ uuid.UUID, _ s
 func (f *fakeRepo) GetByBusinessPlatformExternal(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
 	return nil, domain.ErrIntegrationNotFound
 }
+func (f *fakeRepo) GetActiveByPlatformExternal(_ context.Context, _, _ string) (*domain.Integration, error) {
+	return nil, domain.ErrIntegrationNotFound
+}
 func (f *fakeRepo) ListAllActiveByPlatforms(_ context.Context, _ []string) ([]domain.Integration, error) {
 	return nil, nil
 }
