@@ -202,21 +202,29 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 	return a2a.OK(req, map[string]any{"status": "sent"}), nil
 }
 
+// sendNotification delivers a private message to the business owner. Unlike the
+// channel-post tools it must NEVER fall back to the integration's external_id —
+// that is the connected public channel, and broadcasting an owner-private
+// notification (which may quote third-party customer PII) there would be a
+// confidentiality leak. The target is therefore resolved only from an
+// explicitly supplied private chat_id; absent a valid private recipient the
+// path fails closed with notification_recipient_unconfigured rather than
+// reusing the channel id as a DM target.
 func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	text, _ := req.Args["text"].(string)
 	chatIDStr, _ := req.Args["chat_id"].(string)
 
-	sender, resolvedID, err := h.getSender(ctx, req, chatIDStr)
+	if !isValidChatTarget(chatIDStr) {
+		return nil, a2a.NewCodedError("notification_recipient_unconfigured",
+			a2a.NewNonRetryableError(fmt.Errorf("telegram: no private owner recipient configured for notification")))
+	}
+
+	sender, _, err := h.getSender(ctx, req, chatIDStr)
 	if err != nil {
 		return nil, err
 	}
 
-	target, err := resolveChatTarget(chatIDStr, resolvedID)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := sender.SendMessage(target, text); err != nil {
+	if err := sender.SendMessage(chatIDStr, text); err != nil {
 		return nil, fmt.Errorf("telegram: send notification: %w", classifyTelegramError(err))
 	}
 
