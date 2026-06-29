@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
@@ -325,12 +326,16 @@ func TestResumeApproved_FlipsTokenExpiredOnCodedError(t *testing.T) {
 	assert.Equal(t, "telegram", integ.marked[0].platform)
 }
 
-// TestResumeApproved_RecordsOnlyOnDone_NotOnRePause — when the resume loop
-// re-pauses on the next manual-floor tool (sequential fan-out), the approved
-// tool's result must NOT yet be recorded as a Post: posts are recorded only via
-// persistResumeDone on a terminal event. The re-pause keeps the message active
-// (so the next approve finds it) without double-recording the first tool.
-func TestResumeApproved_RecordsOnlyOnDone_NotOnRePause(t *testing.T) {
+// TestResumeApproved_RecordsExecutedToolOnRePause — in a sequential fan-out the
+// resume loop executes the approved tool and then RE-pauses on the next
+// manual-floor tool (gpt-oss-120b:free emits one tool call per turn). The tool
+// that actually ran in THIS resume stream is never re-emitted on later resumes,
+// so its Post record and RPA audit row must be written on the re-pause path —
+// not deferred to a terminal 'done' that, for this tool, never arrives. The
+// pre-fix re-pause skipped recordPostsAndReviews/auditRPAMutations entirely, so
+// every approved post except the final one silently vanished from the feed and
+// its 152-FZ "who changed the third-party listing" audit row was lost.
+func TestResumeApproved_RecordsExecutedToolOnRePause(t *testing.T) {
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fl := w.(http.Flusher)
@@ -357,6 +362,7 @@ func TestResumeApproved_RecordsOnlyOnDone_NotOnRePause(t *testing.T) {
 	}
 	posts := &fakePostRepo{}
 	tasks := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "yandex_business"}
+	auditLog := &fakeAuditLogger{}
 	turn := New(Deps{
 		Business:      resumeStubBusiness{},
 		Integrations:  resumeStubInteg{},
@@ -365,6 +371,7 @@ func TestResumeApproved_RecordsOnlyOnDone_NotOnRePause(t *testing.T) {
 		Messages:      msgRepo,
 		Posts:         posts,
 		AgentTasks:    tasks,
+		Audit:         auditLog,
 		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
 			ID: "batch-yandex", ConversationID: "conv-1", BusinessID: businessID,
 		}},
@@ -379,6 +386,103 @@ func TestResumeApproved_RecordsOnlyOnDone_NotOnRePause(t *testing.T) {
 	require.NotNil(t, msgRepo.updated, "re-pause MUST persist the still-active message")
 	assert.Equal(t, domain.MessageStatusPendingApproval, msgRepo.updated.Status,
 		"message must stay active so the next approve finds it")
-	assert.Empty(t, posts.created,
-		"posts are recorded only via persistResumeDone — the re-pause path must not record")
+
+	require.Len(t, posts.created, 1,
+		"the tool executed in this resume stream must be recorded on re-pause, not dropped")
+	assert.Equal(t, "ya", posts.created[0].Content)
+	assert.Equal(t, businessID, posts.created[0].BusinessID)
+	assert.Equal(t, "published", posts.created[0].Status)
+	yandexResult, hasYandex := posts.created[0].PlatformResults["yandex_business"]
+	require.True(t, hasYandex, "post recorded under the yandex_business platform")
+	assert.Equal(t, "published", yandexResult.Status)
+
+	require.Len(t, auditLog.entries, 1,
+		"the executed RPA write must leave one audit row on re-pause")
+	assert.Equal(t, audit.ActionRPAPostPublished, auditLog.entries[0].Action)
+}
+
+// TestResumeApproved_NoDoubleRecord_RePauseThenDone proves the executed tool is
+// recorded EXACTLY ONCE across a re-pause-then-done chain: each resume stream
+// carries its own freshly-accumulated recCalls/recResults holding only the tool
+// that ran in THAT stream, so re-pause records the first tool and the following
+// 'done' resume records the second — never the first again.
+func TestResumeApproved_NoDoubleRecord_RePauseThenDone(t *testing.T) {
+	rePauseOrch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_yandex","tool_name":"yandex_business__create_post","tool_args":{"text":"ya"}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_yandex","result":{"ok":true}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_approval_required","batch_id":"batch-tg","calls":[{"call_id":"tc_tg","tool_name":"vk__publish_post","args":{"text":"vk"}}]}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer rePauseOrch.Close()
+
+	businessID := uuid.New().String()
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_yandex", Name: "yandex_business__create_post", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	posts := &fakePostRepo{}
+	tasks := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "yandex_business"}
+	auditLog := &fakeAuditLogger{}
+	deps := Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  resumeStubInteg{},
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages:      msgRepo,
+		Posts:         posts,
+		AgentTasks:    tasks,
+		Audit:         auditLog,
+		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+			ID: "batch-yandex", ConversationID: "conv-1", BusinessID: businessID,
+		}},
+		Orch: orchestratorclient.New(rePauseOrch.URL, http.DefaultClient),
+	}
+	turn := New(deps)
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-yandex", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomePauseHITL, outcome)
+	require.Len(t, posts.created, 1, "first resume records the Yandex post once")
+
+	doneOrch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_tg","tool_name":"vk__publish_post","tool_args":{"text":"vk"}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_tg","result":{"ok":true}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer doneOrch.Close()
+
+	deps.Orch = orchestratorclient.New(doneOrch.URL, http.DefaultClient)
+	deps.Pending = &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+		ID: "batch-tg", ConversationID: "conv-1", BusinessID: businessID,
+	}}
+	turn2 := New(deps)
+
+	rr2 := httptest.NewRecorder()
+	outcome2, err := turn2.ResumeApproved(context.Background(), rr2, "conv-1", "batch-tg", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomeRejoinedResume, outcome2)
+
+	require.Len(t, posts.created, 2,
+		"the done resume records only the VK post — the Yandex post is NOT recorded a second time")
+	assert.Equal(t, "ya", posts.created[0].Content)
+	assert.Equal(t, "vk", posts.created[1].Content)
+	require.Len(t, auditLog.entries, 1,
+		"only the Yandex RPA write is audited; VK is an API publish, not an RPA mutation")
 }

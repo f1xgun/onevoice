@@ -433,7 +433,7 @@ func (t *Turn) runResumeStream(
 	}
 
 	if rePause != nil {
-		return t.persistResumeRePause(ctx, &msg, postText.String(), rePause), nil
+		return t.persistResumeRePause(ctx, &msg, businessID, actorUserID, postText.String(), rePause, recCalls, recResults), nil
 	}
 
 	msg.Content = postText.String()
@@ -459,7 +459,16 @@ func (t *Turn) runResumeStream(
 // the message Complete here (the pre-fix fallback did) stranded the chain at the
 // SECOND tool: the next approve's FindByConversationActive found nothing and
 // failed with no_active_approval_for_conversation. See docs/services/chatturn-hitl.md.
-func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Message, content string, pause *sse.Event) TurnOutcome {
+//
+// The tool that executed in THIS resume stream (the one whose result drove the
+// loop to the next pause) lives in recCalls/recResults, so its Post / RPA-audit
+// records are written here — exactly as persistResumeDone does on a terminal
+// event. Without this, every approved post except the final one (which ends on
+// 'done') is silently dropped from the feed and its RPA mutation goes unaudited.
+// Records are scoped to recResults, which carry only THIS stream's executed
+// tools, so each tool is recorded exactly once (on whichever stream it
+// completes in); the just-re-paused tool has no result yet and is not recorded.
+func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Message, businessID, actorUserID, content string, pause *sse.Event, toolCalls []domain.ToolCall, toolResults []domain.ToolResult) TurnOutcome {
 	msg.Content = content
 	existing := make(map[string]struct{}, len(msg.ToolCalls))
 	for _, tc := range msg.ToolCalls {
@@ -487,6 +496,10 @@ func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Messa
 			"error", err, "message_id", msg.ID, "conversation_id", msg.ConversationID)
 	}
 	t.bumpLastMessageAtNow(saveCtx, msg.ConversationID)
+	if t.deps.Posts != nil || t.deps.Reviews != nil {
+		t.recordPostsAndReviews(saveCtx, businessID, toolCalls, toolResults)
+	}
+	t.auditRPAMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
 	return OutcomePauseHITL
 }
 
