@@ -357,6 +357,80 @@ func TestResume_ApprovedPlatformTool_DispatchesUnderProductionBody(t *testing.T)
 		"no rejection (policy_forbidden) may be emitted for a legitimately-approved platform tool")
 }
 
+// TestResume_PostApproval_OffersActivePlatformTools is the multi-step approved
+// flow guard. After the first approved platform tool runs, the post-approval
+// stepRun re-invokes the LLM, which emits a SECOND platform tool (a different
+// active integration). That tool must remain offered — it surfaces as a fresh
+// approval card, NOT a policy_forbidden rejection. This only holds when the
+// resume request carries ActiveIntegrations: AvailableForWhitelist drops every
+// {platform}__action tool from AvailableTools when the active set is empty, so
+// offeredToolSet would not contain vk__publish_post and enforceOffered would
+// reject it. The api Resume handler must therefore populate active_integrations.
+//
+// Fail-on-revert: drop ActiveIntegrations from the ResumeRequest below and the
+// second vk tool is rejected with policy_forbidden — the assertions fail.
+func TestResume_PostApproval_OffersActivePlatformTools(t *testing.T) {
+	vkArgs, _ := json.Marshal(map[string]interface{}{"text": "vk post"})
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{{
+				ID:   "vk-call-1",
+				Type: llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{
+					Name:      "vk__publish_post",
+					Arguments: string(vkArgs),
+				},
+			}},
+		},
+		{Content: "готово", FinishReason: "stop"},
+	}}
+
+	rec := &recordingExecutor{}
+	reg := toolregistry.NewRegistry()
+	for _, name := range []string{"telegram__send_channel_post", "vk__publish_post"} {
+		reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
+			Type:     llm.ToolCallTypeFunction,
+			Function: llm.FunctionDefinition{Name: name, Description: "d", Parameters: map[string]interface{}{}},
+		}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
+	}
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-multi", []domain.PendingCall{
+		{CallID: "tg-call-1", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "tg post"}, Verdict: "approve"},
+	})
+	repo.store["batch-multi"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{
+		BatchID:            "batch-multi",
+		ActiveIntegrations: []string{"telegram", "vk"},
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	for _, ev := range findEvents(evts, orchestrator.EventToolRejected) {
+		assert.NotEqual(t, "policy_forbidden", ev.Content,
+			"the post-approval vk tool must not be rejected as policy_forbidden when vk is active")
+		assert.NotEqual(t, "vk__publish_post", ev.ToolName,
+			"the post-approval vk tool must not be rejected when vk is active")
+	}
+
+	approvals := findEvents(evts, orchestrator.EventToolApprovalRequired)
+	require.NotEmpty(t, approvals,
+		"the second active-platform tool must surface as a fresh approval card, not be dropped")
+	sawVK := false
+	for _, ap := range approvals {
+		for _, c := range ap.Calls {
+			if c.ToolName == "vk__publish_post" {
+				sawVK = true
+			}
+		}
+	}
+	assert.True(t, sawVK, "vk__publish_post must reach the post-approval approval card")
+}
+
 func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 

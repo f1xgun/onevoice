@@ -2,12 +2,15 @@ package chatturn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
@@ -206,8 +209,11 @@ func (t *Turn) sseInlineError(w http.ResponseWriter) {
 
 // streamResume is the rejoin path: a new chat request arrives while a batch is
 // still resolving, so we re-attach to the orchestrator resume stream and
-// finalize the assistant Message. Body is nil — the rejoin does not re-supply
-// approvals (the orchestrator falls back to base floors). See docs/services/chatturn-hitl.md.
+// finalize the assistant Message. It re-supplies the active-platform /
+// whitelist context (but not fresh approvals — the orchestrator falls back to
+// base floors) so the post-approval LLM continuation keeps offering the
+// business's platform tools instead of dropping every {platform}__action call.
+// See docs/services/chatturn-hitl.md.
 func (t *Turn) streamResume(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -220,7 +226,54 @@ func (t *Turn) streamResume(
 		t.sseInlineError(w)
 		return OutcomeInlineError, nil
 	}
-	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batch.UserID, batchID, nil)
+	body := t.resumeBody(ctx, batch.BusinessID, batch.ProjectID)
+	return t.runResumeStream(ctx, w, conversationID, activeMsg, batch.BusinessID, batch.UserID, batchID, body)
+}
+
+// resumeBody assembles the rejoin resume request body. It mirrors the
+// approve-path body in the HITL handler: active_integrations from the
+// business's active platforms and whitelist_mode / allowed_tools from the
+// conversation's project, so the orchestrator rebuilds AvailableTools with the
+// platform tools the post-approval continuation may emit. Any lookup failure
+// degrades that field to empty rather than failing the rejoin. Returns nil when
+// businessID is unparseable, preserving the prior nil-body behavior.
+func (t *Turn) resumeBody(ctx context.Context, businessID, projectID string) []byte {
+	bizUUID, err := uuid.Parse(businessID)
+	if err != nil {
+		return nil
+	}
+
+	active := make([]string, 0)
+	integrations, listErr := t.deps.Integrations.ListByBusinessID(ctx, bizUUID)
+	if listErr != nil {
+		slog.WarnContext(ctx, "chatturn: resume: failed to list integrations for active-platform body", "error", listErr)
+	} else {
+		seen := make(map[string]bool, len(integrations))
+		for _, integ := range integrations {
+			if integ.Status == domain.IntegrationStatusActive && !seen[integ.Platform] {
+				active = append(active, integ.Platform)
+				seen[integ.Platform] = true
+			}
+		}
+	}
+
+	var whitelistMode string
+	var allowedTools []string
+	if projectID != "" {
+		if projUUID, perr := uuid.Parse(projectID); perr == nil {
+			if proj, perr := t.deps.Projects.GetByID(ctx, bizUUID, projUUID); perr == nil && proj != nil {
+				whitelistMode = string(proj.WhitelistMode)
+				allowedTools = proj.AllowedTools
+			}
+		}
+	}
+
+	raw, _ := json.Marshal(map[string]interface{}{
+		"active_integrations": active,
+		"whitelist_mode":      whitelistMode,
+		"allowed_tools":       allowedTools,
+	})
+	return raw
 }
 
 // ResumeApproved is the primary approve→resume path (POST /chat/{id}/resume).
