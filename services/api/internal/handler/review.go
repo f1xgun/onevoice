@@ -23,8 +23,8 @@ const (
 
 // ReviewService defines the interface for review operations used by handler.
 // List/GetByID/Reply receive businessID (extracted from /businesses/{id} URL by
-// RequireBusinessAccess middleware); Refresh remains userID-scoped because
-// /reviews/refresh is auth-only (not business-scoped).
+// RequireBusinessAccess middleware); Refresh resolves the same single business
+// from the request's BusinessContext and takes userID only for logging/audit.
 type ReviewService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
@@ -195,19 +195,21 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 }
 
 // RefreshReviews handles POST /api/v1/reviews/refresh — triggers an
-// on-demand pull from every connected platform for the caller's business.
-// Synchronous: the response returns once the dispatch completes (or fails)
-// so the frontend can immediately invalidate its query and show the new
-// rows. The endpoint is rate-naturally-bounded by the Cloudflare-style
-// 60s gateway timeout combined with the syncer's own per-platform 60s
-// per-NATS-request budget.
+// on-demand pull from every connected platform for the caller's single
+// business (resolved from the request's BusinessContext). Synchronous: the
+// response returns once the dispatch completes (or fails) so the frontend
+// can immediately invalidate its query and show the new rows. The endpoint
+// is rate-naturally-bounded by the Cloudflare-style 60s gateway timeout
+// combined with the syncer's own per-platform 60s per-NATS-request budget.
+// It is a write-class action that drives external platform work, so it
+// requires PermContentUpdate — a read-only viewer must not trigger the fanout.
 func (h *ReviewHandler) RefreshReviews(w http.ResponseWriter, r *http.Request) {
-	userID, ok := requireUserID(w, r)
+	bc, ok := requireBusiness(w, r, "RefreshReviews", authz.PermContentUpdate)
 	if !ok {
 		return
 	}
 
-	if err := h.reviewService.Refresh(r.Context(), userID); err != nil {
+	if err := h.reviewService.Refresh(r.Context(), bc.UserID); err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
