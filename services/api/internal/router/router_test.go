@@ -15,6 +15,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	authservice "github.com/f1xgun/onevoice/services/api/internal/auth"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
@@ -184,6 +186,131 @@ func TestRouter_SearchRouteRateLimited(t *testing.T) {
 	require.True(t, baselineFound, "baseline GET /conversations route must exist")
 	assert.Greater(t, searchMW, baselineMW,
 		"search route must carry an extra rate-limit middleware vs. an un-limited sibling GET")
+}
+
+// permissiveLoader grants every (business, user) pair an active membership on
+// a role carrying PermContentCreate so RequireBusinessAccess admits the request
+// and the HITL resume route's rate-limit middleware is actually reached.
+type permissiveLoader struct{ roleID uuid.UUID }
+
+func (l *permissiveLoader) LoadMembership(_ context.Context, _, _ uuid.UUID) (*authz.CachedMember, error) {
+	return &authz.CachedMember{RoleID: l.roleID, Status: "active"}, nil
+}
+
+func (l *permissiveLoader) LoadRole(_ context.Context, _ uuid.UUID) (*authz.CachedRole, error) {
+	return &authz.CachedRole{Permissions: []authz.Permission{authz.PermContentCreate}}, nil
+}
+
+// mintAccessToken signs a valid access JWT for userID so requests pass the
+// Auth middleware mounted on the business-scoped group.
+func mintAccessToken(t *testing.T, secret []byte, userID uuid.UUID) string {
+	t.Helper()
+	claims := authservice.AccessTokenClaims{
+		UserID: userID,
+		Email:  "limiter@example.com",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    authservice.TokenIssuer,
+			Subject:   authservice.TokenSubjectAccess,
+			Audience:  jwt.ClaimStrings{authservice.TokenAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+		},
+	}
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
+	require.NoError(t, err)
+	return signed
+}
+
+// replayResumeChain rebuilds the HITL resume route's exact route-scoped
+// middleware chain (as registered by router.Setup, including the route-level
+// rate-limit middleware) onto a fresh chi router terminating in a benign 200
+// handler, so the real limiter wiring is exercised without invoking the
+// production handler body. The outer-group Auth middleware is prepended
+// explicitly (chi.Walk does not report parent-group Use middlewares) so the
+// captured RequireBusinessAccess middleware receives an authenticated userID.
+// The route is mounted under /api/v1/businesses/{id} so RequireBusinessAccess
+// resolves the business UUID from the "id" param exactly as in production; the
+// inner conversation segment is renamed to avoid chi's duplicate-param-key
+// rejection on a flat pattern.
+func replayResumeChain(t *testing.T, src *chi.Mux, jwtSecret []byte) *chi.Mux {
+	t.Helper()
+	const wantPattern = "/api/v1/businesses/{id}/chat/{id}/resume"
+	var chain []func(http.Handler) http.Handler
+	var found bool
+	err := chi.Walk(src, func(method, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
+		if method == http.MethodPost && route == wantPattern {
+			found = true
+			chain = mws
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, found, "route %s must be registered", wantPattern)
+
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := chi.NewRouter()
+	mux.Use(apimiddleware.Auth(jwtSecret))
+	mux.Route("/api/v1/businesses/{id}", func(r chi.Router) {
+		r.With(chain...).Post("/chat/{convID}/resume", terminal)
+	})
+	return mux
+}
+
+// TestRouter_HITLResumeHasDistinctRateLimitScope is the fail-on-revert guard
+// for the chat/HITL rate-limit decoupling. The chat route and the HITL resume
+// route must key their per-user rate-limit buckets on DISTINCT Redis scopes so
+// RATE_LIMIT_CHAT and RATE_LIMIT_HITL govern independent counters. Here we
+// exhaust the chat-scope bucket for a user, then drive a request through the
+// resume route's real middleware chain: with distinct scopes the resume bucket
+// is untouched and the request passes its limiter (200). Reverting the resume
+// route back to scope "chat" makes it share the now-exhausted chat counter, so
+// the resume request is throttled (429) and this test fails.
+func TestRouter_HITLResumeHasDistinctRateLimitScope(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&permissiveLoader{roleID: uuid.New()}, time.Minute, time.Minute)
+	hc := health.New()
+	handlers := buildTestHandlers()
+	const chatLimit, hitlLimit = 1, 1
+	r := router.Setup(handlers, jwtSecret, redisClient, hc,
+		[]string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: chatLimit, HITL: hitlLimit, Writes: 1000, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	resume := replayResumeChain(t, r, jwtSecret)
+
+	userID := uuid.New()
+	token := mintAccessToken(t, jwtSecret, userID)
+
+	chatKey := "ratelimit:user:" + userID.String() + ":chat"
+	for i := 0; i <= chatLimit; i++ {
+		require.NoError(t, redisClient.Incr(context.Background(), chatKey).Err())
+	}
+	require.NoError(t, redisClient.Expire(context.Background(), chatKey, time.Minute).Err())
+
+	bizID := uuid.New()
+	convID := uuid.New()
+	url := "/api/v1/businesses/" + bizID.String() + "/chat/" + convID.String() + "/resume?batch_id=b1"
+	req := httptest.NewRequest(http.MethodPost, url, http.NoBody)
+	req.RemoteAddr = "203.0.113.99:12345"
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	resume.ServeHTTP(rec, req)
+
+	assert.NotEqual(t, http.StatusTooManyRequests, rec.Code,
+		"HITL resume must use its own rate-limit scope: exhausting the chat bucket must not throttle resume")
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"resume request must pass auth, authz and its own (fresh) rate-limit bucket")
+
+	hitlKey := "ratelimit:user:" + userID.String() + ":hitl"
+	require.Equal(t, int64(1), redisClient.Exists(context.Background(), hitlKey).Val(),
+		"resume route must increment the distinct hitl-scope key, not the chat key")
 }
 
 // TestRouter_SingularBusinessRouteGone asserts that GET /api/v1/business
