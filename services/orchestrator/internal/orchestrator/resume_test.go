@@ -310,13 +310,23 @@ func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T)
 	assert.Equal(t, "policy_revoked", rejects[0].Content)
 }
 
-// TestResume_WhitelistWithheld_DropsApprovedCall re-asserts the project tool
-// whitelist at the resume dispatch chokepoint. hitl.Resolve there only checks
-// floor strictness — it has no whitelist knowledge — so an approved call whose
-// tool the project no longer offers (WhitelistMode=none yields an empty offered
-// set) would dispatch over NATS purely on its floor. The offered-set re-check
-// must drop it as policy_forbidden before it reaches the executor.
-func TestResume_WhitelistWithheld_DropsApprovedCall(t *testing.T) {
+// TestResume_ApprovedPlatformTool_DispatchesUnderProductionBody guards the
+// resume dispatch chokepoint against an over-block regression. The withheld-tool
+// gate is the offer-time enforceOffered boundary in stepRun: a tool the project
+// whitelist omits is moved to the forbidden bucket BEFORE the pending batch is
+// built, so it can never become an approval card and never reach this path. The
+// resume dispatch must therefore trust the floor/verdict alone — it must NOT
+// re-derive an offered set from state.AvailableTools, because the production
+// resume bodies (approve / rejoin) carry no ActiveIntegrations / WhitelistMode /
+// AllowedTools, so AvailableForWhitelist drops every {platform}__action tool
+// (no active integration). Re-introducing that re-check would reject every
+// legitimately-approved platform write tool as policy_forbidden.
+//
+// This test drives a real Manual-floor platform tool through a
+// production-equivalent ResumeRequest (no integration/whitelist fields) and
+// asserts it is still dispatched. If someone re-adds the AvailableTools offered
+// gate to dispatchApprovedCalls, this test fails.
+func TestResume_ApprovedPlatformTool_DispatchesUnderProductionBody(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
 	var dispatched int32
@@ -324,30 +334,27 @@ func TestResume_WhitelistWithheld_DropsApprovedCall(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
-		Function: llm.FunctionDefinition{Name: "withheld_tool", Description: "d", Parameters: map[string]interface{}{}},
+		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "d", Parameters: map[string]interface{}{}},
 	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
 
 	repo := newMockPendingRepo()
-	batch := batchWithCalls(t, "batch-wl", []domain.PendingCall{
-		{CallID: "c-wl", ToolName: "withheld_tool", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
+	batch := batchWithCalls(t, "batch-plat", []domain.PendingCall{
+		{CallID: "c-plat", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
 	})
-	repo.store["batch-wl"] = batch
+	repo.store["batch-plat"] = batch
 
 	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
 	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{
-		BatchID:       "batch-wl",
-		WhitelistMode: domain.WhitelistModeNone,
+		BatchID: "batch-plat",
 	})
 	require.NoError(t, err)
 
 	evts := drainEvents(events)
 
-	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatched),
-		"a whitelist-withheld tool must NOT be dispatched even after approval")
-	rejects := findEvents(evts, orchestrator.EventToolRejected)
-	require.Len(t, rejects, 1)
-	assert.Equal(t, "withheld_tool", rejects[0].ToolName)
-	assert.Equal(t, "policy_forbidden", rejects[0].Content)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&dispatched),
+		"an approved platform tool MUST dispatch — the production resume body carries no whitelist fields")
+	assert.Empty(t, findEvents(evts, orchestrator.EventToolRejected),
+		"no rejection (policy_forbidden) may be emitted for a legitimately-approved platform tool")
 }
 
 func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {

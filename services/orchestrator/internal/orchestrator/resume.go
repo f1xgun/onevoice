@@ -201,8 +201,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	offered := offeredToolSet(state.AvailableTools)
-
 	sendOrCancel := func(ev Event) bool {
 		select {
 		case out <- ev:
@@ -241,26 +239,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
 				Content:    reason,
-			}) {
-				return
-			}
-			continue
-		}
-
-		if !offered[call.ToolName] {
-			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
-			mu.Lock()
-			state.Messages = append(state.Messages, llm.Message{
-				Role:       "tool",
-				Content:    rejectionMsg,
-				ToolCallID: call.CallID,
-			})
-			mu.Unlock()
-			if !sendOrCancel(Event{
-				Type:       EventToolRejected,
-				ToolCallID: call.CallID,
-				ToolName:   call.ToolName,
-				Content:    "policy_forbidden",
 			}) {
 				return
 			}
