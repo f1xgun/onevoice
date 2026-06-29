@@ -135,6 +135,57 @@ func TestGetByBusinessPlatformExternal_NotFound(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
+func TestGetActiveByPlatformExternal_Found(t *testing.T) {
+	ctx := context.Background()
+	otherBusiness := uuid.New()
+	platform := "telegram"
+	externalID := "@victimshop"
+	integrationID := uuid.New()
+	now := time.Now()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	rows := pgxmock.NewRows([]string{
+		"id", "business_id", "platform", "status",
+		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
+		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
+		"created_at", "updated_at",
+		"wrapped_dek", "key_version", "encryption_key_fingerprint",
+	}).
+		AddRow(integrationID, otherBusiness, platform, "active",
+			[]byte("tok"), []byte(nil), []byte(nil),
+			externalID, map[string]interface{}{}, &now, (*time.Time)(nil),
+			now, now, []byte("dek"), ptrInt16(1), ptrString("fp"))
+
+	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(rows)
+
+	result, err := repo.GetActiveByPlatformExternal(ctx, platform, externalID)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, otherBusiness, result.BusinessID)
+	assert.Equal(t, externalID, result.ExternalID)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+func TestGetActiveByPlatformExternal_NotFound(t *testing.T) {
+	ctx := context.Background()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectQuery(`SELECT .+ FROM integrations WHERE`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnError(pgx.ErrNoRows)
+
+	result, err := repo.GetActiveByPlatformExternal(ctx, "telegram", "@nobody")
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
 func TestIntegrationRepo_GetByID_SoftDeleted(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()

@@ -61,6 +61,12 @@ type IntegrationRepository interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]Integration, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]Integration, error)
 	GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform string, externalID string) (*Integration, error)
+	// GetActiveByPlatformExternal returns the active integration for a
+	// (platform, external_id) pair across ALL businesses, or
+	// ErrIntegrationNotFound. Unlike GetByBusinessPlatformExternal it is not
+	// scoped to one business, so Connect can detect a cross-tenant claim on the
+	// same external channel.
+	GetActiveByPlatformExternal(ctx context.Context, platform string, externalID string) (*Integration, error)
 	ListAllActiveByPlatforms(ctx context.Context, platforms []string) ([]Integration, error)
 	Update(ctx context.Context, integration *Integration) error
 	Delete(ctx context.Context, id uuid.UUID) error

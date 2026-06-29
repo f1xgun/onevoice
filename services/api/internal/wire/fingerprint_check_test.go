@@ -41,6 +41,9 @@ func (s *stubIntegrationRepo) ListByBusinessAndPlatform(_ context.Context, _ uui
 func (s *stubIntegrationRepo) GetByBusinessPlatformExternal(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
 	return nil, domain.ErrIntegrationNotFound
 }
+func (s *stubIntegrationRepo) GetActiveByPlatformExternal(_ context.Context, _, _ string) (*domain.Integration, error) {
+	return nil, domain.ErrIntegrationNotFound
+}
 func (s *stubIntegrationRepo) Update(_ context.Context, _ *domain.Integration) error { return nil }
 func (s *stubIntegrationRepo) Delete(_ context.Context, _ uuid.UUID) error           { return nil }
 func (s *stubIntegrationRepo) SoftDelete(_ context.Context, _ uuid.UUID) error       { return nil }

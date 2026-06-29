@@ -450,6 +450,26 @@ func (r *integrationRepository) GetByBusinessPlatformExternal(ctx context.Contex
 	return &integration, nil
 }
 
+func (r *integrationRepository) GetActiveByPlatformExternal(ctx context.Context, platform, externalID string) (*domain.Integration, error) {
+	sql, args, err := r.activeQuery().
+		Where(ActiveIntegrationStatusEq()).
+		Where(squirrel.Eq{"platform": platform, "external_id": externalID}).
+		Limit(1).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+
+	integration, err := scanIntegration(r.pool.QueryRow(ctx, sql, args...))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrIntegrationNotFound
+		}
+		return nil, fmt.Errorf("query integration: %w", err)
+	}
+	return &integration, nil
+}
+
 func (r *integrationRepository) CountIntegrationsWithDifferentFingerprint(ctx context.Context, currentFP string) (int, error) {
 	const q = `SELECT count(*) FROM integrations
 	           WHERE encryption_key_fingerprint IS NOT NULL

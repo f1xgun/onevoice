@@ -339,6 +339,10 @@ func TestConnectTelegram_LinkedGroupBotNotMember(t *testing.T) {
 	mockIntegration.AssertExpectations(t)
 }
 
+// TestConnectTelegram_Success proves the legitimate dashboard path: a body
+// carrying only {channel_id} — exactly what the real frontend posts, with no
+// telegram_user_id — connects successfully (201) once the shared bot can read
+// the channel. No client-supplied identity is required at the handler.
 func TestConnectTelegram_Success(t *testing.T) {
 	tgServer := newTelegramAPIMock(t, "My Channel", false)
 	defer tgServer.Close()
@@ -369,7 +373,7 @@ func TestConnectTelegram_Success(t *testing.T) {
 	}
 	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
 
-	reqBody := `{"channel_id":"@mychannel","telegram_user_id":"12345"}`
+	reqBody := `{"channel_id":"@mychannel"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
@@ -381,6 +385,40 @@ func TestConnectTelegram_Success(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
+	mockIntegration.AssertExpectations(t)
+}
+
+// TestConnectTelegram_ClaimedByOtherTenantConflict proves the handler maps the
+// service-layer cross-tenant claim error to 409. The {channel_id}-only body is
+// the real frontend shape; the channel is readable by the shared bot, but the
+// integration service reports it is already actively claimed by another
+// organization, so the handler must refuse with 409 and not 201.
+func TestConnectTelegram_ClaimedByOtherTenantConflict(t *testing.T) {
+	tgServer := newTelegramAPIMock(t, "Victim Channel", false)
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockBusiness := new(MockBusinessService)
+	mockIntegration.On("Connect", mock.Anything, mock.Anything).
+		Return((*domain.Integration)(nil), domain.ErrIntegrationClaimedByOtherTenant)
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@victimshop"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409 when channel is claimed by another organization, got %d: %s", rr.Code, rr.Body.String())
+	}
 	mockIntegration.AssertExpectations(t)
 }
 

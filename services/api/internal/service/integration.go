@@ -332,6 +332,17 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	}
 
 	if params.ExternalID != "" {
+		claimant, claimErr := s.repo.GetActiveByPlatformExternal(ctx, params.Platform, params.ExternalID)
+		switch {
+		case claimErr == nil:
+			if claimant.BusinessID != params.BusinessID {
+				return nil, domain.ErrIntegrationClaimedByOtherTenant
+			}
+		case errors.Is(claimErr, domain.ErrIntegrationNotFound):
+		default:
+			return nil, fmt.Errorf("lookup cross-tenant integration: %w", claimErr)
+		}
+
 		existing, lookupErr := s.repo.GetByBusinessPlatformExternal(ctx, params.BusinessID, params.Platform, params.ExternalID)
 		switch {
 		case lookupErr == nil:
