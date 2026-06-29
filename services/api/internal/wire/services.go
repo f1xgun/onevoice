@@ -320,6 +320,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		repos.EmailOutbox,
 		s.AuditLogger,
 	)
+	s.BusinessDeletion.SetObjectStore(s.ObjectStorage)
 
 	s.Consent = service.NewConsentService(
 		h.PG,

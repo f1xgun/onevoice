@@ -35,6 +35,13 @@ type BusinessOwnerChecker interface {
 	GetByBusinessUser(ctx context.Context, businessID, userID uuid.UUID) (*domain.BusinessMember, error)
 }
 
+// ObjectPurger removes a tenant's uploaded objects (e.g. logos) on hard-delete
+// so 152-ФЗ erasure also reclaims the publicly-readable storage objects.
+// Satisfied by *storage.MinioClient.
+type ObjectPurger interface {
+	DeletePrefix(ctx context.Context, prefix string) error
+}
+
 // BusinessOwnerEmailResolver resolves the requesting owner's email so the
 // confirmation + T-7 emails can be addressed. Satisfied by
 // domain.UserRepository. Member fan-out is intentionally NOT done — only the
@@ -64,8 +71,17 @@ type BusinessDeletionService struct {
 	conversations domain.ConversationRepository
 	outbox        BusinessDeletionOutbox
 	auditLog      audit.Logger
+	objectStore   ObjectPurger // optional; reclaims uploaded objects on hard-delete
 	graceDays     int
 	t7OffsetDays  int
+}
+
+// SetObjectStore wires the object store used to purge a tenant's uploaded
+// objects on hard-delete. Optional — when nil, hard-delete skips object
+// cleanup (PG/Mongo rows are still removed). Set after construction so existing
+// call sites don't churn.
+func (s *BusinessDeletionService) SetObjectStore(p ObjectPurger) {
+	s.objectStore = p
 }
 
 // NewBusinessDeletionService constructs the service; all deps are required.
@@ -326,7 +342,23 @@ func (s *BusinessDeletionService) HardDeleteSweeper(ctx context.Context) (int, e
 			slog.WarnContext(ctx, "mongo business cleanup failed after hard delete (PG row already gone)",
 				"businessID", p.businessID, "err", err)
 		}
+		s.purgeObjects(ctx, p.businessID)
 	}
 
 	return len(purged), nil
+}
+
+// purgeObjects best-effort removes the businesses/{id}/ object-storage prefix
+// for a hard-deleted organization so 152-ФЗ erasure also reclaims the
+// publicly-readable logo objects. Non-fatal: the PG/Mongo rows are already
+// gone, so a storage error is logged and the sweep continues.
+func (s *BusinessDeletionService) purgeObjects(ctx context.Context, businessID uuid.UUID) {
+	if s.objectStore == nil {
+		return
+	}
+	prefix := fmt.Sprintf("businesses/%s/", businessID)
+	if err := s.objectStore.DeletePrefix(ctx, prefix); err != nil {
+		slog.WarnContext(ctx, "object storage cleanup failed after hard delete (PG row already gone)",
+			"businessID", businessID, "err", err)
+	}
 }
