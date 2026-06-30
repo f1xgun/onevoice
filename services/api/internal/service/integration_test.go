@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/crypto/kmsfake"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -2024,6 +2025,151 @@ func TestConnect_ActorGate(t *testing.T) {
 			"the deleted_at-filtered lookup reads the grace-window actor as not-found → gate fails open")
 		assert.True(t, created,
 			"reverting the gate to the deleted_at-filtered lookup lets a mid-deletion actor persist a live integration — the bug this PR fixes")
+	})
+}
+
+// fakeMembershipChecker mirrors the authz cache surface the connect-membership
+// gate consults. member nil + memberErr models a removed/not-found membership;
+// a non-nil member with a role whose permissions omit integrations:connect
+// models a member whose connect permission was revoked.
+type fakeMembershipChecker struct {
+	member    *authz.CachedMember
+	memberErr error
+	role      *authz.CachedRole
+	roleErr   error
+}
+
+func (f fakeMembershipChecker) GetMembership(_ context.Context, _, _ uuid.UUID) (authz.CachedMember, error) {
+	if f.memberErr != nil {
+		return authz.CachedMember{}, f.memberErr
+	}
+	return *f.member, nil
+}
+
+func (f fakeMembershipChecker) GetRole(_ context.Context, _ uuid.UUID) (authz.CachedRole, error) {
+	if f.roleErr != nil {
+		return authz.CachedRole{}, f.roleErr
+	}
+	return *f.role, nil
+}
+
+// TestConnect_MembershipGate is the fail-on-revert guard for the OAuth-callback
+// authz-freshness gap: integrationService.Connect, when a WithMembershipGate
+// checker is attached, must re-assert the same membership + integrations:connect
+// permission authz.RequireBusinessAccess + authz.Can enforce at the synchronous
+// paste-flow entry. The public OAuth callbacks persist a live integration whose
+// only authz proof is a ~10-min-old OAuth state, so a member removed (or whose
+// connect permission was revoked) inside that window must be rejected BEFORE
+// the row is created; a current member holding the permission still connects.
+//
+// Reverting the gateMembership call in Connect reproduces the bug: the
+// no-longer-member / revoked-permission cases below would persist an
+// integration, turning their assertions red.
+func TestConnect_MembershipGate(t *testing.T) {
+	ctx := context.Background()
+	actorID := uuid.New()
+	roleID := uuid.New()
+
+	baseParams := func() ConnectParams {
+		return ConnectParams{
+			BusinessID:   uuid.New(),
+			ActorID:      actorID,
+			Platform:     "yandex_business",
+			ExternalID:   "default",
+			AccessToken:  "tok",
+			ParsedFormat: ParsedFormatOAuthCode,
+		}
+	}
+
+	connectRole := &authz.CachedRole{Permissions: []authz.Permission{authz.PermIntegrationsConnect}}
+	readOnlyRole := &authz.CachedRole{Permissions: []authz.Permission{authz.PermIntegrationsRead}}
+
+	tests := []struct {
+		name        string
+		checker     fakeMembershipChecker
+		wantErr     error
+		wantCreated bool
+	}{
+		{
+			name:        "removed member is rejected before persist",
+			checker:     fakeMembershipChecker{memberErr: domain.ErrMembershipNotFound},
+			wantErr:     domain.ErrForbidden,
+			wantCreated: false,
+		},
+		{
+			name: "revoked connect permission is rejected before persist",
+			checker: fakeMembershipChecker{
+				member: &authz.CachedMember{RoleID: roleID, Status: "active"},
+				role:   readOnlyRole,
+			},
+			wantErr:     domain.ErrForbidden,
+			wantCreated: false,
+		},
+		{
+			name: "suspended member is rejected before persist",
+			checker: fakeMembershipChecker{
+				member: &authz.CachedMember{RoleID: roleID, Status: "suspended"},
+				role:   connectRole,
+			},
+			wantErr:     domain.ErrForbidden,
+			wantCreated: false,
+		},
+		{
+			name: "active member with connect permission connects",
+			checker: fakeMembershipChecker{
+				member: &authz.CachedMember{RoleID: roleID, Status: "active"},
+				role:   connectRole,
+			},
+			wantCreated: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var created bool
+			repo := &mockIntegrationRepository{
+				createFunc: func(_ context.Context, integration *domain.Integration) error {
+					created = true
+					integration.ID = uuid.New()
+					return nil
+				},
+			}
+
+			svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, audit.Nop())
+			svc = WithMembershipGate(svc, tc.checker)
+
+			_, err := svc.Connect(ctx, baseParams())
+
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantCreated, created,
+				"repo.Create call expectation mismatch — the membership gate must reject before persisting")
+		})
+	}
+
+	// no_gate_attached pins the no-over-block side: when no MembershipChecker is
+	// wired (in-process callers already gated upstream), Connect must not block
+	// on membership. Without WithMembershipGate the removed-member case would
+	// otherwise have no source to consult.
+	t.Run("no_gate_attached connects without membership source", func(t *testing.T) {
+		var created bool
+		repo := &mockIntegrationRepository{
+			createFunc: func(_ context.Context, integration *domain.Integration) error {
+				created = true
+				integration.ID = uuid.New()
+				return nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, audit.Nop())
+
+		_, err := svc.Connect(ctx, baseParams())
+
+		require.NoError(t, err)
+		assert.True(t, created, "no membership gate attached → Connect must not block")
 	})
 }
 
