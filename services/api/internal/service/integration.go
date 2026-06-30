@@ -13,6 +13,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
@@ -20,6 +21,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/oauthlock"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
+
+// memberStatusSuspended is the business_members.status value that bars a member
+// from acting; it mirrors the "suspended" branch authz.RequireBusinessAccess
+// rejects with 403.
+const memberStatusSuspended = "suspended"
 
 // TokenRefresher abstracts the HTTP call to refresh an expired OAuth token.
 // See docs/services/integration.md.
@@ -89,6 +95,24 @@ type ActorLookup interface {
 	GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error)
 }
 
+// MembershipChecker is the narrow slice of the authz cache the connect path
+// needs to re-assert that the acting user is still an ACTIVE member of the
+// target business holding integrations:connect. *authz.Cache satisfies it.
+//
+// The synchronous paste-flow connect routes run behind
+// authz.RequireBusinessAccess + authz.Can(PermIntegrationsConnect), so this is
+// checked at request entry there. The asynchronous OAuth code-flow callbacks
+// are PUBLIC routes whose only authz proof is the single-use OAuth state minted
+// ~10 min earlier; a member removed (or whose connect permission is revoked)
+// inside that window would otherwise still bind an integration. Re-running the
+// same membership + permission lookup against the live cache at Connect time
+// closes that freshness gap and is redundant-but-harmless on the paste-flow
+// path (a current member always passes).
+type MembershipChecker interface {
+	GetMembership(ctx context.Context, businessID, userID uuid.UUID) (authz.CachedMember, error)
+	GetRole(ctx context.Context, roleID uuid.UUID) (authz.CachedRole, error)
+}
+
 // IntegrationService defines the interface for platform integration management.
 // See docs/services/integration.md.
 type IntegrationService interface {
@@ -111,8 +135,9 @@ type integrationService struct {
 	refreshMu sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock (legacy path fallback)
 	refresher TokenRefresher // nil for platforms that don't need refresh
 	audit     audit.Logger
-	nats      NATSPublisher // nil when NATS is unreachable — revoke publish is skipped (fail-open)
-	actors    ActorLookup   // nil disables the connect-actor gate (in-process callers already gated upstream)
+	nats      NATSPublisher     // nil when NATS is unreachable — revoke publish is skipped (fail-open)
+	actors    ActorLookup       // nil disables the connect-actor gate (in-process callers already gated upstream)
+	members   MembershipChecker // nil disables the connect-membership gate (in-process callers already gated upstream)
 }
 
 // Compile-time check that integrationService implements IntegrationService
@@ -162,6 +187,22 @@ func WithNATSPublisher(svc IntegrationService, p NATSPublisher) IntegrationServi
 func WithActorGate(svc IntegrationService, actors ActorLookup) IntegrationService {
 	if s, ok := svc.(*integrationService); ok {
 		s.actors = actors
+	}
+	return svc
+}
+
+// WithMembershipGate attaches the authz membership/permission source that lets
+// Connect re-assert, against the live cache, that the acting user is still an
+// active member of the target business holding integrations:connect, returning
+// svc for chaining. When the checker is unset (or nil), or svc is not the
+// concrete service, Connect skips the membership re-check — safe for callers
+// already gated by authz.RequireBusinessAccess + authz.Can. Attached so the
+// public OAuth callbacks, whose only authz proof is a ~10-min-old OAuth state,
+// cannot bind an integration for an actor removed (or whose connect permission
+// was revoked) inside that window. Mirrors WithActorGate's wiring pattern.
+func WithMembershipGate(svc IntegrationService, members MembershipChecker) IntegrationService {
+	if s, ok := svc.(*integrationService); ok {
+		s.members = members
 	}
 	return svc
 }
@@ -336,6 +377,10 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
+	if err := s.gateMembership(ctx, params.ActorID, params.BusinessID); err != nil {
+		return nil, err
+	}
+
 	if params.ExternalID != "" {
 		claimant, claimErr := s.repo.GetActiveByPlatformExternal(ctx, params.Platform, params.ExternalID)
 		switch {
@@ -444,6 +489,46 @@ func (s *integrationService) gateActor(ctx context.Context, actorID uuid.UUID) e
 		return domain.ErrActorPendingDeletion
 	}
 	return nil
+}
+
+// gateMembership re-asserts, against the live authz cache, the same
+// membership + permission predicates authz.RequireBusinessAccess +
+// authz.Can(PermIntegrationsConnect) enforce at the synchronous paste-flow
+// entry: the actor must be a member of businessID whose status is not
+// suspended and whose role grants integrations:connect. It rejects with
+// domain.ErrForbidden otherwise, before any integration row is created. It is a
+// no-op when no MembershipChecker is attached (in-process callers already gated
+// upstream) or when either id is the nil UUID (no identified actor/business to
+// gate). A missing-membership lookup result is treated as a forbidden actor,
+// not a hard error, so a revoked member on the async OAuth-callback path is
+// rejected rather than failing open.
+func (s *integrationService) gateMembership(ctx context.Context, actorID, businessID uuid.UUID) error {
+	if s.members == nil || actorID == uuid.Nil || businessID == uuid.Nil {
+		return nil
+	}
+	member, err := s.members.GetMembership(ctx, businessID, actorID)
+	if err != nil {
+		if errors.Is(err, domain.ErrMembershipNotFound) {
+			return domain.ErrForbidden
+		}
+		return fmt.Errorf("load connect membership: %w", err)
+	}
+	if member.Status == memberStatusSuspended {
+		return domain.ErrForbidden
+	}
+	role, err := s.members.GetRole(ctx, member.RoleID)
+	if err != nil {
+		if errors.Is(err, domain.ErrRoleNotFound) {
+			return domain.ErrForbidden
+		}
+		return fmt.Errorf("load connect role: %w", err)
+	}
+	for _, p := range role.Permissions {
+		if p == authz.PermIntegrationsConnect {
+			return nil
+		}
+	}
+	return domain.ErrForbidden
 }
 
 // GetDecryptedToken returns decrypted tokens, refreshing on expiry; empty externalID falls back to first-active.
