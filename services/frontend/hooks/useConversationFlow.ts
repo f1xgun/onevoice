@@ -119,6 +119,7 @@ interface ApiMessage {
   id: string;
   role: string;
   content: string;
+  status?: string;
   toolCalls?: ApiToolCall[];
   toolResults?: ApiToolResult[];
 }
@@ -133,6 +134,20 @@ function extractApiMessages(payload: MessagesPayload | null): ApiMessage[] | nul
     return (payload as { messages: ApiMessage[] }).messages;
   }
   return null;
+}
+
+// isInProgressPlaceholder reports whether the API message is the empty
+// in_progress assistant placeholder the server reserves before the orchestrator
+// stream opens (chatturn turn.go). It carries no reply yet, so on a mid-turn
+// reload it stands in for "still generating" — the same signal as a trailing
+// user message with no assistant reply.
+function isInProgressPlaceholder(m: ApiMessage): boolean {
+  return (
+    m.role === 'assistant' &&
+    m.status === 'in_progress' &&
+    !m.content &&
+    (m.toolResults?.length ?? 0) === 0
+  );
 }
 
 // mapApiMessages converts persisted API messages to the client Message shape.
@@ -298,10 +313,14 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
       let keepWaiting = false;
       if (apiMsgs) {
-        const mapped = mapApiMessages(apiMsgs);
+        const lastApi = apiMsgs[apiMsgs.length - 1];
+        const trailingPlaceholder = !!lastApi && isInProgressPlaceholder(lastApi);
+        const mapped = mapApiMessages(trailingPlaceholder ? apiMsgs.slice(0, -1) : apiMsgs);
         const last = mapped[mapped.length - 1];
         const turnInFlight =
-          !hasPending && !isStreamingRef.current && !!last && last.role === 'user';
+          !hasPending &&
+          !isStreamingRef.current &&
+          (trailingPlaceholder || (!!last && last.role === 'user'));
         keepWaiting = turnInFlight && attempts < TURN_POLL_MAX_ATTEMPTS;
         if (keepWaiting) {
           mapped.push({
