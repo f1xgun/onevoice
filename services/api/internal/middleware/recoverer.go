@@ -27,7 +27,7 @@ func Recoverer(next http.Handler) http.Handler {
 				slog.ErrorContext(r.Context(), "recovered from panic",
 					slog.Any("panic", rec),
 					slog.String("method", r.Method),
-					slog.String("path", r.URL.Path),
+					slog.String("path", redactInvitationToken(r.URL.Path)),
 					slog.String("stack", string(debug.Stack())),
 				)
 				w.Header().Set("Content-Type", "application/json")
