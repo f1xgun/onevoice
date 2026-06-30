@@ -62,7 +62,7 @@ func Run(cfg RunConfig) error {
 	}))
 	nc, err := natslib.Connect(cfg.NATSURL, opts...)
 	if err != nil {
-		return fmt.Errorf("failed to connect to NATS (url=%s): %w", cfg.NATSURL, err)
+		return fmt.Errorf("failed to connect to NATS (url=%s): %w", redactConnURL(cfg.NATSURL), err)
 	}
 
 	transport := a2a.NewNATSTransport(nc)

@@ -31,7 +31,7 @@ func resilientNATSOptions() []natslib.Option {
 			slog.Warn("NATS disconnected", "error", e)
 		}),
 		natslib.ReconnectHandler(func(c *natslib.Conn) {
-			slog.Info("NATS reconnected", "url", c.ConnectedUrl())
+			slog.Info("NATS reconnected", "url", redactConnURL(c.ConnectedUrl()))
 		}),
 	}
 }
