@@ -62,8 +62,12 @@ type BusinessService interface {
 	Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	// Update applies a business profile edit; actorUserID is threaded through
-	// for the service-layer audit emission.
+	// for the service-layer audit emission. It does not touch logo_url.
 	Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error)
+	// UpdateLogoURL writes only the logo_url via a targeted column update and
+	// returns the re-read row, so a concurrent profile edit cannot revert the
+	// new logo (and vice versa).
+	UpdateLogoURL(ctx context.Context, businessID uuid.UUID, url string, actorUserID uuid.UUID) (*domain.Business, error)
 	// UpdateSettingsKeys writes only the named settings sub-keys (schedule,
 	// voiceTone, specialDates) via a targeted jsonb_set and returns the re-read
 	// row. Sibling settings sub-keys (incl. tool_approvals) are preserved so a
@@ -504,9 +508,8 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	priorLogoURL := business.LogoURL
-	business.LogoURL = h.storage.PublicURL(key)
-	business.UpdatedAt = time.Now()
-	updatedBusiness, err := h.businessService.Update(r.Context(), business, bc.UserID)
+	newLogoURL := h.storage.PublicURL(key)
+	updatedBusiness, err := h.businessService.UpdateLogoURL(r.Context(), bc.BusinessID, newLogoURL, bc.UserID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "upload logo: update business failed", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")

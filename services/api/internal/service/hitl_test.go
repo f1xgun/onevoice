@@ -139,6 +139,9 @@ func (s *stubBusinessRepo) Update(_ context.Context, b *domain.Business) error {
 	s.Business = b
 	return nil
 }
+func (s *stubBusinessRepo) UpdateLogoURL(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
 func (s *stubBusinessRepo) UpdateSettingsKeys(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
 	return nil
 }

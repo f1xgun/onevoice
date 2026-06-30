@@ -224,12 +224,14 @@ func quoteJSONBPathKey(key string) string {
 	return strings.ReplaceAll(key, `"`, `""`)
 }
 
-// Update writes the business profile COLUMNS (name, category, address, phone,
-// website, description, logo_url) only. It deliberately does NOT write the
-// settings JSONB: a profile or logo edit must never re-persist a settings
-// snapshot and thereby revert a concurrent settings sub-key change (e.g. a
-// tightened tool-approval floor). Settings sub-keys are written through the
-// targeted UpdateSettingsKeys / UpdateToolApprovals jsonb_set paths instead.
+// Update writes the editable business profile COLUMNS (name, category, address,
+// phone, website, description) only. It deliberately writes neither logo_url nor
+// the settings JSONB: a profile edit must never re-persist a stale logo_url
+// snapshot (which would revert a concurrent logo upload to a deleted object) nor
+// a stale settings snapshot (which would revert a concurrent settings sub-key
+// change, e.g. a tightened tool-approval floor). logo_url is written through the
+// targeted UpdateLogoURL path; settings sub-keys through UpdateSettingsKeys /
+// UpdateToolApprovals.
 func (r *businessRepository) Update(ctx context.Context, business *domain.Business) error {
 	business.UpdatedAt = time.Now()
 
@@ -241,7 +243,6 @@ func (r *businessRepository) Update(ctx context.Context, business *domain.Busine
 		Set("phone", business.Phone).
 		Set("website", business.Website).
 		Set("description", business.Description).
-		Set("logo_url", business.LogoURL).
 		Set("updated_at", business.UpdatedAt).
 		Where(squirrel.Eq{"id": business.ID}).
 		Where("deleted_at IS NULL").
@@ -259,6 +260,24 @@ func (r *businessRepository) Update(ctx context.Context, business *domain.Busine
 		return domain.ErrBusinessNotFound
 	}
 
+	return nil
+}
+
+// UpdateLogoURL writes only the logo_url column (plus updated_at), leaving every
+// profile column untouched. A logo upload uses this targeted write so it never
+// carries forward a stale profile snapshot, and a concurrent profile Update —
+// which no longer writes logo_url — never reverts a freshly uploaded logo to a
+// deleted object. RowsAffected==0 (missing or soft-deleted row) maps to
+// ErrBusinessNotFound.
+func (r *businessRepository) UpdateLogoURL(ctx context.Context, id uuid.UUID, url string) error {
+	const sql = "UPDATE businesses SET logo_url = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL"
+	cmdTag, err := r.pool.Exec(ctx, sql, url, id)
+	if err != nil {
+		return fmt.Errorf("update business logo_url: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrBusinessNotFound
+	}
 	return nil
 }
 

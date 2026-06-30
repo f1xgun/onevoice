@@ -103,6 +103,10 @@ func (m *MockBusinessRepository) Update(ctx context.Context, b *domain.Business)
 	return errors.New("not implemented")
 }
 
+func (m *MockBusinessRepository) UpdateLogoURL(ctx context.Context, id uuid.UUID, url string) error {
+	return errors.New("not implemented")
+}
+
 func (m *MockBusinessRepository) UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}) error {
 	return errors.New("not implemented")
 }
