@@ -63,6 +63,9 @@ func (s *stubBusinessServiceForApprovals) GetByID(_ context.Context, _ uuid.UUID
 func (s *stubBusinessServiceForApprovals) Update(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }
+func (s *stubBusinessServiceForApprovals) UpdateLogoURL(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) (*domain.Business, error) {
+	return nil, nil
+}
 func (s *stubBusinessServiceForApprovals) UpdateSettingsKeys(_ context.Context, _ uuid.UUID, _ map[string]interface{}, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }

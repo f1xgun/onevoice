@@ -53,6 +53,14 @@ func (m *MockBusinessService) Update(ctx context.Context, business *domain.Busin
 	return args.Get(0).(*domain.Business), args.Error(1)
 }
 
+func (m *MockBusinessService) UpdateLogoURL(ctx context.Context, businessID uuid.UUID, url string, actorUserID uuid.UUID) (*domain.Business, error) {
+	args := m.Called(ctx, businessID, url, actorUserID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Business), args.Error(1)
+}
+
 func (m *MockBusinessService) UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}, actorUserID uuid.UUID) (*domain.Business, error) {
 	args := m.Called(ctx, businessID, keys, actorUserID)
 	if args.Get(0) == nil {
@@ -697,9 +705,7 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 		mockUp.On("PublicURL", mock.Anything).Return("/media/businesses/x/logo.png")
 		mockUp.On("KeyFromPublicURL", "").Return("")
 
-		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
-			return b.LogoURL == "/media/businesses/x/logo.png"
-		}), mock.Anything).Return(&domain.Business{
+		mockSvc.On("UpdateLogoURL", mock.Anything, testBusinessID, "/media/businesses/x/logo.png", mock.Anything).Return(&domain.Business{
 			ID:      testBusinessID,
 			Name:    "Cafe",
 			LogoURL: "/media/businesses/x/logo.png",
@@ -741,7 +747,7 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 		mockUp.On("PublicURL", mock.Anything).Return("/media/businesses/x/logo-222.png")
 		mockUp.On("KeyFromPublicURL", priorURL).Return(priorKey)
 		mockUp.On("Delete", mock.Anything, priorKey).Return(nil)
-		mockSvc.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(&domain.Business{
+		mockSvc.On("UpdateLogoURL", mock.Anything, testBusinessID, "/media/businesses/x/logo-222.png", mock.Anything).Return(&domain.Business{
 			ID:      testBusinessID,
 			Name:    "Cafe",
 			LogoURL: "/media/businesses/x/logo-222.png",

@@ -34,11 +34,17 @@ type BusinessRepository interface {
 	// CreateInTx dual-writes businesses + business_members atomically via caller tx.
 	CreateInTx(ctx context.Context, tx pgx.Tx, business *Business) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Business, error)
-	// Update writes the business profile columns only; it does NOT write the
-	// settings JSONB. Settings sub-keys are persisted via the targeted
-	// UpdateSettingsKeys / UpdateToolApprovals jsonb_set paths so a profile
-	// edit cannot revert a concurrent settings sub-key change.
+	// Update writes the editable business profile columns (name, category,
+	// address, phone, website, description) only. It does NOT write logo_url
+	// nor the settings JSONB. logo_url is persisted via the targeted
+	// UpdateLogoURL path, and settings sub-keys via UpdateSettingsKeys /
+	// UpdateToolApprovals, so a profile edit cannot revert a concurrent logo
+	// upload or settings sub-key change.
 	Update(ctx context.Context, business *Business) error
+	// UpdateLogoURL writes only the logo_url column. A logo upload uses this so
+	// it never carries forward a stale profile snapshot, and a concurrent
+	// profile edit (Update) never reverts a freshly uploaded logo.
+	UpdateLogoURL(ctx context.Context, id uuid.UUID, url string) error
 	// UpdateSettingsKeys writes only the supplied settings sub-keys via a
 	// targeted jsonb_set, preserving every other key in the settings JSONB.
 	UpdateSettingsKeys(ctx context.Context, businessID uuid.UUID, keys map[string]interface{}) error
