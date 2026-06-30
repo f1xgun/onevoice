@@ -83,6 +83,46 @@ func TestRecoverer_PanicYields500WithEnvelopeMetricAndLog(t *testing.T) {
 	assert.Contains(t, logOutput, `"correlation_id":"`+corrID+`"`)
 }
 
+// TestRecoverer_RedactsInvitationTokenOnPanic asserts the panic-recovery log
+// scrubs the raw invitation token from the path the same way RequestLogger
+// does — a panic while handling the public Preview or Accept route must not
+// spill the bearer credential into the error log.
+func TestRecoverer_RedactsInvitationTokenOnPanic(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"preview", "GET", "/api/v1/invitations/SECRETTOKEN123"},
+		{"accept", "POST", "/api/v1/invitations/SECRETTOKEN123/accept"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			t.Cleanup(func() { slog.SetDefault(prev) })
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+
+			handler := Recoverer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				panic("boom")
+			}))
+
+			req := httptest.NewRequest(tc.method, tc.path, http.NoBody)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			assert.Equal(t, http.StatusInternalServerError, rr.Code)
+
+			logOutput := buf.String()
+			assert.NotContains(t, logOutput, "SECRETTOKEN123",
+				"panic log must not surface the raw invitation token path segment")
+			assert.Contains(t, logOutput, "<redacted>",
+				"the token segment must be replaced with the redaction marker")
+		})
+	}
+}
+
 func TestRecoverer_NoPanicPassesThrough(t *testing.T) {
 	handler := Recoverer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
