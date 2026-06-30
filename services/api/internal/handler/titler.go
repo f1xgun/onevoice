@@ -101,6 +101,10 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
+	if conv.BusinessID != bc.BusinessID.String() {
+		writeJSONError(w, http.StatusNotFound, "conversation not found")
+		return
+	}
 
 	if h.titler == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{

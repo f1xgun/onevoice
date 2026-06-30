@@ -21,6 +21,12 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
+// titlerBiz is the active organization used by titlerRoute. Conversation
+// fixtures that should pass the business-scope guard set BusinessID to this
+// value (see titlerBiz.String()); cross-organization tests deliberately use a
+// different business id.
+var titlerBiz = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
 // titlerBizCtx seeds a BusinessContext with PermContentUpdate (required by
 // RegenerateTitle). userID must match the conversation's UserID so the
 // ownership check passes.
@@ -34,15 +40,17 @@ func titlerBizCtx(businessID, userID uuid.UUID) context.Context {
 }
 
 // titlerRoute wires the chi URL param `id` and the BusinessContext the way
-// the production router does, then invokes RegenerateTitle.
-// businessID is used for the BusinessContext; userID must match conv.UserID.
+// the production router does, then invokes RegenerateTitle. The active
+// organization is titlerBiz, so conversation fixtures must set BusinessID to
+// titlerBiz.String() to pass the business-scope guard. userID must match
+// conv.UserID.
 func titlerRoute(t *testing.T, h *TitlerHandler, userID uuid.UUID, conversationID string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost,
 		"/api/v1/conversations/"+conversationID+"/regenerate-title", http.NoBody)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
-	ctx := context.WithValue(titlerBizCtx(uuid.New(), userID), chi.RouteCtxKey, rctx)
+	ctx := context.WithValue(titlerBizCtx(titlerBiz, userID), chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
@@ -181,7 +189,7 @@ func TestRegenerateTitle_200_Success(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		Title:       "Старый заголовок",
 		TitleStatus: domain.TitleStatusAuto,
 	}
@@ -213,7 +221,7 @@ func TestRegenerateTitle_409_Manual(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusManual,
 	}
 	h, convRepo, fc := newTitlerHandlerWithRealTitler(t, conv, nil)
@@ -241,7 +249,7 @@ func TestRegenerateTitle_409_InFlight(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusAutoPending,
 		UpdatedAt:   time.Now(),
 	}
@@ -270,7 +278,7 @@ func TestRegenerateTitle_StuckAutoPendingProceeds(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusAutoPending,
 		UpdatedAt:   time.Now().Add(-1 * time.Hour),
 	}
@@ -292,7 +300,7 @@ func TestRegenerateTitle_503_TitlerDisabled(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusAuto,
 	}
 	convRepo := &titlerConvRepo{getByIDReturn: conv}
@@ -318,7 +326,7 @@ func TestRegenerateTitle_403_Forbidden(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      ownerID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusAuto,
 	}
 	h, convRepo, fc := newTitlerHandlerWithRealTitler(t, conv, nil)
@@ -331,6 +339,47 @@ func TestRegenerateTitle_403_Forbidden(t *testing.T) {
 	assert.Equal(t, "forbidden", body["error"])
 	assert.Equal(t, 0, convRepo.transitionCalls)
 	assert.Equal(t, 0, fc.Calls())
+}
+
+// TestRegenerateTitle_CrossBusiness_NotFound is the write-path mirror of
+// TestGetConversation_CrossBusiness_NotFound: the requester authored the
+// conversation (UserID matches) but it is scoped to a DIFFERENT organization
+// than the active one. POST /conversations/{id}/regenerate-title must respond
+// 404 WITHOUT transitioning the conversation to auto_pending or spawning the
+// titler LLM call on the foreign conversation. Reverting the business_id guard
+// reaches TransitionToAutoPending and returns 200, failing this test.
+func TestRegenerateTitle_CrossBusiness_NotFound(t *testing.T) {
+	userID := uuid.New()
+	activeBusiness := uuid.New()
+	otherBusiness := uuid.New()
+	convID := "507f1f77bcf86cd799439027"
+	conv := &domain.Conversation{
+		ID:          convID,
+		UserID:      userID.String(),
+		BusinessID:  otherBusiness.String(),
+		TitleStatus: domain.TitleStatusAuto,
+	}
+	h, convRepo, fc := newTitlerHandlerWithRealTitler(t, conv, nil)
+
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/conversations/"+convID+"/regenerate-title", http.NoBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", convID)
+	ctx := context.WithValue(titlerBizCtx(activeBusiness, userID), chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	h.RegenerateTitle(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code,
+		"a conversation owned under another organization must surface as 404, not 200")
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "conversation not found", body["error"],
+		"cross-business regenerate-title must use the uniform not-found message")
+	assert.Equal(t, 0, convRepo.transitionCalls,
+		"TransitionToAutoPending must not run for a cross-organization conversation")
+	assert.Equal(t, 0, fc.Calls(),
+		"the titler LLM call must not be spawned for a cross-organization conversation")
 }
 
 // TestRegenerateTitle_404_NotFound asserts that GetByID returning
@@ -364,7 +413,7 @@ func TestRegenerateTitle_409_TransitionRace(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusAuto,
 	}
 	convRepo := &titlerConvRepo{
@@ -437,7 +486,7 @@ func TestRegenerateTitle_BodyVerbatimRussianCopy(t *testing.T) {
 			userID := uuid.New()
 			convID := "507f1f77bcf86cd799439027"
 			conv := &domain.Conversation{
-				ID: convID, UserID: userID.String(), BusinessID: "biz-1",
+				ID: convID, UserID: userID.String(), BusinessID: titlerBiz.String(),
 				TitleStatus: c.titleStatus,
 				UpdatedAt:   time.Now(),
 			}
@@ -463,7 +512,7 @@ func TestRegenerateTitle_TransitionUnexpectedError_500(t *testing.T) {
 	userID := uuid.New()
 	convID := "507f1f77bcf86cd799439028"
 	conv := &domain.Conversation{
-		ID: convID, UserID: userID.String(), BusinessID: "biz-1",
+		ID: convID, UserID: userID.String(), BusinessID: titlerBiz.String(),
 		TitleStatus: domain.TitleStatusAuto,
 	}
 	convRepo := &titlerConvRepo{
