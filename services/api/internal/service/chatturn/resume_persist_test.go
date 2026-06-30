@@ -401,6 +401,75 @@ func TestResumeApproved_RecordsExecutedToolOnRePause(t *testing.T) {
 	assert.Equal(t, audit.ActionRPAPostPublished, auditLog.entries[0].Action)
 }
 
+// TestResumeApproved_RecordsExecutedToolOnNoTerminalFallback — when the
+// orchestrator stream ends after an approved tool has already executed but
+// WITHOUT any terminal event (no done/error AND no re-pause — the post-approval
+// LLM continuation stalls past the budget or the connection drops, including a
+// clean EOF), runResumeStream falls through to the post-stream fallback branch.
+// That branch finalizes the message but must ALSO record the post and write the
+// RPA audit row for the tool that already published live on the third-party
+// platform — otherwise an already-published post is dropped from the feed and
+// the 152-FZ "who changed the third-party listing" audit row is lost.
+func TestResumeApproved_RecordsExecutedToolOnNoTerminalFallback(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_yandex","tool_name":"yandex_business__create_post","tool_args":{"text":"ya"}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_yandex","result":{"ok":true}}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer orch.Close()
+
+	businessID := uuid.New().String()
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_yandex", Name: "yandex_business__create_post", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	posts := &fakePostRepo{}
+	tasks := &fakeAgentTaskRepoWithUpdate{reloadPlatform: "yandex_business"}
+	auditLog := &fakeAuditLogger{}
+	turn := New(Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  resumeStubInteg{},
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages:      msgRepo,
+		Posts:         posts,
+		AgentTasks:    tasks,
+		Audit:         auditLog,
+		Pending: &resumePendingRepo{batch: &domain.PendingToolCallBatch{
+			ID: "batch-yandex", ConversationID: "conv-1", BusinessID: businessID,
+		}},
+		Orch: orchestratorclient.New(orch.URL, http.DefaultClient),
+	})
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-yandex", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomeRejoinedResume, outcome)
+
+	require.NotNil(t, msgRepo.updated, "fallback MUST persist the finalized message")
+	assert.Equal(t, domain.MessageStatusComplete, msgRepo.updated.Status)
+
+	require.Len(t, posts.created, 1,
+		"the tool executed before the stream dropped must be recorded on the fallback, not dropped")
+	assert.Equal(t, "ya", posts.created[0].Content)
+	assert.Equal(t, businessID, posts.created[0].BusinessID)
+	assert.Equal(t, "published", posts.created[0].Status)
+
+	require.Len(t, auditLog.entries, 1,
+		"the executed RPA write must leave one audit row on the no-terminal fallback")
+	assert.Equal(t, audit.ActionRPAPostPublished, auditLog.entries[0].Action)
+}
+
 // TestResumeApproved_NoDoubleRecord_RePauseThenDone proves the executed tool is
 // recorded EXACTLY ONCE across a re-pause-then-done chain: each resume stream
 // carries its own freshly-accumulated recCalls/recResults holding only the tool

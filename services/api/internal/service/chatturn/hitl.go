@@ -501,6 +501,10 @@ func (t *Turn) runResumeStream(
 			"error", err, "message_id", msg.ID, "conversation_id", conversationID, "status", msg.Status)
 	}
 	t.bumpLastMessageAtNow(saveCtx, conversationID)
+	if t.deps.Posts != nil || t.deps.Reviews != nil {
+		t.recordPostsAndReviews(saveCtx, businessID, recCalls, recResults)
+	}
+	t.auditRPAMutations(saveCtx, businessID, actorUserID, recCalls, recResults)
 	return OutcomeRejoinedResume, nil
 }
 
