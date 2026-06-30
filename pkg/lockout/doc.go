@@ -16,7 +16,11 @@
 // Self-unlock: on successful password-reset the service calls
 // ClearAllForEmail to remove every per-/16 variant of the email_hash key.
 //
-// Atomicity: RecordFailure uses Redis INCR (atomic at any concurrency) and
-// PEXPIRE-on-first-create to bound the lock to Config.Duration. Tested with
-// 50 concurrent goroutines yielding count==50 (TestRecordFailure_IncrementsAtomically).
+// Atomicity: RecordFailure runs INCR and the conditional PEXPIRE in a single
+// Lua round trip, so a lost EXPIRE can never leave the counter locked with no
+// TTL — the lock always carries Config.Duration and auto-unlocks. A key found
+// TTL-less by an earlier missing expiry self-heals on the next failure. Tested
+// with 50 concurrent goroutines yielding count==50
+// (TestRecordFailure_IncrementsAtomically) and with a TTL-less heal path
+// (TestRecordFailure_HealsMissingTTL).
 package lockout
