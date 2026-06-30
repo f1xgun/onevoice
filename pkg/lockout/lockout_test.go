@@ -2,6 +2,7 @@ package lockout_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -142,6 +143,84 @@ func TestRecordFailure_TTLSet(t *testing.T) {
 	tier, err := l.GetTier(ctx, "alice@example.com", "1.2.0.0/16")
 	require.NoError(t, err)
 	assert.Equal(t, lockout.TierNormal, tier, "key must expire after Duration")
+}
+
+// TestRecordFailure_HealsMissingTTL is the fail-on-revert anchor for the
+// atomic INCR + conditional-PEXPIRE fix. A counter left TTL-less by an earlier
+// lost EXPIRE — already at the lock threshold, so the only writer is the
+// 423-short-circuited middleware — must regain a TTL on the very next
+// RecordFailure and then auto-unlock after cfg.Duration. With the old split
+// "INCR in a pipeline, then PExpire only when ttl<0" path the (re-)stamp is
+// issued as a SEPARATE standalone PEXPIRE round trip; the atomic fix performs
+// it inside the single EVAL'd Lua script. The load-bearing assertion is that
+// after RecordFailure no standalone PEXPIRE command was ever issued — a revert
+// to the split path issues exactly one and fails the test.
+func TestRecordFailure_HealsMissingTTL(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	l := lockout.New(client, lockout.Config{Duration: 15 * time.Minute})
+	ctx := context.Background()
+
+	const (
+		email = "alice@example.com"
+		ip    = "1.2.0.0/16"
+	)
+
+	for i := 0; i < lockout.DefaultFailThresholdLock-1; i++ {
+		_, err := l.RecordFailure(ctx, email, ip)
+		require.NoError(t, err)
+	}
+
+	keys := mr.Keys()
+	require.Len(t, keys, 1, "exactly one lockout key must exist")
+	key := keys[0]
+
+	require.NoError(t, client.Persist(ctx, key).Err())
+	require.Equal(t, time.Duration(0), mr.TTL(key), "precondition: counter has no TTL")
+
+	standalonePExpire := 0
+	client.AddHook(pexpireCountHook{count: &standalonePExpire})
+
+	count, err := l.RecordFailure(ctx, email, ip)
+	require.NoError(t, err)
+	require.Equal(t, lockout.DefaultFailThresholdLock, count, "INCR must advance the counter")
+	assert.Equal(t, 0, standalonePExpire,
+		"the TTL re-stamp must happen inside the single EVAL, never as a standalone PEXPIRE round trip")
+	assert.Positive(t, mr.TTL(key).Nanoseconds(), "atomic script must self-heal the missing TTL")
+
+	mr.FastForward(15*time.Minute + time.Second)
+	tier, err := l.GetTier(ctx, email, ip)
+	require.NoError(t, err)
+	assert.Equal(t, lockout.TierNormal, tier, "healed lock must auto-unlock after cfg.Duration")
+}
+
+// pexpireCountHook counts standalone PEXPIRE commands issued through the client.
+// PEXPIRE calls made inside an EVAL'd Lua script run server-side and never
+// surface as client commands, so a non-zero count means the production code
+// took the split INCR-then-PExpire path instead of the single atomic EVAL.
+type pexpireCountHook struct{ count *int }
+
+func (pexpireCountHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h pexpireCountHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if strings.EqualFold(cmd.Name(), "pexpire") {
+			*h.count++
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h pexpireCountHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		for _, cmd := range cmds {
+			if strings.EqualFold(cmd.Name(), "pexpire") {
+				*h.count++
+			}
+		}
+		return next(ctx, cmds)
+	}
 }
 
 func TestRecordFailure_TTLNotResetOnSubsequentFailures(t *testing.T) {

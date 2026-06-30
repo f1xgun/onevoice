@@ -57,6 +57,25 @@ type Config struct {
 	KeyPrefix string
 }
 
+// incrWithHealScript atomically increments the failure counter and (re-)stamps
+// its TTL only when the key currently has none (PTTL < 0). Running INCR and the
+// TTL repair in a single Lua round trip closes the window where a separate
+// EXPIRE could be lost to a transient Redis error — which would otherwise leave
+// the counter locked with no TTL, so the cfg.Duration auto-unlock never fires.
+// The PTTL guard preserves the lock window: a live, in-progress TTL is never
+// extended, only a missing one is repaired, so a pre-existing TTL-less key
+// self-heals on the very next failure rather than locking the account forever.
+//
+// KEYS[1] = counter key. ARGV[1] = TTL in milliseconds.
+// Returns the post-increment count.
+var incrWithHealScript = redis.NewScript(`
+local count = redis.call('INCR', KEYS[1])
+if redis.call('PTTL', KEYS[1]) < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`)
+
 // Lockout is the Redis-backed counter package. Construct via New. Safe
 // for concurrent use across goroutines (Redis INCR is atomic).
 type Lockout struct {
@@ -103,23 +122,17 @@ func (l *Lockout) keyFor(email, ipNet16 string) string {
 // On first-create the key is given a TTL of cfg.Duration so the lock
 // auto-expires without operator action.
 //
-// The INCR + PTTL probe are batched into a single TxPipeline so a parallel
-// EXPIRE racing with the first INCR cannot accidentally clear the TTL
-// (the read of PTTL == -1 happens atomically with INCR's result).
+// The INCR and the conditional PEXPIRE run in a single atomic Lua round trip
+// (incrWithHealScript): a separate EXPIRE that fails transiently can never
+// leave the counter locked with no TTL, and a key found TTL-less by an earlier
+// missing expiry self-heals on the next failure instead of locking forever.
 func (l *Lockout) RecordFailure(ctx context.Context, email, ipNet16 string) (int, error) {
 	key := l.keyFor(email, ipNet16)
-	pipe := l.rdb.TxPipeline()
-	incr := pipe.Incr(ctx, key)
-	ttl := pipe.PTTL(ctx, key)
-	if _, err := pipe.Exec(ctx); err != nil {
+	count, err := incrWithHealScript.Run(ctx, l.rdb, []string{key}, l.cfg.Duration.Milliseconds()).Int64()
+	if err != nil {
 		return 0, fmt.Errorf("lockout: incr: %w", err)
 	}
-	if ttl.Val() < 0 {
-		if err := l.rdb.PExpire(ctx, key, l.cfg.Duration).Err(); err != nil {
-			return 0, fmt.Errorf("lockout: expire: %w", err)
-		}
-	}
-	return int(incr.Val()), nil
+	return int(count), nil
 }
 
 // GetTier returns the current Tier for the (email, /16 IP) tuple. A missing
