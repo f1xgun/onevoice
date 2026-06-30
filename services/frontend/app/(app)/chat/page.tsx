@@ -11,6 +11,7 @@ import { usePermission } from '@/lib/hooks/usePermission';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { conversationsQueryKey } from '@/hooks/useConversations';
+import { listConversations } from '@/lib/conversations';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
@@ -38,10 +39,7 @@ export default function ChatListPage() {
 
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: conversationsQueryKey(activeBusinessId),
-    queryFn: () =>
-      bizApi(activeBusinessId!)
-        .get<Conversation[]>(BIZ_API_PATHS.CONVERSATIONS.ROOT)
-        .then((r) => r.data),
+    queryFn: () => listConversations(activeBusinessId!),
     enabled: !!activeBusinessId,
   });
 

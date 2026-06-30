@@ -4,8 +4,6 @@ import { memo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bookmark, MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { bizApi } from '@/lib/api/business-api';
-import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { useBusinessStore } from '@/lib/stores/business';
 import { cn } from '@/lib/utils';
 import {
@@ -15,6 +13,7 @@ import {
 } from '@/hooks/useConversations';
 import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { listConversations } from '@/lib/conversations';
 import type { Conversation, TitleStatus } from '@/lib/conversations';
 
 interface ChatHeaderProps {
@@ -60,10 +59,7 @@ function useConversationTitle(conversationId: string): string {
   const fallback = tChat('newConversation');
   const { data } = useQuery<Conversation[], Error, string>({
     queryKey: conversationsQueryKey(activeBusinessId),
-    queryFn: () =>
-      bizApi(activeBusinessId!)
-        .get<Conversation[]>(BIZ_API_PATHS.CONVERSATIONS.ROOT)
-        .then((r) => r.data),
+    queryFn: () => listConversations(activeBusinessId!),
     select: (list) => {
       const conv = list.find((c) => c.id === conversationId);
       if (!conv) return '';
@@ -85,10 +81,7 @@ function useConversationPinned(conversationId: string): boolean {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const { data } = useQuery<Conversation[], Error, boolean>({
     queryKey: conversationsQueryKey(activeBusinessId),
-    queryFn: () =>
-      bizApi(activeBusinessId!)
-        .get<Conversation[]>(BIZ_API_PATHS.CONVERSATIONS.ROOT)
-        .then((r) => r.data),
+    queryFn: () => listConversations(activeBusinessId!),
     select: (list) => list.find((c) => c.id === conversationId)?.pinnedAt != null,
     enabled: !!conversationId && !!activeBusinessId,
   });
