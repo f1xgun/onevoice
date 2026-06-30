@@ -53,6 +53,12 @@ func (s *stubIntegrationRepo) DeleteOlderThan(_ context.Context, _ time.Time) (i
 func (s *stubIntegrationRepo) MarkTokenExpired(_ context.Context, _ uuid.UUID, _, _ string) (int64, error) {
 	return 0, nil
 }
+func (s *stubIntegrationRepo) UpdateMetadata(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
+	return nil
+}
+func (s *stubIntegrationRepo) UpdateExternalID(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
 func (s *stubIntegrationRepo) ListAllActiveByPlatforms(_ context.Context, _ []string) ([]domain.Integration, error) {
 	return nil, nil
 }

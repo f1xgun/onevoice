@@ -99,6 +99,12 @@ func (f *fakeRepo) DeleteOlderThan(_ context.Context, _ time.Time) (int64, error
 func (f *fakeRepo) MarkTokenExpired(_ context.Context, _ uuid.UUID, _, _ string) (int64, error) {
 	return 0, nil
 }
+func (f *fakeRepo) UpdateMetadata(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
+	return nil
+}
+func (f *fakeRepo) UpdateExternalID(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
 func (f *fakeRepo) CountIntegrationsWithDifferentFingerprint(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }

@@ -218,6 +218,64 @@ func (r *integrationRepository) Update(ctx context.Context, integration *domain.
 	return nil
 }
 
+// UpdateMetadata writes only the metadata column of an active integration. The
+// targeted single-column UPDATE never touches status, token, or envelope
+// columns, so it cannot revert a concurrent status flip the way a full-row
+// read-modify-write Update would. The deleted_at IS NULL guard means a
+// soft-deleted (or absent) row affects zero rows and returns
+// ErrIntegrationNotFound.
+func (r *integrationRepository) UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error {
+	sql, args, err := r.sb.
+		Update("integrations").
+		Set("metadata", metadata).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{"id": id, "deleted_at": nil}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update metadata: %w", err)
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("update integration metadata: %w", err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrIntegrationNotFound
+	}
+
+	return nil
+}
+
+// UpdateExternalID writes only the external_id column of an active integration.
+// The targeted single-column UPDATE never touches status, token, or envelope
+// columns, so it cannot revert a concurrent status flip the way a full-row
+// read-modify-write Update would. The deleted_at IS NULL guard means a
+// soft-deleted (or absent) row affects zero rows and returns
+// ErrIntegrationNotFound.
+func (r *integrationRepository) UpdateExternalID(ctx context.Context, id uuid.UUID, externalID string) error {
+	sql, args, err := r.sb.
+		Update("integrations").
+		Set("external_id", externalID).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{"id": id, "deleted_at": nil}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update external_id: %w", err)
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("update integration external_id: %w", err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrIntegrationNotFound
+	}
+
+	return nil
+}
+
 func (r *integrationRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	sql, args, err := r.sb.
 		Delete("integrations").

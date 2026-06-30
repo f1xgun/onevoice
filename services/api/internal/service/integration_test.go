@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,8 @@ type mockIntegrationRepository struct {
 	softDeleteFunc                    func(ctx context.Context, id uuid.UUID) error
 	deleteOlderThanFunc               func(ctx context.Context, cutoff time.Time) (int64, error)
 	markTokenExpiredFunc              func(ctx context.Context, businessID uuid.UUID, platform, externalID string) (int64, error)
+	updateMetadataFunc                func(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error
+	updateExternalIDFunc              func(ctx context.Context, id uuid.UUID, externalID string) error
 }
 
 func (m *mockIntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
@@ -125,6 +128,20 @@ func (m *mockIntegrationRepository) MarkTokenExpired(ctx context.Context, busine
 		return m.markTokenExpiredFunc(ctx, businessID, platform, externalID)
 	}
 	return 0, nil
+}
+
+func (m *mockIntegrationRepository) UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error {
+	if m.updateMetadataFunc != nil {
+		return m.updateMetadataFunc(ctx, id, metadata)
+	}
+	return nil
+}
+
+func (m *mockIntegrationRepository) UpdateExternalID(ctx context.Context, id uuid.UUID, externalID string) error {
+	if m.updateExternalIDFunc != nil {
+		return m.updateExternalIDFunc(ctx, id, externalID)
+	}
+	return nil
 }
 
 func (m *mockIntegrationRepository) CountIntegrationsWithDifferentFingerprint(_ context.Context, _ string) (int, error) {
@@ -1088,6 +1105,151 @@ func TestMarkTokenExpired_Validation(t *testing.T) {
 
 	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.Nil, "telegram", "chan_1"), "business id is required")
 	assert.ErrorContains(t, svc.MarkTokenExpired(ctx, uuid.New(), "", "chan_1"), "platform is required")
+}
+
+// statefulIntegrationStore models one integrations row so a concurrent status
+// flip can race a metadata write. UpdateMetadata applies the targeted
+// single-column semantics (mutate metadata only, never status); GetByID/Update
+// model the legacy full-row read-modify-write path so the test still fails if
+// the production fix is reverted to GetByID → mutate → Update. markTokenExpired
+// flips status under the same lock.
+type statefulIntegrationStore struct {
+	mockIntegrationRepository
+	mu          sync.Mutex
+	integration domain.Integration
+	// beforeWrite, when non-nil, runs inside UpdateMetadata/Update after the
+	// row is resolved but before its write commits, modeling the concurrent
+	// window where MarkTokenExpired can flip status.
+	beforeWrite func()
+}
+
+func (s *statefulIntegrationStore) GetByID(_ context.Context, _ uuid.UUID) (*domain.Integration, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snapshot := s.integration
+	return &snapshot, nil
+}
+
+func (s *statefulIntegrationStore) UpdateMetadata(_ context.Context, _ uuid.UUID, metadata map[string]interface{}) error {
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.integration.Metadata = metadata
+	return nil
+}
+
+func (s *statefulIntegrationStore) UpdateExternalID(_ context.Context, _ uuid.UUID, externalID string) error {
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.integration.ExternalID = externalID
+	return nil
+}
+
+func (s *statefulIntegrationStore) Update(_ context.Context, updated *domain.Integration) error {
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.integration = *updated
+	return nil
+}
+
+func (s *statefulIntegrationStore) MarkTokenExpired(_ context.Context, _ uuid.UUID, _, _ string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.integration.Status != domain.IntegrationStatusActive {
+		return 0, nil
+	}
+	s.integration.Status = domain.IntegrationStatusTokenExpired
+	return 1, nil
+}
+
+// TestUpdateMetadata_DoesNotRevertConcurrentTokenExpiredFlip is the
+// fail-on-revert guard for the lost-update bug: a metadata write must not revert
+// a concurrent status flip to token_expired. The store resolves the row while
+// active, MarkTokenExpired flips status → token_expired inside the write window,
+// then the metadata write commits. With the targeted single-column UPDATE the
+// flip survives. Reverting UpdateMetadata to the GetByID → mutate → full-row
+// Update path writes back the stale active snapshot and this assertion fails.
+func TestUpdateMetadata_DoesNotRevertConcurrentTokenExpiredFlip(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	store := &statefulIntegrationStore{
+		integration: domain.Integration{
+			ID:                   integrationID,
+			BusinessID:           businessID,
+			Platform:             "yandex_business",
+			Status:               domain.IntegrationStatusActive,
+			EncryptedAccessToken: []byte("ct"),
+			ExternalID:           "sprav_1",
+			Metadata:             map[string]interface{}{},
+		},
+	}
+
+	var flipOnce sync.Once
+	store.beforeWrite = func() {
+		flipOnce.Do(func() {
+			_, err := store.MarkTokenExpired(ctx, businessID, "yandex_business", "sprav_1")
+			require.NoError(t, err)
+		})
+	}
+
+	svc := NewIntegrationService(store, testEnvelope(t, enc), nil, nil, audit.Nop())
+	err := svc.UpdateMetadata(ctx, integrationID, map[string]interface{}{"business_name": "healed name"})
+	require.NoError(t, err)
+
+	require.Equal(t, domain.IntegrationStatusTokenExpired, store.integration.Status,
+		"metadata write must not revert a concurrent token_expired flip")
+	assert.Equal(t, "healed name", store.integration.Metadata["business_name"],
+		"the metadata write itself must still land")
+}
+
+// TestUpdateExternalID_DoesNotRevertConcurrentTokenExpiredFlip mirrors the
+// metadata guard for the external_id heal path.
+func TestUpdateExternalID_DoesNotRevertConcurrentTokenExpiredFlip(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	store := &statefulIntegrationStore{
+		integration: domain.Integration{
+			ID:                   integrationID,
+			BusinessID:           businessID,
+			Platform:             "yandex_business",
+			Status:               domain.IntegrationStatusActive,
+			EncryptedAccessToken: []byte("ct"),
+			ExternalID:           "sprav_old",
+			Metadata:             map[string]interface{}{},
+		},
+	}
+	var flipOnce sync.Once
+	store.beforeWrite = func() {
+		flipOnce.Do(func() {
+			_, err := store.MarkTokenExpired(ctx, businessID, "yandex_business", "sprav_old")
+			require.NoError(t, err)
+		})
+	}
+
+	svc := NewIntegrationService(store, testEnvelope(t, enc), nil, nil, audit.Nop())
+	err := svc.UpdateExternalID(ctx, integrationID, "sprav_resolved")
+	require.NoError(t, err)
+
+	require.Equal(t, domain.IntegrationStatusTokenExpired, store.integration.Status,
+		"external_id write must not revert a concurrent token_expired flip")
+	assert.Equal(t, "sprav_resolved", store.integration.ExternalID,
+		"the external_id write itself must still land")
 }
 
 func TestListByBusinessAndPlatform_NilBusinessID(t *testing.T) {

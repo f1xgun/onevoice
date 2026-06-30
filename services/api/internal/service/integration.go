@@ -227,7 +227,9 @@ func (s *integrationService) GetByBusinessAndPlatform(ctx context.Context, busin
 	return integration, nil
 }
 
-// UpdateMetadata replaces only the metadata jsonb; token fields are preserved.
+// UpdateMetadata replaces only the metadata jsonb via a targeted single-column
+// UPDATE; status, token, and envelope columns are left untouched so a concurrent
+// status flip is never reverted by a stale read-modify-write snapshot.
 // See docs/services/integration.md.
 func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error {
 	if err := ctx.Err(); err != nil {
@@ -237,26 +239,23 @@ func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID u
 		return fmt.Errorf("integration id is required")
 	}
 
-	integration, err := s.repo.GetByID(ctx, integrationID)
-	if err != nil {
-		if errors.Is(err, domain.ErrIntegrationNotFound) {
-			return err
-		}
-		return fmt.Errorf("get integration: %w", err)
-	}
-
 	if metadata == nil {
 		metadata = map[string]interface{}{}
 	}
-	integration.Metadata = metadata
 
-	if err := s.repo.Update(ctx, integration); err != nil {
+	if err := s.repo.UpdateMetadata(ctx, integrationID, metadata); err != nil {
+		if errors.Is(err, domain.ErrIntegrationNotFound) {
+			return err
+		}
 		return fmt.Errorf("update integration: %w", err)
 	}
 	return nil
 }
 
-// UpdateExternalID heals the external_id post-connect (e.g. Yandex Sprav permalink resolved later).
+// UpdateExternalID heals the external_id post-connect (e.g. Yandex Sprav
+// permalink resolved later) via a targeted single-column UPDATE; status, token,
+// and envelope columns are left untouched so a concurrent status flip is never
+// reverted by a stale read-modify-write snapshot.
 // See docs/services/integration.md.
 func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error {
 	if err := ctx.Err(); err != nil {
@@ -269,16 +268,10 @@ func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID
 		return fmt.Errorf("external id is required")
 	}
 
-	integration, err := s.repo.GetByID(ctx, integrationID)
-	if err != nil {
+	if err := s.repo.UpdateExternalID(ctx, integrationID, externalID); err != nil {
 		if errors.Is(err, domain.ErrIntegrationNotFound) {
 			return err
 		}
-		return fmt.Errorf("get integration: %w", err)
-	}
-	integration.ExternalID = externalID
-
-	if err := s.repo.Update(ctx, integration); err != nil {
 		return fmt.Errorf("update integration: %w", err)
 	}
 	return nil
