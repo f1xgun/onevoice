@@ -102,6 +102,13 @@ const (
 	// Conflict (turn_already_in_progress). Nothing is written to the wire and no
 	// second parallel turn is started.
 	OutcomeTurnInProgress
+
+	// OutcomeResumeInProgress is returned when an approve→resume is rejected
+	// because another /resume already claimed the same batch's post-approval
+	// continuation. The handler maps it to 409 Conflict (already_resolving) so
+	// two concurrent resumes cannot each run a billed LLM continuation. Nothing
+	// is written to the wire and no second resume stream is opened.
+	OutcomeResumeInProgress
 )
 
 // String is for log lines; the value names are part of the
@@ -128,6 +135,8 @@ func (o TurnOutcome) String() string {
 		return "conversation_not_found"
 	case OutcomeTurnInProgress:
 		return "turn_already_in_progress"
+	case OutcomeResumeInProgress:
+		return "resume_already_in_progress"
 	case OutcomeInlineError:
 		return "inline_error"
 	default:

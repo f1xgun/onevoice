@@ -87,6 +87,10 @@ func (m *mockPendingRepo) AtomicTransitionToResolving(_ context.Context, _ strin
 	return nil, errors.New("not implemented in mock")
 }
 
+func (m *mockPendingRepo) AtomicTransitionResolvingToResuming(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	return nil, errors.New("not implemented in mock")
+}
+
 func (m *mockPendingRepo) ResetResolvingToPending(_ context.Context, _ string) error {
 	return nil
 }

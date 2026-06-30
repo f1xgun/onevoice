@@ -71,6 +71,19 @@ func (s *stubPendingRepo) AtomicTransitionToResolving(ctx context.Context, batch
 	s.ResolvingCounter++
 	return b, nil
 }
+func (s *stubPendingRepo) AtomicTransitionResolvingToResuming(_ context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.Batches[batchID]
+	if !ok {
+		return nil, domain.ErrBatchNotFound
+	}
+	if b.Status != "resolving" {
+		return nil, domain.ErrBatchNotResolving
+	}
+	b.Status = "resuming"
+	return b, nil
+}
 func (s *stubPendingRepo) RecordDecisions(ctx context.Context, batchID string, calls []domain.PendingCall) error {
 	if s.RecordDecisionsFn != nil {
 		if err := s.RecordDecisionsFn(ctx, batchID, calls); err != nil {

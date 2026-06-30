@@ -173,6 +173,19 @@ func (m *MockPendingToolCallRepository) ListPendingByConversation(ctx context.Co
 func (m *MockPendingToolCallRepository) AtomicTransitionToResolving(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
 	return nil, domain.ErrBatchNotFound
 }
+func (m *MockPendingToolCallRepository) AtomicTransitionResolvingToResuming(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
+	if m.GetByBatchIDFunc != nil {
+		b, err := m.GetByBatchIDFunc(ctx, batchID)
+		if err != nil {
+			return nil, err
+		}
+		if b == nil || b.Status != "resolving" {
+			return nil, domain.ErrBatchNotResolving
+		}
+		return b, nil
+	}
+	return nil, domain.ErrBatchNotFound
+}
 func (m *MockPendingToolCallRepository) ResetResolvingToPending(_ context.Context, _ string) error {
 	return nil
 }

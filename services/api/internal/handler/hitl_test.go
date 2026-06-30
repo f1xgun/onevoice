@@ -66,6 +66,7 @@ type fakeHITLPendingRepo struct {
 	mu               sync.Mutex
 	batches          map[string]*domain.PendingToolCallBatch
 	resolvingWinners int32
+	resumingWinners  int32
 	recordCalls      int32
 }
 
@@ -101,6 +102,20 @@ func (f *fakeHITLPendingRepo) AtomicTransitionToResolving(_ context.Context, bat
 	}
 	b.Status = "resolving"
 	atomic.AddInt32(&f.resolvingWinners, 1)
+	return b, nil
+}
+func (f *fakeHITLPendingRepo) AtomicTransitionResolvingToResuming(_ context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b, ok := f.batches[batchID]
+	if !ok {
+		return nil, domain.ErrBatchNotFound
+	}
+	if b.Status != "resolving" {
+		return nil, domain.ErrBatchNotResolving
+	}
+	b.Status = "resuming"
+	atomic.AddInt32(&f.resumingWinners, 1)
 	return b, nil
 }
 func (f *fakeHITLPendingRepo) RecordDecisions(_ context.Context, batchID string, calls []domain.PendingCall) error {
@@ -344,6 +359,17 @@ func seedHandlerBatch(pr *fakeHITLPendingRepo, batchID, convID, bizID string, ca
 		Calls:          calls,
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
 	}
+}
+
+// seedHandlerResolvingBatch seeds a batch already in status "resolving" — the
+// realistic state at /resume time, since the Resolve decision flips
+// pending→resolving before the user resumes. The resume claim transitions
+// resolving→resuming, so resume-path tests must start here, not at "pending".
+func seedHandlerResolvingBatch(pr *fakeHITLPendingRepo, batchID, convID, bizID string, calls []domain.PendingCall) {
+	seedHandlerBatch(pr, batchID, convID, bizID, calls)
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+	pr.batches[batchID].Status = "resolving"
 }
 
 // hitlBizCtx seeds a BusinessContext with PermContentUpdate (the permission
@@ -821,7 +847,7 @@ func TestResume_Expired_Returns410(t *testing.T) {
 func TestResume_Happy_OpensSSEStream_ForwardingOrchestratorEvents(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
-	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+	seedHandlerResolvingBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
 		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 
@@ -876,7 +902,7 @@ func TestResume_Happy_OpensSSEStream_ForwardingOrchestratorEvents(t *testing.T) 
 func TestResume_Body_CarriesActiveIntegrations(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
-	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+	seedHandlerResolvingBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
 		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 

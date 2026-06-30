@@ -229,6 +229,9 @@ func (s *stubPendingToolCallRepo) GetByBatchID(_ context.Context, _ string) (*do
 func (s *stubPendingToolCallRepo) AtomicTransitionToResolving(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
 	return nil, nil
 }
+func (s *stubPendingToolCallRepo) AtomicTransitionResolvingToResuming(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	return nil, nil
+}
 func (s *stubPendingToolCallRepo) ResetResolvingToPending(_ context.Context, _ string) error {
 	return nil
 }
