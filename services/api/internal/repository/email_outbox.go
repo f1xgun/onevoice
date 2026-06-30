@@ -267,6 +267,44 @@ func (r *EmailOutboxRepository) Reschedule(ctx context.Context, id uuid.UUID, cu
 	return nil
 }
 
+// RescheduleStrandedSent handles the row whose Send succeeded but whose
+// MarkSent persist failed, leaving it in 'pending'. Unlike Reschedule it always
+// scrubs body_text/body_html: delivery already happened, so the body — and the
+// live recovery token it may carry — is no longer needed and must not linger at
+// rest. It still bumps next_attempt_at by exp-backoff (so the row is not
+// re-drained on the very next tick) and counts the attempt (so it eventually
+// transitions to 'failed' at maxAttempts rather than re-sending forever).
+func (r *EmailOutboxRepository) RescheduleStrandedSent(ctx context.Context, id uuid.UUID, currentAttempts, maxAttempts int) error {
+	newAttempts := currentAttempts + 1
+	if newAttempts >= maxAttempts {
+		const q = `
+			UPDATE email_outbox
+			   SET status = 'failed',
+			       attempts = $2,
+			       last_error = 'stranded after successful delivery',
+			       body_text = '',
+			       body_html = NULL
+			 WHERE id = $1 AND status = 'pending'`
+		if _, err := r.pool.Exec(ctx, q, id, newAttempts); err != nil {
+			return fmt.Errorf("email_outbox: reschedule stranded->failed: %w", err)
+		}
+		return nil
+	}
+	backoff := time.Duration(math.Pow(outboxBackoffBase, float64(newAttempts))) * time.Minute
+	const q = `
+		UPDATE email_outbox
+		   SET attempts = $2,
+		       last_error = 'stranded after successful delivery',
+		       next_attempt_at = NOW() + ($3::interval),
+		       body_text = '',
+		       body_html = NULL
+		 WHERE id = $1 AND status = 'pending'`
+	if _, err := r.pool.Exec(ctx, q, id, newAttempts, fmt.Sprintf("%d seconds", int(backoff.Seconds()))); err != nil {
+		return fmt.Errorf("email_outbox: reschedule stranded: %w", err)
+	}
+	return nil
+}
+
 // MarkFailed forces a row to 'failed' immediately (permanent failure path).
 // The status='pending' guard means a concurrent MarkSent wins, preserving
 // "successful delivery is final". 'failed' is terminal, so the same UPDATE

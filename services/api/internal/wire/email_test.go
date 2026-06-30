@@ -248,6 +248,41 @@ func TestDrainOutboxOnce_Metrics(t *testing.T) {
 	})
 }
 
+// TestDrainOutboxOnce_StrandedSentBacksOffAndScrubs is the fail-on-revert guard
+// for the unbounded-duplicate-email fix: when Send succeeds but the 'sent'
+// persist (MarkSent) fails, the worker must issue a second write that bumps
+// next_attempt_at and scrubs the body, so the next tick does NOT immediately
+// re-Send the same still-valid recovery token. Without that write the row stays
+// 'pending' with next_attempt_at <= NOW and its plaintext token intact, and the
+// recipient gets a fresh real email every poll tick forever.
+//
+// Fail-on-revert: drop the RescheduleStrandedSent call in drainOutboxOnce and
+// only the MarkSent Exec runs — the expected bump+scrub UPDATE never fires, so
+// ExpectationsWereMet fails.
+func TestDrainOutboxOnce_StrandedSentBacksOffAndScrubs(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(mock.Close)
+	repo := repository.NewEmailOutboxRepository(mock)
+	id := uuid.New()
+
+	expectPendingCount(mock, 1)
+	drainRow(mock, id, 0)
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'sent'`).
+		WithArgs(id).WillReturnError(fmt.Errorf("persist latency: connection reset"))
+	mock.ExpectExec(`UPDATE email_outbox\s+SET attempts = \$2,\s+last_error = 'stranded after successful delivery',\s+next_attempt_at = NOW\(\) \+ \(\$3::interval\),\s+body_text = '',\s+body_html = NULL\s+WHERE id = \$1 AND status = 'pending'`).
+		WithArgs(id, 1, "120 seconds").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	before := testutil.ToFloat64(metrics.OutboxStrandedSentRows)
+	drainOutboxOnce(context.Background(), bufLogger(&bytes.Buffer{}), repo, stubSender{}, 5)
+	after := testutil.ToFloat64(metrics.OutboxStrandedSentRows)
+
+	require.Equal(t, 1.0, after-before, "stranded-sent metric must still increment")
+	require.NoError(t, mock.ExpectationsWereMet(),
+		"after a failed MarkSent the worker must issue the bump+scrub UPDATE so a second tick would not immediately re-Send")
+}
+
 // syncBuffer is a bytes.Buffer guarded by a mutex so the worker goroutine and
 // the test can write/read the slog output without a data race under -race.
 type syncBuffer struct {

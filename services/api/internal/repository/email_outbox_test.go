@@ -555,3 +555,38 @@ func TestEmailOutbox_Reschedule_RetryKeepsBody(t *testing.T) {
 	require.NotContains(t, capture.execSQL, "body_text = ''", "retry path must NOT scrub the body — a later attempt re-reads it")
 	require.NotContains(t, capture.execSQL, "body_html = NULL", "retry path must NOT scrub the body — a later attempt re-reads it")
 }
+
+// TestEmailOutbox_RescheduleStrandedSent_BacksOffAndScrubs verifies the
+// stranded-sent path (Send succeeded, MarkSent failed): the non-terminal branch
+// must bump next_attempt_at by exp-backoff, count the attempt, AND scrub the
+// body — unlike plain Reschedule, which keeps the body for a later re-send.
+// Delivery already happened, so retaining the body would leave a live recovery
+// token at rest.
+func TestEmailOutbox_RescheduleStrandedSent_BacksOffAndScrubs(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+	id := uuid.New()
+
+	mock.ExpectExec(`UPDATE email_outbox\s+SET attempts = \$2,\s+last_error = 'stranded after successful delivery',\s+next_attempt_at = NOW\(\) \+ \(\$3::interval\),\s+body_text = '',\s+body_html = NULL\s+WHERE id = \$1 AND status = 'pending'`).
+		WithArgs(id, 3, "480 seconds").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	require.NoError(t, repo.RescheduleStrandedSent(ctx, id, 2, 5))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEmailOutbox_RescheduleStrandedSent_AtCapMarksFailed verifies the stranded
+// row eventually dead-letters: at maxAttempts it transitions to 'failed' (so it
+// stops being re-drained) rather than re-sending forever.
+func TestEmailOutbox_RescheduleStrandedSent_AtCapMarksFailed(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+	id := uuid.New()
+
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'failed',\s+attempts = \$2,\s+last_error = 'stranded after successful delivery',\s+body_text = '',\s+body_html = NULL\s+WHERE id = \$1 AND status = 'pending'`).
+		WithArgs(id, 5).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	require.NoError(t, repo.RescheduleStrandedSent(ctx, id, 4, 5))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
