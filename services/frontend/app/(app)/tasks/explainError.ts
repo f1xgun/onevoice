@@ -35,9 +35,9 @@ export function explainError(task: AgentTask): HumanError {
       return { summaryKey, cta: { labelKey, href } };
     }
     case 'rate_limit_exceeded':
-      return { summaryKey: 'rateLimit', willAutoRetry: true };
+      return { summaryKey: 'rateLimit', willAutoRetry: false };
     case 'transient':
-      return { summaryKey: 'transient', willAutoRetry: true };
+      return { summaryKey: 'transient', willAutoRetry: false };
     case 'channel_not_found':
       return {
         summaryKey: 'notFound',
@@ -46,6 +46,6 @@ export function explainError(task: AgentTask): HumanError {
     case 'media_too_large':
       return { summaryKey: 'media' };
     default:
-      return { summaryKey: 'fallback', willAutoRetry: true };
+      return { summaryKey: 'fallback', willAutoRetry: false };
   }
 }

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 
 import { explainError } from '../explainError';
 import type { AgentTask } from '@/types/task';
+import ru from '@/messages/ru.json';
+import en from '@/messages/en.json';
 
 function task(overrides: Partial<AgentTask>): AgentTask {
   return {
@@ -50,17 +52,17 @@ describe('explainError', () => {
     expect(out.cta?.href).toBe('/integrations?reconnect=google_business');
   });
 
-  it('rate_limit_exceeded returns rateLimit + autoRetryHint', () => {
+  it('rate_limit_exceeded returns rateLimit and does NOT promise auto-retry', () => {
     const out = explainError(task({ errorCode: 'rate_limit_exceeded' }));
     expect(out.summaryKey).toBe('rateLimit');
-    expect(out.willAutoRetry).toBe(true);
+    expect(out.willAutoRetry).toBe(false);
     expect(out.cta).toBeUndefined();
   });
 
-  it('transient returns transient + autoRetryHint', () => {
+  it('transient returns transient and does NOT promise auto-retry', () => {
     const out = explainError(task({ errorCode: 'transient' }));
     expect(out.summaryKey).toBe('transient');
-    expect(out.willAutoRetry).toBe(true);
+    expect(out.willAutoRetry).toBe(false);
   });
 
   it('channel_not_found returns notFound + openIntegrations CTA', () => {
@@ -77,14 +79,50 @@ describe('explainError', () => {
     expect(out.willAutoRetry).toBeFalsy();
   });
 
-  it('undefined errorCode (historical row) returns fallback', () => {
+  it('undefined errorCode (historical row) returns fallback without auto-retry', () => {
     const out = explainError(task({ errorCode: undefined }));
     expect(out.summaryKey).toBe('fallback');
-    expect(out.willAutoRetry).toBe(true);
+    expect(out.willAutoRetry).toBe(false);
   });
 
-  it('unknown code (forward-compat) returns fallback', () => {
+  it('unknown code (forward-compat) returns fallback without auto-retry', () => {
     const out = explainError(task({ errorCode: 'never_emitted_code' as never }));
     expect(out.summaryKey).toBe('fallback');
+    expect(out.willAutoRetry).toBe(false);
+  });
+});
+
+describe('tasks.errors copy makes no auto-retry promise', () => {
+  const retryHints: Array<[string, RegExp]> = [
+    ['ru', /автоматически|сами|сам повтор|повтор(им|ит)/i],
+    ['en', /automatically|on our own|we'll (try|retry)/i],
+  ];
+
+  for (const key of ['rateLimit', 'transient', 'fallback'] as const) {
+    it(`ru ${key} does not assure automatic retry`, () => {
+      const text = (ru.tasks.errors as Record<string, string>)[key];
+      expect(text).toBeTruthy();
+      expect(text).not.toMatch(retryHints[0][1]);
+    });
+
+    it(`en ${key} does not assure automatic retry`, () => {
+      const text = (en.tasks.errors as Record<string, string>)[key];
+      expect(text).toBeTruthy();
+      expect(text).not.toMatch(retryHints[1][1]);
+    });
+  }
+});
+
+describe('tasks.subtitle makes no auto-retry promise', () => {
+  it('ru subtitle does not assure automatic retry', () => {
+    const text = ru.tasks.subtitle;
+    expect(text).toBeTruthy();
+    expect(text).not.toMatch(/автоматическ|сами|повтор/i);
+  });
+
+  it('en subtitle does not assure automatic retry', () => {
+    const text = en.tasks.subtitle;
+    expect(text).toBeTruthy();
+    expect(text).not.toMatch(/automatically|on our own|we'?ll (try|retry)/i);
   });
 });
