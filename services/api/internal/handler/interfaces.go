@@ -48,4 +48,6 @@ type ConversationService interface {
 		conversationID string,
 		businessID, requesterUserID uuid.UUID,
 	) (*service.ChatView, error)
+
+	DeleteWithMessages(ctx context.Context, conversationID string) error
 }

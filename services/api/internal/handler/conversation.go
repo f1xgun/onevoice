@@ -254,7 +254,7 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := h.conversationRepo.Delete(r.Context(), conversationID); err != nil {
+	if err := h.conversationService.DeleteWithMessages(r.Context(), conversationID); err != nil {
 		slog.Error("failed to delete conversation", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return

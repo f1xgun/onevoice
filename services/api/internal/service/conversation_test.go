@@ -39,6 +39,14 @@ type stubConversationRepo struct {
 		TS time.Time
 	}
 
+	// DeleteCalls captures every Delete call (conversation cascade) for
+	// ordering assertions against the message-delete.
+	DeleteCalls []string
+
+	// order, when non-nil, records the relative ordering of the conversation
+	// vs message deletes so the cascade can assert messages-first.
+	order *[]string
+
 	// Forced failures.
 	GetByIDErr               error
 	UpdateProjectAssignErr   error
@@ -84,8 +92,19 @@ func (s *stubConversationRepo) Create(_ context.Context, _ *domain.Conversation)
 func (s *stubConversationRepo) ListByUserID(_ context.Context, _, _ string, _, _ int) ([]domain.Conversation, error) {
 	return nil, nil
 }
-func (s *stubConversationRepo) Update(_ context.Context, _ *domain.Conversation) error    { return nil }
-func (s *stubConversationRepo) Delete(_ context.Context, _ string) error                  { return nil }
+func (s *stubConversationRepo) Update(_ context.Context, _ *domain.Conversation) error { return nil }
+func (s *stubConversationRepo) Delete(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.DeleteCalls = append(s.DeleteCalls, id)
+	if s.order != nil {
+		*s.order = append(*s.order, "conv")
+	}
+	if s.Conv != nil && s.Conv.ID == id {
+		s.Conv = nil
+	}
+	return nil
+}
 func (s *stubConversationRepo) UpdateTitleIfPending(_ context.Context, _, _ string) error { return nil }
 func (s *stubConversationRepo) TransitionToAutoPending(_ context.Context, _ string) error { return nil }
 func (s *stubConversationRepo) Pin(_ context.Context, _, _, _ string) error               { return nil }
@@ -134,6 +153,16 @@ type stubMessageRepo struct {
 	// MoveToProject). Population is preserved for ordering assertions.
 	Created   []*domain.Message
 	CreateErr error
+
+	// DeleteCalls captures every DeleteByConversationID call (cascade).
+	DeleteCalls []string
+
+	// DeleteErr forces DeleteByConversationID to fail.
+	DeleteErr error
+
+	// order, when non-nil, records the relative ordering of the message
+	// vs conversation deletes so the cascade can assert messages-first.
+	order *[]string
 }
 
 func (s *stubMessageRepo) Create(_ context.Context, m *domain.Message) error {
@@ -155,6 +184,18 @@ func (s *stubMessageRepo) ListByConversationID(_ context.Context, _ string, _, _
 	return s.Messages, nil
 }
 func (s *stubMessageRepo) CountByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+func (s *stubMessageRepo) DeleteByConversationID(_ context.Context, conversationID string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.DeleteErr != nil {
+		return 0, s.DeleteErr
+	}
+	s.DeleteCalls = append(s.DeleteCalls, conversationID)
+	if s.order != nil {
+		*s.order = append(*s.order, "msg")
+	}
 	return 0, nil
 }
 func (s *stubMessageRepo) Update(_ context.Context, _ *domain.Message) error { return nil }
@@ -899,6 +940,55 @@ func TestOpenChat_CrossBusinessConversation_Rejected(t *testing.T) {
 	_, err := svc.OpenChat(context.Background(), convID, businessB, requesterUser)
 	assert.True(t, errors.Is(err, domain.ErrConversationNotFound),
 		"opening a conversation owned under another organization must surface as ErrConversationNotFound, got %v", err)
+}
+
+// TestDeleteWithMessages_DeletesMessagesBeforeConversation proves the cascade
+// removes the messages FIRST, then the conversation document — matching
+// HardDeleteCascade's ordering so a partial failure can only ever leave a
+// conversation whose messages are already gone, never the reverse.
+//
+// Fail-on-revert: if the service is reverted to delete only the conversation
+// (no DeleteByConversationID), msg.DeleteCalls stays empty and the
+// messages-deleted assertion fails — orphaning message bodies that carry no
+// business_id/user_id and so are unreachable forever.
+func TestDeleteWithMessages_DeletesMessagesBeforeConversation(t *testing.T) {
+	const convID = "507f1f77bcf86cd799439060"
+
+	order := make([]string, 0, 2)
+	conv := &stubConversationRepo{
+		Conv:  &domain.Conversation{ID: convID, UserID: "u", BusinessID: "b"},
+		order: &order,
+	}
+	msg := &stubMessageRepo{order: &order}
+
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
+
+	require.NoError(t, svc.DeleteWithMessages(context.Background(), convID))
+
+	require.Equal(t, []string{convID}, msg.DeleteCalls,
+		"messages must be deleted by conversation_id")
+	require.Equal(t, []string{convID}, conv.DeleteCalls,
+		"the conversation document must be deleted")
+	assert.Equal(t, []string{"msg", "conv"}, order,
+		"messages must be deleted BEFORE the conversation")
+}
+
+// TestDeleteWithMessages_MessageDeleteFailureAbortsConversationDelete proves a
+// message-delete failure aborts before the conversation is removed, so a retry
+// finds the conversation still present and can re-run the full cascade — the
+// conversation is never orphaned by a half-completed delete.
+func TestDeleteWithMessages_MessageDeleteFailureAbortsConversationDelete(t *testing.T) {
+	const convID = "507f1f77bcf86cd799439061"
+
+	conv := &stubConversationRepo{Conv: &domain.Conversation{ID: convID}}
+	msg := &stubMessageRepo{DeleteErr: errors.New("mongo down")}
+
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
+
+	err := svc.DeleteWithMessages(context.Background(), convID)
+	require.Error(t, err)
+	assert.Empty(t, conv.DeleteCalls,
+		"conversation must NOT be deleted when the message cascade fails")
 }
 
 // silenceLinter holds a reference to time so it can't accidentally be

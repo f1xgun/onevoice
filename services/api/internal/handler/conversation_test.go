@@ -217,6 +217,9 @@ func (m *MockMessageRepository) ListByConversationID(ctx context.Context, convID
 func (m *MockMessageRepository) CountByConversationID(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }
+func (m *MockMessageRepository) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (m *MockMessageRepository) Update(ctx context.Context, msg *domain.Message) error {
 	if m.UpdateFunc != nil {
 		return m.UpdateFunc(ctx, msg)
@@ -312,6 +315,10 @@ func (noopConversationService) MoveToProject(_ context.Context, _ string, _, _ u
 
 func (noopConversationService) OpenChat(_ context.Context, _ string, _, _ uuid.UUID) (*service.ChatView, error) {
 	panic("noopConversationService.OpenChat: test must wire a real *service.ConversationService when exercising ListMessages")
+}
+
+func (noopConversationService) DeleteWithMessages(_ context.Context, _ string) error {
+	panic("noopConversationService.DeleteWithMessages: test must wire a real *service.ConversationService when exercising DeleteConversation")
 }
 
 // stubProjectRepoForHandler is a one-method ProjectRepository stub used by

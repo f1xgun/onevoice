@@ -288,6 +288,11 @@ type MessageRepository interface {
 	Create(ctx context.Context, msg *Message) error
 	ListByConversationID(ctx context.Context, conversationID string, limit, offset int) ([]Message, error)
 	CountByConversationID(ctx context.Context, conversationID string) (int64, error)
+	// DeleteByConversationID removes every message of a conversation. Messages
+	// carry only conversation_id (no business_id/user_id), so a conversation
+	// delete MUST cascade here first or the message bodies become unreachable by
+	// every read path and every cleanup sweep.
+	DeleteByConversationID(ctx context.Context, conversationID string) (int64, error)
 	// Update lets HITL resume append ToolResults to the same assistant Message across a pause.
 	Update(ctx context.Context, msg *Message) error
 	FindByConversationActive(ctx context.Context, conversationID string) (*Message, error)

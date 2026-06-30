@@ -44,6 +44,10 @@ func (r *capturingMessageRepo) CountByConversationID(_ context.Context, _ string
 	return 0, nil
 }
 
+func (r *capturingMessageRepo) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
 func (r *capturingMessageRepo) Update(_ context.Context, m *domain.Message) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
