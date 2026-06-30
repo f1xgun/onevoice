@@ -312,6 +312,7 @@ func (t *Turn) recordPostsAndReviews(
 	}
 
 	if t.deps.Reviews != nil {
+		t.reconcileReviewReplies(ctx, businessID, toolResults, toolCallByID)
 		for _, tr := range toolResults {
 			tc, ok := toolCallByID[tr.ToolCallID]
 			if !ok {
@@ -395,6 +396,115 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 		ReplyStatus:  replyStatus,
 		CreatedAt:    createdAt,
 		PlatformMeta: domain.PlatformMetaFromMap(m),
+	}
+}
+
+// replyReviewExternalID extracts, from a successful reply tool's arguments, the
+// external_id of the review that was answered — the same natural-key component
+// the get_reviews reconciliation stores. Returns "" when the platform has no
+// reply tool here or the identifying argument is absent, in which case the
+// caller skips reconciliation (a later get_reviews sync still self-heals).
+//
+//   - Yandex.Business / Google Business: the review id is carried verbatim
+//     (review_id / review_name) and equals the stored external_id.
+//   - VK: the comment is addressed by post_id + comment_id; external_id is the
+//     composite "{post_id}_{comment_id}" reviewFromMap builds on ingest.
+//   - Telegram: the message is addressed by chat_id + message_id; external_id is
+//     the composite "{chat_id}_{message_id}" the agent emits as the review id.
+func replyReviewExternalID(toolName string, args map[string]interface{}) string {
+	switch toolName {
+	case tools.YandexBusinessReplyReview:
+		id, _ := args["review_id"].(string)
+		return id
+	case tools.GoogleBusinessReplyReview:
+		id, _ := args["review_name"].(string)
+		return id
+	case tools.VKReplyComment:
+		postID, okPost := argInt(args, "post_id")
+		commentID, okComment := argInt(args, "comment_id")
+		if !okPost || !okComment {
+			return ""
+		}
+		return strconv.FormatInt(postID, 10) + "_" + strconv.FormatInt(commentID, 10)
+	case tools.TelegramReplyToComment:
+		chatID, okChat := argInt(args, "chat_id")
+		messageID, okMessage := argInt(args, "message_id")
+		if !okChat || !okMessage {
+			return ""
+		}
+		return strconv.FormatInt(chatID, 10) + "_" + strconv.FormatInt(messageID, 10)
+	}
+	return ""
+}
+
+// replyReviewPlatform maps each reply tool to the platform whose stored reviews
+// it answers. A reply tool not listed here is skipped by the reconciler.
+var replyReviewPlatform = map[string]string{
+	tools.YandexBusinessReplyReview: a2a.AgentYandexBusiness,
+	tools.GoogleBusinessReplyReview: a2a.AgentGoogleBusiness,
+	tools.VKReplyComment:            a2a.AgentVK,
+	tools.TelegramReplyToComment:    a2a.AgentTelegram,
+}
+
+// argInt reads an integer-coerced tool argument, tolerating the JSON-roundtripped
+// float64 the orchestrator forwards as well as native int / string shapes.
+func argInt(args map[string]interface{}, key string) (int64, bool) {
+	switch v := args[key].(type) {
+	case float64:
+		return int64(v), true
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case string:
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+// reconcileReviewReplies flips the stored review's reply_status to "replied"
+// after a SUCCESSFUL LLM-dispatched *__reply_review / reply-comment tool. Without
+// this the chat path posts a public reply but leaves the Mongo review "pending",
+// so the manual /reviews/{id}/reply guard does not fire and an operator can
+// double-post a second public reply before the next get_reviews sync (up to the
+// syncer window) heals it. Best-effort: an unresolvable review or a write error
+// is logged and never fails the turn.
+func (t *Turn) reconcileReviewReplies(
+	ctx context.Context,
+	businessID string,
+	toolResults []domain.ToolResult,
+	toolCallByID map[string]domain.ToolCall,
+) {
+	for _, tr := range toolResults {
+		if tr.IsError {
+			continue
+		}
+		tc, ok := toolCallByID[tr.ToolCallID]
+		if !ok {
+			continue
+		}
+		platform, isReply := replyReviewPlatform[tc.Name]
+		if !isReply {
+			continue
+		}
+		externalID := replyReviewExternalID(tc.Name, tc.Arguments)
+		if externalID == "" {
+			continue
+		}
+		replyText, _ := tc.Arguments["text"].(string)
+
+		review, err := t.deps.Reviews.GetByExternalID(ctx, businessID, platform, externalID)
+		if err != nil {
+			slog.WarnContext(ctx, "chatturn: cannot reconcile chat reply, review not resolved",
+				"tool", tc.Name, "platform", platform, "external_id", externalID, "error", err)
+			continue
+		}
+		if err := t.deps.Reviews.UpdateReply(ctx, review.ID, replyText, domain.ReviewReplyStatusReplied); err != nil {
+			slog.WarnContext(ctx, "chatturn: failed to reconcile chat reply into review",
+				"tool", tc.Name, "review_id", review.ID, "error", err)
+		}
 	}
 }
 

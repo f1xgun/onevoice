@@ -45,6 +45,9 @@ func (f *fakeReviewRepo) ListByBusinessID(context.Context, string, domain.Review
 func (f *fakeReviewRepo) GetByID(context.Context, string) (*domain.Review, error) {
 	panic("unused")
 }
+func (f *fakeReviewRepo) GetByExternalID(context.Context, string, string, string) (*domain.Review, error) {
+	panic("unused")
+}
 func (f *fakeReviewRepo) UpdateReply(context.Context, string, string, string) error {
 	panic("unused")
 }
