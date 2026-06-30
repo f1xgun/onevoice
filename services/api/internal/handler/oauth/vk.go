@@ -111,7 +111,7 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 			"vk_error", tokenResp.Error,
 			"vk_error_desc", tokenResp.ErrorDesc,
 			"status", resp.StatusCode,
-			"body", string(body),
+			"body_len", len(body),
 		)
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
@@ -183,7 +183,7 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(body, &vkResp); err != nil {
-		slog.Error("VK groups response parse error", "error", err, "body", string(body))
+		slog.Error("VK groups response parse error", "error", err, "status", resp.StatusCode, "body_len", len(body))
 		writeJSONError(w, http.StatusBadGateway, "invalid VK response")
 		return
 	}
@@ -271,7 +271,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	}
 	h.clearOAuthCSRFCookie(w)
 
-	tokenURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL+"/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
+	tokenURL := fmt.Sprintf(h.vkTokenBaseURL()+"/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
 		h.cfg.VKClientID,
 		h.cfg.VKClientSecret,
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
@@ -297,18 +297,18 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		AccessToken string `json:"access_token"`
 	}
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		slog.Error("VK community token response parse error", "error", err, "body", string(body))
+		slog.Error("VK community token response parse error", "error", err, "status", resp.StatusCode, "body_len", len(body))
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
 	if tokenResp.Error != "" {
-		slog.Error("VK community token error", "error", tokenResp.Error, "desc", tokenResp.ErrorDesc, "body", string(body))
+		slog.Error("VK community token error", "error", tokenResp.Error, "desc", tokenResp.ErrorDesc, "status", resp.StatusCode, "body_len", len(body))
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
 
 	if len(tokenResp.Groups) == 0 {
-		slog.Error("VK community token response has no groups", "body", string(body))
+		slog.Error("VK community token response has no groups", "status", resp.StatusCode, "body_len", len(body))
 		http.Redirect(w, r, "/integrations?error=no_community_token", http.StatusFound)
 		return
 	}
