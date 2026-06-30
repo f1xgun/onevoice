@@ -104,11 +104,16 @@ func TestResume_SkipsOrphanedToolResult(t *testing.T) {
 // resume (recCalls, NOT in the paused message) is legitimate and MUST be kept.
 // This pins the orphan check to validate against BOTH persisted and fresh calls
 // so the guard does not over-reject the normal fan-out-on-resume path.
+//
+// It also pins the reload-survival fix: the fresh tool_call must be appended to
+// the persisted ToolCalls (not only its result to ToolResults), so reload's
+// mapApiMessages join (ToolCalls ⋈ ToolResults by id) renders the follow-up
+// action. A result whose id has no matching persisted call vanishes on reload.
 func TestResume_KeepsFreshlyEmittedToolResult(t *testing.T) {
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fl := w.(http.Flusher)
-		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_fresh","tool_name":"telegram__send_channel_post","tool_args":{"text":"hi"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_fresh","tool_name":"vk__get_reviews","tool_args":{"count":5}}` + "\n\n"))
 		fl.Flush()
 		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_fresh","result":{"ok":true}}` + "\n\n"))
 		fl.Flush()
@@ -138,6 +143,62 @@ func TestResume_KeepsFreshlyEmittedToolResult(t *testing.T) {
 	require.NotNil(t, msgRepo.updated)
 	require.Len(t, msgRepo.updated.ToolResults, 1, "a tool_result for a freshly emitted tool_call must be kept")
 	assert.Equal(t, "tc_fresh", msgRepo.updated.ToolResults[0].ToolCallID)
+
+	fresh := findToolCall(msgRepo.updated.ToolCalls, "tc_fresh")
+	require.NotNil(t, fresh, "the fresh tool_call must be persisted so reload's ToolCalls⋈ToolResults join renders it")
+	assert.Equal(t, "vk__get_reviews", fresh.Name)
+	assert.Equal(t, domain.ToolCallStatusApproved, fresh.Status, "an ok fresh result leaves the persisted call approved")
+}
+
+// TestResume_PersistsErroredFreshToolCall asserts a fresh tool_call whose
+// post-approval result carries an error is persisted with Status=rejected, not
+// left stuck approved: the same status-flip that downgrades a failed paused call
+// must reach the now-indexed fresh call.
+func TestResume_PersistsErroredFreshToolCall(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"tc_fresh","tool_name":"vk__get_reviews","tool_args":{"count":5}}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"tc_fresh","result":{"ok":false},"error":"rate limited"}` + "\n\n"))
+		fl.Flush()
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+		fl.Flush()
+	}))
+	defer orch.Close()
+
+	msgRepo := &resumeMsgRepo{
+		active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_paused", Name: "yandex_business__update_hours", Status: domain.ToolCallStatusPending},
+			},
+		},
+	}
+	turn := newResumeTurn(msgRepo, orch.URL, nil)
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-1", nil)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomeRejoinedResume, outcome)
+
+	require.NotNil(t, msgRepo.updated)
+	fresh := findToolCall(msgRepo.updated.ToolCalls, "tc_fresh")
+	require.NotNil(t, fresh, "the errored fresh tool_call must still be persisted")
+	assert.Equal(t, domain.ToolCallStatusRejected, fresh.Status, "an errored fresh result must flip the persisted call to rejected")
+}
+
+// findToolCall returns a pointer to the first ToolCall with the given id, or nil.
+func findToolCall(calls []domain.ToolCall, id string) *domain.ToolCall {
+	for i := range calls {
+		if calls[i].ID == id {
+			return &calls[i]
+		}
+	}
+	return nil
 }
 
 // TestResume_PersistFailure_DoesNotChangeOutcome documents the conservative

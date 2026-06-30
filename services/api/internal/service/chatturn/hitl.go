@@ -406,6 +406,15 @@ func (t *Turn) runResumeStream(
 				})
 				if ev.ToolCallID != "" {
 					freshCallIDs[ev.ToolCallID] = struct{}{}
+					if _, known := callIdx[ev.ToolCallID]; !known {
+						callIdx[ev.ToolCallID] = len(msg.ToolCalls)
+						msg.ToolCalls = append(msg.ToolCalls, domain.ToolCall{
+							ID:        ev.ToolCallID,
+							Name:      ev.ToolName,
+							Arguments: ev.ToolArgs,
+							Status:    domain.ToolCallStatusApproved,
+						})
+					}
 				}
 				t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
 			case "tool_approval_required":
