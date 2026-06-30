@@ -87,6 +87,19 @@ func domainRoleToOpenAPI(r *domain.Role, memberCount *int) openapi.Role {
 // serialization cost (the static registry has <100 perms).
 const maxPermissionsPerRole = 100
 
+// maxRoleBodyBytes caps the JSON request body on the role write endpoints,
+// guarding the raw decoder from an unbounded body. Mirrors maxBusinessBodyBytes.
+const maxRoleBodyBytes = 64 * 1024
+
+// maxRoleNameLen / maxRoleDescriptionLen bound the unbounded Postgres TEXT
+// columns so a role name/description cannot be bloated and then re-serialized
+// in every ListRoles / ListMembers response. Mirror the business Name/Description
+// max= validators.
+const (
+	maxRoleNameLen        = 200
+	maxRoleDescriptionLen = 2000
+)
+
 // List handles GET /api/v1/businesses/{id}/roles (PermRolesRead).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +135,7 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRoleBodyBytes)
 	var req openapi.CreateRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")
@@ -129,6 +143,10 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed")
+		return
+	}
+	if len(name) > maxRoleNameLen || len(strDeref(req.Description)) > maxRoleDescriptionLen {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed")
 		return
 	}
@@ -205,6 +223,7 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRoleBodyBytes)
 	var req openapi.UpdateRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")
@@ -212,6 +231,10 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed")
+		return
+	}
+	if len(name) > maxRoleNameLen || len(strDeref(req.Description)) > maxRoleDescriptionLen {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed")
 		return
 	}

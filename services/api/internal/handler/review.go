@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -20,6 +21,15 @@ const (
 	DefaultReviewLimit = 20
 	MaxReviewLimit     = 100
 )
+
+// maxReviewReplyBytes caps the reply request body; comfortably above
+// maxReviewReplyRunes so multi-byte Cyrillic at the rune cap is not spuriously
+// truncated by the byte reader before the cleaner length check runs.
+const maxReviewReplyBytes = 16 * 1024
+
+// maxReviewReplyRunes bounds the reply text, which would otherwise be an
+// unbounded required field.
+const maxReviewReplyRunes = 4000
 
 // ReviewService defines the interface for review operations used by handler.
 // List/GetByID/Reply receive businessID (extracted from /businesses/{id} URL by
@@ -172,8 +182,13 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxReviewReplyBytes)
 	req, ok := decodeAndValidate[openapi.ReplyToReviewRequest](w, r, "invalid request body")
 	if !ok {
+		return
+	}
+	if utf8.RuneCountInString(req.ReplyText) > maxReviewReplyRunes {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed")
 		return
 	}
 
