@@ -574,12 +574,12 @@
       "reconnectYandex": "Reconnect Yandex.Business",
       "reconnectGoogle": "Reconnect Google",
       "reconnect": "Reconnect",
-      "rateLimit": "The platform asked us to wait — we'll try again in a few minutes automatically.",
-      "transient": "The service was temporarily unreachable. We've already tried a few times — we'll retry on the next update.",
+      "rateLimit": "The platform asked us to wait. Try sending the request again in a few minutes.",
+      "transient": "The service was temporarily unreachable and the action didn't go through. Try sending the request again.",
       "notFound": "Channel not found. Check that it's still connected and accessible.",
       "openIntegrations": "Open channels",
       "media": "Couldn't upload the image — the file may be too large or the platform rejected it.",
-      "fallback": "Something went wrong. We'll try again on the next update.",
+      "fallback": "Something went wrong and the action didn't go through. Try sending the request again.",
       "autoRetryHint": "You don't have to click anything — we'll try again on our own."
     }
   },
