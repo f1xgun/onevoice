@@ -1809,11 +1809,12 @@ func TestGetMessages_MultiplePendingBatches_AllReturned(t *testing.T) {
 // block so the flag persists; this test guards the handler half.
 func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439040"
 	original := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  businessID.String(),
 		Title:       "Старый",
 		TitleStatus: domain.TitleStatusAuto,
 	}
@@ -1833,8 +1834,8 @@ func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	body, _ := json.Marshal(map[string]any{"title": "Новый ручной заголовок"})
-	req := makeAuthedReq(t, http.MethodPut,
-		"/api/v1/conversations/"+convID, body, userID, convID)
+	req := makeAuthedReqForBiz(t, http.MethodPut,
+		"/api/v1/conversations/"+convID, body, businessID, userID, convID)
 	w := httptest.NewRecorder()
 	h.UpdateConversation(w, req)
 
@@ -1857,11 +1858,12 @@ func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 // The flip is unconditional — there's no "only flip if status was auto" branch.
 func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439041"
 	original := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  businessID.String(),
 		Title:       "",
 		TitleStatus: domain.TitleStatusAutoPending,
 	}
@@ -1881,8 +1883,8 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	body, _ := json.Marshal(map[string]any{"title": "Победил гонку"})
-	req := makeAuthedReq(t, http.MethodPut,
-		"/api/v1/conversations/"+convID, body, userID, convID)
+	req := makeAuthedReqForBiz(t, http.MethodPut,
+		"/api/v1/conversations/"+convID, body, businessID, userID, convID)
 	w := httptest.NewRecorder()
 	h.UpdateConversation(w, req)
 
@@ -1890,6 +1892,101 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	require.NotNil(t, updated)
 	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
 		"PUT must flip auto_pending → manual; the repo's atomic UpdateTitleIfPending will then no-op when the titler returns")
+}
+
+// TestUpdateConversation_CrossBusiness_NotFound is the write-path mirror of
+// TestGetConversation_CrossBusiness_NotFound: the requester authored the
+// conversation (UserID matches, since UserID is identical across every
+// organization the user belongs to) but it is scoped to a DIFFERENT
+// organization than the active one. PUT /conversations/{id} must respond 404
+// "conversation not found" WITHOUT reaching the repo Update — otherwise a user
+// with PermContentUpdate in org B can rename a conversation that lives in org A.
+// Reverting the business_id guard reaches Update and returns 200, failing this test.
+func TestUpdateConversation_CrossBusiness_NotFound(t *testing.T) {
+	userID := uuid.New()
+	activeBusiness := uuid.New()
+	otherBusiness := uuid.New()
+	convID := "507f1f77bcf86cd799439050"
+
+	conversation := &domain.Conversation{
+		ID:          convID,
+		UserID:      userID.String(),
+		BusinessID:  otherBusiness.String(),
+		Title:       "Org A Conversation",
+		TitleStatus: domain.TitleStatusAuto,
+	}
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			cp := *conversation
+			return &cp, nil
+		},
+		UpdateFunc: func(_ context.Context, _ *domain.Conversation) error {
+			t.Error("Update must not be called for a cross-organization conversation")
+			return nil
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	body, _ := json.Marshal(map[string]any{"title": "Forced rename"})
+	req := makeAuthedReqForBiz(t, http.MethodPut,
+		"/api/v1/conversations/"+convID, body, activeBusiness, userID, convID)
+	w := httptest.NewRecorder()
+	h.UpdateConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code,
+		"a conversation owned under another organization must surface as 404, not 200")
+
+	var response ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	assert.Equal(t, "conversation not found", response.Error,
+		"cross-business update must use the uniform not-found message (no existence-leak oracle)")
+}
+
+// TestDeleteConversation_CrossBusiness_NotFound is the delete-path mirror of
+// TestGetConversation_CrossBusiness_NotFound: the requester authored the
+// conversation but it is scoped to a DIFFERENT organization than the active
+// one. DELETE /conversations/{id} must respond 404 WITHOUT reaching the repo
+// Delete — otherwise a user with PermContentDelete in org B can irreversibly
+// hard-delete a conversation that lives in org A. Reverting the business_id
+// guard reaches Delete and returns 204, failing this test.
+func TestDeleteConversation_CrossBusiness_NotFound(t *testing.T) {
+	userID := uuid.New()
+	activeBusiness := uuid.New()
+	otherBusiness := uuid.New()
+	convID := "507f1f77bcf86cd799439051"
+
+	conversation := &domain.Conversation{
+		ID:         convID,
+		UserID:     userID.String(),
+		BusinessID: otherBusiness.String(),
+		Title:      "Org A Conversation",
+	}
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			cp := *conversation
+			return &cp, nil
+		},
+		DeleteFunc: func(_ context.Context, _ string) error {
+			t.Error("Delete must not be called for a cross-organization conversation")
+			return nil
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	req := makeAuthedReqForBiz(t, http.MethodDelete,
+		"/api/v1/conversations/"+convID, nil, activeBusiness, userID, convID)
+	w := httptest.NewRecorder()
+	h.DeleteConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code,
+		"a conversation owned under another organization must surface as 404, not 204")
+
+	var response ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	assert.Equal(t, "conversation not found", response.Error,
+		"cross-business delete must use the uniform not-found message (no existence-leak oracle)")
 }
 
 // --- Pin / Unpin handler tests ---------------------

@@ -32,7 +32,7 @@ func TestRegenerateTitle_409_Manual_EnglishLocale(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusManual,
 	}
 	h, _, _ := newTitlerHandlerWithRealTitler(t, conv, nil)
@@ -41,7 +41,7 @@ func TestRegenerateTitle_409_Manual_EnglishLocale(t *testing.T) {
 		"/api/v1/conversations/"+convID+"/regenerate-title", http.NoBody)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", convID)
-	ctx := titlerBizCtx(uuid.New(), userID)
+	ctx := titlerBizCtx(titlerBiz, userID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	ctx = i18n.WithLocale(ctx, language.English)
 	req = req.WithContext(ctx)
@@ -66,7 +66,7 @@ func TestRegenerateTitle_409_InFlight_EnglishLocale(t *testing.T) {
 	conv := &domain.Conversation{
 		ID:          convID,
 		UserID:      userID.String(),
-		BusinessID:  "biz-1",
+		BusinessID:  titlerBiz.String(),
 		TitleStatus: domain.TitleStatusAutoPending,
 		UpdatedAt:   time.Now(),
 	}
@@ -76,7 +76,7 @@ func TestRegenerateTitle_409_InFlight_EnglishLocale(t *testing.T) {
 		"/api/v1/conversations/"+convID+"/regenerate-title", http.NoBody)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", convID)
-	ctx := titlerBizCtx(uuid.New(), userID)
+	ctx := titlerBizCtx(titlerBiz, userID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	ctx = i18n.WithLocale(ctx, language.English)
 	req = req.WithContext(ctx)

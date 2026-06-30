@@ -209,6 +209,10 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
+	if conversation.BusinessID != bc.BusinessID.String() {
+		writeJSONError(w, http.StatusNotFound, "conversation not found")
+		return
+	}
 
 	conversation.Title = req.Title
 	conversation.TitleStatus = domain.TitleStatusManual
@@ -243,6 +247,10 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 	}
 	if conversation.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if conversation.BusinessID != bc.BusinessID.String() {
+		writeJSONError(w, http.StatusNotFound, "conversation not found")
 		return
 	}
 
