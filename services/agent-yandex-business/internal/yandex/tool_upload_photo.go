@@ -63,7 +63,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 		fileInput := page.Locator(inputSelector).First()
 		if err := fileInput.SetInputFiles(tmpFile); err != nil {
 			debugScreenshot(page, "photo_input_error")
-			return fmt.Errorf("set file input (%s): %w", inputSelector, err)
+			return a2a.NewNonRetryableError(fmt.Errorf("set file input (%s): %w", inputSelector, err))
 		}
 
 		time.Sleep(3 * time.Second)
@@ -76,7 +76,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 		}); err == nil {
 			if err := cropSaveBtn.Click(); err != nil {
 				debugScreenshot(page, "photo_crop_save_error")
-				return fmt.Errorf("click crop save button: %w", err)
+				return a2a.NewNonRetryableError(fmt.Errorf("click crop save button: %w", err))
 			}
 			time.Sleep(3 * time.Second)
 			debugScreenshot(page, "photo_after_crop_save")

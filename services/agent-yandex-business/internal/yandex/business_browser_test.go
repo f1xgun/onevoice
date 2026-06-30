@@ -488,6 +488,33 @@ func TestBusinessBrowser_CreatePost_SubmitsTextareaAndClicksPublish(t *testing.T
 	}
 }
 
+// Test #15b — a transient error from the publish Click must NOT replay the
+// submit. Playwright's post-click stability check frequently returns a
+// retryable-looking error ('execution context destroyed' / 'target closed')
+// AFTER the submit XHR already reached Yandex and created the post; re-running
+// the closure would double-publish on the live profile. The fix stamps the
+// post-submit failure non-retryable so withRetry never replays the mutation.
+// Fail-on-revert: with a plain error the closure re-runs (clickCount > 1).
+func TestBusinessBrowser_CreatePost_TransientSubmitError_NotReplayed(t *testing.T) {
+	page := newMockPage("https://yandex.ru/sprav/123/p/edit/posts/")
+	textarea := &mockLocator{}
+	submit := &mockLocator{clickErr: errors.New("execution context was destroyed")}
+	page.locators[".PostAddForm-Textarea textarea"] = textarea
+	page.locators[".PostAddForm-Submit"] = submit
+
+	bb := businessBrowserOnPage(page, "123")
+	err := bb.CreatePost(context.Background(), "Hello")
+	if err == nil {
+		t.Fatal("expected error from transient submit click, got nil")
+	}
+	if submit.clickCount != 1 {
+		t.Fatalf("submit clicked %d times, want exactly 1 (post-submit error must not be replayed — double-publish)", submit.clickCount)
+	}
+	if !errors.Is(err, &a2a.NonRetryableError{}) {
+		t.Fatalf("expected NonRetryableError so withRetry never replays the publish, got: %v", err)
+	}
+}
+
 // -----------------------------------------------------------------------------
 // UploadPhoto tests
 // -----------------------------------------------------------------------------
@@ -554,6 +581,40 @@ func TestBusinessBrowser_UploadPhoto_CropSaveClickFails_ReturnsError(t *testing.
 	}
 	if !strings.Contains(err.Error(), "crop save") {
 		t.Fatalf("expected wrapped crop save error, got: %v", err)
+	}
+}
+
+// Test #16c — a transient error from the crop-save Click must NOT replay the
+// upload. SetInputFiles already triggered the upload XHR, so re-running the
+// closure would double-upload the photo. The fix stamps the post-upload failure
+// non-retryable so withRetry never replays the mutation. Fail-on-revert: with a
+// plain error the closure re-runs and both SetInputFiles and the crop-save
+// Click fire more than once.
+func TestBusinessBrowser_UploadPhoto_TransientCropSaveError_NotReplayed(t *testing.T) {
+	const png = "\x89PNG\r\n\x1a\n"
+
+	page := newMockPage("https://yandex.ru/sprav/123/p/edit/photos/")
+	fileInput := &mockLocator{}
+	page.locators[".MediaUploadButton-Input"] = fileInput
+	cropSave := &mockLocator{clickErr: errors.New("target closed")}
+	page.locators["button:has-text('Сохранить')"] = cropSave
+
+	bb := businessBrowserOnPage(page, "123")
+	bb.fetchPhotoFn = func(context.Context, string) ([]byte, error) {
+		return []byte(png), nil
+	}
+	err := bb.UploadPhoto(context.Background(), "https://cdn.example.com/photo.png", "general")
+	if err == nil {
+		t.Fatal("expected error from transient crop-save click, got nil")
+	}
+	if cropSave.clickCount != 1 {
+		t.Fatalf("crop-save clicked %d times, want exactly 1 (post-upload error must not be replayed — double-upload)", cropSave.clickCount)
+	}
+	if len(fileInput.setInputFiles) != 1 {
+		t.Fatalf("SetInputFiles invoked %d times, want exactly 1 (upload must not be replayed)", len(fileInput.setInputFiles))
+	}
+	if !errors.Is(err, &a2a.NonRetryableError{}) {
+		t.Fatalf("expected NonRetryableError so withRetry never replays the upload, got: %v", err)
 	}
 }
 

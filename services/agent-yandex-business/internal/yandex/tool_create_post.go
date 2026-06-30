@@ -60,7 +60,7 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 			return fmt.Errorf("submit button not found")
 		}
 		if err := submitBtn.Click(); err != nil {
-			return fmt.Errorf("click submit: %w", err)
+			return a2a.NewNonRetryableError(fmt.Errorf("click submit: %w", err))
 		}
 		time.Sleep(3 * time.Second)
 		debugScreenshot(page, "post_after_submit")
