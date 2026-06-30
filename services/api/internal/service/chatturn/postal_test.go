@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
@@ -518,4 +519,123 @@ func TestRecordReviews_EmitsErrorMetricOnUpsertFailure(t *testing.T) {
 
 	require.InDelta(t, before+1, counterValue(t, "reviews_replied_total", labels), 0.0001,
 		"upsert failure must increment {yandex_business,error}")
+}
+
+// reconcilingReviewRepo serves one review by its natural key and records the
+// UpdateReply call the chat-reply reconciliation must perform. Lookups for a
+// non-matching key return ErrReviewNotFound.
+type reconcilingReviewRepo struct {
+	domain.ReviewRepository
+	review        *domain.Review
+	updateCalls   []updateReplyCall
+	lastLookupKey [3]string
+}
+
+type updateReplyCall struct {
+	id     string
+	text   string
+	status string
+}
+
+func (r *reconcilingReviewRepo) GetByExternalID(_ context.Context, businessID, platform, externalID string) (*domain.Review, error) {
+	r.lastLookupKey = [3]string{businessID, platform, externalID}
+	if r.review != nil &&
+		r.review.BusinessID == businessID &&
+		r.review.Platform == platform &&
+		r.review.ExternalID == externalID {
+		return r.review, nil
+	}
+	return nil, domain.ErrReviewNotFound
+}
+
+func (r *reconcilingReviewRepo) UpdateReply(_ context.Context, id, replyText, replyStatus string) error {
+	r.updateCalls = append(r.updateCalls, updateReplyCall{id: id, text: replyText, status: replyStatus})
+	return nil
+}
+
+// TestReconcileReviewReplies_FlipsStatusOnSuccessfulYandexReply is the
+// fail-on-revert anchor for fix #1: a successful yandex_business__reply_review
+// chat tool must reconcile the stored review to reply_status="replied" via the
+// same UpdateReply method the manual path uses, so the manual re-reply guard
+// fires and a second public reply is never posted. Reverting the
+// reconcileReviewReplies call leaves the review "pending" and this assertion
+// fails.
+func TestReconcileReviewReplies_FlipsStatusOnSuccessfulYandexReply(t *testing.T) {
+	repo := &reconcilingReviewRepo{review: &domain.Review{
+		ID:          "rev-stored-1",
+		BusinessID:  "biz-1",
+		Platform:    a2a.AgentYandexBusiness,
+		ExternalID:  "yreview-77",
+		ReplyStatus: domain.ReviewReplyStatusPending,
+	}}
+	turn := &Turn{deps: Deps{Reviews: repo}}
+
+	toolCalls := []domain.ToolCall{{
+		ID:        "c1",
+		Name:      tools.YandexBusinessReplyReview,
+		Arguments: map[string]interface{}{"review_id": "yreview-77", "text": "Спасибо за отзыв!"},
+	}}
+	toolResults := []domain.ToolResult{{ToolCallID: "c1"}}
+
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	require.Len(t, repo.updateCalls, 1, "a successful reply tool must reconcile the stored review exactly once")
+	got := repo.updateCalls[0]
+	assert.Equal(t, "rev-stored-1", got.id, "reconcile must target the resolved review")
+	assert.Equal(t, domain.ReviewReplyStatusReplied, got.status,
+		"chat reply must flip the stored review to replied so the manual guard fires")
+	assert.Equal(t, "Спасибо за отзыв!", got.text, "reconcile must persist the reply text the LLM posted")
+	assert.Equal(t, [3]string{"biz-1", a2a.AgentYandexBusiness, "yreview-77"}, repo.lastLookupKey,
+		"review must be resolved by (business_id, platform, external_id) from the reply args")
+}
+
+// TestReconcileReviewReplies_VKComposesExternalID — VK comment replies carry
+// post_id + comment_id; the reconciler must compose "{post_id}_{comment_id}"
+// (the same key reviewFromMap stores) to resolve and flip the review.
+func TestReconcileReviewReplies_VKComposesExternalID(t *testing.T) {
+	repo := &reconcilingReviewRepo{review: &domain.Review{
+		ID:          "rev-vk-1",
+		BusinessID:  "biz-1",
+		Platform:    a2a.AgentVK,
+		ExternalID:  "11_42",
+		ReplyStatus: domain.ReviewReplyStatusPending,
+	}}
+	turn := &Turn{deps: Deps{Reviews: repo}}
+
+	toolCalls := []domain.ToolCall{{
+		ID:        "c1",
+		Name:      tools.VKReplyComment,
+		Arguments: map[string]interface{}{"post_id": float64(11), "comment_id": float64(42), "text": "Спасибо!"},
+	}}
+	toolResults := []domain.ToolResult{{ToolCallID: "c1"}}
+
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	require.Len(t, repo.updateCalls, 1, "vk reply must reconcile the composed-external-id review")
+	assert.Equal(t, domain.ReviewReplyStatusReplied, repo.updateCalls[0].status)
+	assert.Equal(t, [3]string{"biz-1", a2a.AgentVK, "11_42"}, repo.lastLookupKey)
+}
+
+// TestReconcileReviewReplies_SkipsFailedReply — a failed reply tool must not
+// flip the review (the public post never landed).
+func TestReconcileReviewReplies_SkipsFailedReply(t *testing.T) {
+	repo := &reconcilingReviewRepo{review: &domain.Review{
+		ID:          "rev-stored-1",
+		BusinessID:  "biz-1",
+		Platform:    a2a.AgentYandexBusiness,
+		ExternalID:  "yreview-77",
+		ReplyStatus: domain.ReviewReplyStatusPending,
+	}}
+	turn := &Turn{deps: Deps{Reviews: repo}}
+
+	toolCalls := []domain.ToolCall{{
+		ID:        "c1",
+		Name:      tools.YandexBusinessReplyReview,
+		Arguments: map[string]interface{}{"review_id": "yreview-77", "text": "thx"},
+	}}
+	toolResults := []domain.ToolResult{{ToolCallID: "c1", IsError: true, Content: map[string]interface{}{"error": "captcha"}}}
+
+	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+
+	assert.Empty(t, repo.updateCalls, "a failed reply must not reconcile the stored review")
 }

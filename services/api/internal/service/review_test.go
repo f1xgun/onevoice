@@ -64,6 +64,30 @@ func TestReply_ShortCircuitsWhenAlreadyReplied(t *testing.T) {
 	require.Zero(t, repo.updateReplies, "already-replied review must not re-write status")
 }
 
+// TestReply_ShortCircuitsWhenReplyTextPresent is the fail-on-revert anchor for
+// fix #2 (the belt): once the chat/LLM path posts a public reply and reconciles
+// the stored review, that review carries a non-empty ReplyText even if a
+// status-write lagged and left it "pending". A manual /reviews/{id}/reply on the
+// same review must NOT re-dispatch a second public reply. Reverting the
+// ReplyText guard makes Reply dispatch again and this assertion fails.
+func TestReply_ShortCircuitsWhenReplyTextPresent(t *testing.T) {
+	biz := uuid.New()
+	repo := &stubReviewRepo{review: &domain.Review{
+		ID:          "rev-9",
+		BusinessID:  biz.String(),
+		Platform:    a2a.AgentYandexBusiness,
+		ExternalID:  "yreview-9",
+		ReplyStatus: domain.ReviewReplyStatusPending,
+		ReplyText:   "Спасибо, ответ уже отправлен ботом",
+	}}
+	nc := &capturingRequester{}
+	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	require.NoError(t, svc.Reply(context.Background(), biz, "rev-9", "повторный ответ"))
+	require.Zero(t, nc.calls, "a review that already carries a reply must not re-dispatch a second public reply")
+	require.Zero(t, repo.updateReplies, "an already-answered review must not re-write status")
+}
+
 func TestReply_ManualDispatchCarriesStableApprovalID(t *testing.T) {
 	biz := uuid.New()
 	review := &domain.Review{

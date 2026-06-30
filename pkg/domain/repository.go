@@ -342,6 +342,12 @@ type TaskFilter struct {
 type ReviewRepository interface {
 	ListByBusinessID(ctx context.Context, businessID string, filter ReviewFilter) ([]Review, int, error)
 	GetByID(ctx context.Context, id string) (*Review, error)
+
+	// GetByExternalID resolves a review by its natural key
+	// (business_id, platform, external_id). Returns ErrReviewNotFound when no
+	// stored review matches — the chat-reply reconciliation uses it to find the
+	// review an LLM-dispatched reply tool just answered on the platform.
+	GetByExternalID(ctx context.Context, businessID, platform, externalID string) (*Review, error)
 	UpdateReply(ctx context.Context, id, replyText, replyStatus string) error
 	Upsert(ctx context.Context, review *Review) error
 

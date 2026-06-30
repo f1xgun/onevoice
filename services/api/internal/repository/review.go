@@ -71,6 +71,23 @@ func (r *reviewRepository) GetByID(ctx context.Context, id string) (*domain.Revi
 	return &review, nil
 }
 
+func (r *reviewRepository) GetByExternalID(ctx context.Context, businessID, platform, externalID string) (*domain.Review, error) {
+	var review domain.Review
+	err := r.collection.FindOne(ctx, bson.M{
+		"business_id": businessID,
+		"platform":    platform,
+		"external_id": externalID,
+	}).Decode(&review)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, domain.ErrReviewNotFound
+		}
+		return nil, fmt.Errorf("query review by external_id: %w", err)
+	}
+
+	return &review, nil
+}
+
 // reviewUpsert builds the (filter, update) pair that upserts one review on its
 // natural key (business_id, platform, external_id). Shared by Upsert and
 // BulkUpsert so the persisted document shape stays identical across both paths.
