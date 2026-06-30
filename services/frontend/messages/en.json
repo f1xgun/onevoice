@@ -547,7 +547,7 @@
   },
   "tasks": {
     "title": "What's been done",
-    "subtitle": "Here you'll see everything OneVoice has done on your behalf. You don't have to click anything — we'll retry on our own if something didn't go through.",
+    "subtitle": "Here you can see the assistant's actions and their status. If an action failed, send the request again.",
     "status": {
       "pending": "Scheduled",
       "running": "In progress",

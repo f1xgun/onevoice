@@ -112,3 +112,17 @@ describe('tasks.errors copy makes no auto-retry promise', () => {
     });
   }
 });
+
+describe('tasks.subtitle makes no auto-retry promise', () => {
+  it('ru subtitle does not assure automatic retry', () => {
+    const text = ru.tasks.subtitle;
+    expect(text).toBeTruthy();
+    expect(text).not.toMatch(/автоматическ|сами|повтор/i);
+  });
+
+  it('en subtitle does not assure automatic retry', () => {
+    const text = en.tasks.subtitle;
+    expect(text).toBeTruthy();
+    expect(text).not.toMatch(/automatically|on our own|we'?ll (try|retry)/i);
+  });
+});
