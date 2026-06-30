@@ -1,9 +1,11 @@
 package oauth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -185,6 +188,69 @@ func TestVKCallback_InvalidState(t *testing.T) {
 	location := rr.Header().Get("Location")
 	if !strings.Contains(location, "error=invalid_state") {
 		t.Errorf("expected redirect with error=invalid_state, got: %s", location)
+	}
+}
+
+// TestVKCommunityCallback_NoGroupsBodyNotLogged guards against leaking a live
+// VK access token into the logs. When VK returns a top-level user-token body
+// (no community/group scope), the response carries a real access_token but
+// len(Groups)==0, hitting the "no groups" branch. That branch must log only
+// non-secret diagnostics — never the raw response body.
+func TestVKCommunityCallback_NoGroupsBodyNotLogged(t *testing.T) {
+	const secret = "vk1.a.SUPER_SECRET_VK_TOKEN"
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	jsonHandler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(logger.NewRedactHandler(jsonHandler, nil)))
+
+	businessID := uuid.New()
+
+	vkServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": secret,
+			"user_id":      7,
+		})
+	}))
+	defer vkServer.Close()
+
+	mr := miniredis.RunT(t)
+	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+
+	mockOAuth := new(MockOAuthStateService)
+	stateData := &service.OAuthStateData{
+		BusinessID: businessID,
+		Platform:   "vk",
+		Nonce:      "csrf-nonce",
+	}
+	mockOAuth.On("ValidateState", mock.Anything, "valid-state").Return(stateData, nil)
+
+	cfg := OAuthConfig{
+		VKClientID:     "client_id",
+		VKClientSecret: "client_secret",
+		VKRedirectURI:  "https://example.com/oauth/vk/callback",
+		vkTokenBaseURL: vkServer.URL,
+	}
+	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), cfg, vkServer.Client(), redisClient)
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/community-callback?code=auth_code&state=valid-state", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: oauthCSRFCookieName, Value: "csrf-nonce"})
+	rr := httptest.NewRecorder()
+
+	h.VKCommunityCallback(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302 redirect, got %d: %s", rr.Code, rr.Body.String())
+	}
+	location := rr.Header().Get("Location")
+	if !strings.Contains(location, "error=no_community_token") {
+		t.Fatalf("expected no-groups branch (error=no_community_token), got: %s", location)
+	}
+
+	if strings.Contains(buf.String(), secret) {
+		t.Fatalf("log output leaked the VK access token: %s", buf.String())
 	}
 }
 
