@@ -217,3 +217,73 @@ func TestRequestLogger_PassThroughRawQueryForOtherPaths(t *testing.T) {
 	assert.Equal(t, "cursor=abc", observedRawQuery,
 		"non-reset paths must preserve their query string for downstream handlers")
 }
+
+// TestRequestLogger_RedactsInvitationToken asserts the raw invitation token —
+// a bearer credential carried as a URL path segment on the public Preview and
+// Accept routes — never reaches the access log, while the downstream handler
+// still observes the real token on r.URL.Path.
+func TestRequestLogger_RedactsInvitationToken(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"preview", "GET", "/api/v1/invitations/SECRETTOKEN123"},
+		{"accept", "POST", "/api/v1/invitations/SECRETTOKEN123/accept"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			lg := slog.New(slog.NewJSONHandler(&buf, nil))
+
+			var pathAtHandlerTime string
+			handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				pathAtHandlerTime = r.URL.Path
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest(tc.method, tc.path, http.NoBody)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			assert.Equal(t, http.StatusOK, rr.Code)
+			assert.NotContains(t, buf.String(), "SECRETTOKEN123",
+				"access log must not surface the raw invitation token path segment")
+			assert.Contains(t, buf.String(), "<redacted>",
+				"the token segment must be replaced with the redaction marker")
+			assert.Equal(t, tc.path, pathAtHandlerTime,
+				"downstream handler must still receive the real token on r.URL.Path")
+		})
+	}
+}
+
+// TestRequestLogger_PassThroughNonInvitationPaths asserts the redaction is
+// scoped to the two invitation routes — unrelated paths (and the prefix-only
+// list/create endpoint) are logged verbatim.
+func TestRequestLogger_PassThroughNonInvitationPaths(t *testing.T) {
+	paths := []string{
+		"/api/v1/businesses",
+		"/api/v1/invitations",
+		"/api/v1/invitations/",
+		"/api/v1/businesses/abc/invitations/def",
+	}
+
+	for _, p := range paths {
+		t.Run(p, func(t *testing.T) {
+			var buf bytes.Buffer
+			lg := slog.New(slog.NewJSONHandler(&buf, nil))
+
+			handler := RequestLogger(lg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest("GET", p, http.NoBody)
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+
+			assert.Contains(t, buf.String(), `"path":"`+p+`"`,
+				"non-invitation paths must be logged verbatim")
+			assert.NotContains(t, buf.String(), "<redacted>")
+		})
+	}
+}
