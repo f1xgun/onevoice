@@ -170,6 +170,20 @@ func (s *ConversationService) MoveToProject(
 	return updated, nil
 }
 
+// DeleteWithMessages cascade-deletes a conversation: its messages FIRST, then
+// the conversation document — matching ProjectRepository.HardDeleteCascade's
+// ordering. Messages carry only conversation_id, so a partial failure may only
+// leave a conversation whose messages are already gone (re-deletable), never a
+// removed conversation orphaning unreachable message bodies. The caller is
+// responsible for the cross-business 404 + ownership/permission guards before
+// invoking this.
+func (s *ConversationService) DeleteWithMessages(ctx context.Context, conversationID string) error {
+	if _, err := s.messageRepo.DeleteByConversationID(ctx, conversationID); err != nil {
+		return err
+	}
+	return s.convRepo.Delete(ctx, conversationID)
+}
+
 // OpenChat returns the GET /messages view (messages + pending approvals) in one call.
 // See docs/services/conversation.md.
 func (s *ConversationService) OpenChat(

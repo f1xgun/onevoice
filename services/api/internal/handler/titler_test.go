@@ -156,6 +156,9 @@ func (m *titlerMsgRepo) ListByConversationID(_ context.Context, _ string, _, _ i
 func (m *titlerMsgRepo) CountByConversationID(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }
+func (m *titlerMsgRepo) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (m *titlerMsgRepo) Update(_ context.Context, _ *domain.Message) error { return nil }
 func (m *titlerMsgRepo) FindByConversationActive(_ context.Context, _ string) (*domain.Message, error) {
 	return nil, domain.ErrMessageNotFound

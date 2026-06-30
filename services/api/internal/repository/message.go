@@ -79,6 +79,20 @@ func (r *messageRepository) CountByConversationID(ctx context.Context, conversat
 	return count, nil
 }
 
+// DeleteByConversationID removes every message whose conversation_id matches.
+// It backs the conversation cascade-delete: messages carry no business_id or
+// user_id, so once the parent conversation document is removed they are
+// unreachable by every read path and every cleanup sweep. Returns the number
+// of deleted documents.
+func (r *messageRepository) DeleteByConversationID(ctx context.Context, conversationID string) (int64, error) {
+	res, err := r.collection.DeleteMany(ctx, bson.M{"conversation_id": conversationID})
+	if err != nil {
+		return 0, fmt.Errorf("delete messages by conversation: %w", err)
+	}
+
+	return res.DeletedCount, nil
+}
+
 // Update overwrites the stored message by _id. The HITL resume path
 // appends tool results to the SAME assistant Message that carried the
 // pause-time ToolCalls (invariant: one assistant Message per LLM turn,
