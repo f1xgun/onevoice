@@ -43,6 +43,6 @@ func NewDedupeClient(redisURL string) *hitldedupe.DedupeClient {
 		_ = rdb.Close()
 		return nil
 	}
-	slog.Info("HITL dedupe enabled", "redis_url", redisURL)
+	slog.Info("HITL dedupe enabled", "redis_url", redactConnURL(redisURL))
 	return hitldedupe.New(rdb)
 }
