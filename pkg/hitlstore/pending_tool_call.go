@@ -20,6 +20,14 @@ import (
 // pendingToolCallTTL is the lazy-expiration window for approval batches.
 const pendingToolCallTTL = 24 * time.Hour
 
+// Batch lifecycle statuses. "resuming" gates the post-approval LLM
+// continuation so concurrent /resume calls cannot double-bill it.
+const (
+	statusPending   = "pending"
+	statusResolving = "resolving"
+	statusResuming  = "resuming"
+)
+
 // pendingToolCallRepo is the Mongo-backed PendingToolCallRepository.
 //
 // See docs/pkg/hitlstore.md.
@@ -116,16 +124,16 @@ func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingTool
 // virtualizeExpiry lazily marks a still-resident batch as "expired" when its
 // expires_at has passed. The Mongo TTL monitor reaps lazily (~60s), so a
 // non-terminal batch can outlive its 24h window in the collection. Any
-// non-terminal status ("pending" or "resolving") is virtualized so downstream
-// expiry guards — which key off Status == "expired" — reject resolve/resume
-// attempts that land after the deadline. Terminal states (resolved, expired)
-// and not-yet-promoted "preparing" rows carry no expires_at and are left
-// untouched.
+// non-terminal status ("pending", "resolving" or "resuming") is virtualized so
+// downstream expiry guards — which key off Status == "expired" — reject
+// resolve/resume attempts that land after the deadline. Terminal states
+// (resolved, expired) and not-yet-promoted "preparing" rows carry no expires_at
+// and are left untouched.
 func virtualizeExpiry(doc *domain.PendingToolCallBatch) {
 	if doc.ExpiresAt.IsZero() {
 		return
 	}
-	if doc.Status != "pending" && doc.Status != "resolving" {
+	if doc.Status != statusPending && doc.Status != statusResolving && doc.Status != statusResuming {
 		return
 	}
 	if time.Now().UTC().After(doc.ExpiresAt) {
@@ -150,14 +158,14 @@ func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) 
 	return &doc, nil
 }
 
-// ListPendingByConversation returns open batches (pending OR resolving)
-// for the conversation, sorted oldest-first. Past-TTL-but-not-yet-reaped
-// batches are virtualized to status "expired" so callers never render a
+// ListPendingByConversation returns open batches (pending, resolving OR
+// resuming) for the conversation, sorted oldest-first. Past-TTL-but-not-yet-
+// reaped batches are virtualized to status "expired" so callers never render a
 // past-deadline batch as a live, actionable approval card.
 func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
-		"status":          bson.M{"$in": []string{"pending", "resolving"}},
+		"status":          bson.M{"$in": []string{statusPending, statusResolving, statusResuming}},
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}})
 	cursor, err := r.coll.Find(ctx, filter, opts)
@@ -205,6 +213,38 @@ func (r *pendingToolCallRepo) AtomicTransitionToResolving(ctx context.Context, b
 				return nil, probeErr
 			}
 			return nil, domain.ErrBatchNotPending
+		}
+		return nil, err
+	}
+	return &doc, nil
+}
+
+// AtomicTransitionResolvingToResuming serializes the post-approval resume
+// continuation: findOneAndUpdate{_id, status:"resolving"} → "resuming" lets at
+// most one /resume claim the batch's billed LLM step. The filter constraint IS
+// the serialization — a concurrent caller matches nothing and gets
+// ErrBatchNotResolving (the winner already moved the batch to "resuming", or it
+// has since resolved/expired). A missing _id yields ErrBatchNotFound.
+//
+// See docs/pkg/hitlstore.md.
+func (r *pendingToolCallRepo) AtomicTransitionResolvingToResuming(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
+	filter := bson.M{"_id": batchID, "status": statusResolving}
+	update := bson.M{"$set": bson.M{"status": statusResuming, "updated_at": time.Now().UTC()}}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+
+	var doc domain.PendingToolCallBatch
+	err := r.coll.FindOneAndUpdate(ctx, filter, update, opts).Decode(&doc)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			var probe domain.PendingToolCallBatch
+			probeErr := r.coll.FindOne(ctx, bson.M{"_id": batchID}).Decode(&probe)
+			if probeErr != nil {
+				if errors.Is(probeErr, mongo.ErrNoDocuments) {
+					return nil, domain.ErrBatchNotFound
+				}
+				return nil, probeErr
+			}
+			return nil, domain.ErrBatchNotResolving
 		}
 		return nil, err
 	}
@@ -336,26 +376,29 @@ func (r *pendingToolCallRepo) ReconcileOrphanPreparing(ctx context.Context, olde
 	return res.ModifiedCount, nil
 }
 
-// ReconcileOrphanResolving resets batches stuck in status="resolving" with no
-// recorded verdicts and older than olderThan back to "pending". Crash-recovery
-// for the gap between a RecordDecisions failure and ResetResolvingToPending: a
-// process death there leaves the batch resolving with empty verdicts, which a
-// retried /resolve can never re-acquire (its filter wants status="pending")
-// and which resume treats as a fail-closed reject. The olderThan window keeps
-// the sweep from racing a legitimately in-flight resolve, which holds
-// "resolving" only momentarily. Called once at API startup; idempotent.
+// ReconcileOrphanResolving resets batches stuck in status="resolving" OR
+// "resuming" with no recorded verdicts and older than olderThan back to
+// "pending". Crash-recovery for two gaps: (1) a RecordDecisions failure between
+// AtomicTransitionToResolving and ResetResolvingToPending leaves the batch
+// resolving with empty verdicts; (2) a process death mid-resume after
+// AtomicTransitionResolvingToResuming leaves it resuming. Either is unreachable
+// by a retried /resolve (its filter wants status="pending") and resume treats
+// it as a fail-closed reject. The empty-verdicts guard keeps the sweep from
+// clobbering a batch that already recorded a decision. The olderThan window
+// keeps it off a legitimately in-flight resolve/resume, which holds the
+// transient status only momentarily. Called once at API startup; idempotent.
 //
 // See docs/pkg/hitlstore.md.
 func (r *pendingToolCallRepo) ReconcileOrphanResolving(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().UTC().Add(-olderThan)
 	res, err := r.coll.UpdateMany(ctx,
 		bson.M{
-			"status":        "resolving",
+			"status":        bson.M{"$in": []string{statusResolving, statusResuming}},
 			"updated_at":    bson.M{"$lt": cutoff},
 			"calls.verdict": bson.M{"$nin": recordedVerdicts},
 		},
 		bson.M{"$set": bson.M{
-			"status":     "pending",
+			"status":     statusPending,
 			"updated_at": time.Now().UTC(),
 		}},
 	)

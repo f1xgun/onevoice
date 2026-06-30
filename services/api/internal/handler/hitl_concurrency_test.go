@@ -43,7 +43,7 @@ func resumeWithCounter(h *handler.HITLHandler, bizID, userID uuid.UUID, convID, 
 func TestResume_SSEConcurrencyCap_Rejects_WhenUserAtCap(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
-	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+	seedHandlerResolvingBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
 		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 
@@ -93,7 +93,7 @@ func TestResume_SSEConcurrencyCap_Rejects_WhenUserAtCap(t *testing.T) {
 func TestResume_SSEConcurrencyCap_Allows_WhenBelowCap(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
-	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+	seedHandlerResolvingBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
 		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 

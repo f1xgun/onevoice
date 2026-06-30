@@ -350,6 +350,14 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	// the conversation with turn_already_in_progress on the next message.
 	outcome, streamErr := h.resumer.ResumeApproved(r.Context(), w, conversationID, batchID, raw)
 	metrics.IncChatTurn(outcome.String())
+	if outcome == chatturn.OutcomeResumeInProgress {
+		writeJSON(w, http.StatusConflict, map[string]interface{}{
+			"error":          "batch resolving",
+			"retry_after_ms": hitlBatchResolvingRetryAfterMs,
+			"reason":         "already_resolving",
+		})
+		return
+	}
 	if outcome == chatturn.OutcomeOrchestratorUnavailable {
 		slog.ErrorContext(r.Context(), "resume: orchestrator request failed", "error", streamErr)
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")

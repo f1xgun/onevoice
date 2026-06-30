@@ -356,6 +356,20 @@ func (t *Turn) runResumeStream(
 	batchID string,
 	body []byte,
 ) (TurnOutcome, error) {
+	if _, claimErr := t.deps.Pending.AtomicTransitionResolvingToResuming(ctx, batchID); claimErr != nil {
+		if errors.Is(claimErr, domain.ErrBatchNotResolving) {
+			return OutcomeResumeInProgress, nil
+		}
+		if errors.Is(claimErr, domain.ErrBatchNotFound) {
+			t.sseInlineError(w)
+			return OutcomeInlineError, nil
+		}
+		slog.ErrorContext(ctx, "chatturn: resume: failed to claim batch for resume",
+			"error", claimErr, "batch_id", batchID, "conversation_id", conversationID)
+		t.sseInlineError(w)
+		return OutcomeInlineError, nil
+	}
+
 	msg := *activeMsg
 	var postText strings.Builder
 	postText.WriteString(msg.Content)

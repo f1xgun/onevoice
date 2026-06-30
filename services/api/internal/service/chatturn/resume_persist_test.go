@@ -46,6 +46,13 @@ func (r *resumePendingRepo) GetByBatchID(_ context.Context, _ string) (*domain.P
 	return r.batch, nil
 }
 
+// AtomicTransitionResolvingToResuming always lets the single resume in these
+// fixtures win the claim — the concurrency rejection is exercised by a
+// dedicated test that races two ResumeApproved calls.
+func (r *resumePendingRepo) AtomicTransitionResolvingToResuming(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	return r.batch, nil
+}
+
 type resumeMsgRepo struct {
 	domain.MessageRepository
 	active      *domain.Message

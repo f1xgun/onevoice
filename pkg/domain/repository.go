@@ -437,6 +437,11 @@ type PendingToolCallRepository interface {
 	ListPendingByConversation(ctx context.Context, conversationID string) ([]*PendingToolCallBatch, error)
 	// AtomicTransitionToResolving uses findOneAndUpdate{_id, status:"pending"} for exactly-one-wins.
 	AtomicTransitionToResolving(ctx context.Context, batchID string) (*PendingToolCallBatch, error)
+	// AtomicTransitionResolvingToResuming uses findOneAndUpdate{_id, status:"resolving"}
+	// to serialize the post-approval resume continuation: at most one /resume
+	// claims the batch and runs the billed LLM step. Concurrent callers see
+	// ErrBatchNotResolving. Returns ErrBatchNotFound when the _id is missing.
+	AtomicTransitionResolvingToResuming(ctx context.Context, batchID string) (*PendingToolCallBatch, error)
 	// ResetResolvingToPending compensates a RecordDecisions failure that lands
 	// after a successful transition: it flips status resolving→pending only while
 	// no verdicts were recorded, so a retried resolve can win the transition again.

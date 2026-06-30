@@ -19,4 +19,9 @@ import "errors"
 var (
 	ErrBatchNotFound   = errors.New("pending batch not found")
 	ErrBatchNotPending = errors.New("pending batch is not in status=pending (concurrent resolve or already resolved)")
+	// ErrBatchNotResolving is returned by AtomicTransitionResolvingToResuming when
+	// the batch exists but is not in status="resolving" — a concurrent /resume
+	// already claimed the post-approval continuation (status="resuming"), or the
+	// batch has moved on to "resolved"/"expired". Handlers map it to 409.
+	ErrBatchNotResolving = errors.New("pending batch is not in status=resolving (concurrent resume or already resolved)")
 )
