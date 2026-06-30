@@ -137,7 +137,10 @@ func drainOutboxOnce(ctx context.Context, log *slog.Logger, repo *repository.Ema
 			markCtx, cancel := context.WithTimeout(context.Background(), outboxPersistTimeout)
 			if mErr := repo.MarkSent(markCtx, row.ID, jobID); mErr != nil {
 				metrics.OutboxStrandedSentRows.Inc()
-				log.ErrorContext(ctx, "email_outbox: mark_sent failed after successful delivery — row may be re-sent on next tick (duplicate email risk)", "id", row.ID, "error", mErr)
+				log.ErrorContext(ctx, "email_outbox: mark_sent failed after successful delivery — backing off and scrubbing body to avoid duplicate re-send", "id", row.ID, "error", mErr)
+				if sErr := repo.RescheduleStrandedSent(markCtx, row.ID, row.Attempts, maxAttempts); sErr != nil {
+					log.ErrorContext(ctx, "email_outbox: reschedule stranded-sent failed — row may be re-sent on next tick (duplicate email risk)", "id", row.ID, "error", sErr)
+				}
 			}
 			cancel()
 			continue
