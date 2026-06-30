@@ -627,3 +627,78 @@ func TestIntegrationRepo_ReadModifyWrite_PreservesEnvelopeMetadata(t *testing.T)
 	require.NoError(t, repo.Update(ctx, integration))
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
+
+// TestIntegrationRepo_UpdateMetadata_TargetedSingleColumn pins the emitted SQL
+// to exactly metadata + updated_at (anchored ^...$). The targeted UPDATE must
+// never carry a status or encrypted_access_token SET clause: if it did, a
+// concurrent MarkTokenExpired flip would be reverted by this write's stale
+// snapshot. Routing UpdateMetadata back through the full-row Update SQL (which
+// SETs status/encrypted_access_token/... ) no longer matches this anchored
+// regexp and fails the test.
+func TestIntegrationRepo_UpdateMetadata_TargetedSingleColumn(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`^UPDATE integrations SET metadata = \$1, updated_at = \$2 WHERE deleted_at IS NULL AND id = \$3$`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err := repo.UpdateMetadata(ctx, id, map[string]interface{}{"business_name": "renamed"})
+	require.NoError(t, err)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_UpdateMetadata_NotFound asserts the deleted_at IS NULL
+// guard: a soft-deleted (or absent) row affects zero rows and surfaces
+// ErrIntegrationNotFound rather than silently no-op'ing.
+func TestIntegrationRepo_UpdateMetadata_NotFound(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET metadata = \$1, updated_at = \$2 WHERE`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	err := repo.UpdateMetadata(ctx, id, map[string]interface{}{})
+	require.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_UpdateExternalID_TargetedSingleColumn mirrors the
+// metadata guard for the external_id heal path: the emitted SQL must SET only
+// external_id + updated_at so a concurrent status flip is never reverted.
+func TestIntegrationRepo_UpdateExternalID_TargetedSingleColumn(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`^UPDATE integrations SET external_id = \$1, updated_at = \$2 WHERE deleted_at IS NULL AND id = \$3$`).
+		WithArgs("sprav_permalink_42", pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err := repo.UpdateExternalID(ctx, id, "sprav_permalink_42")
+	require.NoError(t, err)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestIntegrationRepo_UpdateExternalID_NotFound asserts the deleted_at IS NULL
+// guard surfaces ErrIntegrationNotFound for a soft-deleted/absent row.
+func TestIntegrationRepo_UpdateExternalID_NotFound(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	repo, mockPool := newTestIntegrationRepo(t)
+
+	mockPool.ExpectExec(`UPDATE integrations SET external_id = \$1, updated_at = \$2 WHERE`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	err := repo.UpdateExternalID(ctx, id, "ext")
+	require.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}

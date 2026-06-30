@@ -82,6 +82,20 @@ type IntegrationRepository interface {
 	// callers that cannot identify the failing integration.
 	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform, externalID string) (int64, error)
 
+	// UpdateMetadata writes only the metadata jsonb of a non-deleted integration
+	// via a targeted single-column UPDATE, leaving status, token, and envelope
+	// columns untouched so a concurrent status flip (e.g. MarkTokenExpired) is
+	// not reverted by a stale read-modify-write snapshot. Returns
+	// ErrIntegrationNotFound when no active row matches.
+	UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error
+
+	// UpdateExternalID writes only the external_id of a non-deleted integration
+	// via a targeted single-column UPDATE, leaving status, token, and envelope
+	// columns untouched so a concurrent status flip (e.g. MarkTokenExpired) is
+	// not reverted by a stale read-modify-write snapshot. Returns
+	// ErrIntegrationNotFound when no active row matches.
+	UpdateExternalID(ctx context.Context, id uuid.UUID, externalID string) error
+
 	// CountIntegrationsWithDifferentFingerprint returns the count of non-deleted
 	// integrations whose encryption_key_fingerprint is set and differs from
 	// currentFP. Used by the fingerprint boot-check to detect key-ID drift.
