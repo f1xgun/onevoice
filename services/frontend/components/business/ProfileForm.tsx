@@ -49,11 +49,11 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   });
 
   useEffect(() => {
-    if (defaultValues) {
-      reset(defaultValues);
-      setLogoUrl(defaultValues.logoUrl ?? '');
-    }
-  }, [defaultValues, reset]);
+    if (!defaultValues) return;
+    setLogoUrl(defaultValues.logoUrl ?? '');
+    if (isDirty) return; // user is mid-edit — don't clobber their typed values
+    reset(defaultValues);
+  }, [defaultValues, reset, isDirty]);
 
   const mutation = useMutation({
     mutationFn: (data: BusinessInput) => {
