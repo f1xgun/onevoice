@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -469,6 +470,149 @@ func TestRolesHandler_Create(t *testing.T) {
 
 		assert.Equal(t, http.StatusCreated, w.Code)
 		rr.AssertExpectations(t)
+	})
+}
+
+// TestRolesHandler_Create_OversizedBody_Returns400 asserts both input bounds on
+// POST: the body byte cap (MaxBytesReader) and the per-field name length cap.
+//
+// over-large body: the bulk lives in an unknown field so no per-field check
+// catches it — a pass requires the byte cap. over-long name: the bulk is the
+// name itself. Revert either the `r.Body = http.MaxBytesReader(...)` line or the
+// `len(name) > maxRoleNameLen` check in Create and the respective sub-test flips
+// to 201 (CreateInTx runs).
+func TestRolesHandler_Create_OversizedBody_Returns400(t *testing.T) {
+	t.Run("oversized_body", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		mr := &MockBusinessMembershipRepository{}
+		inv := &recordingInvalidator{}
+		mockPool, err := pgxmock.NewPool()
+		require.NoError(t, err)
+
+		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		mockPool.ExpectCommit()
+		rr.On("CreateInTx", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		h := newRolesHandlerForTest(rr, mr, mockPool, inv)
+
+		ctx := businessContextFull(context.Background(), uuid.New(), uuid.New(), ownerRoleUUID(t),
+			authz.PermRolesCreate, authz.PermContentRead)
+		filler := strings.Repeat("a", maxRoleBodyBytes+1)
+		body := `{"name":"Editor","permissions":["content.read"],"_pad":"` + filler + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)).WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.Create(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		rr.AssertNotCalled(t, "CreateInTx")
+	})
+
+	t.Run("oversized_name", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		mr := &MockBusinessMembershipRepository{}
+		inv := &recordingInvalidator{}
+		mockPool, err := pgxmock.NewPool()
+		require.NoError(t, err)
+
+		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		mockPool.ExpectCommit()
+		rr.On("CreateInTx", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		h := newRolesHandlerForTest(rr, mr, mockPool, inv)
+
+		ctx := businessContextFull(context.Background(), uuid.New(), uuid.New(), ownerRoleUUID(t),
+			authz.PermRolesCreate, authz.PermContentRead)
+		body, _ := json.Marshal(map[string]interface{}{
+			"name":        strings.Repeat("a", 300),
+			"permissions": []string{"content.read"},
+		})
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)).WithContext(ctx)
+		w := httptest.NewRecorder()
+		h.Create(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assertErrorCode(t, w, "validation_failed")
+		rr.AssertNotCalled(t, "CreateInTx")
+	})
+}
+
+// TestRolesHandler_Update_OversizedBody_Returns400 mirrors the Create case for
+// PATCH. Revert the MaxBytesReader line or the name length cap in Update and the
+// respective sub-test flips to 200 (UpdateInTx runs).
+func TestRolesHandler_Update_OversizedBody_Returns400(t *testing.T) {
+	t.Run("oversized_body", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		mr := &MockBusinessMembershipRepository{}
+		inv := &recordingInvalidator{}
+		mockPool, err := pgxmock.NewPool()
+		require.NoError(t, err)
+
+		bizID := uuid.New()
+		roleID := uuid.New()
+
+		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
+			ID:         roleID,
+			BusinessID: &bizID,
+			Name:       "Old",
+			IsSystem:   false,
+		}, nil)
+		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		mockPool.ExpectCommit()
+		rr.On("UpdateInTx", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		h := newRolesHandlerForTest(rr, mr, mockPool, inv)
+
+		ctx := businessContextFull(context.Background(), bizID, uuid.New(), ownerRoleUUID(t),
+			authz.PermRolesUpdate, authz.PermContentRead)
+		filler := strings.Repeat("a", maxRoleBodyBytes+1)
+		body := `{"name":"New","permissions":["content.read"],"_pad":"` + filler + `"}`
+		req := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(body)).WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		req = withRoleIDParam(req, roleID.String())
+		w := httptest.NewRecorder()
+		h.Update(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		rr.AssertNotCalled(t, "UpdateInTx")
+	})
+
+	t.Run("oversized_name", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		mr := &MockBusinessMembershipRepository{}
+		inv := &recordingInvalidator{}
+		mockPool, err := pgxmock.NewPool()
+		require.NoError(t, err)
+
+		bizID := uuid.New()
+		roleID := uuid.New()
+
+		rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
+			ID:         roleID,
+			BusinessID: &bizID,
+			Name:       "Old",
+			IsSystem:   false,
+		}, nil)
+		mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		mockPool.ExpectCommit()
+		rr.On("UpdateInTx", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		h := newRolesHandlerForTest(rr, mr, mockPool, inv)
+
+		ctx := businessContextFull(context.Background(), bizID, uuid.New(), ownerRoleUUID(t),
+			authz.PermRolesUpdate, authz.PermContentRead)
+		body, _ := json.Marshal(map[string]interface{}{
+			"name":        strings.Repeat("a", 300),
+			"permissions": []string{"content.read"},
+		})
+		req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(body)).WithContext(ctx)
+		req = withRoleIDParam(req, roleID.String())
+		w := httptest.NewRecorder()
+		h.Update(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assertErrorCode(t, w, "validation_failed")
+		rr.AssertNotCalled(t, "UpdateInTx")
 	})
 }
 

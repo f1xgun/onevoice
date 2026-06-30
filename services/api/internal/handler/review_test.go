@@ -222,6 +222,36 @@ func TestReplyToReview_InvalidJSON(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
+// TestReviewHandler_Reply_OversizedText_Returns400 asserts the reply length cap:
+// a reply far over maxReviewReplyRunes is rejected with 400 and Reply is never
+// invoked. Revert the MaxBytesReader line or the rune-count check in
+// ReplyToReview and this flips to 200 (the oversized reply reaches the service).
+func TestReviewHandler_Reply_OversizedText_Returns400(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockReviewService{
+		replyFn: func(_ context.Context, _ uuid.UUID, _, _ string) error {
+			called = true
+			return nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	r := chi.NewRouter()
+	r.Put("/reviews/{id}/reply", h.ReplyToReview)
+
+	body := `{"replyText":"` + strings.Repeat("a", 100000) + `"}`
+	req := httptest.NewRequest(http.MethodPut, "/reviews/rev-1/reply", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.False(t, called, "Reply must not run for an oversized reply text")
+}
+
 func TestReplyToReview_ReviewNotFound(t *testing.T) {
 	businessID := uuid.New()
 	userID := uuid.New()
