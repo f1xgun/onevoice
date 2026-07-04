@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // MockIntegrationService is a mock implementation of IntegrationService for testing
@@ -48,6 +49,53 @@ func (m *MockIntegrationService) MarkTokenExpired(ctx context.Context, businessI
 	args := m.Called(ctx, businessID, platform, externalID)
 	return args.Error(0)
 }
+
+// fakeIntegrationBusinessService is a full BusinessService the integration
+// handler tests can pass to NewIntegrationHandler. By default GetByID resolves
+// any ID to a live business; tests exercising the soft-deleted
+// (erasure-pending) path override getByIDFunc to return
+// domain.ErrBusinessNotFound. The remaining methods are unused by the
+// integration handler and panic if called.
+type fakeIntegrationBusinessService struct {
+	getByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+}
+
+func (f *fakeIntegrationBusinessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	if f.getByIDFunc != nil {
+		return f.getByIDFunc(ctx, id)
+	}
+	return &domain.Business{ID: id}, nil
+}
+
+func (f *fakeIntegrationBusinessService) Create(context.Context, *domain.Business, uuid.UUID) (*domain.Business, error) {
+	panic("not implemented")
+}
+
+func (f *fakeIntegrationBusinessService) Update(context.Context, *domain.Business, uuid.UUID) (*domain.Business, error) {
+	panic("not implemented")
+}
+
+func (f *fakeIntegrationBusinessService) UpdateLogoURL(context.Context, uuid.UUID, string, uuid.UUID) (*domain.Business, error) {
+	panic("not implemented")
+}
+
+func (f *fakeIntegrationBusinessService) UpdateSettingsKeys(context.Context, uuid.UUID, map[string]interface{}, uuid.UUID) (*domain.Business, error) {
+	panic("not implemented")
+}
+
+func (f *fakeIntegrationBusinessService) ListMembershipsByUser(context.Context, uuid.UUID) ([]service.MembershipSummary, error) {
+	panic("not implemented")
+}
+
+func (f *fakeIntegrationBusinessService) GetToolApprovals(context.Context, uuid.UUID) (map[string]domain.ToolFloor, error) {
+	panic("not implemented")
+}
+
+func (f *fakeIntegrationBusinessService) UpdateToolApprovals(context.Context, uuid.UUID, map[string]domain.ToolFloor) error {
+	panic("not implemented")
+}
+
+var _ BusinessService = (*fakeIntegrationBusinessService)(nil)
 
 // integrationBizCtx seeds a BusinessContext with the given permissions.
 func integrationBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context.Context {
@@ -82,7 +130,7 @@ func TestListIntegrations_Success(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return(integrations, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -117,7 +165,7 @@ func TestListIntegrations_EmptyList(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -149,7 +197,7 @@ func TestListIntegrations_EmptyList(t *testing.T) {
 // TestListIntegrations_NoBusinessContext tests 500 when no BusinessContext in ctx (middleware misconfiguration)
 func TestListIntegrations_NoBusinessContext(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -170,7 +218,7 @@ func TestListIntegrations_Forbidden(t *testing.T) {
 	userID := uuid.New()
 
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +242,7 @@ func TestListIntegrations_IntegrationServiceError(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration(nil), errors.New("database query failed"))
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -237,7 +285,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID, userID).Return(nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -265,7 +313,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 func TestDeleteIntegration_NoBusinessContext(t *testing.T) {
 	integrationID := uuid.New()
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -291,7 +339,7 @@ func TestDeleteIntegration_Forbidden(t *testing.T) {
 	integrationID := uuid.New()
 
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -321,7 +369,7 @@ func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -356,7 +404,7 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID, userID).Return(errors.New("redis deletion failed"))
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -394,11 +442,74 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 
 // TestNewIntegrationHandler_NilIntegrationService tests error when integration service is nil
 func TestNewIntegrationHandler_NilIntegrationService(t *testing.T) {
-	h, err := NewIntegrationHandler(nil, nil, audit.Nop())
+	h, err := NewIntegrationHandler(nil, &fakeIntegrationBusinessService{}, audit.Nop())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 	if h != nil {
 		t.Fatal("expected nil handler")
 	}
+}
+
+// TestNewIntegrationHandler_NilBusinessService tests error when business service is nil
+func TestNewIntegrationHandler_NilBusinessService(t *testing.T) {
+	h, err := NewIntegrationHandler(new(MockIntegrationService), nil, audit.Nop())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if h != nil {
+		t.Fatal("expected nil handler")
+	}
+}
+
+// TestDeleteIntegration_SoftDeletedBusiness verifies that disconnecting an
+// integration is rejected with 404 while the organization is soft-deleted
+// (erasure-pending), and that no soft-delete or revoke is performed.
+func TestDeleteIntegration_SoftDeletedBusiness(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	integrationID := uuid.New()
+
+	mockIntegrationService := new(MockIntegrationService)
+	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{
+		{ID: integrationID, BusinessID: businessID, Platform: "google", Status: "active"},
+	}, nil).Maybe()
+	mockIntegrationService.On("Delete", mock.Anything, integrationID, userID).Return(nil).Maybe()
+
+	businessService := &fakeIntegrationBusinessService{
+		getByIDFunc: func(context.Context, uuid.UUID) (*domain.Business, error) {
+			return nil, domain.ErrBusinessNotFound
+		},
+	}
+
+	h, err := NewIntegrationHandler(mockIntegrationService, businessService, audit.Nop())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
+	ctx := integrationBizCtx(businessID, userID, authz.PermIntegrationsDisconnect)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("integrationId", integrationID.String())
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.DeleteIntegration(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Error != "business not found" {
+		t.Errorf("expected 'business not found', got '%s'", response.Error)
+	}
+
+	mockIntegrationService.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything, mock.Anything)
+	mockIntegrationService.AssertNotCalled(t, "ListByBusinessID", mock.Anything, mock.Anything)
 }
