@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/sse"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
@@ -214,6 +215,7 @@ func recoverToolPanic(ctx context.Context, r any) error {
 func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, error) {
 	ch := make(chan Event, 32)
 
+	req.BusinessContext.ImageGen = o.tools.Has(tools.GenerateImage)
 	platform, business, history := prompt.BuildSplit(req.BusinessContext, req.ProjectContext, req.Messages)
 
 	state := &RunState{

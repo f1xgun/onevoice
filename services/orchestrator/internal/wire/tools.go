@@ -1,12 +1,14 @@
 package wire
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
 	natslib "github.com/nats-io/nats.go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -25,9 +27,11 @@ const natsReconnectWait = 2 * time.Second
 // orchestrator restart. This replaces the prior behavior where a boot-time
 // NATS outage left the registry permanently empty.
 //
-// No ctx parameter: the v1 nats.go API does not accept a context for dial,
-// so threading one through would be ceremonial.
-func Tools(log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natslib.Conn, error) {
+// ctx is used only to build the generated-media object store (a MinIO
+// BucketExists/MakeBucket round trip) when image generation is enabled; the v1
+// nats.go dial takes no context. billing is threaded into the in-process
+// generate_image executor so image spend lands in usage_logs.
+func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing llm.Writer) (*toolregistry.Registry, *natslib.Conn, error) {
 	reg := toolregistry.NewRegistry()
 
 	nc, err := natslib.Connect(cfg.NATSUrl,
@@ -53,7 +57,28 @@ func Tools(log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natsl
 
 	RegisterPlatformTools(reg, nc, cfg.EnableGoogleBusiness)
 	log.Info("registered platform tools", "nats_url", cfg.NATSUrl)
+
+	registerImageGenTool(ctx, log, reg, cfg, billing)
 	return reg, nc, nil
+}
+
+// registerImageGenTool wires the in-process generate_image tool when image
+// generation is enabled AND fully configured. It degrades gracefully: an
+// unconfigured generator (nil) or an object store that fails to initialize
+// leaves the tool unregistered and the process boots normally — the feature is
+// strictly opt-in, so a partial config must never crash the orchestrator.
+func registerImageGenTool(ctx context.Context, log *slog.Logger, reg *toolregistry.Registry, cfg *config.Config, billing llm.Writer) {
+	gen := ImageGen(cfg)
+	if gen == nil {
+		return
+	}
+	store, err := ImageStore(ctx, cfg)
+	if err != nil {
+		log.Warn("generate_image tool disabled: object store init failed — check S3_ENDPOINT / PUBLIC_URL", "error", err)
+		return
+	}
+	RegisterInternalTools(reg, gen, store, billing, cfg)
+	log.Info("registered internal tools", "generate_image", true, "provider", gen.Name())
 }
 
 // RegisterPlatformTools wires NATS executors into the tool registry for each

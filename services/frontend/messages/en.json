@@ -669,6 +669,9 @@
           "reply_review": {
             "name": "Reply to Google review"
           }
+        },
+        "generate_image": {
+          "name": "Generate image"
         }
       }
     }

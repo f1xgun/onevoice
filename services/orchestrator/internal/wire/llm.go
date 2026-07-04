@@ -34,6 +34,13 @@ var modelPricing = map[string]struct {
 	"anthropic/claude-haiku-4-5":  {1.00, 5.00},
 	"anthropic/claude-opus-4-7":   {5.00, 25.00},
 	"openai/gpt-4o-mini":          {0.15, 0.60},
+	// dall-e-3 is billed PER IMAGE, not per token — the authoritative flat list
+	// price ($0.04 for a 1024×1024) lives in pkg/imagegen and is stamped
+	// directly onto the generate_image usage row. This entry only keeps the
+	// model id present in the orchestrator rate card so it is never treated as
+	// an unknown ($0-drift) model; the per-1M-token fields are not consulted for
+	// image generation.
+	"dall-e-3": {0.04, 0.04},
 }
 
 // priceFor returns the (input, output) USD-per-1M-token list price for the

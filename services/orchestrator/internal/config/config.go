@@ -30,6 +30,11 @@ const defaultToolExecTimeout = 180 * time.Second
 // defaultAPIInternalURL is the in-cluster mTLS endpoint dialed for internal API calls.
 const defaultAPIInternalURL = "https://api:8443"
 
+// defaultImageGenMaxBytes caps a generated image at 10 MiB — matching
+// safefetch.DefaultMaxBytes so a persisted object can never exceed the ceiling
+// the platform agents enforce when they later download it to re-upload.
+const defaultImageGenMaxBytes = 10 * 1024 * 1024
+
 // Cost-guard defaults; see docs/orchestrator/config.md and docs/llm-cost-guards.md.
 const (
 	// defaultConversationInputCap stops the agent loop once the running input
@@ -120,6 +125,28 @@ type Config struct {
 	// default — otherwise they surface in Settings → Tools as approvable even
 	// though the platform can never be connected.
 	EnableGoogleBusiness bool
+
+	// Image generation (generate_image tool). OFF by default: the tool is only
+	// registered when ImageGenEnabled is true AND both an OpenAI key and an S3
+	// endpoint are configured. See docs/orchestrator/config.md.
+	ImageGenEnabled  bool
+	ImageGenProvider string
+	ImageGenModel    string
+	ImageGenSize     string
+	ImageGenMaxBytes int64
+
+	// PublicURL is the absolute public origin (e.g. https://app.example.com)
+	// that generated-media URLs are rooted at. MUST be absolute so a generated
+	// photo_url passes the platform agents' safefetch validation.
+	PublicURL string
+
+	// S3* configure the orchestrator-local object store for generated media.
+	// Mirror the api service's keys so one bucket serves both.
+	S3Endpoint  string
+	S3AccessKey string
+	S3SecretKey string
+	S3Bucket    string
+	S3UseSSL    bool
 }
 
 // SelfHostedEndpoint holds one self-hosted LLM inference endpoint.
@@ -245,6 +272,33 @@ func Load() (*Config, error) {
 		enableGoogleBusiness = b
 	}
 
+	imageGenEnabled := false
+	if v := os.Getenv("IMAGE_GEN_ENABLED"); v != "" {
+		b, perr := strconv.ParseBool(v)
+		if perr != nil {
+			return nil, fmt.Errorf("IMAGE_GEN_ENABLED must be a boolean, got %q: %w", v, perr)
+		}
+		imageGenEnabled = b
+	}
+
+	imageGenMaxBytes := int64(defaultImageGenMaxBytes)
+	if v := os.Getenv("IMAGE_GEN_MAX_BYTES"); v != "" {
+		n, perr := strconv.ParseInt(v, 10, 64)
+		if perr != nil || n <= 0 {
+			return nil, fmt.Errorf("IMAGE_GEN_MAX_BYTES must be a positive integer, got %q", v)
+		}
+		imageGenMaxBytes = n
+	}
+
+	s3UseSSL := false
+	if v := os.Getenv("S3_USE_SSL"); v != "" {
+		b, perr := strconv.ParseBool(v)
+		if perr != nil {
+			return nil, fmt.Errorf("S3_USE_SSL must be a boolean, got %q: %w", v, perr)
+		}
+		s3UseSSL = b
+	}
+
 	return &Config{
 		Port:                 getEnv("PORT", "8090"),
 		LLMModel:             model,
@@ -278,6 +332,19 @@ func Load() (*Config, error) {
 		LocalFallbackWindow:          localFallbackWindow,
 		AllowTransborderLLM:          allowTransborderLLM,
 		EnableGoogleBusiness:         enableGoogleBusiness,
+
+		ImageGenEnabled:  imageGenEnabled,
+		ImageGenProvider: getEnv("IMAGE_GEN_PROVIDER", "openai"),
+		ImageGenModel:    getEnv("IMAGE_GEN_MODEL", "dall-e-3"),
+		ImageGenSize:     getEnv("IMAGE_GEN_SIZE", "1024x1024"),
+		ImageGenMaxBytes: imageGenMaxBytes,
+
+		PublicURL:   os.Getenv("PUBLIC_URL"),
+		S3Endpoint:  os.Getenv("S3_ENDPOINT"),
+		S3AccessKey: os.Getenv("S3_ACCESS_KEY"),
+		S3SecretKey: os.Getenv("S3_SECRET_KEY"),
+		S3Bucket:    getEnv("S3_BUCKET", "onevoice"),
+		S3UseSSL:    s3UseSSL,
 	}, nil
 }
 
