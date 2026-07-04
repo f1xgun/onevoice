@@ -116,7 +116,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create agent task handler: %w", err)
 	}
 
-	projectHandler, err := handler.NewProjectHandler(svcs.Project)
+	projectHandler, err := handler.NewProjectHandler(svcs.Project, svcs.Business)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create project handler: %w", err)
 	}

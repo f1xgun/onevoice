@@ -69,6 +69,23 @@ func (m *mockProjectService) CountConversations(ctx context.Context, businessID,
 
 var _ ProjectService = (*mockProjectService)(nil)
 
+// mockBusinessGetter is the narrow businessGetter fake the project handler
+// needs. By default it resolves any ID to a live business; tests that exercise
+// the soft-deleted (erasure-pending) path override getByIDFunc to return
+// domain.ErrBusinessNotFound.
+type mockBusinessGetter struct {
+	getByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+}
+
+func (m *mockBusinessGetter) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, id)
+	}
+	return &domain.Business{ID: id}, nil
+}
+
+var _ businessGetter = (*mockBusinessGetter)(nil)
+
 // --- helpers ---------------------------------------------------------------
 
 // projectBizCtx seeds a BusinessContext with full content permissions so
@@ -138,7 +155,7 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 		"whitelistMode": "all",
 	})
 	req := withBizContext(http.MethodPost, "/api/v1/projects", body, businessID, userID)
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -203,7 +220,7 @@ func TestProjectHandler_Create_ValidationErrors(t *testing.T) {
 
 			body, _ := json.Marshal(tt.body)
 			req := withBizContext(http.MethodPost, "/api/v1/projects", body, businessID, userID)
-			h, err := NewProjectHandler(ps)
+			h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 			require.NoError(t, err)
 
 			rec := httptest.NewRecorder()
@@ -232,7 +249,7 @@ func TestProjectHandler_List_Success(t *testing.T) {
 	}
 
 	req := withBizContext(http.MethodGet, "/api/v1/projects", nil, businessID, userID)
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -256,7 +273,7 @@ func TestProjectHandler_Get_CrossBusinessReturns404(t *testing.T) {
 	}
 
 	path := "/api/v1/projects/" + projectID.String()
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodGet, path, nil, h.Get, businessID, userID)
@@ -286,7 +303,7 @@ func TestProjectHandler_Update_Success(t *testing.T) {
 		"whitelistMode": "all",
 	})
 	path := "/api/v1/projects/" + projectID.String()
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodPut, path, body, h.Update, businessID, userID)
@@ -309,7 +326,7 @@ func TestProjectHandler_Delete_ReturnsCounts(t *testing.T) {
 	}
 
 	path := "/api/v1/projects/" + projectID.String()
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodDelete, path, nil, h.Delete, businessID, userID)
@@ -333,7 +350,7 @@ func TestProjectHandler_ConversationCount(t *testing.T) {
 	}
 
 	path := "/api/v1/projects/" + projectID.String() + "/conversation-count"
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	rec := chiRouteRequest("/api/v1/projects/{id}/conversation-count", http.MethodGet, path, nil, h.ConversationCount, businessID, userID)
@@ -346,7 +363,7 @@ func TestProjectHandler_ConversationCount(t *testing.T) {
 
 func TestProjectHandler_Endpoints_Require500WhenNoBusinessContext(t *testing.T) {
 	ps := &mockProjectService{}
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	endpoints := []struct {
@@ -392,7 +409,7 @@ func TestProjectHandler_InvalidUUID_Returns400(t *testing.T) {
 	businessID := uuid.New()
 
 	ps := &mockProjectService{}
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	path := "/api/v1/projects/not-a-uuid"
@@ -410,7 +427,7 @@ func TestProjectHandler_Create_InvalidBody_Returns400(t *testing.T) {
 
 	ps := &mockProjectService{}
 	req := withBizContext(http.MethodPost, "/api/v1/projects", []byte("not-json"), businessID, userID)
-	h, err := NewProjectHandler(ps)
+	h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -442,7 +459,7 @@ func TestProjectHandler_OversizedBody_Returns400(t *testing.T) {
 				return &domain.Project{ID: projectID, BusinessID: bid, Name: input.Name}, nil
 			},
 		}
-		h, err := NewProjectHandler(ps)
+		h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 		require.NoError(t, err)
 
 		req := withBizContext(http.MethodPost, "/api/v1/projects", body, businessID, userID)
@@ -461,7 +478,7 @@ func TestProjectHandler_OversizedBody_Returns400(t *testing.T) {
 				return &domain.Project{ID: id, BusinessID: bid, Name: input.Name}, nil
 			},
 		}
-		h, err := NewProjectHandler(ps)
+		h, err := NewProjectHandler(ps, &mockBusinessGetter{})
 		require.NoError(t, err)
 
 		path := "/api/v1/projects/" + projectID.String()
@@ -472,7 +489,93 @@ func TestProjectHandler_OversizedBody_Returns400(t *testing.T) {
 }
 
 func TestNewProjectHandler_NilArgs(t *testing.T) {
-	_, err := NewProjectHandler(nil)
+	_, err := NewProjectHandler(nil, &mockBusinessGetter{})
 	assert.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "projectService"))
+
+	_, err = NewProjectHandler(&mockProjectService{}, nil)
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "businessService"))
+}
+
+// TestProjectHandler_WriteEndpoints_SoftDeletedBusiness_Returns404 asserts the
+// write endpoints (Create, Update, Delete) reject mutations against a
+// soft-deleted (erasure-pending) organization with 404. The businessGetter
+// returns domain.ErrBusinessNotFound; the project service stubs succeed, so
+// removing the existence gate flips the response to 201/200 — fail-on-revert.
+func TestProjectHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+
+	deletedBiz := &mockBusinessGetter{
+		getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return nil, domain.ErrBusinessNotFound
+		},
+	}
+
+	assertBusinessNotFound := func(t *testing.T, rec *httptest.ResponseRecorder) {
+		t.Helper()
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		assert.Equal(t, "business not found", resp.Error)
+	}
+
+	t.Run("Create", func(t *testing.T) {
+		createCalled := false
+		ps := &mockProjectService{
+			createFunc: func(_ context.Context, bid, _ uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
+				createCalled = true
+				return &domain.Project{ID: projectID, BusinessID: bid, Name: input.Name}, nil
+			},
+		}
+		h, err := NewProjectHandler(ps, deletedBiz)
+		require.NoError(t, err)
+
+		body, _ := json.Marshal(map[string]any{"name": "Reviews", "whitelistMode": "all"})
+		req := withBizContext(http.MethodPost, "/api/v1/projects", body, businessID, userID)
+		rec := httptest.NewRecorder()
+		h.Create(rec, req)
+
+		assertBusinessNotFound(t, rec)
+		assert.False(t, createCalled, "projectService.Create must not run for a soft-deleted business")
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		updateCalled := false
+		ps := &mockProjectService{
+			updateFunc: func(_ context.Context, bid, id, _ uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
+				updateCalled = true
+				return &domain.Project{ID: id, BusinessID: bid, Name: input.Name}, nil
+			},
+		}
+		h, err := NewProjectHandler(ps, deletedBiz)
+		require.NoError(t, err)
+
+		body, _ := json.Marshal(map[string]any{"name": "NewName", "whitelistMode": "all"})
+		path := "/api/v1/projects/" + projectID.String()
+		rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodPut, path, body, h.Update, businessID, userID)
+
+		assertBusinessNotFound(t, rec)
+		assert.False(t, updateCalled, "projectService.Update must not run for a soft-deleted business")
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		deleteCalled := false
+		ps := &mockProjectService{
+			deleteCascadeFunc: func(_ context.Context, _, _, _ uuid.UUID) (int, int, error) {
+				deleteCalled = true
+				return 5, 42, nil
+			},
+		}
+		h, err := NewProjectHandler(ps, deletedBiz)
+		require.NoError(t, err)
+
+		path := "/api/v1/projects/" + projectID.String()
+		rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodDelete, path, nil, h.Delete, businessID, userID)
+
+		assertBusinessNotFound(t, rec)
+		assert.False(t, deleteCalled, "projectService.DeleteCascade must not run for a soft-deleted business")
+	})
 }

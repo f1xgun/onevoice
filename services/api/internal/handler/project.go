@@ -24,24 +24,38 @@ import (
 // body before any field bound can run.
 const maxProjectBodyBytes = 64 * 1024
 
+// businessGetter is the narrow consumer-side slice of the business service the
+// project handler needs: it resolves a business by ID so the write endpoints
+// can reject mutations against a soft-deleted (erasure-pending) organization.
+type businessGetter interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+}
+
 // ProjectHandler serves the /api/v1/projects REST endpoints.
 type ProjectHandler struct {
-	projectService ProjectService
+	projectService  ProjectService
+	businessService businessGetter
 	// toolsCache is optional — required only for approval-overrides
 	// validation on PUT /projects/{id}. When nil, approvalOverrides in the
 	// request body are rejected with a 503.
 	toolsCache ToolsCache
 }
 
-// NewProjectHandler constructs a ProjectHandler. The projectService dependency
-// is required. Business scoping is now handled by the RequireBusinessAccess
-// middleware which injects BusinessContext into every request.
-func NewProjectHandler(ps ProjectService) (*ProjectHandler, error) {
+// NewProjectHandler constructs a ProjectHandler. Both the projectService and
+// businessService dependencies are required. Business scoping is handled by the
+// RequireBusinessAccess middleware which injects BusinessContext into every
+// request; the businessService lets the write endpoints additionally reject
+// mutations against a soft-deleted organization.
+func NewProjectHandler(ps ProjectService, bs businessGetter) (*ProjectHandler, error) {
 	if ps == nil {
 		return nil, fmt.Errorf("NewProjectHandler: projectService cannot be nil")
 	}
+	if bs == nil {
+		return nil, fmt.Errorf("NewProjectHandler: businessService cannot be nil")
+	}
 	return &ProjectHandler{
-		projectService: ps,
+		projectService:  ps,
+		businessService: bs,
 	}, nil
 }
 
@@ -156,6 +170,16 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "create project: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxProjectBodyBytes)
 	var req openapi.ProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -221,6 +245,16 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "update project: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxProjectBodyBytes)
 	var req openapi.ProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -251,6 +285,16 @@ func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := parseProjectID(w, r)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "delete project: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 

@@ -57,6 +57,14 @@ func (s *stubProjectSvc) CountConversations(_ context.Context, _, _ uuid.UUID) (
 	return 0, nil
 }
 
+// stubBusinessGetter resolves any ID to a live business so the project
+// handler's write-endpoint existence gate passes.
+type stubBusinessGetter struct{}
+
+func (stubBusinessGetter) GetByID(_ context.Context, id uuid.UUID) (*domain.Business, error) {
+	return &domain.Business{ID: id}, nil
+}
+
 // projBizCtx seeds a BusinessContext with full content permissions for
 // project approval-overrides tests.
 func projBizCtx(businessID, userID uuid.UUID) context.Context {
@@ -92,7 +100,7 @@ func TestUpdateProject_WithApprovalOverrides_Persists(t *testing.T) {
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	h, err := handler.NewProjectHandler(svc)
+	h, err := handler.NewProjectHandler(svc, stubBusinessGetter{})
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost, tools.VKPublishPost))
 
@@ -126,7 +134,7 @@ func TestUpdateProject_ApprovalOverridesUnknownTool_Returns400(t *testing.T) {
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	h, err := handler.NewProjectHandler(svc)
+	h, err := handler.NewProjectHandler(svc, stubBusinessGetter{})
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
@@ -155,7 +163,7 @@ func TestUpdateProject_ApprovalOverridesInheritValue_EncodedAsAbsence(t *testing
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	h, err := handler.NewProjectHandler(svc)
+	h, err := handler.NewProjectHandler(svc, stubBusinessGetter{})
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost, tools.VKPublishPost))
 
@@ -187,7 +195,7 @@ func TestUpdateProject_ApprovalOverridesInvalidValue_Returns400(t *testing.T) {
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	h, err := handler.NewProjectHandler(svc)
+	h, err := handler.NewProjectHandler(svc, stubBusinessGetter{})
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
