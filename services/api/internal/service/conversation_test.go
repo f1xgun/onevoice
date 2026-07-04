@@ -256,6 +256,10 @@ type stubPendingToolCallRepo struct {
 	// DeleteByConversationID so the delete-cascade test can assert the
 	// conversation's pending batches were purged.
 	DeletedConvIDs []string
+	// DeletedBusinessIDs records every businessID passed to DeleteByBusinessID
+	// so the business hard-delete cascade test can assert the org's pending
+	// batches were purged.
+	DeletedBusinessIDs []string
 	// DeleteErr forces DeleteByConversationID to fail.
 	DeleteErr error
 	// order, when non-nil, records the relative ordering of the pending-batch
@@ -312,6 +316,15 @@ func (s *stubPendingToolCallRepo) DeleteByConversationIDs(ctx context.Context, i
 		total += n
 	}
 	return total, nil
+}
+func (s *stubPendingToolCallRepo) DeleteByBusinessID(_ context.Context, businessID string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.DeleteErr != nil {
+		return 0, s.DeleteErr
+	}
+	s.DeletedBusinessIDs = append(s.DeletedBusinessIDs, businessID)
+	return 1, nil
 }
 func (s *stubPendingToolCallRepo) DeleteByConversationID(_ context.Context, conversationID string) (int64, error) {
 	s.mu.Lock()

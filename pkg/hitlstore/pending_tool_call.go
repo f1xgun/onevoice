@@ -411,6 +411,25 @@ func (r *pendingToolCallRepo) DeleteByConversationID(ctx context.Context, conver
 	return r.DeleteByConversationIDs(ctx, []string{conversationID})
 }
 
+// DeleteByBusinessID hard-deletes every batch scoped to businessID, returning
+// the count removed. This is the business-scoped cascade hook — the sibling of
+// DeleteByConversationIDs — that keeps a batch's business_id + user_id +
+// ModelMessages snapshot (a full conversation-history PII copy) from outliving
+// the business it belongs to. A batch has no reachable read path once its
+// business is hard-deleted, and an un-promoted "preparing" or reconciled
+// "expired" batch carries no expires_at so the TTL sweep would otherwise never
+// reap it. Backed by the pending_tool_calls_business index.
+func (r *pendingToolCallRepo) DeleteByBusinessID(ctx context.Context, businessID string) (int64, error) {
+	if businessID == "" {
+		return 0, nil
+	}
+	res, err := r.coll.DeleteMany(ctx, bson.M{"business_id": businessID})
+	if err != nil {
+		return 0, fmt.Errorf("pending_tool_call: delete by business id: %w", err)
+	}
+	return res.DeletedCount, nil
+}
+
 // ReconcileOrphanPreparing sweeps batches stuck in status="preparing"
 // older than olderThan, marking them expired AND stamping expires_at. A
 // "preparing" row carries no expires_at (it is set only on promotion to

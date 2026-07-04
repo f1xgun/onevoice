@@ -319,6 +319,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		repos.BusinessMembership,
 		repos.User,
 		repos.Conversation,
+		h.PendingToolCallRepo,
 		repos.EmailOutbox,
 		s.AuditLogger,
 	)

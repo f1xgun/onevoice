@@ -164,6 +164,9 @@ func (f *fakeHITLPendingRepo) DeleteByConversationIDs(_ context.Context, _ []str
 func (f *fakeHITLPendingRepo) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }
+func (f *fakeHITLPendingRepo) DeleteByBusinessID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 
 type fakeBusinessRepoHITL struct {
 	biz *domain.Business

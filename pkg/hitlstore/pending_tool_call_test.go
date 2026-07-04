@@ -617,6 +617,79 @@ func TestPendingToolCall_DeleteByConversationID(t *testing.T) {
 	assert.Equal(t, int64(1), kept, "a batch on another conversation must survive")
 }
 
+// TestPendingToolCall_DeleteByBusinessID deletes only the batches whose
+// business_id matches, across every status — including a "preparing" orphan that
+// carries no expires_at and so would never be reaped by the TTL index. This is
+// the business-scoped cascade hook that stops a batch's business_id + user_id +
+// model_messages PII snapshot from outliving the hard-deleted organization it
+// belongs to.
+//
+// Fail-on-revert: without a DeleteMany on business_id the target batches remain
+// resident and the count/residency assertions below turn red.
+func TestPendingToolCall_DeleteByBusinessID(t *testing.T) {
+	db := setupPendingToolCallDB(t, "delete_by_business")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "b-pending", ConversationID: "conv-1", BusinessID: "biz-del",
+		UserID: "u", MessageID: "m1", Status: "pending",
+		ModelMessages: []byte(`[{"role":"user"}]`),
+		CreatedAt:     now, UpdatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "b-preparing", ConversationID: "conv-2", BusinessID: "biz-del",
+		UserID: "u", MessageID: "m2", Status: "preparing",
+		CreatedAt: now, UpdatedAt: now,
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "b-expired", ConversationID: "conv-3", BusinessID: "biz-del",
+		UserID: "u", MessageID: "m3", Status: "expired",
+		CreatedAt: now, UpdatedAt: now,
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "keep-other-biz", ConversationID: "conv-4", BusinessID: "biz-other",
+		UserID: "u", MessageID: "m4", Status: "pending",
+		CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+	})
+
+	deleted, err := repo.DeleteByBusinessID(ctx, "biz-del")
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), deleted, "all three batches on biz-del must be deleted")
+
+	remaining, err := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{"business_id": "biz-del"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), remaining, "no batch may survive the business hard-delete, including the preparing orphan")
+
+	kept, err := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{"_id": "keep-other-biz"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), kept, "a batch on another business must survive")
+}
+
+// TestPendingToolCall_DeleteByBusinessID_EmptyIsNoop guards the fast path: an
+// empty business id must not issue a delete.
+func TestPendingToolCall_DeleteByBusinessID_EmptyIsNoop(t *testing.T) {
+	db := setupPendingToolCallDB(t, "delete_business_empty")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "survivor", ConversationID: "conv-x", BusinessID: "biz-1",
+		UserID: "u", MessageID: "m", Status: "pending",
+		CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+	})
+
+	deleted, err := repo.DeleteByBusinessID(ctx, "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted)
+
+	total, err := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total, "empty business id must delete nothing")
+}
+
 // TestPendingToolCall_DeleteByConversationIDs_EmptyIsNoop guards the
 // project-cascade fast path: an empty id set must not issue a delete (which with
 // an empty $in would still match nothing, but the guard avoids the round-trip).

@@ -135,6 +135,10 @@ func (m *mockPendingRepo) DeleteByConversationID(_ context.Context, _ string) (i
 	return 0, nil
 }
 
+func (m *mockPendingRepo) DeleteByBusinessID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
 // Satisfy the full interface — this mock is used by both step_test.go and
 // resume_test.go. If interface drifts, compile fails here first.
 var _ domain.PendingToolCallRepository = (*mockPendingRepo)(nil)

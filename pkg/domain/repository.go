@@ -474,4 +474,12 @@ type PendingToolCallRepository interface {
 	// DeleteByConversationID is the single-conversation form of
 	// DeleteByConversationIDs, used by the per-conversation delete cascade.
 	DeleteByConversationID(ctx context.Context, conversationID string) (int64, error)
+	// DeleteByBusinessID hard-deletes every batch scoped to businessID and
+	// returns the number removed. Used by the business hard-delete cascade: a
+	// batch carries business_id + user_id + a ModelMessages snapshot (a full
+	// conversation-history PII copy) with no live read path once the business is
+	// gone, and an un-promoted "preparing" or reconciled "expired" batch carries
+	// no expires_at so the TTL sweep never reaps it. Backed by the
+	// pending_tool_calls_business index.
+	DeleteByBusinessID(ctx context.Context, businessID string) (int64, error)
 }
