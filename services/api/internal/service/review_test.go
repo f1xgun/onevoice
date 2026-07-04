@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
@@ -46,6 +47,84 @@ func (c *capturingRequester) RequestMsgWithContext(_ context.Context, msg *natsl
 	_ = json.Unmarshal(msg.Data, &c.last)
 	resp, _ := json.Marshal(a2a.ToolResponse{TaskID: c.last.TaskID, Success: true})
 	return &natslib.Msg{Data: resp}, nil
+}
+
+// softDeletedBusinessService stubs the BusinessService the review service uses
+// to gate soft-deleted organizations. GetByID always reports the business as
+// gone (deleted_at IS NOT NULL) so a caller inside the deletion grace window is
+// rejected before any external platform work. The embedded interface leaves the
+// unused methods unimplemented — calling one panics, surfacing an unexpected use.
+type softDeletedBusinessService struct {
+	BusinessService
+	calls int
+}
+
+func (s *softDeletedBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+	s.calls++
+	return nil, domain.ErrBusinessNotFound
+}
+
+// stubRefresher records SyncForBusiness calls so a test can assert the manual
+// refresh fanout never fired for a soft-deleted business.
+type stubRefresher struct {
+	calls int
+}
+
+func (s *stubRefresher) SyncForBusiness(_ context.Context, _ uuid.UUID) error {
+	s.calls++
+	return nil
+}
+
+// TestReply_SoftDeletedBusinessBlocksDispatch asserts a manual review reply for
+// a soft-deleted organization returns domain.ErrBusinessNotFound and never
+// dispatches to the platform agent or writes the reply. Reverting the
+// gateBusiness call in Reply lets the dispatch and status write run and fails
+// this test.
+func TestReply_SoftDeletedBusinessBlocksDispatch(t *testing.T) {
+	biz := uuid.New()
+	repo := &stubReviewRepo{review: &domain.Review{
+		ID:           "rev-del",
+		BusinessID:   biz.String(),
+		Platform:     a2a.AgentTelegram,
+		ExternalID:   "-100_7",
+		ReplyStatus:  domain.ReviewReplyStatusPending,
+		PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+	}}
+	nc := &capturingRequester{}
+	svc := &reviewService{
+		repo:            repo,
+		businessService: &softDeletedBusinessService{},
+		nc:              nc,
+		dispatchTimeout: time.Second,
+	}
+
+	err := svc.Reply(context.Background(), biz, "rev-del", "спасибо")
+	require.ErrorIs(t, err, domain.ErrBusinessNotFound)
+	require.Zero(t, nc.calls, "a soft-deleted business must not dispatch a reply to the platform")
+	require.Zero(t, repo.updateReplies, "a soft-deleted business must not persist a reply")
+}
+
+// TestRefresh_SoftDeletedBusinessBlocksSync asserts a manual refresh for a
+// soft-deleted organization returns domain.ErrBusinessNotFound and never invokes
+// the syncer fanout. Reverting the gateBusiness call in Refresh lets
+// SyncForBusiness run and fails this test.
+func TestRefresh_SoftDeletedBusinessBlocksSync(t *testing.T) {
+	biz := uuid.New()
+	user := uuid.New()
+	refresher := &stubRefresher{}
+	svc := &reviewService{
+		businessService: &softDeletedBusinessService{},
+		refresher:       refresher,
+	}
+
+	ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID: biz,
+		UserID:     user,
+	})
+
+	err := svc.Refresh(ctx, user)
+	require.ErrorIs(t, err, domain.ErrBusinessNotFound)
+	require.Zero(t, refresher.calls, "a soft-deleted business must not trigger the review sync fanout")
 }
 
 func TestReply_ShortCircuitsWhenAlreadyReplied(t *testing.T) {
