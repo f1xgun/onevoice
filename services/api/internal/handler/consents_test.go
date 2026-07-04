@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -146,6 +147,40 @@ func TestReconsentHandler_204_OnSuccess(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, w.Code)
 	require.True(t, svc.reconsentCalled)
 	require.Len(t, svc.lastPolicies, 3)
+}
+
+// TestReconsentHandler_OversizedBody_Rejected asserts the body cap on POST
+// /auth/consents. All three policies are present and the bulk lives in an
+// unknown padding field, so the decoder must scan past the cap to finish the
+// object. The service would otherwise run, so removing the MaxBytesReader line
+// flips the response to 204 and invokes ReConsent.
+func TestReconsentHandler_OversizedBody_Rejected(t *testing.T) {
+	svc := &fakeConsentsService{}
+	h := NewConsentsHandler(svc, nil, &fakeConsentsLister{}, testAllowedOrigins)
+	filler := strings.Repeat("z", maxConsentBodyBytes+1)
+	body := `{"policies":[{"slug":"tos","version":"v1.0"},{"slug":"privacy","version":"v1.0"},{"slug":"pdn","version":"v1.0"}],"_pad":"` + filler + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/auth/consents", bytes.NewBufferString(body))
+	req.Header.Set("Origin", "http://localhost:3000")
+	req = ctxWithUserID(req, uuid.New())
+	w := httptest.NewRecorder()
+	h.Reconsent(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.False(t, svc.reconsentCalled, "service must not run when the body exceeds the cap")
+}
+
+// TestReconsentHandler_SmallBodyAccepted asserts a normal under-cap body still
+// succeeds, so the cap does not reject legitimate requests.
+func TestReconsentHandler_SmallBodyAccepted(t *testing.T) {
+	svc := &fakeConsentsService{}
+	h := NewConsentsHandler(svc, nil, &fakeConsentsLister{}, testAllowedOrigins)
+	body := `{"policies":[{"slug":"tos","version":"v1.0"},{"slug":"privacy","version":"v1.0"},{"slug":"pdn","version":"v1.0"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/auth/consents", bytes.NewBufferString(body))
+	req.Header.Set("Origin", "http://localhost:3000")
+	req = ctxWithUserID(req, uuid.New())
+	w := httptest.NewRecorder()
+	h.Reconsent(w, req)
+	require.Equal(t, http.StatusNoContent, w.Code)
+	require.True(t, svc.reconsentCalled)
 }
 
 // TestWithdrawPDNHandler_200OnSuccess asserts the happy path returns 200

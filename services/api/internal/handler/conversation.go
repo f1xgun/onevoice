@@ -25,6 +25,11 @@ const (
 	mongoObjectIDHexLen      = 24
 )
 
+// maxConversationBodyBytes caps the JSON request body on POST
+// /conversations/{id}/move. The payload is a single optional project_id UUID;
+// this guards the decoder from an unbounded body. Mirrors maxProjectBodyBytes.
+const maxConversationBodyBytes = 64 * 1024
+
 // ConversationHandler serves the conversation CRUD + move/pin/unpin/list-messages surface.
 // See docs/api/handlers/conversation.md.
 type ConversationHandler struct {
@@ -339,6 +344,7 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 
 	conversationID := chi.URLParam(r, "id")
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxConversationBodyBytes)
 	var req openapi.MoveConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")

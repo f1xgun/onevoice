@@ -130,6 +130,90 @@ func TestChatProxy_EnrichesContext(t *testing.T) {
 	assert.Contains(t, activeIntegrations, "vk")
 }
 
+// TestChatProxy_OversizedBody_Rejected asserts the fresh-turn body cap. The
+// message is valid and the bulk lives in an unknown padding field, so the
+// decoder must scan past the cap to finish the object. The orchestrator is
+// stubbed to succeed, so removing the MaxBytesReader line flips the response to
+// 200 and contacts the orchestrator.
+func TestChatProxy_OversizedBody_Rejected(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	orchContacted := false
+	orchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		orchContacted = true
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+	}))
+	defer orchServer.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(&domain.Business{ID: businessID, Name: "Кофейня"}, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	h := newChatProxyNoProject(mockBiz, mockInteg, &MockMessageRepository{}, orchServer.URL)
+
+	filler := strings.Repeat("z", maxChatBodyBytes+1)
+	body := `{"message":"hello","_pad":"` + filler + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-oversize", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	ctx := chatProxyBizCtx(businessID, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "conv-oversize")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.False(t, orchContacted, "orchestrator must not be contacted when the body exceeds the cap")
+}
+
+// TestChatProxy_LongMessageUnderCap_Accepted asserts a long-but-under-cap
+// message still streams through, so the generous cap does not reject
+// legitimate long chat messages.
+func TestChatProxy_LongMessageUnderCap_Accepted(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	orchContacted := false
+	orchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		orchContacted = true
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+	}))
+	defer orchServer.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(&domain.Business{ID: businessID, Name: "Кофейня"}, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	h := newChatProxyNoProject(mockBiz, mockInteg, &MockMessageRepository{}, orchServer.URL)
+
+	longMessage := strings.Repeat("a", 100*1024)
+	body := `{"message":"` + longMessage + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-long", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	ctx := chatProxyBizCtx(businessID, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "conv-long")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, orchContacted, "under-cap long message must reach the orchestrator")
+}
+
 // TestChatProxy_StreamsSSE verifies that SSE events from the orchestrator
 // are streamed back to the client unchanged.
 func TestChatProxy_StreamsSSE(t *testing.T) {
