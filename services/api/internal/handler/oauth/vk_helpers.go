@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,24 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/vkapi"
 )
+
+// redactURLErr scrubs the query string from a *url.Error before the error is
+// wrapped, logged, or surfaced to a client. VK outbound calls carry the
+// service key / community token in the URL query (access_token=…); on a
+// transport failure net/http returns a *url.Error whose .Error() embeds the
+// FULL URL, which would otherwise leak the secret into log lines and JSON
+// error bodies. Non-*url.Error inputs are returned unchanged.
+func redactURLErr(err error) error {
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return err
+	}
+	if u, parseErr := url.Parse(ue.URL); parseErr == nil && u.RawQuery != "" {
+		u.RawQuery = "REDACTED"
+		ue.URL = u.String()
+	}
+	return err
+}
 
 // resolveVKGroupID turns user input (numeric id, screen_name, or full VK URL)
 // into a numeric VK group id via groups.getById with the Mini-App service key.
@@ -38,7 +57,7 @@ func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (stri
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("vk API request failed: %w", err)
+		return "", fmt.Errorf("vk API request failed: %w", redactURLErr(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
@@ -85,7 +104,7 @@ func (h *OAuthHandler) fetchVKCommunityName(ctx context.Context, groupID, token 
 	}
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", redactURLErr(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
