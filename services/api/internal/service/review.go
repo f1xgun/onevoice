@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -104,6 +105,27 @@ func (s *reviewService) GetByID(ctx context.Context, businessID uuid.UUID, id st
 	return review, nil
 }
 
+// gateBusiness re-loads the target business through the soft-delete-aware
+// GetByID (deleted_at IS NULL) and rejects with domain.ErrBusinessNotFound when
+// the organization is soft-deleted (pending erasure). Both write-class review
+// paths (manual reply dispatch, manual refresh fanout) funnel through it before
+// touching an external platform, so a business inside its deletion grace window
+// — whose membership row still satisfies authz.RequireBusinessAccess — cannot
+// drive fresh platform work or ingest new PII. It is a no-op when no business
+// service is attached (in-process callers) or when businessID is the nil UUID.
+func (s *reviewService) gateBusiness(ctx context.Context, businessID uuid.UUID) error {
+	if s.businessService == nil || businessID == uuid.Nil {
+		return nil
+	}
+	if _, err := s.businessService.GetByID(ctx, businessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			return domain.ErrBusinessNotFound
+		}
+		return fmt.Errorf("load review business: %w", err)
+	}
+	return nil
+}
+
 // Refresh resolves the request's business (from authz.BusinessContext) and
 // triggers a synchronous sync across every active integration platform that
 // supports reviews. The userID parameter is retained for logging / future
@@ -116,6 +138,9 @@ func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
 	bc, ok := authz.BusinessContextFromCtx(ctx)
 	if !ok {
 		return fmt.Errorf("review refresh: missing BusinessContext (handler must run under RequireBusinessAccess)")
+	}
+	if err := s.gateBusiness(ctx, bc.BusinessID); err != nil {
+		return err
 	}
 	return s.refresher.SyncForBusiness(ctx, bc.BusinessID)
 }
@@ -141,6 +166,10 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 	// signal of an existing reply must block a manual re-post.
 	if review.ReplyStatus == domain.ReviewReplyStatusReplied || review.ReplyText != "" {
 		return nil
+	}
+
+	if err := s.gateBusiness(ctx, businessID); err != nil {
+		return err
 	}
 
 	dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
