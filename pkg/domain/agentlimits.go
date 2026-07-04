@@ -4,6 +4,7 @@ package domain
 // requires touching one file, not four.
 const (
 	TelegramReviewLimitDefault       = 500
+	TelegramReviewLimitMax           = 500
 	VKCommentCountDefault            = 20
 	VKWallPostCountDefault           = 10
 	YandexBusinessReviewLimitDefault = 20

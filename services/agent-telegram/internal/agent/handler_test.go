@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
@@ -71,6 +72,7 @@ type fakeSender struct {
 	replyChat      string
 	replyMessageID int
 	replyText      string
+	reviewsLimit   int
 }
 
 func (f *fakeSender) SendMessage(chat, text string) error {
@@ -93,7 +95,8 @@ func (f *fakeSender) SendReply(chat string, messageID int, text string) error {
 	f.replyText = text
 	return nil
 }
-func (f *fakeSender) GetReviews(_ int) ([]map[string]interface{}, error) {
+func (f *fakeSender) GetReviews(limit int) ([]map[string]interface{}, error) {
+	f.reviewsLimit = limit
 	return []map[string]interface{}{}, nil
 }
 
@@ -414,6 +417,32 @@ func TestHandler_ReplyToComment_ValidMessageID_Replies(t *testing.T) {
 	assert.True(t, sender.replyCalled)
 	assert.Equal(t, 42, sender.replyMessageID)
 	assert.Equal(t, "thanks", sender.replyText)
+}
+
+// TestHandler_GetReviews_HugeLimit_ClampedToMax is the resource-amplification
+// regression: the limit is an LLM-supplied arg (reachable via prompt injection
+// through untrusted review text or a jailbreak), and GetReviews pages
+// getUpdates until it has collected `limit` entries and allocates a slice sized
+// to the accumulated window. An unbounded huge limit would drain the entire
+// pending-update window across many API pages and allocate a large slice. The
+// handler must clamp the limit to TelegramReviewLimitMax before it reaches the
+// fetch, matching the VK and Yandex agents' upper bounds.
+func TestHandler_GetReviews_HugeLimit_ClampedToMax(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "tok", externalID: "-1009999"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramGetReviews,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"limit": float64(999999)},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, domain.TelegramReviewLimitMax, sender.reviewsLimit,
+		"a huge LLM-supplied limit must be clamped to TelegramReviewLimitMax before reaching the fetch")
 }
 
 // errSender is a Sender that always returns a configured error.
