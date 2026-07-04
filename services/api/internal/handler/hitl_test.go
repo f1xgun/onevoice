@@ -465,6 +465,37 @@ func TestResolve_Missing_Returns404(t *testing.T) {
 	}
 }
 
+// TestResolve_SoftDeletedBusiness_Returns404 pins the 152-ФЗ data-lifecycle
+// gate on the resolve endpoint: while the organization is soft-deleted
+// (pending-erasure), authz.RequireBusinessAccess still admits a surviving member
+// during the grace window, so the handler must itself surface the org as 404 via
+// the soft-delete-aware businessService.GetByID (deleted_at IS NULL) before
+// resolving any pending tool call. A nil business makes hitlBusinessService.GetByID
+// return domain.ErrBusinessNotFound; even with a live batch owned by the acting
+// org, the resolve must 404 with "business not found". Reverting the existence
+// gate reaches the service and resolves the batch, failing this test.
+func TestResolve_SoftDeletedBusiness_Returns404(t *testing.T) {
+	bizID := uuid.New()
+	pr := newFakeHITLPendingRepo()
+	seedHandlerBatch(pr, "b1", "c1", bizID.String(), []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+	})
+	h := buildHITLHandler(t, pr, nil, nil, "")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"decisions": []map[string]interface{}{{"id": "tc_a", "action": "approve"}},
+	})
+	rec := hitlRouteRequest(t, h, bizID, "c1", "b1", body)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["error"] != "business not found" {
+		t.Errorf("error = %v, want %q", resp["error"], "business not found")
+	}
+}
+
 func TestResolve_CrossTenant_Returns403(t *testing.T) {
 	attacker := &domain.Business{ID: uuid.New()}
 	ownerID := uuid.New().String()

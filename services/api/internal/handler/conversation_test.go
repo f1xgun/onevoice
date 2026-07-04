@@ -2067,6 +2067,99 @@ func TestDeleteConversation_CrossBusiness_NotFound(t *testing.T) {
 		"cross-business delete must use the uniform not-found message (no existence-leak oracle)")
 }
 
+// newSoftDeletedBizHandler builds a ConversationHandler whose businessService
+// reports the active organization as soft-deleted (ErrBusinessNotFound). The
+// conversationRepo and conversationService panic on any mutation so a test that
+// reaches past the existence gate fails loudly rather than silently mutating a
+// pending-erasure organization.
+func newSoftDeletedBizHandler(t *testing.T) *ConversationHandler {
+	t.Helper()
+	convRepo := &MockConversationRepository{
+		UpdateFunc: func(_ context.Context, _ *domain.Conversation) error {
+			t.Error("Update must not run against a soft-deleted organization")
+			return nil
+		},
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			t.Error("GetByID must not run against a soft-deleted organization")
+			return nil, domain.ErrConversationNotFound
+		},
+	}
+	softDeletedBiz := &noopBusinessService{
+		GetByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return nil, domain.ErrBusinessNotFound
+		},
+	}
+	h, err := NewConversationHandler(convRepo, &MockMessageRepository{}, softDeletedBiz, &noopProjectService{}, noopConversationService{})
+	require.NoError(t, err)
+	return h
+}
+
+// TestConversationMutations_SoftDeletedBusiness pins the 152-ФЗ data-lifecycle
+// gate on every mutating conversation endpoint: while an organization is
+// soft-deleted (pending-erasure), authz.RequireBusinessAccess still admits a
+// surviving member during the grace window, so each mutating handler must
+// itself surface the org as 404 via the soft-delete-aware businessService.GetByID
+// (deleted_at IS NULL) before touching any repository or service. Reverting the
+// existence gate in any one handler lets that mutation proceed against a
+// pending-erasure organization — the corresponding subtest then fails on the
+// unexpected 200/204 (and the panicking repo/service mutation call).
+func TestConversationMutations_SoftDeletedBusiness(t *testing.T) {
+	convID := "507f1f77bcf86cd799439060"
+	body, _ := json.Marshal(map[string]any{"title": "Forced"})
+
+	tests := []struct {
+		name   string
+		invoke func(t *testing.T, h *ConversationHandler, businessID, userID uuid.UUID) *httptest.ResponseRecorder
+	}{
+		{
+			name: "UpdateConversation",
+			invoke: func(t *testing.T, h *ConversationHandler, businessID, userID uuid.UUID) *httptest.ResponseRecorder {
+				req := makeAuthedReqForBiz(t, http.MethodPut,
+					"/api/v1/conversations/"+convID, body, businessID, userID, convID)
+				w := httptest.NewRecorder()
+				h.UpdateConversation(w, req)
+				return w
+			},
+		},
+		{
+			name: "DeleteConversation",
+			invoke: func(t *testing.T, h *ConversationHandler, businessID, userID uuid.UUID) *httptest.ResponseRecorder {
+				req := makeAuthedReqForBiz(t, http.MethodDelete,
+					"/api/v1/conversations/"+convID, nil, businessID, userID, convID)
+				w := httptest.NewRecorder()
+				h.DeleteConversation(w, req)
+				return w
+			},
+		},
+		{
+			name: "MoveConversation",
+			invoke: func(t *testing.T, h *ConversationHandler, businessID, userID uuid.UUID) *httptest.ResponseRecorder {
+				moveBody, _ := json.Marshal(map[string]any{"projectId": nil})
+				req := makeAuthedReqForBiz(t, http.MethodPost,
+					"/api/v1/conversations/"+convID+"/move", moveBody, businessID, userID, convID)
+				w := httptest.NewRecorder()
+				h.MoveConversation(w, req)
+				return w
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newSoftDeletedBizHandler(t)
+			w := tt.invoke(t, h, uuid.New(), uuid.New())
+
+			assert.Equal(t, http.StatusNotFound, w.Code,
+				"a mutating request against a soft-deleted organization must surface as 404")
+
+			var response ErrorResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+			assert.Equal(t, "business not found", response.Error,
+				"reverting the existence gate reproduces the mutation-against-pending-erasure leak")
+		})
+	}
+}
+
 // --- Pin / Unpin handler tests ---------------------
 
 // pinTestHandler builds a ConversationHandler wired with a businessService
