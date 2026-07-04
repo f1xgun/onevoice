@@ -249,6 +249,9 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	if limit <= 0 {
 		limit = domain.TelegramReviewLimitDefault
 	}
+	if limit > domain.TelegramReviewLimitMax {
+		limit = domain.TelegramReviewLimitMax
+	}
 
 	sender, _, err := h.getSender(ctx, req, "")
 	if err != nil {
