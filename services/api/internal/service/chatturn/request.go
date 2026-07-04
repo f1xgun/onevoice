@@ -17,6 +17,7 @@ import (
 	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service/planresolver"
 )
 
 // TurnRequest is the inputs a Turn needs to run. Constructed by the HTTP
@@ -170,4 +171,14 @@ type ProjectReader interface {
 // construction time — the post-stream step silently disables auto-titling.
 type Titler interface {
 	GenerateAndSave(ctx context.Context, businessID, conversationID, userText, assistantText string)
+}
+
+// PlanResolver resolves a business's billing plan; the chat turn consumes only
+// the rate-limit tier, which it forwards to the orchestrator so per-turn rate
+// limiting matches the business's plan (replacing the legacy hardcoded empty
+// tier). A nil PlanResolver on Deps is allowed — buildOrchestratorRequest then
+// forwards the byte-identical legacy empty tier. *planresolver.Resolver is
+// fail-safe (DB error / no subscription → Free, never a higher tier).
+type PlanResolver interface {
+	Resolve(ctx context.Context, businessID uuid.UUID) planresolver.Plan
 }

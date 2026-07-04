@@ -29,6 +29,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/planresolver"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -97,6 +98,11 @@ type Services struct {
 	// Feedback persists in-app user feedback + founder notification.
 	Feedback *service.FeedbackService
 
+	// PlanResolver resolves the per-business billing plan + rate-limit tier
+	// (v1.6). Fail-safe: DB error / no subscription → Free. Injected into the
+	// chat turn (tier forwarding) and the billing summary service.
+	PlanResolver *planresolver.Resolver
+
 	// Lockout is non-nil whenever h.Redis is non-nil (Redis is the storage
 	// layer). SmartCaptcha is always non-nil — Noop impl when
 	// SMARTCAPTCHA_SECRET_KEY is empty so the handler has a stable
@@ -156,6 +162,11 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		OrchClient:  orchClient,
 		AuditLogger: audit.NewLoggerWithResolver(repos.AuditLog, userResolverAdapter{repo: repos.User}),
 	}
+
+	s.PlanResolver = planresolver.New(
+		planresolver.NewRepoStore(repos.Subscription, repos.PlanDefinition),
+		planresolver.DefaultTTL,
+	)
 
 	titlerModel := cfg.TitlerModel
 	llmRouter, err := buildTitlerRouter(cfg, log, h.Redis, repos.Billing)

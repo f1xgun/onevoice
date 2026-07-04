@@ -193,6 +193,14 @@ func (m *MockBillingRepository) GetMonthlyUsage(_ context.Context, userID uuid.U
 	return result, nil
 }
 
+func (m *MockBillingRepository) GetCreditBalance(_ context.Context, _ uuid.UUID) (int, error) {
+	return 0, nil
+}
+
+func (m *MockBillingRepository) GetMonthlyUsageSummary(_ context.Context, _ uuid.UUID, _, _ int) (llm.MonthlyUsageSummary, error) {
+	return llm.MonthlyUsageSummary{}, nil
+}
+
 func TestMockBillingRepository(t *testing.T) {
 	repo := &MockBillingRepository{}
 	ctx := context.Background()

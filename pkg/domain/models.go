@@ -97,15 +97,80 @@ type Integration struct {
 	EncryptionKeyFingerprint string `json:"-" db:"encryption_key_fingerprint"`
 }
 
+// Subscription is one business's billing plan. The v1.6 reshape moves the
+// tenant key from user_id (legacy, dead) to business_id — usage_logs and the
+// whole billing model are business-scoped. ParentBusinessID (agency seam),
+// Provider / ProviderSubID (payment-provider seam) and CancelAtPeriodEnd are
+// Track-B columns: nullable and never written in Track-A.
 type Subscription struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	UserID    uuid.UUID `json:"userId" db:"user_id"`
-	Plan      string    `json:"plan" db:"plan"`
-	Status    string    `json:"status" db:"status"`
-	ExpiresAt time.Time `json:"expiresAt" db:"expires_at"`
-	CreatedAt time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
+	ID               uuid.UUID  `json:"id" db:"id"`
+	BusinessID       uuid.UUID  `json:"businessId" db:"business_id"`
+	ParentBusinessID *uuid.UUID `json:"parentBusinessId,omitempty" db:"parent_business_id"`
+	PlanCode         string     `json:"planCode" db:"plan_code"`
+	Status           string     `json:"status" db:"status"`
+	PeriodStart      *time.Time `json:"periodStart,omitempty" db:"period_start"`
+	PeriodEnd        *time.Time `json:"periodEnd,omitempty" db:"period_end"`
+	// Track-B payment-provider seams. Nil in Track-A.
+	Provider          *string   `json:"-" db:"provider"`
+	ProviderSubID     *string   `json:"-" db:"provider_sub_id"`
+	CancelAtPeriodEnd bool      `json:"cancelAtPeriodEnd" db:"cancel_at_period_end"`
+	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
 }
+
+// Subscription status values (subscriptions.status CHECK constraint).
+const (
+	SubscriptionStatusActive   = "active"
+	SubscriptionStatusPastDue  = "past_due"
+	SubscriptionStatusCanceled = "canceled"
+	SubscriptionStatusExpired  = "expired"
+)
+
+// PlanDefinition is one row of the plan_definitions catalog (Free / Pro /
+// Enterprise). Numeric fields carry placeholder values until the founder sets
+// real numbers via a follow-up migration. A -1 in DailyLLMUSDCap /
+// MaxIntegrations / MaxMembers means "unlimited".
+type PlanDefinition struct {
+	Code                     string    `json:"code" db:"code"`
+	DisplayName              string    `json:"displayName" db:"display_name"`
+	PriceRUB                 float64   `json:"priceRub" db:"price_rub"`
+	MonthlyCredits           int       `json:"monthlyCredits" db:"monthly_credits"`
+	OveragePricePerCreditRUB float64   `json:"overagePricePerCreditRub" db:"overage_price_per_credit_rub"`
+	DailyLLMUSDCap           float64   `json:"dailyLlmUsdCap" db:"daily_llm_usd_cap"`
+	MaxIntegrations          int       `json:"maxIntegrations" db:"max_integrations"`
+	MaxMembers               int       `json:"maxMembers" db:"max_members"`
+	RateLimitTier            string    `json:"rateLimitTier" db:"rate_limit_tier"`
+	Active                   bool      `json:"active" db:"active"`
+	SortOrder                int       `json:"sortOrder" db:"sort_order"`
+	CreatedAt                time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt                time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// CreditLedgerEntry is one append-only row of credit_ledger. The running
+// balance is the BalanceAfter of the most-recent row per business; each row is
+// immutable. IdempotencyKey is set to the usage-log id on metered rows so a
+// retried metering write is a no-op (ON CONFLICT DO NOTHING).
+type CreditLedgerEntry struct {
+	ID                 uuid.UUID  `json:"id" db:"id"`
+	BusinessID         uuid.UUID  `json:"businessId" db:"business_id"`
+	DeltaCredits       int        `json:"deltaCredits" db:"delta_credits"`
+	BalanceAfter       int        `json:"balanceAfter" db:"balance_after"`
+	OverageCredits     int        `json:"overageCredits" db:"overage_credits"`
+	Reason             string     `json:"reason" db:"reason"`
+	UsageLogID         *uuid.UUID `json:"usageLogId,omitempty" db:"usage_log_id"`
+	SubscriptionPeriod *string    `json:"subscriptionPeriod,omitempty" db:"subscription_period"`
+	IdempotencyKey     *string    `json:"-" db:"idempotency_key"`
+	CreatedAt          time.Time  `json:"createdAt" db:"created_at"`
+}
+
+// Credit-ledger reason values (credit_ledger.reason CHECK constraint).
+const (
+	CreditReasonGrant   = "grant"
+	CreditReasonConsume = "consume"
+	CreditReasonOverage = "overage"
+	CreditReasonRefund  = "refund"
+	CreditReasonExpire  = "expire"
+)
 
 // AuditLog is the persisted record of a security-sensitive mutation.
 //

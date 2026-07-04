@@ -237,6 +237,36 @@ type AuditLogRepository interface {
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
+// --- Billing (v1.6). See the billing-scaffolding blueprint. ---
+
+// SubscriptionRepository persists per-business billing subscriptions.
+type SubscriptionRepository interface {
+	// ActiveByBusiness returns the single active subscription for a business,
+	// or ErrSubscriptionNotFound when none exists.
+	ActiveByBusiness(ctx context.Context, businessID uuid.UUID) (*Subscription, error)
+	// Upsert is the Track-B write path (checkout / webhook). Defined now so the
+	// interface is stable; Track-A never calls it.
+	Upsert(ctx context.Context, sub *Subscription) error
+}
+
+// PlanDefinitionRepository reads the plan_definitions catalog.
+type PlanDefinitionRepository interface {
+	// GetByCode returns one plan, or ErrPlanNotFound.
+	GetByCode(ctx context.Context, code string) (*PlanDefinition, error)
+	// ListActive returns active plans ordered by sort_order.
+	ListActive(ctx context.Context) ([]PlanDefinition, error)
+}
+
+// CreditLedgerRepository reads and appends to the append-only credit_ledger.
+type CreditLedgerRepository interface {
+	// CurrentBalance returns the latest balance_after for a business, or 0 when
+	// the business has no ledger rows yet.
+	CurrentBalance(ctx context.Context, businessID uuid.UUID) (int, error)
+	// Append inserts one ledger row inside the caller's transaction. Idempotent
+	// on entry.IdempotencyKey via ON CONFLICT DO NOTHING.
+	Append(ctx context.Context, tx pgx.Tx, entry *CreditLedgerEntry) error
+}
+
 // MongoDB repositories. See docs/pkg/domain-repository.md.
 
 // ConversationRepository persists chat conversations.

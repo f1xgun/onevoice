@@ -132,8 +132,20 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 }
 
 // buildOrchestratorRequest assembles the JSON body forwarded to /chat/{id}.
-func (t *Turn) buildOrchestratorRequest(req TurnRequest, enriched *enrichmentResult) map[string]interface{} {
+//
+// The rate-limit tier is resolved per-business through PlanResolver (fail-safe:
+// DB error / no subscription → Free) instead of the legacy hardcoded empty
+// string. This is behavior-preserving today — with no subscriptions every
+// business resolves to Free (== the orchestrator's ""→"free" default) — while
+// making per-business tiering correct once Track-B creates subscriptions. A nil
+// PlanResolver (struct-literal test path) forwards the byte-identical legacy
+// empty tier.
+func (t *Turn) buildOrchestratorRequest(ctx context.Context, req TurnRequest, enriched *enrichmentResult) map[string]interface{} {
 	business := enriched.business
+	tier := ""
+	if t.deps.PlanResolver != nil {
+		tier = t.deps.PlanResolver.Resolve(ctx, business.ID).RateLimitTier
+	}
 	return map[string]interface{}{
 		"model":                      req.Model,
 		"message":                    req.Message,
@@ -154,7 +166,7 @@ func (t *Turn) buildOrchestratorRequest(req TurnRequest, enriched *enrichmentRes
 		"project_allowed_tools":      enriched.project.allowedTools,
 		"user_id":                    req.UserID.String(),
 		"message_id":                 enriched.userMessage.ID,
-		"tier":                       "",
+		"tier":                       tier,
 		"business_approvals":         enriched.businessApprovals,
 		"project_approval_overrides": enriched.projectOverrides,
 		"locale":                     req.Locale.String(),

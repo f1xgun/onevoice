@@ -74,6 +74,10 @@ type Repos struct {
 	// Billing — Postgres-backed BillingRepository. Wired into the internal
 	// POST /internal/v1/billing/usage_logs handler.
 	Billing llm.BillingRepository
+
+	// Subscription / PlanDefinition back the BusinessPlanResolver (v1.6 billing).
+	Subscription   domain.SubscriptionRepository
+	PlanDefinition domain.PlanDefinitionRepository
 }
 
 // Repositories constructs every domain repository against the connections
@@ -105,5 +109,7 @@ func Repositories(h *DBHandles) *Repos {
 		ProductFeedback:        repository.NewProductFeedbackRepository(h.PG),
 		MembershipLoader:       repository.NewMembershipLoader(h.PG),
 		Billing:                repository.NewBillingRepository(h.PG),
+		Subscription:           repository.NewSubscriptionRepository(h.PG),
+		PlanDefinition:         repository.NewPlanDefinitionRepository(h.PG),
 	}
 }

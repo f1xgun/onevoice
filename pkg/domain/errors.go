@@ -21,6 +21,15 @@ var (
 	ErrBusinessExists   = errors.New("business already exists")
 )
 
+// Billing errors.
+var (
+	// ErrSubscriptionNotFound is returned when a business has no active
+	// subscription row. BusinessPlanResolver treats it as "resolve to Free".
+	ErrSubscriptionNotFound = errors.New("subscription not found")
+	// ErrPlanNotFound is returned when a plan_definitions lookup by code misses.
+	ErrPlanNotFound = errors.New("plan not found")
+)
+
 // Organization (business) deletion errors. Mirror the account-deletion
 // sentinels — same lifecycle, different resource.
 var (

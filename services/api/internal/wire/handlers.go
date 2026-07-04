@@ -142,6 +142,10 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		svcs.AuditLogger,
 		cfg.MessageHistoryLimit,
 	)
+	// Forward the per-business rate-limit tier to the orchestrator (replaces the
+	// legacy hardcoded empty tier). Set on the shared Turn so HITLHandler.Resume,
+	// which reuses chatProxyHandler.Turn(), sees it too.
+	chatProxyHandler.Turn().SetPlanResolver(svcs.PlanResolver)
 
 	var sseCounter *ssecounter.Counter
 	if h.Redis != nil && cfg.SSEMaxPerUser > 0 {
@@ -216,6 +220,10 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}
 	auditLogHandler := handler.NewAuditLogHandler(auditLister)
 
+	billingHandler := handler.NewBillingHandler(
+		service.NewBillingSummaryService(svcs.PlanResolver, repos.Billing),
+	)
+
 	var userDeletionHandler *handler.UserDeletionHandler
 	if svcs.AccountDeletion != nil {
 		userDeletionHandler = handler.NewUserDeletionHandler(svcs.AccountDeletion, cfg.CORSAllowedOrigins)
@@ -261,6 +269,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Roles:            rolesHandler,
 		Invitations:      invitationsHandler,
 		AuditLog:         auditLogHandler,
+		Billing:          billingHandler,
 		UserDeletion:     userDeletionHandler,
 		BusinessDeletion: businessDeletionHandler,
 		Consents:         consentsHandler,

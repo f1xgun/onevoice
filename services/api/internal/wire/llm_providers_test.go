@@ -50,6 +50,14 @@ func (c *countingBillingRepo) GetMonthlyUsage(context.Context, uuid.UUID, int, i
 	return nil, nil
 }
 
+func (c *countingBillingRepo) GetCreditBalance(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+
+func (c *countingBillingRepo) GetMonthlyUsageSummary(context.Context, uuid.UUID, int, int) (llm.MonthlyUsageSummary, error) {
+	return llm.MonthlyUsageSummary{}, nil
+}
+
 // titlerFakeProvider returns a canned ChatResponse with non-zero token usage
 // so the Router computes a billable cost and forwards a UsageLog.
 type titlerFakeProvider struct {
