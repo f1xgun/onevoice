@@ -210,6 +210,16 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 	}
 
+	// offered is the FRESH whitelist boundary, recomputed at resolution time from
+	// the production resume body (state.AvailableTools = AvailableForWhitelist over
+	// the current active_integrations / whitelist_mode / allowed_tools). The
+	// approval batch was frozen at pause; a whitelist revocation between pause and
+	// approve does not touch the business/project approval maps hitl.Resolve reads,
+	// so the Resolve gate below is whitelist-blind. Re-asserting the offered set
+	// here is the same invariant enforceOffered guards on the fresh-run dispatch
+	// path: a whitelist-withheld tool can never reach NATS via a HITL approval.
+	offered := offeredToolSet(state.AvailableTools)
+
 	for i := range batch.Calls {
 		if ctx.Err() != nil {
 			break
@@ -239,6 +249,26 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
 				Content:    reason,
+			}) {
+				return
+			}
+			continue
+		}
+
+		if !offered[call.ToolName] {
+			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
+			mu.Lock()
+			state.Messages = append(state.Messages, llm.Message{
+				Role:       "tool",
+				Content:    rejectionMsg,
+				ToolCallID: call.CallID,
+			})
+			mu.Unlock()
+			if !sendOrCancel(Event{
+				Type:       EventToolRejected,
+				ToolCallID: call.CallID,
+				ToolName:   call.ToolName,
+				Content:    "policy_forbidden",
 			}) {
 				return
 			}
