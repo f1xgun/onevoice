@@ -202,9 +202,13 @@ func (h *Handler) replyReview(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("text is required"))
 	}
 
-	client, _, err := h.getClient(ctx, req)
+	client, locationName, err := h.getClient(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	if locationName == "" || !strings.HasPrefix(reviewName, locationName+"/reviews/") {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("review_name does not belong to this location"))
 	}
 
 	reply, err := client.ReplyReview(ctx, reviewName, text)

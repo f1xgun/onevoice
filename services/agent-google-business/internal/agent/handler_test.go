@@ -200,6 +200,53 @@ func TestHandler_ReplyReview_Success(t *testing.T) {
 	assert.Equal(t, "Thank you!", result["reply_text"])
 }
 
+func TestHandler_ReplyReview_ForeignLocation_Rejected(t *testing.T) {
+	client := &countingGBPClient{
+		mockGBPClient: mockGBPClient{
+			replyResp: &gbp.ReviewReply{Comment: "Thank you!", UpdateTime: "2026-01-05T00:00:00Z"},
+		},
+	}
+
+	h := newTestHandler(&mockTokenFetcher{}, client)
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "task-1",
+		Tool:       tools.GoogleBusinessReplyReview,
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"review_name": "accounts/1/locations/3/reviews/456",
+			"text":        "Thank you!",
+		},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not belong to this location")
+	assert.Equal(t, int64(0), atomic.LoadInt64(&client.replyCalls),
+		"a review_name under a location other than the resolved one must never reach the API")
+}
+
+func TestHandler_ReplyReview_OwnLocation_Succeeds(t *testing.T) {
+	client := &countingGBPClient{
+		mockGBPClient: mockGBPClient{
+			replyResp: &gbp.ReviewReply{Comment: "Thank you!", UpdateTime: "2026-01-05T00:00:00Z"},
+		},
+	}
+
+	h := newTestHandler(&mockTokenFetcher{}, client)
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "task-1",
+		Tool:       tools.GoogleBusinessReplyReview,
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"review_name": "accounts/1/locations/2/reviews/456",
+			"text":        "Thank you!",
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&client.replyCalls))
+}
+
 func TestHandler_ReplyReview_MissingReviewName(t *testing.T) {
 	h := newTestHandler(&mockTokenFetcher{}, &mockGBPClient{})
 
