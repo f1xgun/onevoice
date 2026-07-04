@@ -132,16 +132,34 @@ func ensureNegativeGroupID(groupID string) string {
 	return groupID
 }
 
+// resolveGroupTarget chooses the community group_id the agent acts on. The read
+// tools accept group_id as a free-string LLM arg and the read client may use the
+// shared service key, which can read ANY public community — so an unverified
+// LLM-supplied group_id must never be trusted as the target: a hallucinated or
+// prompt-injected value (e.g. quoted back from untrusted VK comment text) naming
+// a DIFFERENT community would let the agent read a foreign community's wall and
+// third-party commenter PII into the acting tenant's chat and audit records.
+// resolved is always the ACTING business's OWN connected community — the token
+// resolver is business-scoped, so info.ExternalID is that business's community.
+// We therefore honor supplied only when it exactly equals resolved (a legitimate
+// own-community target); every other supplied value (empty, hallucinated, or a
+// foreign group) falls back to the owned resolved community, making it impossible
+// to touch a community the acting business does not own. Applied to both read and
+// write client resolution for uniform scoping.
+func resolveGroupTarget(supplied, resolved string) string {
+	if supplied != "" && supplied == resolved {
+		return ensureNegativeGroupID(supplied)
+	}
+	return ensureNegativeGroupID(resolved)
+}
+
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
-	groupID, _ := req.Args["group_id"].(string)
-	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID, req.Tool)
+	suppliedGroupID, _ := req.Args["group_id"].(string)
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, suppliedGroupID, req.Tool)
 	if err != nil {
 		return nil, "", err
 	}
-	if groupID == "" {
-		groupID = info.ExternalID
-	}
-	groupID = ensureNegativeGroupID(groupID)
+	groupID := resolveGroupTarget(suppliedGroupID, info.ExternalID)
 	return h.clientFactory(info.AccessToken), groupID, nil
 }
 
@@ -149,15 +167,12 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 // Priority: user token > service key (open walls) > community token (limited reads).
 // Community wall must be open/limited for service key reads to work.
 func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
-	groupID, _ := req.Args["group_id"].(string)
-	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID, req.Tool)
+	suppliedGroupID, _ := req.Args["group_id"].(string)
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, suppliedGroupID, req.Tool)
 	if err != nil {
 		return nil, "", err
 	}
-	if groupID == "" {
-		groupID = info.ExternalID
-	}
-	groupID = ensureNegativeGroupID(groupID)
+	groupID := resolveGroupTarget(suppliedGroupID, info.ExternalID)
 	if info.UserToken != "" {
 		return h.clientFactory(info.UserToken), groupID, nil
 	}
