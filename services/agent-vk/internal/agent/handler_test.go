@@ -105,7 +105,7 @@ func newFactory(client agent.VKClient) agent.VKClientFactory {
 }
 
 func TestHandler_PublishPost(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		publishPostFn: func(groupID, text string) (int64, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -168,7 +168,7 @@ func TestHandler_TokenError(t *testing.T) {
 }
 
 func TestHandler_UpdateGroupInfo(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		updateGroupInfoFn: func(groupID, description string) error {
 			assert.Equal(t, "-123456", groupID)
@@ -195,7 +195,7 @@ func TestHandler_UpdateGroupInfo(t *testing.T) {
 }
 
 func TestHandler_GetComments(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -498,7 +498,7 @@ func TestClassifyVKError_Nil_ReturnsNil(t *testing.T) {
 
 func TestHandler_SchedulePost(t *testing.T) {
 	futureTS := time.Now().Add(24 * time.Hour).Unix()
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		schedulePostFn: func(groupID, text string, publishDate int64) (int64, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -630,7 +630,7 @@ func TestHandler_SchedulePost_InvalidDate(t *testing.T) {
 // --- Reply comment tests ---
 
 func TestHandler_ReplyComment(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		replyCommentFn: func(groupID string, postID, commentID int, text string) (int, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -717,7 +717,7 @@ func TestHandler_ReplyComment_MissingText(t *testing.T) {
 // --- Delete comment tests ---
 
 func TestHandler_DeleteComment(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		deleteCommentFn: func(groupID string, commentID int) error {
 			assert.Equal(t, "-123456", groupID)
@@ -783,7 +783,7 @@ func TestHandler_DeleteComment_VKError(t *testing.T) {
 // --- Post photo tests ---
 
 func TestHandler_PostPhoto(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		postPhotoFn: func(groupID string, photoURL, caption string) (int64, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -852,7 +852,7 @@ func TestHandler_PostPhoto_VKError(t *testing.T) {
 // --- Community info tests ---
 
 func TestHandler_GetCommunityInfo(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		getCommunityInfoFn: func(groupID string) (map[string]interface{}, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -897,7 +897,7 @@ func TestHandler_GetCommunityInfo_MissingGroupID(t *testing.T) {
 }
 
 func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		getCommunityInfoFn: func(groupID string) (map[string]interface{}, error) {
 			return nil, &vkapi.Error{Code: 100, Message: "community not accessible"}
@@ -920,7 +920,7 @@ func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
 // --- Wall posts tests ---
 
 func TestHandler_GetWallPosts(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -952,7 +952,7 @@ func TestHandler_GetWallPosts(t *testing.T) {
 }
 
 func TestHandler_GetWallPosts_DefaultCount(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
 			assert.Equal(t, 10, count, "default count should be 10")
@@ -975,7 +975,7 @@ func TestHandler_GetWallPosts_DefaultCount(t *testing.T) {
 }
 
 func TestHandler_GetWallPosts_ClampCount(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
 	vkClient := &mockVKClient{
 		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
 			assert.Equal(t, 100, count, "count > 100 should be clamped to 100")
@@ -1144,6 +1144,131 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "-999888", capturedGroupID, "getComments should use resolved groupID with negative sign")
+}
+
+// --- Cross-tenant group ownership scoping ---
+// The read tools accept group_id as a free-string LLM arg and the read client can
+// use the shared service key, which reads ANY public community. A hallucinated or
+// prompt-injected group_id naming a community the acting business does not own must
+// never be trusted as the target — it would read a foreign community's wall and
+// third-party commenter PII into the wrong tenant's chat/audit records. The target
+// must fall back to the acting business's OWN connected community (ExternalID).
+
+func TestGetWallPosts_ForeignGroupID_ScopedToOwnCommunity(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", extID: "-100200"}
+	var capturedGroupID string
+	factory := func(_ string) agent.VKClient {
+		return &mockVKClient{
+			getWallPostsFn: func(groupID string, _ int) ([]map[string]interface{}, int, error) {
+				capturedGroupID = groupID
+				return nil, 0, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.VKGetWallPosts,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-999999"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "-100200", capturedGroupID,
+		"a foreign group_id must be ignored and scoped to the acting business's own community")
+	assert.NotEqual(t, "-999999", capturedGroupID,
+		"the agent must never read the LLM-supplied foreign community")
+}
+
+func TestGetCommunityInfo_ForeignGroupID_ScopedToOwnCommunity(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", extID: "-100200"}
+	var capturedGroupID string
+	factory := func(_ string) agent.VKClient {
+		return &mockVKClient{
+			getCommunityInfoFn: func(groupID string) (map[string]interface{}, error) {
+				capturedGroupID = groupID
+				return map[string]interface{}{"name": "Own"}, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.VKGetCommunityInfo,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-999999"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "-100200", capturedGroupID,
+		"get_community_info must scope a foreign group_id to the acting business's own community")
+}
+
+func TestGetComments_ForeignGroupID_ScopedToOwnCommunity(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", extID: "-100200"}
+	var capturedGroupID string
+	factory := func(_ string) agent.VKClient {
+		return &mockVKClient{
+			getCommentsFn: func(groupID string, _, _ int) ([]map[string]interface{}, error) {
+				capturedGroupID = groupID
+				return nil, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.VKGetComments,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-999999", "post_id": float64(1)},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "-100200", capturedGroupID,
+		"get_comments must scope a foreign group_id to the acting business's own community")
+}
+
+func TestGetWallPosts_OwnGroupID_ExactMatch_Targets(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", extID: "-100200"}
+	var capturedGroupID string
+	factory := func(_ string) agent.VKClient {
+		return &mockVKClient{
+			getWallPostsFn: func(groupID string, _ int) ([]map[string]interface{}, int, error) {
+				capturedGroupID = groupID
+				return nil, 0, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.VKGetWallPosts,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-100200"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "-100200", capturedGroupID,
+		"an explicit group_id equal to the owned community must still target that community")
+}
+
+func TestPublishPost_ForeignGroupID_ScopedToOwnCommunity(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "community-tok", extID: "-100200"}
+	var capturedGroupID string
+	factory := func(_ string) agent.VKClient {
+		return &mockVKClient{
+			publishPostFn: func(groupID, _ string) (int64, error) {
+				capturedGroupID = groupID
+				return 1, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "", nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.VKPublishPost,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "group_id": "-999999"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "-100200", capturedGroupID,
+		"a foreign group_id on a write must be scoped to the acting business's own community")
 }
 
 // --- Redis dedupe gate tests ---

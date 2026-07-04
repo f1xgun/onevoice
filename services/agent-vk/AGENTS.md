@@ -22,6 +22,12 @@ Tool dispatch lives in `internal/agent/handler.go` (switch on `req.Tool`); tool 
 
 All tool names are prefixed with `vk__`.
 
+## Group ID Resolution Pattern
+
+Both `getClient` (write) and `getReadClient` (read) resolve the target community via `resolveGroupTarget(supplied, resolved)`, where `resolved` is the acting business's own connected community (`info.ExternalID` from the business-scoped token resolver).
+
+**Ownership rule (cross-tenant guard):** the read tools take `group_id` as a free-string LLM arg, and the read client can fall back to the shared `VK_SERVICE_KEY`, which reads **any** public community. An unverified LLM-supplied `group_id` must therefore never be trusted as the target — a hallucinated or prompt-injected value (e.g. quoted back from untrusted VK comment text) naming a *different* community would let the agent read a foreign community's wall and third-party commenter PII into the acting tenant's chat and audit records. `resolveGroupTarget` honors `supplied` **only when it exactly equals `resolved`** (a legitimate own-community target); every other supplied value (empty, hallucinated, or a foreign group) falls back to the owned `resolved` community. Writes are scoped the same way for uniformity (VK also scopes the community `AccessToken` to one community, so a foreign write fails closed at VK). The service-key vs user-token vs community-token client priority is unchanged — only the `group_id` target selection is guarded.
+
 ## A2A Pattern
 
 Same shape as all other platform agents:
