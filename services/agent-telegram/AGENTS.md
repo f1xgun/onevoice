@@ -24,7 +24,11 @@ All tool names are prefixed with `telegram__`.
 
 ## Channel ID Resolution Pattern
 
-`getSender` returns `(Sender, resolvedExternalID, error)`. Handlers resolve the chat target via `resolveChatTarget(supplied, resolved)`: the LLM-supplied `channel_id` wins when it is a valid Telegram chat_id — a numeric ID **or** a public `@channelusername` — otherwise it falls back to `resolvedExternalID` from the integration (the connect flow stores it in the same numeric-or-`@username` form: numeric for private channels, `@username` for public). This covers empty, business-name, and hallucinated channel IDs. `bot.go` picks `NewMessage`/`NewPhoto` for numeric IDs and `NewMessageToChannel`/`NewPhotoToChannel` for `@username`. Do **not** force `strconv.ParseInt` on the target — that rejects public-channel usernames.
+`getSender` returns `(Sender, resolvedExternalID, error)`, where `resolvedExternalID` is **always one of the acting business's own integration external_ids** (the exact match when the supplied id names one of that business's integrations, else the first-active own channel — the token resolver's fallback). Handlers resolve the chat target via `resolveChatTarget(supplied, resolved)`.
+
+**Ownership rule (cross-tenant guard):** one shared OneVoice system bot administers every tenant's connected channel, so an unverified LLM-supplied `channel_id` must never be trusted as the send target — a hallucinated or prompt-injected value naming a *different* tenant's channel would let the bot post the acting tenant's content onto a channel it does not own. `resolveChatTarget` therefore honors `supplied` **only when it exactly equals the business-verified `resolved`** value; every other supplied value (empty, business-name, hallucinated, or a foreign channel) falls back to the owned `resolved` channel. This preserves legitimate multi-channel targeting by exact own-`external_id` and the empty/hallucinated → own-channel fallback, while making it impossible to post to a channel the acting business does not own. It errors with `channel_not_found` only when the owned channel is itself unusable.
+
+Telegram accepts either a numeric ID (private channels) or a public `@channelusername`; the connect flow stores `external_id` in the same form. `bot.go` picks `NewMessage`/`NewPhoto` for numeric IDs and `NewMessageToChannel`/`NewPhotoToChannel` for `@username`. Do **not** force `strconv.ParseInt` on the target — that rejects public-channel usernames.
 
 ## A2A Pattern
 
