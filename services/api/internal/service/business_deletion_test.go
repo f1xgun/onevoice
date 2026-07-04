@@ -320,6 +320,84 @@ func TestPurgeObjects_NoStoreIsNoOp(t *testing.T) {
 	s.purgeObjects(context.Background(), uuid.New())
 }
 
+// spyPendingPurger records every businessID passed to DeleteByBusinessID so a
+// test can assert the sweeper's post-commit cleanup purged the org's HITL
+// pending tool-call batches.
+type spyPendingPurger struct {
+	deletedBusinessIDs []string
+}
+
+func (s *spyPendingPurger) DeleteByBusinessID(_ context.Context, businessID string) (int64, error) {
+	s.deletedBusinessIDs = append(s.deletedBusinessIDs, businessID)
+	return 1, nil
+}
+
+// noopConvCleanup satisfies the ConversationRepository slice purgeDatastores
+// consumes (MongoBusinessCleanup) so the pending-purge wiring can be exercised
+// without a Mongo-backed conversation repository. All methods are no-ops; only
+// MongoBusinessCleanup is reached by purgeDatastores.
+type noopConvCleanup struct{}
+
+func (noopConvCleanup) Create(_ context.Context, _ *domain.Conversation) error { return nil }
+func (noopConvCleanup) GetByID(_ context.Context, _ string) (*domain.Conversation, error) {
+	return nil, nil
+}
+func (noopConvCleanup) ListByUserID(_ context.Context, _, _ string, _, _ int) ([]domain.Conversation, error) {
+	return nil, nil
+}
+func (noopConvCleanup) Update(_ context.Context, _ *domain.Conversation) error { return nil }
+func (noopConvCleanup) Delete(_ context.Context, _ string) error               { return nil }
+func (noopConvCleanup) UpdateProjectAssignment(_ context.Context, _ string, _ *string) error {
+	return nil
+}
+func (noopConvCleanup) UpdateTitleIfPending(_ context.Context, _, _ string) error { return nil }
+func (noopConvCleanup) TransitionToAutoPending(_ context.Context, _ string) error { return nil }
+func (noopConvCleanup) Pin(_ context.Context, _, _, _ string) error               { return nil }
+func (noopConvCleanup) Unpin(_ context.Context, _, _, _ string) error             { return nil }
+func (noopConvCleanup) BumpLastMessageAt(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (noopConvCleanup) SearchTitles(_ context.Context, _, _, _ string, _ *string, _ int) ([]domain.ConversationTitleHit, []string, error) {
+	return nil, nil, nil
+}
+func (noopConvCleanup) ScopedConversationIDs(_ context.Context, _, _ string, _ *string) ([]string, error) {
+	return nil, nil
+}
+func (noopConvCleanup) MongoConversationsCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+func (noopConvCleanup) MongoBusinessCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
+// TestPurgePendingToolCalls_DeletesBusinessBatches is the fail-on-revert guard
+// for the 152-ФЗ business-granularity erasure gap: hard-deleting an organization
+// must purge its HITL pending tool-call batches, which carry business_id +
+// user_id + a ModelMessages conversation-history PII snapshot and have no live
+// read path once the business is gone. Reverting the purgePendingToolCalls call
+// in the sweeper's post-commit cleanup leaves DeleteByBusinessID uncalled and
+// fails this test.
+func TestPurgePendingToolCalls_DeletesBusinessBatches(t *testing.T) {
+	pending := &spyPendingPurger{}
+	s := &BusinessDeletionService{
+		conversations: noopConvCleanup{},
+		pending:       pending,
+	}
+
+	businessID := uuid.New()
+	s.purgeDatastores(context.Background(), []purgedBusiness{{businessID: businessID, name: "Acme"}})
+
+	require.Equal(t, []string{businessID.String()}, pending.deletedBusinessIDs,
+		"business hard-delete must purge the org's pending tool-call batches")
+}
+
+// TestPurgePendingToolCalls_NoRepoIsNoOp verifies the cleanup is skipped (no
+// panic) when no pending repo is wired.
+func TestPurgePendingToolCalls_NoRepoIsNoOp(t *testing.T) {
+	s := &BusinessDeletionService{}
+	s.purgePendingToolCalls(context.Background(), uuid.New())
+}
+
 // TestBusinessWithGraceDays_ReturnsCopy mirrors the account-deletion test:
 // the override returns a NEW value, leaving the original at defaults.
 func TestBusinessWithGraceDays_ReturnsCopy(t *testing.T) {

@@ -144,6 +144,9 @@ func (s *stubPendingRepo) DeleteByConversationIDs(_ context.Context, _ []string)
 func (s *stubPendingRepo) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }
+func (s *stubPendingRepo) DeleteByBusinessID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 
 // stubBusinessRepo returns a preconfigured Business (with optional settings).
 type stubBusinessRepo struct {

@@ -42,6 +42,17 @@ type ObjectPurger interface {
 	DeletePrefix(ctx context.Context, prefix string) error
 }
 
+// BusinessPendingToolCallPurger removes a tenant's HITL approval batches on
+// hard-delete so 152-ФЗ erasure also drops each batch's business_id + user_id +
+// ModelMessages snapshot (a full conversation-history PII copy). Batches live in
+// the pending_tool_calls collection that MongoBusinessCleanup never touches, are
+// unreachable by any read path once the business is gone, and a "preparing"
+// orphan carries no expires_at so the TTL sweep never reaps it. Satisfied by
+// domain.PendingToolCallRepository.
+type BusinessPendingToolCallPurger interface {
+	DeleteByBusinessID(ctx context.Context, businessID string) (int64, error)
+}
+
 // BusinessOwnerEmailResolver resolves the requesting owner's email so the
 // confirmation + T-7 emails can be addressed. Satisfied by
 // domain.UserRepository. Member fan-out is intentionally NOT done — only the
@@ -69,6 +80,7 @@ type BusinessDeletionService struct {
 	members       BusinessOwnerChecker
 	users         BusinessOwnerEmailResolver
 	conversations domain.ConversationRepository
+	pending       BusinessPendingToolCallPurger
 	outbox        BusinessDeletionOutbox
 	auditLog      audit.Logger
 	objectStore   ObjectPurger // optional; reclaims uploaded objects on hard-delete
@@ -92,6 +104,7 @@ func NewBusinessDeletionService(
 	members BusinessOwnerChecker,
 	users BusinessOwnerEmailResolver,
 	conversations domain.ConversationRepository,
+	pending BusinessPendingToolCallPurger,
 	outbox BusinessDeletionOutbox,
 	auditLogger audit.Logger,
 ) *BusinessDeletionService {
@@ -101,6 +114,7 @@ func NewBusinessDeletionService(
 		members:       members,
 		users:         users,
 		conversations: conversations,
+		pending:       pending,
 		outbox:        outbox,
 		auditLog:      auditLogger,
 		graceDays:     deletionGraceDays,
@@ -289,8 +303,8 @@ func (s *BusinessDeletionService) GetScheduledDeletionAt(ctx context.Context, bu
 }
 
 // HardDeleteSweeper runs the per-tick batch hard-delete cycle; returns the count
-// of organizations actually deleted. Audit-before-delete in the same TX, Mongo
-// cleanup post-commit.
+// of organizations actually deleted. Audit-before-delete in the same TX,
+// non-PG datastore cleanup post-commit.
 func (s *BusinessDeletionService) HardDeleteSweeper(ctx context.Context) (int, error) {
 	const batchSize = 100
 	before := time.Now().Add(-time.Duration(s.graceDays) * 24 * time.Hour)
@@ -306,11 +320,7 @@ func (s *BusinessDeletionService) HardDeleteSweeper(ctx context.Context) (int, e
 		return 0, fmt.Errorf("enumerate pending business deletions: %w", err)
 	}
 
-	type purgedPair struct {
-		businessID uuid.UUID
-		name       string
-	}
-	var purged []purgedPair
+	var purged []purgedBusiness
 	for _, bid := range businessIDs {
 		business, err := s.businesses.GetByIDIncludingDeletedInTx(ctx, tx, bid)
 		if err != nil {
@@ -330,22 +340,58 @@ func (s *BusinessDeletionService) HardDeleteSweeper(ctx context.Context) (int, e
 			slog.ErrorContext(ctx, "business hard delete sweeper: business delete failed", "businessID", bid, "err", err)
 			continue
 		}
-		purged = append(purged, purgedPair{businessID: bid, name: originalName})
+		purged = append(purged, purgedBusiness{businessID: bid, name: originalName})
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return 0, fmt.Errorf("commit sweeper tx: %w", err)
 	}
 
+	s.purgeDatastores(ctx, purged)
+
+	return len(purged), nil
+}
+
+// purgedBusiness identifies an organization whose PG row the sweeper already
+// hard-deleted, carrying the snapshotted name for the post-commit Mongo cleanup.
+type purgedBusiness struct {
+	businessID uuid.UUID
+	name       string
+}
+
+// purgeDatastores runs the post-commit, best-effort erasure of every non-PG
+// datastore for the organizations the sweeper hard-deleted: Mongo documents,
+// HITL pending tool-call batches, and object storage. Each step is independent
+// and non-fatal (the PG rows are already gone), so one failure logs and the
+// sweep continues. pending_tool_calls is a separate collection MongoBusinessCleanup
+// never touches, so it is purged explicitly here.
+func (s *BusinessDeletionService) purgeDatastores(ctx context.Context, purged []purgedBusiness) {
 	for _, p := range purged {
 		if _, err := s.conversations.MongoBusinessCleanup(ctx, p.businessID.String(), p.name); err != nil {
 			slog.WarnContext(ctx, "mongo business cleanup failed after hard delete (PG row already gone)",
 				"businessID", p.businessID, "err", err)
 		}
+		s.purgePendingToolCalls(ctx, p.businessID)
 		s.purgeObjects(ctx, p.businessID)
 	}
+}
 
-	return len(purged), nil
+// purgePendingToolCalls best-effort deletes every HITL approval batch scoped to
+// a hard-deleted organization. The pending_tool_calls collection is separate
+// from the ones MongoBusinessCleanup nulls business_id on, so this runs
+// independently. Non-fatal: the PG/Mongo rows are already gone, so a cleanup
+// error is logged and the sweep continues (matching MongoBusinessCleanup /
+// purgeObjects). Deleting outright (not tombstoning) is correct — a batch
+// carries only business_id/user_id/conversation_id + a ModelMessages PII
+// snapshot with no live read path once the business is gone.
+func (s *BusinessDeletionService) purgePendingToolCalls(ctx context.Context, businessID uuid.UUID) {
+	if s.pending == nil {
+		return
+	}
+	if _, err := s.pending.DeleteByBusinessID(ctx, businessID.String()); err != nil {
+		slog.WarnContext(ctx, "pending tool-call cleanup failed after hard delete (PG row already gone)",
+			"businessID", businessID, "err", err)
+	}
 }
 
 // purgeObjects best-effort removes the businesses/{id}/ object-storage prefix
