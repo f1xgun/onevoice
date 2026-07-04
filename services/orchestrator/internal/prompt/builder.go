@@ -28,6 +28,11 @@ type BusinessContext struct {
 	Now                time.Time
 	// Locale drives the system-prompt language. Zero Tag = RU (legacy).
 	Locale language.Tag
+	// ImageGen, when true, appends the generate_image directive to the platform
+	// block (Block 1). The orchestrator sets it from tool-registry state, so it
+	// is process-global (same for every business) and Block 1 stays cache-stable
+	// across businesses. The zero value (false) leaves Block 1 byte-unchanged.
+	ImageGen bool
 }
 
 // ProjectContext carries the optional project prompt layer appended after the
@@ -59,7 +64,7 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 // cache_control on it. See docs/orchestrator/prompt.md.
 func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message) (platform, business string, msgs []llm.Message) {
 	tag := i18n.NormalizeToSupported(ctx.Locale)
-	platform = buildPlatformBlock(tag)
+	platform = buildPlatformBlock(tag, ctx.ImageGen)
 	business = buildBusinessBlock(ctx, tag)
 	if proj != nil {
 		business = appendProjectBlock(business, proj, tag)
@@ -70,19 +75,21 @@ func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message
 }
 
 // buildPlatformBlock renders the locale-fixed platform prefix (Block 1).
-// Takes NO BusinessContext — output is byte-stable per locale.
-func buildPlatformBlock(tag language.Tag) string {
+// Takes NO per-business state — output is byte-stable per (locale, imageGen)
+// pair. imageGen is a process-global feature flag, so the cache prefix stays
+// stable across businesses.
+func buildPlatformBlock(tag language.Tag, imageGen bool) string {
 	if tag == language.English {
-		return buildPlatformBlockEn()
+		return buildPlatformBlockEn(imageGen)
 	}
-	return buildPlatformBlockRu()
+	return buildPlatformBlockRu(imageGen)
 }
 
 // buildPlatformBlockRu is the Russian platform prefix (Block 1).
 // See docs/orchestrator/prompt.md for the load-bearing trailing-directive
 // invariant and the ~1100-token cache-size invariant
 // (TestSystemPromptHash_Stability_LockedHash pins the per-locale sha256).
-func buildPlatformBlockRu() string {
+func buildPlatformBlockRu(imageGen bool) string {
 	var sb strings.Builder
 	sb.WriteString("Ты — AI-ассистент для управления цифровым присутствием бизнеса в OneVoice — многоагентной платформе, объединяющей Telegram, ВКонтакте и Яндекс.Бизнес под единым диалоговым интерфейсом. Ты работаешь от имени владельца бизнеса: каждое твоё действие напрямую отражается на публичных страницах, каналах и отзывах. Поэтому действуй осознанно, лаконично и без лишней самопрезентации.\n")
 
@@ -102,6 +109,9 @@ func buildPlatformBlockRu() string {
 	sb.WriteString("- Параметры инструментов передавай только в явно описанной схеме. Не выдумывай новые поля, не вкладывай JSON в строковые аргументы и не пытайся обойти валидацию.\n")
 	sb.WriteString("- Если инструмент возвращает ошибку, сначала прочитай её текст; повтор имеет смысл только при явно временной проблеме (тайм-аут, 5xx). При 4xx — исправляй параметры, а не повторяй вызов.\n")
 	sb.WriteString("- Идентификаторы каналов, постов и отзывов используй ровно те, что вернули инструменты или ввёл пользователь. Не сокращай, не «нормализуй» и не догадывайся.\n")
+	if imageGen {
+		sb.WriteString("- Если для поста нужна картинка, которой нет у пользователя, сначала вызови generate_image, дождись поля photo_url в результате и передай его без изменений в инструмент публикации фото. НИКОГДА не выдумывай значение photo_url и не подставляй посторонние ссылки.\n")
+	}
 
 	sb.WriteString("\n## Стиль ответов\n")
 	sb.WriteString("- Отвечай кратко и по делу: один-два абзаца текста плюс при необходимости маркированный список. Длинные эссе пользователь не ждёт.\n")
@@ -131,7 +141,7 @@ func buildPlatformBlockRu() string {
 
 // buildPlatformBlockEn is the English platform prefix (Block 1).
 // See buildPlatformBlockRu / docs/orchestrator/prompt.md for invariants.
-func buildPlatformBlockEn() string {
+func buildPlatformBlockEn(imageGen bool) string {
 	var sb strings.Builder
 	sb.WriteString("You are an AI assistant for managing a business's digital presence inside OneVoice — a multi-agent platform that unifies Telegram, VK, and Yandex.Business behind a single conversational interface. You act on behalf of the business owner: every action you take is reflected on public channels, profiles, and reviews. Behave deliberately, stay concise, and skip self-promotion.\n")
 
@@ -151,6 +161,9 @@ func buildPlatformBlockEn() string {
 	sb.WriteString("- Pass tool arguments only in the explicitly declared schema. Do not invent new fields, do not embed JSON inside string arguments, and do not try to bypass validation.\n")
 	sb.WriteString("- If a tool returns an error, read the message first; retrying makes sense only for clearly transient failures (timeout, 5xx). For 4xx, fix the arguments rather than repeating the call.\n")
 	sb.WriteString("- Use channel, post, and review identifiers exactly as returned by tools or supplied by the user. Do not truncate, normalize, or guess them.\n")
+	if imageGen {
+		sb.WriteString("- If a post needs an image the user hasn't supplied, first call generate_image, wait for the photo_url in its result, and pass that value unchanged to the photo-publishing tool. NEVER fabricate a photo_url or substitute an external link.\n")
+	}
 
 	sb.WriteString("\n## Response style\n")
 	sb.WriteString("- Be brief and to the point: one or two paragraphs plus a bulleted list when useful. The user is not expecting a long essay.\n")

@@ -6,6 +6,14 @@
 // same string when receiving NATS task envelopes.
 package tools
 
+// Internal tools run in-process in the orchestrator (no NATS dispatch). Their
+// names are bare (no "{platform}__" prefix) so Registry.Available treats them
+// as always-available and the Auto floor exempts them from the project
+// whitelist.
+const (
+	GenerateImage = "generate_image"
+)
+
 // Telegram tools.
 const (
 	TelegramSendChannelPost  = "telegram__send_channel_post"

@@ -1,0 +1,164 @@
+package wire
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/imagegen"
+	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
+)
+
+// stubGenerator returns a canned Result/error and counts calls.
+type stubGenerator struct {
+	res   *imagegen.Result
+	err   error
+	calls int
+}
+
+func (s *stubGenerator) Generate(_ context.Context, _ imagegen.Request) (*imagegen.Result, error) {
+	s.calls++
+	return s.res, s.err
+}
+func (s *stubGenerator) Name() string { return "openai-image" }
+
+// stubStore records uploads and returns a fixed public URL.
+type stubStore struct {
+	uploads int
+	lastKey string
+	url     string
+}
+
+func (s *stubStore) Upload(_ context.Context, key string, _ io.Reader, _ int64, _ string) error {
+	s.uploads++
+	s.lastKey = key
+	return nil
+}
+func (s *stubStore) PublicURL(_ string) string { return s.url }
+
+// stubWriter captures billing rows.
+type stubWriter struct {
+	logs []*llm.UsageLog
+}
+
+func (s *stubWriter) LogUsage(_ context.Context, log *llm.UsageLog) error {
+	s.logs = append(s.logs, log)
+	return nil
+}
+
+func defNames(defs []llm.ToolDefinition) []string {
+	out := make([]string, len(defs))
+	for i, d := range defs {
+		out[i] = d.Function.Name
+	}
+	return out
+}
+
+func testCfg() *config.Config { return &config.Config{LLMTier: "free"} }
+
+// TestRegisterInternalTools_WithGenerator is the fail-on-revert guard: a non-nil
+// generator registers generate_image with an Auto floor and it must surface in
+// both Available(nil) and the EXPLICIT whitelist (Auto exempts the whitelist).
+func TestRegisterInternalTools_WithGenerator(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	RegisterInternalTools(reg, &stubGenerator{}, &stubStore{}, &stubWriter{}, testCfg())
+
+	require.True(t, reg.Has(tools.GenerateImage), "generate_image must be registered")
+	assert.Equal(t, domain.ToolFloorAuto, reg.Floor(tools.GenerateImage))
+
+	assert.Contains(t, defNames(reg.Available(nil)), tools.GenerateImage,
+		"bare-name tool must be available with no active integrations")
+
+	wl := reg.AvailableForWhitelist(context.Background(), nil, domain.WhitelistModeExplicit, nil)
+	assert.Contains(t, defNames(wl), tools.GenerateImage,
+		"Auto-floor tool must pass an EXPLICIT whitelist even when not listed")
+}
+
+// TestRegisterInternalTools_NilGenerator proves a disabled generator adds no tool.
+func TestRegisterInternalTools_NilGenerator(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	RegisterInternalTools(reg, nil, &stubStore{}, &stubWriter{}, testCfg())
+	assert.False(t, reg.Has(tools.GenerateImage), "nil generator must not register generate_image")
+}
+
+// TestGenerateImageExecutor_WritesUsageLog checks the end-to-end executor: it
+// uploads under a business-namespaced key, writes a non-zero cost row tagged
+// openai-image, and returns the store's public photo_url.
+func TestGenerateImageExecutor_WritesUsageLog(t *testing.T) {
+	gen := &stubGenerator{res: &imagegen.Result{
+		Data: []byte("\x89PNG bytes"), ContentType: "image/png",
+		Width: 1024, Height: 1024, Model: "dall-e-3", CostUSD: 0.04,
+	}}
+	store := &stubStore{url: "https://cdn.example/media/generated/abc.png"}
+	billing := &stubWriter{}
+	exec := newGenerateImageExecutor(gen, store, billing, testCfg())
+
+	bizID := uuid.New()
+	ctx := a2a.WithBusinessID(context.Background(), bizID.String())
+	out, err := exec(ctx, map[string]interface{}{"prompt": "a cat", "size": "1024x1024"})
+	require.NoError(t, err)
+
+	m, ok := out.(map[string]any)
+	require.True(t, ok, "result must be a map so photo_url surfaces to the LLM")
+	assert.Equal(t, store.url, m["photo_url"])
+	assert.Equal(t, 1024, m["width"])
+
+	assert.Equal(t, 1, gen.calls)
+	assert.Equal(t, 1, store.uploads)
+	assert.True(t, strings.HasPrefix(store.lastKey, "generated/"+bizID.String()+"/"),
+		"object key must be namespaced by business id, got %q", store.lastKey)
+
+	require.Len(t, billing.logs, 1)
+	log := billing.logs[0]
+	assert.Equal(t, "openai-image", log.Provider)
+	assert.Equal(t, "dall-e-3", log.Model)
+	assert.Equal(t, bizID, log.BusinessID)
+	assert.Greater(t, log.ProviderCostUSD, 0.0, "billing row must record non-zero provider cost")
+	assert.Greater(t, log.CommissionUSD, 0.0)
+}
+
+// TestGenerateImageExecutor_MissingBusinessID refuses to store an unattributed
+// object (tenant isolation / 152-ФЗ erasability).
+func TestGenerateImageExecutor_MissingBusinessID(t *testing.T) {
+	store := &stubStore{}
+	exec := newGenerateImageExecutor(&stubGenerator{}, store, &stubWriter{}, testCfg())
+	_, err := exec(context.Background(), map[string]interface{}{"prompt": "x"})
+	require.Error(t, err)
+	assert.Equal(t, 0, store.uploads, "must not upload without a business id")
+}
+
+// TestGenerateImageExecutor_GenError_NoUpload proves an oversize/transient
+// generator error short-circuits before Upload and yields a clean tool error.
+func TestGenerateImageExecutor_GenError_NoUpload(t *testing.T) {
+	gen := &stubGenerator{err: fmt.Errorf("%w: too big", imagegen.ErrResultTooLarge)}
+	store := &stubStore{}
+	exec := newGenerateImageExecutor(gen, store, &stubWriter{}, testCfg())
+
+	ctx := a2a.WithBusinessID(context.Background(), uuid.New().String())
+	_, err := exec(ctx, map[string]interface{}{"prompt": "x"})
+	require.Error(t, err)
+	assert.Equal(t, 0, store.uploads, "no upload when generation fails")
+	assert.NotContains(t, err.Error(), "too big", "raw provider detail must not leak to the tool result")
+}
+
+// TestGenerateImageExecutor_UnsafePrompt maps a content-policy rejection to a
+// clean, non-retry-inviting message.
+func TestGenerateImageExecutor_UnsafePrompt(t *testing.T) {
+	gen := &stubGenerator{err: fmt.Errorf("%w: policy", imagegen.ErrUnsafePrompt)}
+	exec := newGenerateImageExecutor(gen, &stubStore{}, &stubWriter{}, testCfg())
+	ctx := a2a.WithBusinessID(context.Background(), uuid.New().String())
+	_, err := exec(ctx, map[string]interface{}{"prompt": "x"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rephrase")
+}

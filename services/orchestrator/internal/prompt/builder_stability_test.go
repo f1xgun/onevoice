@@ -31,6 +31,14 @@ const blockOneRuSHA256 = "185388c26c89784c27580d63a4c3f24821bafcde659ae4612614b9
 // See blockOneRuSHA256 doc comment for rotation procedure.
 const blockOneEnSHA256 = "e60a9b5101135a1840af9ee38cc42d89f5232c62b94227c81e563b3b67bf1a76"
 
+// blockOne{Ru,En}ImageGenSHA256 are the locked hashes of Block 1 WHEN
+// generate_image is enabled (BusinessContext.ImageGen=true adds one directive
+// bullet to the tool-use section). imageGen is a process-global flag, so this
+// variant is itself byte-stable across businesses — the cache prefix simply
+// differs from the disabled variant. Rotate the same way as blockOneRuSHA256.
+const blockOneRuImageGenSHA256 = "1200fbf7447f560ad36e24d16b47fa2bd12842be3b74a57275cc50293e3e2329"
+const blockOneEnImageGenSHA256 = "e98d408c8b4c16e761d7218e7f91c01bb40bb83bd5c214e7c3697acdc817f306"
+
 // TestSystemPromptHash_Stability proves Block 1 (platform-wide) is BYTE-
 // IDENTICAL across BusinessContext variations for the same locale — this is
 // the regression guard for Anthropic's cross-business prompt-cache prefix.
@@ -87,6 +95,44 @@ func TestSystemPromptHash_Stability_LockedHash(t *testing.T) {
 			"Block 1 (EN) sha256 drifted. Rotate blockOneEnSHA256 to %s if intentional.\nactual block 1:\n%s",
 			got, platform,
 		)
+	})
+	t.Run("ru_imagegen", func(t *testing.T) {
+		platform, _, _ := prompt.BuildSplit(prompt.BusinessContext{
+			Locale:   language.Russian,
+			Now:      time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+			ImageGen: true,
+		}, nil, nil)
+		sum := sha256.Sum256([]byte(platform))
+		got := hex.EncodeToString(sum[:])
+		assert.Equal(t, blockOneRuImageGenSHA256, got,
+			"Block 1 (RU, image-gen enabled) sha256 drifted. Rotate blockOneRuImageGenSHA256 to %s if intentional.",
+			got,
+		)
+		assert.Contains(t, platform, "сначала вызови generate_image",
+			"enabled RU Block 1 must carry the generate_image directive")
+	})
+	t.Run("en_imagegen", func(t *testing.T) {
+		platform, _, _ := prompt.BuildSplit(prompt.BusinessContext{
+			Locale:   language.English,
+			Now:      time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+			ImageGen: true,
+		}, nil, nil)
+		sum := sha256.Sum256([]byte(platform))
+		got := hex.EncodeToString(sum[:])
+		assert.Equal(t, blockOneEnImageGenSHA256, got,
+			"Block 1 (EN, image-gen enabled) sha256 drifted. Rotate blockOneEnImageGenSHA256 to %s if intentional.",
+			got,
+		)
+		assert.Contains(t, platform, "first call generate_image",
+			"enabled EN Block 1 must carry the generate_image directive")
+	})
+	t.Run("disabled_omits_directive", func(t *testing.T) {
+		ru, _, _ := prompt.BuildSplit(prompt.BusinessContext{Locale: language.Russian}, nil, nil)
+		en, _, _ := prompt.BuildSplit(prompt.BusinessContext{Locale: language.English}, nil, nil)
+		assert.NotContains(t, ru, "generate_image",
+			"default (disabled) RU Block 1 must NOT mention generate_image — keeps the locked hash valid")
+		assert.NotContains(t, en, "generate_image",
+			"default (disabled) EN Block 1 must NOT mention generate_image")
 	})
 }
 
