@@ -159,6 +159,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}
 	if sseCounter != nil {
 		hitlHandler.SetSSECounter(sseCounter, cfg.LLMTier)
+		reviewHandler.SetSSECounter(sseCounter, cfg.LLMTier)
 	}
 
 	businessHandler.SetToolsCache(svcs.ToolsCache)
