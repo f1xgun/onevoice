@@ -118,15 +118,16 @@ func (m *MockBusinessRepository) UpdateToolApprovals(ctx context.Context, busine
 // --- Test scaffolding ---
 
 type invitationTestFixture struct {
-	mockPool pgxmock.PgxPoolIface
-	invRepo  *MockInvitationRepository
-	memRepo  *MockBusinessMembershipRepository
-	roleRepo *MockRoleRepository
-	userRepo *MockUserRepository
-	bizRepo  *MockBusinessRepository
-	inv      *MockCacheInvalidator
-	now      time.Time
-	handler  *InvitationsHandler
+	mockPool  pgxmock.PgxPoolIface
+	invRepo   *MockInvitationRepository
+	memRepo   *MockBusinessMembershipRepository
+	roleRepo  *MockRoleRepository
+	userRepo  *MockUserRepository
+	bizRepo   *MockBusinessRepository
+	bizGetter *mockBusinessGetter
+	inv       *MockCacheInvalidator
+	now       time.Time
+	handler   *InvitationsHandler
 }
 
 func newInvitationFixture(t *testing.T) *invitationTestFixture {
@@ -137,25 +138,27 @@ func newInvitationFixture(t *testing.T) *invitationTestFixture {
 
 	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
 	f := &invitationTestFixture{
-		mockPool: mockPool,
-		invRepo:  &MockInvitationRepository{},
-		memRepo:  &MockBusinessMembershipRepository{},
-		roleRepo: &MockRoleRepository{},
-		userRepo: &MockUserRepository{},
-		bizRepo:  &MockBusinessRepository{},
-		inv:      &MockCacheInvalidator{},
-		now:      now,
+		mockPool:  mockPool,
+		invRepo:   &MockInvitationRepository{},
+		memRepo:   &MockBusinessMembershipRepository{},
+		roleRepo:  &MockRoleRepository{},
+		userRepo:  &MockUserRepository{},
+		bizRepo:   &MockBusinessRepository{},
+		bizGetter: &mockBusinessGetter{},
+		inv:       &MockCacheInvalidator{},
+		now:       now,
 	}
 	f.handler = &InvitationsHandler{
-		invitationRepo: f.invRepo,
-		membershipRepo: f.memRepo,
-		roleRepo:       f.roleRepo,
-		userRepo:       f.userRepo,
-		businessRepo:   f.bizRepo,
-		pool:           mockPool,
-		invalidator:    f.inv,
-		audit:          audit.Nop(),
-		now:            func() time.Time { return f.now },
+		invitationRepo:  f.invRepo,
+		membershipRepo:  f.memRepo,
+		roleRepo:        f.roleRepo,
+		userRepo:        f.userRepo,
+		businessRepo:    f.bizRepo,
+		businessService: f.bizGetter,
+		pool:            mockPool,
+		invalidator:     f.inv,
+		audit:           audit.Nop(),
+		now:             func() time.Time { return f.now },
 	}
 	return f
 }
@@ -747,4 +750,54 @@ func TestInvitationsHandler_Preview_Expired_410(t *testing.T) {
 	f.handler.Preview(w, req)
 	require.Equal(t, http.StatusGone, w.Code)
 	require.Contains(t, w.Body.String(), `"reason":"expired"`)
+}
+
+// --- Tests: soft-deleted organization gate ---
+
+// TestInvitationsHandler_WriteEndpoints_SoftDeletedBusiness_Returns404 asserts
+// the write endpoints (Create, Revoke) reject mutations against a soft-deleted
+// (erasure-pending) organization with 404 and never reach the mutating repo.
+// The businessGetter returns domain.ErrBusinessNotFound; removing the existence
+// gate would let the mutation proceed — fail-on-revert.
+func TestInvitationsHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *testing.T) {
+	softDeleted := func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+		return nil, domain.ErrBusinessNotFound
+	}
+
+	t.Run("Create", func(t *testing.T) {
+		f := newInvitationFixture(t)
+		f.bizGetter.getByIDFunc = softDeleted
+
+		bizID := uuid.New()
+		userID := uuid.New()
+		roleID := uuid.New()
+
+		body := fmt.Sprintf(`{"role_id":%q,"expires_in":3600}`, roleID)
+		req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, userID))
+		w := httptest.NewRecorder()
+		f.handler.Create(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Code, "body=%s", w.Body.String())
+		require.Contains(t, w.Body.String(), "business not found")
+		f.invRepo.AssertNotCalled(t, "CreateInTx", mock.Anything, mock.Anything, mock.Anything)
+		f.roleRepo.AssertNotCalled(t, "GetByID", mock.Anything, mock.Anything)
+	})
+
+	t.Run("Revoke", func(t *testing.T) {
+		f := newInvitationFixture(t)
+		f.bizGetter.getByIDFunc = softDeleted
+
+		bizID := uuid.New()
+		userID := uuid.New()
+		invID := uuid.New()
+
+		req := requestWithBC(http.MethodDelete, "/x", "", ownerBC(bizID, userID))
+		req = withChiParams(req, map[string]string{"inviteId": invID.String()})
+		w := httptest.NewRecorder()
+		f.handler.Revoke(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Code, "body=%s", w.Body.String())
+		require.Contains(t, w.Body.String(), "business not found")
+		f.invRepo.AssertNotCalled(t, "Revoke", mock.Anything, mock.Anything, mock.Anything)
+	})
 }

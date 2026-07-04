@@ -29,17 +29,22 @@ type roleCacheInvalidator interface {
 // RolesHandler serves the business role CRUD + MyPermissions endpoints.
 // See docs/api/handlers/roles.md.
 type RolesHandler struct {
-	roleRepo       domain.RoleRepository
-	membershipRepo domain.BusinessMembershipRepository
-	pool           poolBeginner
-	invalidator    roleCacheInvalidator
-	audit          audit.Logger
+	roleRepo        domain.RoleRepository
+	membershipRepo  domain.BusinessMembershipRepository
+	businessService businessGetter
+	pool            poolBeginner
+	invalidator     roleCacheInvalidator
+	audit           audit.Logger
 }
 
 // NewRolesHandler constructs a RolesHandler; every dep is required.
+// businessService lets the write endpoints reject mutations against a
+// soft-deleted (erasure-pending) organization that RequireBusinessAccess
+// (membership-only) does not gate.
 func NewRolesHandler(
 	rr domain.RoleRepository,
 	mr domain.BusinessMembershipRepository,
+	bs businessGetter,
 	pool poolBeginner,
 	inv roleCacheInvalidator,
 	auditLogger audit.Logger,
@@ -49,6 +54,9 @@ func NewRolesHandler(
 	}
 	if mr == nil {
 		return nil, fmt.Errorf("NewRolesHandler: membershipRepo cannot be nil")
+	}
+	if bs == nil {
+		return nil, fmt.Errorf("NewRolesHandler: businessService cannot be nil")
 	}
 	if pool == nil {
 		return nil, fmt.Errorf("NewRolesHandler: pool cannot be nil")
@@ -60,11 +68,12 @@ func NewRolesHandler(
 		return nil, fmt.Errorf("NewRolesHandler: auditLogger cannot be nil")
 	}
 	return &RolesHandler{
-		roleRepo:       rr,
-		membershipRepo: mr,
-		pool:           pool,
-		invalidator:    inv,
-		audit:          auditLogger,
+		roleRepo:        rr,
+		membershipRepo:  mr,
+		businessService: bs,
+		pool:            pool,
+		invalidator:     inv,
+		audit:           auditLogger,
 	}, nil
 }
 
@@ -132,6 +141,16 @@ func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "", authz.PermRolesCreate)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "create role: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -220,6 +239,16 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	roleID, ok := parseRoleIDParam(w, r)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "update role: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -319,6 +348,16 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	roleID, ok := parseRoleIDParam(w, r)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "delete role: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 

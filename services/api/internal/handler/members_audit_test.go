@@ -66,12 +66,13 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 	auditLog.expect(1)
 
 	h := &MembersHandler{
-		membershipRepo: mr,
-		roleRepo:       rr,
-		userRepo:       ur,
-		pool:           mockPool,
-		invalidator:    inv,
-		audit:          auditLog,
+		membershipRepo:  mr,
+		roleRepo:        rr,
+		userRepo:        ur,
+		businessService: &mockBusinessGetter{},
+		pool:            mockPool,
+		invalidator:     inv,
+		audit:           auditLog,
 	}
 
 	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersUpdateRole)
