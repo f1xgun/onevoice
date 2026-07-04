@@ -1073,3 +1073,53 @@ func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
 		}
 	}
 }
+
+// TestResolve_OversizedBody_Returns400_ServiceNotInvoked pins the request-body
+// cap on ResolvePendingToolCalls: a body over 256 KiB must be rejected at decode
+// time (4xx) without ever reaching HITLService.Resolve — resolvingWinners stays
+// 0 because AtomicTransitionToResolving is never called. The huge padding lives
+// in an unknown field AFTER a valid one so MaxBytesReader fires during the scan.
+// Reverting the MaxBytesReader line lets the decoder buffer the whole body,
+// resolving the batch and flipping resolvingWinners to 1.
+func TestResolve_OversizedBody_Returns400_ServiceNotInvoked(t *testing.T) {
+	biz := &domain.Business{ID: uuid.New()}
+	pr := newFakeHITLPendingRepo()
+	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+	})
+	h := buildHITLHandler(t, pr, biz, nil, "")
+
+	padding := strings.Repeat("A", 512*1024)
+	body := []byte(`{"decisions":[{"id":"tc_a","action":"approve"}],"_pad":"` + padding + `"}`)
+
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
+	if rec.Code < 400 || rec.Code >= 500 {
+		t.Fatalf("status = %d, want 4xx: %s", rec.Code, rec.Body.String())
+	}
+	if got := atomic.LoadInt32(&pr.resolvingWinners); got != 0 {
+		t.Fatalf("resolvingWinners = %d, want 0 (Resolve must not run on an over-cap body)", got)
+	}
+}
+
+// TestResolve_NormalBody_Succeeds is the control for the body-cap test: a small
+// valid body resolves the batch (200) and drives the service (resolvingWinners
+// == 1), proving the cap does not reject legitimate payloads.
+func TestResolve_NormalBody_Succeeds(t *testing.T) {
+	biz := &domain.Business{ID: uuid.New()}
+	pr := newFakeHITLPendingRepo()
+	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+	})
+	h := buildHITLHandler(t, pr, biz, nil, "")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"decisions": []map[string]interface{}{{"id": "tc_a", "action": "approve"}},
+	})
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if got := atomic.LoadInt32(&pr.resolvingWinners); got != 1 {
+		t.Fatalf("resolvingWinners = %d, want 1", got)
+	}
+}
