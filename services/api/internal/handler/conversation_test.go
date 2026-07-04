@@ -206,6 +206,12 @@ func (m *MockPendingToolCallRepository) ReconcileOrphanPreparing(_ context.Conte
 func (m *MockPendingToolCallRepository) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
+func (m *MockPendingToolCallRepository) DeleteByConversationIDs(_ context.Context, _ []string) (int64, error) {
+	return 0, nil
+}
+func (m *MockPendingToolCallRepository) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 
 // MockMessageRepository is a minimal mock for MessageRepository.
 // The interface includes Update + FindByConversationActive; tests that

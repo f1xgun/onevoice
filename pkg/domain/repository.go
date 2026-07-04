@@ -463,4 +463,15 @@ type PendingToolCallRepository interface {
 	// the compensating reset. olderThan gates it off a legitimately in-flight
 	// resolve, which holds "resolving" only momentarily.
 	ReconcileOrphanResolving(ctx context.Context, olderThan time.Duration) (int64, error)
+	// DeleteByConversationIDs hard-deletes every batch whose conversation_id is in
+	// ids and returns the number removed. Used by the project/conversation
+	// hard-delete cascade so a batch's ModelMessages snapshot (a full
+	// conversation-history PII copy) never outlives the conversation it belongs
+	// to. A batch carries only conversation_id/business_id/project_id, so it is
+	// unreachable by any read path once its conversation is gone — the cascade
+	// must remove it explicitly.
+	DeleteByConversationIDs(ctx context.Context, ids []string) (int64, error)
+	// DeleteByConversationID is the single-conversation form of
+	// DeleteByConversationIDs, used by the per-conversation delete cascade.
+	DeleteByConversationID(ctx context.Context, conversationID string) (int64, error)
 }

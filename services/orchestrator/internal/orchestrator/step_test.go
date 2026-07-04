@@ -127,6 +127,14 @@ func (m *mockPendingRepo) ReconcileOrphanResolving(_ context.Context, _ time.Dur
 	return 0, nil
 }
 
+func (m *mockPendingRepo) DeleteByConversationIDs(_ context.Context, _ []string) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockPendingRepo) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
 // Satisfy the full interface — this mock is used by both step_test.go and
 // resume_test.go. If interface drifts, compile fails here first.
 var _ domain.PendingToolCallRepository = (*mockPendingRepo)(nil)

@@ -555,8 +555,90 @@ func TestPendingToolCall_ReconcileOrphanPreparing(t *testing.T) {
 	assert.Equal(t, "preparing", freshDoc["status"], "fresh preparing untouched")
 	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "prep-old"}).Decode(&oldDoc))
 	assert.Equal(t, "expired", oldDoc["status"], "old preparing reconciled to expired")
+	// Fail-on-revert (TTL gap): a preparing row carries no expires_at, so
+	// reconciling status alone would leave the TTL index — which skips docs
+	// whose indexed field is absent — unable to ever reap the row, retaining
+	// its model_messages PII snapshot indefinitely. The reconcile MUST stamp
+	// expires_at so the row is TTL-reapable.
+	require.Contains(t, oldDoc, "expires_at",
+		"reconciled expired batch must carry expires_at so the TTL index can reap it")
+	assert.NotNil(t, oldDoc["expires_at"],
+		"reconciled expires_at must be a real date, not nil")
 	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resolving-old"}).Decode(&resolvingDoc))
 	assert.Equal(t, "resolving", resolvingDoc["status"], "resolving untouched")
+}
+
+// TestPendingToolCall_DeleteByConversationID deletes only the batches whose
+// conversation_id matches, across every status — including a "preparing" and an
+// "expired" row that carry no expires_at and so would never be reaped by the TTL
+// index. This is the cascade hook that stops a batch's model_messages PII
+// snapshot from outliving the conversation it belongs to.
+//
+// Fail-on-revert: without a DeleteMany on conversation_id the target batches
+// remain resident and the count/residency assertions below turn red.
+func TestPendingToolCall_DeleteByConversationID(t *testing.T) {
+	db := setupPendingToolCallDB(t, "delete_by_conv")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "d-pending", ConversationID: "conv-del", BusinessID: "biz-1",
+		UserID: "u", MessageID: "m1", Status: "pending",
+		ModelMessages: []byte(`[{"role":"user"}]`),
+		CreatedAt:     now, UpdatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "d-preparing", ConversationID: "conv-del", BusinessID: "biz-1",
+		UserID: "u", MessageID: "m2", Status: "preparing",
+		CreatedAt: now, UpdatedAt: now,
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "d-expired", ConversationID: "conv-del", BusinessID: "biz-1",
+		UserID: "u", MessageID: "m3", Status: "expired",
+		CreatedAt: now, UpdatedAt: now,
+	})
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "keep", ConversationID: "conv-other", BusinessID: "biz-1",
+		UserID: "u", MessageID: "m4", Status: "pending",
+		CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+	})
+
+	deleted, err := repo.DeleteByConversationID(ctx, "conv-del")
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), deleted, "all three batches on conv-del must be deleted")
+
+	remaining, err := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{"conversation_id": "conv-del"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), remaining, "no batch may survive the conversation delete")
+
+	kept, err := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{"_id": "keep"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), kept, "a batch on another conversation must survive")
+}
+
+// TestPendingToolCall_DeleteByConversationIDs_EmptyIsNoop guards the
+// project-cascade fast path: an empty id set must not issue a delete (which with
+// an empty $in would still match nothing, but the guard avoids the round-trip).
+func TestPendingToolCall_DeleteByConversationIDs_EmptyIsNoop(t *testing.T) {
+	db := setupPendingToolCallDB(t, "delete_empty")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	now := time.Now().UTC()
+	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
+		ID: "survivor", ConversationID: "conv-x", BusinessID: "biz-1",
+		UserID: "u", MessageID: "m", Status: "pending",
+		CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+	})
+
+	deleted, err := repo.DeleteByConversationIDs(ctx, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted)
+
+	total, err := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total, "empty id set must delete nothing")
 }
 
 func TestPendingToolCall_ReconcileOrphanResolving(t *testing.T) {

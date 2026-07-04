@@ -327,10 +327,11 @@ func TestProjectRepository_CountConversationsByID(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &projectRepository{
-		pool:     nil,
-		sb:       newStatementBuilder(),
-		convColl: convColl,
-		msgColl:  db.Collection("messages"),
+		pool:        nil,
+		sb:          newStatementBuilder(),
+		convColl:    convColl,
+		msgColl:     db.Collection("messages"),
+		pendingColl: db.Collection("pending_tool_calls"),
 	}
 
 	count, err := repo.CountConversationsByID(ctx, projectID)
@@ -353,6 +354,7 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 
 	convColl := db.Collection("conversations")
 	msgColl := db.Collection("messages")
+	pendingColl := db.Collection("pending_tool_calls")
 
 	_, err := convColl.InsertMany(ctx, []any{
 		bson.M{"_id": "c1", "project_id": projectID.String()},
@@ -370,6 +372,16 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// A pending batch on c1 carries a model_messages PII snapshot; a
+	// "preparing" batch on c2 carries no expires_at, so the TTL sweep can
+	// never reap it — the cascade MUST delete it explicitly.
+	_, err = pendingColl.InsertMany(ctx, []any{
+		bson.M{"_id": "b1", "conversation_id": "c1", "status": "pending", "model_messages": []byte(`[{"role":"user"}]`)},
+		bson.M{"_id": "b2", "conversation_id": "c2", "status": "preparing"},
+		bson.M{"_id": "b-other", "conversation_id": "c-other", "status": "pending"},
+	})
+	require.NoError(t, err)
+
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	mockPool.ExpectExec(`DELETE FROM projects WHERE`).
@@ -377,10 +389,11 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 	repo := &projectRepository{
-		pool:     mockPool,
-		sb:       newStatementBuilder(),
-		convColl: convColl,
-		msgColl:  msgColl,
+		pool:        mockPool,
+		sb:          newStatementBuilder(),
+		convColl:    convColl,
+		msgColl:     msgColl,
+		pendingColl: pendingColl,
 	}
 
 	deletedConvos, deletedMessages, err := repo.HardDeleteCascade(ctx, projectID)
@@ -396,6 +409,18 @@ func TestProjectRepository_HardDeleteCascade(t *testing.T) {
 	otherMsgCount, err := msgColl.CountDocuments(ctx, bson.M{"conversation_id": "c-other"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), otherMsgCount)
+
+	// Fail-on-revert: the project's own pending batches must be gone (their
+	// PII snapshots erased); a batch on another project's conversation must
+	// survive. Reverting the pending cascade leaves b1/b2 resident.
+	for _, gone := range []string{"b1", "b2"} {
+		n, cErr := pendingColl.CountDocuments(ctx, bson.M{"_id": gone})
+		require.NoError(t, cErr)
+		assert.Equal(t, int64(0), n, "pending batch %s must be deleted by conversation_id $in convIDs", gone)
+	}
+	otherPendingCount, err := pendingColl.CountDocuments(ctx, bson.M{"_id": "b-other"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), otherPendingCount, "another project's pending batch must survive")
 
 	// Both Mongo deletes must key off the SAME enumerated convIDs set, so the
 	// project's own conversations are gone by _id (not merely by project_id).
@@ -453,10 +478,11 @@ func TestProjectRepository_HardDeleteCascade_AbortsOnDecodeError(t *testing.T) {
 		Maybe()
 
 	repo := &projectRepository{
-		pool:     mockPool,
-		sb:       newStatementBuilder(),
-		convColl: convColl,
-		msgColl:  msgColl,
+		pool:        mockPool,
+		sb:          newStatementBuilder(),
+		convColl:    convColl,
+		msgColl:     msgColl,
+		pendingColl: db.Collection("pending_tool_calls"),
 	}
 
 	deletedConvos, deletedMessages, err := repo.HardDeleteCascade(ctx, projectID)

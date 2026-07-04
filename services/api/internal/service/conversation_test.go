@@ -251,6 +251,17 @@ type stubPendingToolCallRepo struct {
 	// ListErr forces the soft-error path in OpenChat — the call still
 	// succeeds with PendingApprovals=[].
 	ListErr error
+
+	// DeletedConvIDs records every conversationID passed to
+	// DeleteByConversationID so the delete-cascade test can assert the
+	// conversation's pending batches were purged.
+	DeletedConvIDs []string
+	// DeleteErr forces DeleteByConversationID to fail.
+	DeleteErr error
+	// order, when non-nil, records the relative ordering of the pending-batch
+	// delete vs the message/conversation deletes so the cascade can assert
+	// pending batches go first.
+	order *[]string
 }
 
 func (s *stubPendingToolCallRepo) ListPendingByConversation(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
@@ -290,6 +301,29 @@ func (s *stubPendingToolCallRepo) ReconcileOrphanPreparing(_ context.Context, _ 
 }
 func (s *stubPendingToolCallRepo) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
+}
+func (s *stubPendingToolCallRepo) DeleteByConversationIDs(ctx context.Context, ids []string) (int64, error) {
+	var total int64
+	for _, id := range ids {
+		n, err := s.DeleteByConversationID(ctx, id)
+		if err != nil {
+			return total, err
+		}
+		total += n
+	}
+	return total, nil
+}
+func (s *stubPendingToolCallRepo) DeleteByConversationID(_ context.Context, conversationID string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.DeleteErr != nil {
+		return 0, s.DeleteErr
+	}
+	s.DeletedConvIDs = append(s.DeletedConvIDs, conversationID)
+	if s.order != nil {
+		*s.order = append(*s.order, "pending")
+	}
+	return 1, nil
 }
 
 // newConvSvc assembles a ConversationService over the four stubs. Tests
@@ -995,6 +1029,57 @@ func TestDeleteWithMessages_MessageDeleteFailureAbortsConversationDelete(t *test
 	require.Error(t, err)
 	assert.Empty(t, conv.DeleteCalls,
 		"conversation must NOT be deleted when the message cascade fails")
+}
+
+// TestDeleteWithMessages_DeletesPendingBatchesBeforeConversation proves the
+// cascade purges the conversation's pending approval batches (which each carry a
+// ModelMessages snapshot — a full conversation-history PII copy) FIRST, before
+// the conversation document, matching the messages-first ordering.
+//
+// Fail-on-revert: if the service is reverted to skip the pending-batch delete,
+// pending.DeletedConvIDs stays empty and the assertion below fails — leaving the
+// batch (and its PII snapshot) orphaned, unreachable by any read path and, for a
+// preparing/expired batch that carries no expires_at, never reaped by the TTL
+// sweep either.
+func TestDeleteWithMessages_DeletesPendingBatchesBeforeConversation(t *testing.T) {
+	const convID = "507f1f77bcf86cd799439070"
+
+	order := make([]string, 0, 3)
+	conv := &stubConversationRepo{
+		Conv:  &domain.Conversation{ID: convID, UserID: "u", BusinessID: "b"},
+		order: &order,
+	}
+	msg := &stubMessageRepo{order: &order}
+	pending := &stubPendingToolCallRepo{order: &order}
+
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, pending)
+
+	require.NoError(t, svc.DeleteWithMessages(context.Background(), convID))
+
+	require.Equal(t, []string{convID}, pending.DeletedConvIDs,
+		"pending tool-call batches must be deleted by conversation_id")
+	assert.Equal(t, []string{"pending", "msg", "conv"}, order,
+		"pending batches must be deleted BEFORE messages and the conversation")
+}
+
+// TestDeleteWithMessages_PendingDeleteFailureAbortsCascade proves a pending-batch
+// delete failure aborts before any message or conversation is removed, so a
+// retry finds the conversation still present and can re-run the full cascade.
+func TestDeleteWithMessages_PendingDeleteFailureAbortsCascade(t *testing.T) {
+	const convID = "507f1f77bcf86cd799439071"
+
+	conv := &stubConversationRepo{Conv: &domain.Conversation{ID: convID}}
+	msg := &stubMessageRepo{}
+	pending := &stubPendingToolCallRepo{DeleteErr: errors.New("mongo down")}
+
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, pending)
+
+	err := svc.DeleteWithMessages(context.Background(), convID)
+	require.Error(t, err)
+	assert.Empty(t, msg.DeleteCalls,
+		"messages must NOT be deleted when the pending-batch cascade fails")
+	assert.Empty(t, conv.DeleteCalls,
+		"conversation must NOT be deleted when the pending-batch cascade fails")
 }
 
 // silenceLinter holds a reference to time so it can't accidentally be
