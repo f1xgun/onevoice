@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -520,6 +521,94 @@ func TestMembersHandler_UpdateMemberRole_InvalidBody(t *testing.T) {
 	h.UpdateMemberRole(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestMembersHandler_UpdateMemberRole_OversizedBody_Rejected asserts the body
+// cap on PATCH members/{userId}. The role_id is valid and the bulk lives in an
+// unknown padding field, so the decoder must scan past the cap to finish the
+// object — no field validator catches it. The role repo is stubbed to succeed,
+// so removing the MaxBytesReader line flips the response to 200 and invokes the
+// role lookup.
+func TestMembersHandler_UpdateMemberRole_OversizedBody_Rejected(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	rr := &MockRoleRepository{}
+	ur := &MockUserRepository{}
+	inv := &MockCacheInvalidator{}
+	h := newMembersHandlerForTest(mr, rr, ur, nil, inv)
+
+	bizID := uuid.New()
+	actorID := uuid.New()
+	targetID := uuid.New()
+	newRoleID := uuid.New()
+
+	filler := strings.Repeat("z", maxMemberBodyBytes+1)
+	body := `{"role_id":"` + newRoleID.String() + `","_pad":"` + filler + `"}`
+	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersUpdateRole)
+	req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader([]byte(body))).WithContext(ctx)
+	req = withChiParams(req, map[string]string{"userId": targetID.String()})
+	w := httptest.NewRecorder()
+	h.UpdateMemberRole(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	rr.AssertNotCalled(t, "GetByID")
+	mr.AssertNotCalled(t, "UpdateRoleInTx")
+	inv.AssertNotCalled(t, "InvalidateMember")
+}
+
+// TestMembersHandler_UpdateMemberRole_SmallBodyAccepted asserts a normal
+// under-cap body still succeeds through the same path, so the cap does not
+// reject legitimate requests.
+func TestMembersHandler_UpdateMemberRole_SmallBodyAccepted(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	rr := &MockRoleRepository{}
+	ur := &MockUserRepository{}
+	inv := &MockCacheInvalidator{}
+	mockPool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+
+	bizID := uuid.New()
+	actorID := uuid.New()
+	targetID := uuid.New()
+	newRoleID := uuid.New()
+	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
+	now := time.Now().UTC()
+
+	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	mockPool.ExpectQuery("SELECT user_id, role_id").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
+			AddRow(actorID, ownerRoleID).
+			AddRow(targetID, newRoleID))
+	mockPool.ExpectCommit()
+
+	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
+		ID:         newRoleID,
+		BusinessID: nil,
+		Name:       "viewer",
+	}, nil)
+	mr.On("UpdateRoleInTx", mock.Anything, mock.Anything, bizID, targetID, newRoleID, actorID).Return(nil)
+	mr.On("GetByBusinessUser", mock.Anything, bizID, targetID).Return(&domain.BusinessMember{
+		BusinessID:    bizID,
+		UserID:        targetID,
+		RoleID:        newRoleID,
+		Status:        "active",
+		JoinedAt:      now,
+		RoleChangedAt: &now,
+		RoleChangedBy: &actorID,
+	}, nil)
+	inv.On("InvalidateMember", bizID, targetID).Return()
+
+	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
+
+	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersUpdateRole)
+	body := `{"role_id":"` + newRoleID.String() + `"}`
+	req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader([]byte(body))).WithContext(ctx)
+	req = withChiParams(req, map[string]string{"userId": targetID.String()})
+	w := httptest.NewRecorder()
+	h.UpdateMemberRole(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
 func TestMembersHandler_UpdateMemberRole_InvalidUserIDParam(t *testing.T) {

@@ -355,6 +355,60 @@ func TestInvitationsHandler_Create_ExpiresInDefault_7Days(t *testing.T) {
 	require.WithinDuration(t, expected, captured.ExpiresAt, time.Second)
 }
 
+// TestInvitationsHandler_Create_OversizedBody_Rejected asserts the body cap on
+// POST /invitations. The role_id is valid and the bulk lives in an unknown
+// padding field, so the decoder must scan past the cap to finish the object.
+// The role repo is stubbed to succeed, so removing the MaxBytesReader line
+// flips the response to 201 and invokes the role lookup.
+func TestInvitationsHandler_Create_OversizedBody_Rejected(t *testing.T) {
+	f := newInvitationFixture(t)
+	bizID := uuid.New()
+	userID := uuid.New()
+	roleID := uuid.New()
+
+	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
+		ID: roleID, BusinessID: nil, Name: "editor",
+		Permissions: []string{string(authz.PermMembersInvite)},
+	}, nil)
+
+	filler := strings.Repeat("z", maxInvitationBodyBytes+1)
+	body := fmt.Sprintf(`{"role_id":%q,"_pad":%q}`, roleID, filler)
+	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, userID))
+	w := httptest.NewRecorder()
+	f.handler.Create(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	f.roleRepo.AssertNotCalled(t, "GetByID", mock.Anything, mock.Anything)
+	f.invRepo.AssertNotCalled(t, "CreateInTx", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestInvitationsHandler_Create_SmallBodyAccepted asserts a normal under-cap
+// body still succeeds through the same path, so the cap does not reject
+// legitimate requests.
+func TestInvitationsHandler_Create_SmallBodyAccepted(t *testing.T) {
+	f := newInvitationFixture(t)
+	bizID := uuid.New()
+	userID := uuid.New()
+	roleID := uuid.New()
+
+	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
+		ID: roleID, BusinessID: nil, Name: "editor",
+		Permissions: []string{string(authz.PermMembersInvite)},
+	}, nil)
+	f.mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.Serializable})
+	f.invRepo.On("CountPendingByBusinessInTx", mock.Anything, mock.Anything, bizID).Return(0, nil)
+	f.invRepo.On("CreateInTx", mock.Anything, mock.Anything, mock.AnythingOfType("*domain.Invitation")).Return(nil)
+	f.mockPool.ExpectCommit()
+
+	body := fmt.Sprintf(`{"role_id":%q,"expires_in":3600}`, roleID)
+	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, userID))
+	w := httptest.NewRecorder()
+	f.handler.Create(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code, "body=%s", w.Body.String())
+	require.NoError(t, f.mockPool.ExpectationsWereMet())
+}
+
 // --- Tests: ListPending ---
 
 func TestInvitationsHandler_ListPending_HappyPath_NoRawTokens(t *testing.T) {

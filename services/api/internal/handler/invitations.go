@@ -34,6 +34,11 @@ const (
 	invitationPendingCap           = 20
 )
 
+// maxInvitationBodyBytes caps the JSON request body on POST /invitations. The
+// payload is a role_id UUID plus an optional expires_in int; this guards the
+// decoder from an unbounded body. Mirrors maxRoleBodyBytes.
+const maxInvitationBodyBytes = 64 * 1024
+
 // InvitationsHandler serves the invitation CRUD + accept endpoints.
 type InvitationsHandler struct {
 	invitationRepo  domain.InvitationRepository
@@ -179,6 +184,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxInvitationBodyBytes)
 	var req openapi.CreateInvitationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")

@@ -35,6 +35,13 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
+// maxConsentBodyBytes caps the JSON request body on POST /auth/consents. The
+// payload is a small array of accepted policies; this guards the decoder from
+// an unbounded body. This endpoint is always-reachable (not gated by the
+// verified-email / grace-window middleware), so the cap matters most here.
+// Mirrors maxFeedbackPayloadBytes.
+const maxConsentBodyBytes = 16 * 1024
+
 // ConsentsServiceAPI is the slice of *service.ConsentService the handler
 // consumes. Declared as an interface so handler tests can pass an
 // in-memory double (mirrors the rest of the service-API
@@ -102,6 +109,7 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxConsentBodyBytes)
 	var req reconsentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")

@@ -18,6 +18,11 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
+// maxMemberBodyBytes caps the JSON request body on the member write endpoint
+// (PATCH members/{userId}). The payload is a single role_id UUID; this guards
+// the decoder from an unbounded body. Mirrors maxRoleBodyBytes.
+const maxMemberBodyBytes = 64 * 1024
+
 // poolBeginner is the minimal interface the handler needs from a pgx pool:
 // only BeginTx is required. Both *pgxpool.Pool and pgxmock.PgxPoolIface
 // satisfy this interface, so tests can inject a mock pool.
@@ -187,6 +192,7 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxMemberBodyBytes)
 	var req openapi.UpdateMemberRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")

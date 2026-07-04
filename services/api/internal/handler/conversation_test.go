@@ -1690,6 +1690,59 @@ func TestMoveConversation_InvalidBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// TestMoveConversation_OversizedBody_Rejected asserts the body cap on POST
+// /conversations/{id}/move. The projectId is valid and the bulk lives in an
+// unknown padding field, so the decoder must scan past the cap to finish the
+// object. The conversation repo records reads; removing the MaxBytesReader
+// line lets the body decode and reaches the service (GetByID is called).
+func TestMoveConversation_OversizedBody_Rejected(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439017"
+
+	getByIDCalled := false
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			getByIDCalled = true
+			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	filler := strings.Repeat("z", maxConversationBodyBytes+1)
+	body := []byte(`{"projectId":null,"_pad":"` + filler + `"}`)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", body, userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, getByIDCalled, "service must not be reached when the body exceeds the cap")
+}
+
+// TestMoveConversation_SmallBodyAccepted asserts a normal under-cap body still
+// decodes and reaches the service, so the cap does not reject legitimate
+// requests.
+func TestMoveConversation_SmallBodyAccepted(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439018"
+
+	getByIDCalled := false
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			getByIDCalled = true
+			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	body := []byte(`{"projectId":null}`)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", body, userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.NotEqual(t, http.StatusBadRequest, w.Code)
+	assert.True(t, getByIDCalled, "under-cap body must decode and reach the service")
+}
+
 // --- GET /messages pendingApprovals tests ------
 
 // newConversationHandlerWithPending wires a ConversationHandler with a

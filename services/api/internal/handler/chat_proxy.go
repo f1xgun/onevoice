@@ -34,6 +34,13 @@ const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 // operator-facing knob lives in config (MESSAGE_HISTORY_LIMIT).
 const defaultHistoryLimit = 100
 
+// maxChatBodyBytes caps the fresh-turn chat request body. The body carries a
+// user chat message plus a small locale/model envelope; the cap is deliberately
+// generous so legitimate long messages are not rejected while still bounding the
+// decoder against an unbounded body. Resume turns carry a server-built body and
+// are not decoded here, so this cap does not apply to them.
+const maxChatBodyBytes = 1 << 20
+
 // ChatProxyHandler is a thin HTTP-facade over chatturn.Turn — parses, gates,
 // maps TurnOutcome to HTTP. See docs/api/handlers/chat-proxy.md.
 //
@@ -203,6 +210,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	var body openapi.ChatTurnRequest
 	if headerBatch == "" {
+		r.Body = http.MaxBytesReader(w, r.Body, maxChatBodyBytes)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
