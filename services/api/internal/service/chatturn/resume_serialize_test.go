@@ -46,6 +46,101 @@ func (r *serializePendingRepo) AtomicTransitionResolvingToResuming(_ context.Con
 	return &cp, nil
 }
 
+// recoverResumingRepo models the resolving→resuming claim plus the compensating
+// resuming→resolving reset. It records the batch's live status so a test can
+// assert the compensation ran after a failed resume-stream open.
+type recoverResumingRepo struct {
+	domain.PendingToolCallRepository
+	mu         sync.Mutex
+	batch      *domain.PendingToolCallBatch
+	compensate int32 // resuming→resolving reset calls
+}
+
+func (r *recoverResumingRepo) GetByBatchID(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := *r.batch
+	return &cp, nil
+}
+
+func (r *recoverResumingRepo) AtomicTransitionResolvingToResuming(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.batch.Status != "resolving" {
+		return nil, domain.ErrBatchNotResolving
+	}
+	r.batch.Status = "resuming"
+	cp := *r.batch
+	return &cp, nil
+}
+
+func (r *recoverResumingRepo) AtomicTransitionResumingToResolving(_ context.Context, _ string) error {
+	atomic.AddInt32(&r.compensate, 1)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.batch.Status == "resuming" {
+		r.batch.Status = "resolving"
+	}
+	return nil
+}
+
+func (r *recoverResumingRepo) status() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.batch.Status
+}
+
+// TestResumeApproved_OrchestratorUnavailable_ResetsResumingToResolving is the
+// fail-on-revert regression for the stranded-"resuming" data-integrity bug. When
+// the orchestrator is briefly unavailable at resume time, ResumeApproved claims
+// the batch (resolving→resuming) and THEN fails to open the resume stream. Before
+// the fix it returned without resetting the status, leaving the batch permanently
+// stuck at "resuming": the approved publish/reply never dispatched, a retried
+// /resume could never re-win the resolving→resuming claim (409 forever), and the
+// next chat message healed the message as complete WITHOUT dispatching the tool.
+// The fix issues a compensating resuming→resolving reset so a retried /resume can
+// re-claim and actually dispatch the approved tool. Reverting the compensation
+// leaves the batch at "resuming" and this test fails.
+func TestResumeApproved_OrchestratorUnavailable_ResetsResumingToResolving(t *testing.T) {
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "orchestrator overloaded", http.StatusServiceUnavailable)
+	}))
+	defer orch.Close()
+
+	pending := &recoverResumingRepo{batch: &domain.PendingToolCallBatch{
+		ID: "batch-1", ConversationID: "conv-1", Status: "resolving",
+		Calls: []domain.PendingCall{{CallID: "tc_a", ToolName: "yandex_business__update_hours", Verdict: "approve"}},
+	}}
+
+	turn := New(Deps{
+		Business:      resumeStubBusiness{},
+		Integrations:  resumeStubInteg{},
+		Projects:      resumeStubProject{},
+		Conversations: resumeStubConv{},
+		Messages: &resumeMsgRepo{active: &domain.Message{
+			ID:             "msg-1",
+			ConversationID: "conv-1",
+			Role:           domain.MessageRoleAssistant,
+			Status:         domain.MessageStatusPendingApproval,
+			ToolCalls: []domain.ToolCall{
+				{ID: "tc_a", Name: "yandex_business__update_hours", Status: domain.ToolCallStatusPending},
+			},
+		}},
+		Pending: pending,
+		Orch:    orchestratorclient.New(orch.URL, http.DefaultClient),
+	})
+
+	rr := httptest.NewRecorder()
+	outcome, err := turn.ResumeApproved(context.Background(), rr, "conv-1", "batch-1", nil)
+	require.Error(t, err, "a failed resume-stream open must surface an error")
+	assert.Equal(t, OutcomeOrchestratorUnavailable, outcome)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&pending.compensate),
+		"the failed resume must compensate the resolving→resuming claim exactly once")
+	assert.Equal(t, "resolving", pending.status(),
+		"the batch must be reset to resolving so a retried /resume can re-claim and dispatch the approved tool")
+}
+
 // TestResumeApproved_SerializesConcurrentResume is the fail-on-revert regression
 // for the double-bill: two near-simultaneous POST /chat/{id}/resume for the same
 // batch must NOT both run the post-approval LLM continuation. The continuation

@@ -276,6 +276,9 @@ func (s *stubPendingToolCallRepo) AtomicTransitionResolvingToResuming(_ context.
 func (s *stubPendingToolCallRepo) ResetResolvingToPending(_ context.Context, _ string) error {
 	return nil
 }
+func (s *stubPendingToolCallRepo) AtomicTransitionResumingToResolving(_ context.Context, _ string) error {
+	return nil
+}
 func (s *stubPendingToolCallRepo) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
 	return nil
 }

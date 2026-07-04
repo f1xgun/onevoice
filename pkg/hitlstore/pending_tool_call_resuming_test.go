@@ -144,10 +144,15 @@ func TestPendingToolCall_ConcurrentResume_ExactlyOneWins(t *testing.T) {
 	assert.Equal(t, 1, losers, "exactly one goroutine must lose with ErrBatchNotResolving")
 }
 
-// TestPendingToolCall_ReconcileOrphanResuming proves a process death mid-resume
-// cannot wedge the batch: a stale "resuming" batch (old updated_at, no recorded
-// verdicts) is reset to "pending" by the crash-recovery sweep, while a fresh
-// resuming batch (legitimately in-flight) is left alone.
+// TestPendingToolCall_ReconcileOrphanResuming proves a resume that stranded the
+// batch at "resuming" cannot wedge it forever: a stale "resuming" batch (old
+// updated_at) is reset to "resolving" by the crash-recovery sweep so a retried
+// /resume can re-win the resolving→resuming claim and dispatch the approved
+// tool, while a fresh resuming batch (legitimately in-flight) is left alone.
+// A "resuming" batch is ALWAYS reached via a resolve that recorded finalized
+// verdicts before the resolving→resuming claim, so the sweep MUST reset it
+// regardless of recorded verdicts — the batch below carries an "approve" verdict
+// and must still be recovered.
 func TestPendingToolCall_ReconcileOrphanResuming(t *testing.T) {
 	db := setupPendingToolCallDB(t, "reconcile_resuming")
 	ctx := context.Background()
@@ -156,7 +161,7 @@ func TestPendingToolCall_ReconcileOrphanResuming(t *testing.T) {
 
 	now := time.Now().UTC()
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
-		ID:             "resuming-stale-empty",
+		ID:             "resuming-stale",
 		ConversationID: "conv-1",
 		BusinessID:     "biz-1",
 		UserID:         "user-1",
@@ -166,11 +171,11 @@ func TestPendingToolCall_ReconcileOrphanResuming(t *testing.T) {
 		UpdatedAt:      now.Add(-10 * time.Minute),
 		ExpiresAt:      now.Add(24 * time.Hour),
 		Calls: []domain.PendingCall{
-			{CallID: "c1", ToolName: tools.TelegramSendChannelPost},
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost, Verdict: "approve"},
 		},
 	})
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
-		ID:             "resuming-fresh-empty",
+		ID:             "resuming-fresh",
 		ConversationID: "conv-2",
 		BusinessID:     "biz-1",
 		UserID:         "user-1",
@@ -180,17 +185,17 @@ func TestPendingToolCall_ReconcileOrphanResuming(t *testing.T) {
 		UpdatedAt:      now.Add(-1 * time.Minute),
 		ExpiresAt:      now.Add(24 * time.Hour),
 		Calls: []domain.PendingCall{
-			{CallID: "c1", ToolName: tools.TelegramSendChannelPost},
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost, Verdict: "approve"},
 		},
 	})
 
 	count, err := repo.ReconcileOrphanResolving(ctx, 5*time.Minute)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), count, "only the stale all-empty resuming batch must be reset")
+	assert.Equal(t, int64(1), count, "only the stale resuming batch must be reset")
 
-	var staleEmpty, freshEmpty bson.M
-	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resuming-stale-empty"}).Decode(&staleEmpty))
-	assert.Equal(t, "pending", staleEmpty["status"], "stale all-empty resuming must be reset to pending")
-	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resuming-fresh-empty"}).Decode(&freshEmpty))
-	assert.Equal(t, "resuming", freshEmpty["status"], "fresh resuming must be left alone (may be legitimately in-flight)")
+	var stale, fresh bson.M
+	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resuming-stale"}).Decode(&stale))
+	assert.Equal(t, "resolving", stale["status"], "stale resuming must be reset to resolving so a retried /resume can re-claim it")
+	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "resuming-fresh"}).Decode(&fresh))
+	assert.Equal(t, "resuming", fresh["status"], "fresh resuming must be left alone (may be legitimately in-flight)")
 }
