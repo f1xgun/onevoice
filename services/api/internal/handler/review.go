@@ -13,6 +13,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/ssecounter"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
@@ -45,6 +46,24 @@ type ReviewService interface {
 // ReviewHandler handles review-related HTTP requests
 type ReviewHandler struct {
 	reviewService ReviewService
+
+	// sseCounter caps in-flight expensive fanouts per user; nil disables the
+	// gate. RefreshReviews drives the same multi-platform NATS fanout budget as
+	// the chat and resume streams, so it shares their per-user concurrency cap.
+	sseCounter *ssecounter.Counter
+
+	// defaultTier labels the SSE concurrency block metric; empty → "free".
+	defaultTier string
+}
+
+// SetSSECounter wires the per-user concurrency cap (optional). Mirrors
+// ChatProxyHandler.SetSSECounter so refresh shares the chat/resume budget.
+func (h *ReviewHandler) SetSSECounter(c *ssecounter.Counter, defaultTier string) {
+	h.sseCounter = c
+	if defaultTier == "" {
+		defaultTier = defaultSSETier
+	}
+	h.defaultTier = defaultTier
 }
 
 // NewReviewHandler creates a new review handler instance
@@ -222,6 +241,19 @@ func (h *ReviewHandler) RefreshReviews(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "RefreshReviews", authz.PermContentUpdate)
 	if !ok {
 		return
+	}
+
+	if h.sseCounter != nil {
+		tier := h.defaultTier
+		if tier == "" {
+			tier = defaultSSETier
+		}
+		release, acqErr := h.sseCounter.Acquire(r.Context(), bc.UserID, tier)
+		if acqErr != nil {
+			writeConcurrencyError(w, acqErr)
+			return
+		}
+		defer release()
 	}
 
 	if err := h.reviewService.Refresh(r.Context(), bc.UserID); err != nil {

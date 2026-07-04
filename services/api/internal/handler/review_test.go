@@ -9,13 +9,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
+	"github.com/f1xgun/onevoice/pkg/ssecounter"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
@@ -315,6 +319,78 @@ func TestRefreshReviews_ViewerForbidden(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, rr.Code)
 	assert.Contains(t, rr.Body.String(), "forbidden")
+}
+
+// TestRefreshReviews_ConcurrencyCap_Rejects_WhenUserAtCap proves RefreshReviews
+// routes its multi-platform fanout through the same per-user concurrency cap as
+// the chat and resume streams. The user is pinned at the cap before the request,
+// so Acquire must fail and the handler must return 429 without ever invoking the
+// review service's Refresh fanout.
+//
+// Fail-on-revert: deleting the Acquire/release block in RefreshReviews lets the
+// over-cap request fall straight through to Refresh (200), so this flips to 200
+// with Refresh invoked and the test fails.
+func TestRefreshReviews_ConcurrencyCap_Rejects_WhenUserAtCap(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockReviewService{
+		refreshFn: func(_ context.Context, _ uuid.UUID) error {
+			called = true
+			return nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	h.SetSSECounter(ssecounter.New(rdb, 1, ratelimit.Policy{}), "free")
+
+	if err := mr.Set("sse:user:"+userID.String()+":active", "1"); err != nil {
+		t.Fatalf("seed redis cap key: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reviews/refresh", http.NoBody)
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.RefreshReviews(rr, req)
+
+	assert.Equal(t, http.StatusTooManyRequests, rr.Code, "over-cap refresh must be rejected; body=%q", rr.Body.String())
+	assert.Equal(t, "1", rr.Header().Get("Retry-After"))
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &decoded))
+	assert.Equal(t, "sse_concurrency_exceeded", decoded["code"])
+	assert.False(t, called, "Refresh must not run when the user is already at the cap")
+}
+
+// TestRefreshReviews_ConcurrencyCap_Allows_WhenBelowCap is the companion case:
+// with a free slot the refresh acquires it and reaches Refresh, so the cap gates
+// only over-budget callers rather than blocking the path outright.
+func TestRefreshReviews_ConcurrencyCap_Allows_WhenBelowCap(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockReviewService{
+		refreshFn: func(_ context.Context, _ uuid.UUID) error {
+			called = true
+			return nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	h.SetSSECounter(ssecounter.New(rdb, 1, ratelimit.Policy{}), "free")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reviews/refresh", http.NoBody)
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.RefreshReviews(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "refresh with a free slot must succeed; body=%q", rr.Body.String())
+	assert.True(t, called, "Refresh must run when below the cap")
 }
 
 func TestReplyToReview_ServiceError(t *testing.T) {
