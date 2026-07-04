@@ -31,8 +31,9 @@ import (
 )
 
 type billingRepository struct {
-	pool pgxPool
-	sb   squirrel.StatementBuilderType
+	pool   pgxPool
+	sb     squirrel.StatementBuilderType
+	ledger *creditLedgerRepository
 }
 
 // Compile-time assertion: PostgresBillingRepository must satisfy
@@ -43,7 +44,11 @@ var _ llm.BillingRepository = (*billingRepository)(nil)
 // *pgxpool.Pool (production) and pgxmock.PgxPoolIface (tests) satisfy the
 // package-local pgxPool interface defined in pool.go.
 func NewBillingRepository(pool pgxPool) llm.BillingRepository {
-	return &billingRepository{pool: pool, sb: newStatementBuilder()}
+	return &billingRepository{
+		pool:   pool,
+		sb:     newStatementBuilder(),
+		ledger: newCreditLedgerRepository(pool),
+	}
 }
 
 // LogUsage inserts one usage_logs row. The call site is the fire-and-forget
@@ -59,6 +64,12 @@ func NewBillingRepository(pool pgxPool) llm.BillingRepository {
 // user_id, conversation_id, and request_id are translated to SQL NULL when
 // empty via nullableUUID / nullableString — system-level callers (titler,
 // review_drafter, future cron paths) pass uuid.Nil / "" for those fields.
+//
+// Credit metering (v1.6): the usage_logs INSERT and the credit_ledger charge
+// run in ONE transaction so a usage row and its credit consumption commit
+// atomically — a metering failure rolls back the usage row too. The whole call
+// is fire-and-forget from pkg/llm/router.go (logBilling discards the returned
+// error), so a rolled-back tx never blocks the chat turn.
 func (r *billingRepository) LogUsage(ctx context.Context, log *llm.UsageLog) error {
 	if log == nil {
 		return fmt.Errorf("LogUsage: log is required")
@@ -96,8 +107,21 @@ func (r *billingRepository) LogUsage(ctx context.Context, log *llm.UsageLog) err
 	if err != nil {
 		return fmt.Errorf("LogUsage: build sql: %w", err)
 	}
-	if _, err = r.pool.Exec(ctx, sql, args...); err != nil {
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("LogUsage: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err = tx.Exec(ctx, sql, args...); err != nil {
 		return fmt.Errorf("LogUsage: exec: %w", err)
+	}
+	if err = r.ledger.MeterUsage(ctx, tx, log.BusinessID, log.ID); err != nil {
+		return fmt.Errorf("LogUsage: meter: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("LogUsage: commit: %w", err)
 	}
 	return nil
 }
@@ -141,16 +165,57 @@ func (r *billingRepository) GetDailySpend(ctx context.Context, businessID uuid.U
 	return sum, nil
 }
 
-// GetUserBalance — TODO(v1.5): credit-balance schema lands with the billing UI.
-// Returns 0, nil today so handlers and the BillingRepository contract remain
-// satisfied; the daily-spend rate limiter does not call this method.
+// GetCreditBalance returns the business's current credit balance — the latest
+// credit_ledger.balance_after, or 0 when the business has no ledger rows yet.
+// Delegates to the credit_ledger repository so the balance-read SQL lives in one
+// place.
+func (r *billingRepository) GetCreditBalance(ctx context.Context, businessID uuid.UUID) (int, error) {
+	return r.ledger.CurrentBalance(ctx, businessID)
+}
+
+// GetMonthlyUsageSummary aggregates a business's usage_logs over the UTC
+// calendar month (year, month) into action count, total spend, and image count.
+// The window is half-open [firstOfMonth, firstOfNextMonth) in UTC — same
+// wall-clock-deterministic boundary style as GetDailySpend so a caller in any
+// time zone lands on the UTC month it asked for. The composite index
+// idx_usage_logs_business_created_at services the range scan.
+func (r *billingRepository) GetMonthlyUsageSummary(ctx context.Context, businessID uuid.UUID, year, month int) (llm.MonthlyUsageSummary, error) {
+	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	next := start.AddDate(0, 1, 0)
+
+	sql, args, err := r.sb.
+		Select(
+			"COUNT(*)",
+			"COALESCE(SUM(provider_cost_usd + commission_usd), 0)",
+		).
+		Column("COUNT(*) FILTER (WHERE provider = ?)", llm.ImageProvider).
+		From("usage_logs").
+		Where(squirrel.Eq{"business_id": businessID}).
+		Where(squirrel.GtOrEq{"created_at": start}).
+		Where(squirrel.Lt{"created_at": next}).
+		ToSql()
+	if err != nil {
+		return llm.MonthlyUsageSummary{}, fmt.Errorf("GetMonthlyUsageSummary: build sql: %w", err)
+	}
+
+	var summary llm.MonthlyUsageSummary
+	if err := r.pool.QueryRow(ctx, sql, args...).Scan(&summary.Actions, &summary.SpendUSD, &summary.Images); err != nil {
+		return llm.MonthlyUsageSummary{}, fmt.Errorf("GetMonthlyUsageSummary: exec: %w", err)
+	}
+	return summary, nil
+}
+
+// GetUserBalance — legacy user-keyed stub retained to preserve the
+// llm.BillingRepository interface assertion. The billing summary uses the
+// business-keyed GetCreditBalance instead; the daily-spend rate limiter never
+// calls this. Returns 0, nil.
 func (r *billingRepository) GetUserBalance(_ context.Context, _ uuid.UUID) (float64, error) {
 	return 0, nil
 }
 
-// GetMonthlyUsage — TODO(v1.5): consumed by the per-user usage panel in the
-// billing UI. Returns nil, nil today; aggregation queries land alongside the
-// UI implementation.
+// GetMonthlyUsage — legacy user-keyed stub retained to preserve the
+// llm.BillingRepository interface assertion. The billing summary uses the
+// business-keyed GetMonthlyUsageSummary instead. Returns nil, nil.
 func (r *billingRepository) GetMonthlyUsage(_ context.Context, _ uuid.UUID, _, _ int) ([]llm.UsageLog, error) {
 	return nil, nil
 }

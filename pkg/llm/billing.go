@@ -101,4 +101,30 @@ type BillingRepository interface {
 	// GetMonthlyUsage returns all usage logs for a given month. v1.5 — stubbed
 	// in PostgresBillingRepository until the billing UI lands.
 	GetMonthlyUsage(ctx context.Context, userID uuid.UUID, year, month int) ([]UsageLog, error)
+
+	// GetCreditBalance returns the business's current credit balance — the
+	// latest credit_ledger.balance_after, or 0 when the business has no ledger
+	// rows yet. Backs the read-only billing summary endpoint.
+	GetCreditBalance(ctx context.Context, businessID uuid.UUID) (int, error)
+
+	// GetMonthlyUsageSummary aggregates a business's usage_logs over the UTC
+	// calendar month (year, month) into action count, total spend, and
+	// image-generation count. Backs the read-only billing summary endpoint.
+	GetMonthlyUsageSummary(ctx context.Context, businessID uuid.UUID, year, month int) (MonthlyUsageSummary, error)
 }
+
+// MonthlyUsageSummary is the per-business usage rollup for one UTC calendar
+// month returned by GetMonthlyUsageSummary.
+type MonthlyUsageSummary struct {
+	// Actions is the count of usage_logs rows (LLM turns + image generations).
+	Actions int `json:"actions"`
+	// SpendUSD is SUM(provider_cost_usd + commission_usd) for the month.
+	SpendUSD float64 `json:"spend_usd"`
+	// Images is the count of rows whose provider is the image-generation
+	// provider ("openai-image").
+	Images int `json:"images"`
+}
+
+// ImageProvider is the usage_logs.provider value stamped on image-generation
+// rows. GetMonthlyUsageSummary counts these into MonthlyUsageSummary.Images.
+const ImageProvider = "openai-image"

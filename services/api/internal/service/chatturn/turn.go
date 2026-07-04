@@ -44,6 +44,11 @@ type Deps struct {
 	Titler  Titler       // nil → auto-title disabled
 	Audit   audit.Logger // nil → RPA mutation audit disabled
 
+	// PlanResolver resolves the per-business rate-limit tier forwarded to the
+	// orchestrator. Optional: a nil resolver preserves the legacy empty-tier
+	// behavior. Wired in production via Turn.SetPlanResolver.
+	PlanResolver PlanResolver
+
 	// HistoryLimit caps how many prior messages are loaded into the LLM
 	// context per turn. A non-positive value falls back to
 	// defaultHistoryLimit so a struct-literal construction (tests) stays safe.
@@ -61,6 +66,14 @@ const defaultHistoryLimit = 100
 // *Turn instance.
 type Turn struct {
 	deps Deps
+}
+
+// SetPlanResolver wires the per-business plan resolver post-construction. The
+// wiring layer calls this once at boot so the constructor signature (and its
+// many test call sites) stay unchanged. Safe to call before the Turn serves
+// traffic; not safe to call concurrently with in-flight Run calls.
+func (t *Turn) SetPlanResolver(r PlanResolver) {
+	t.deps.PlanResolver = r
 }
 
 // New constructs a Turn from a wired Deps. Required dependencies that are
@@ -166,7 +179,7 @@ func (t *Turn) Run(
 	}
 	defer cancelTaskOps()
 
-	body, _ := json.Marshal(t.buildOrchestratorRequest(req, enriched))
+	body, _ := json.Marshal(t.buildOrchestratorRequest(ctx, req, enriched))
 	streamErr := t.streamOrchestrator(ctx, taskOpsCtx, w, req.ConversationID, body, nil, enriched.business.ID.String(), state, emit)
 	if streamErr != nil && state.pauseEvent == nil && state.streamErrContent == "" &&
 		!errors.Is(streamErr, context.Canceled) && strings.Contains(streamErr.Error(), "stream chat") {

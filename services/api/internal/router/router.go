@@ -79,6 +79,7 @@ type Handlers struct {
 	Roles            *handler.RolesHandler
 	Invitations      *handler.InvitationsHandler
 	AuditLog         *handler.AuditLogHandler
+	Billing          *handler.BillingHandler
 	UserDeletion     *handler.UserDeletionHandler
 	BusinessDeletion *handler.BusinessDeletionHandler
 	Consents         *handler.ConsentsHandler
@@ -326,6 +327,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				if handlers.AuditLog != nil {
 					r.Get("/audit-logs", handlers.AuditLog.List)
+				}
+				if handlers.Billing != nil {
+					r.Get("/billing/summary", handlers.Billing.Summary)
 				}
 			})
 		})
