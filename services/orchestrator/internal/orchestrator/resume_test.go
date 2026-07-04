@@ -311,21 +311,18 @@ func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T)
 }
 
 // TestResume_ApprovedPlatformTool_DispatchesUnderProductionBody guards the
-// resume dispatch chokepoint against an over-block regression. The withheld-tool
-// gate is the offer-time enforceOffered boundary in stepRun: a tool the project
-// whitelist omits is moved to the forbidden bucket BEFORE the pending batch is
-// built, so it can never become an approval card and never reach this path. The
-// resume dispatch must therefore trust the floor/verdict alone — it must NOT
-// re-derive an offered set from state.AvailableTools, because the production
-// resume bodies (approve / rejoin) carry no ActiveIntegrations / WhitelistMode /
-// AllowedTools, so AvailableForWhitelist drops every {platform}__action tool
-// (no active integration). Re-introducing that re-check would reject every
-// legitimately-approved platform write tool as policy_forbidden.
+// resume dispatch chokepoint against an over-block regression. The production
+// resume bodies (approve / rejoin) DO carry ActiveIntegrations / WhitelistMode /
+// AllowedTools, so state.AvailableTools = AvailableForWhitelist retains every
+// {platform}__action tool whose integration is active and whose whitelist admits
+// it. An approved platform write tool that the FRESH whitelist still offers must
+// therefore STILL dispatch — the resume-time offered re-check must not reject a
+// legitimately-approved active-platform tool.
 //
 // This test drives a real Manual-floor platform tool through a
-// production-equivalent ResumeRequest (no integration/whitelist fields) and
-// asserts it is still dispatched. If someone re-adds the AvailableTools offered
-// gate to dispatchApprovedCalls, this test fails.
+// production-equivalent ResumeRequest (active integration + WhitelistModeAll) and
+// asserts it is still dispatched. If the offered re-check over-blocks an active
+// approved platform tool, this test fails.
 func TestResume_ApprovedPlatformTool_DispatchesUnderProductionBody(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
@@ -345,16 +342,111 @@ func TestResume_ApprovedPlatformTool_DispatchesUnderProductionBody(t *testing.T)
 
 	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
 	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{
-		BatchID: "batch-plat",
+		BatchID:            "batch-plat",
+		ActiveIntegrations: []string{"telegram"},
+		WhitelistMode:      domain.WhitelistModeAll,
 	})
 	require.NoError(t, err)
 
 	evts := drainEvents(events)
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&dispatched),
-		"an approved platform tool MUST dispatch — the production resume body carries no whitelist fields")
+		"an approved active-platform tool the fresh whitelist still offers MUST dispatch")
 	assert.Empty(t, findEvents(evts, orchestrator.EventToolRejected),
-		"no rejection (policy_forbidden) may be emitted for a legitimately-approved platform tool")
+		"no rejection (policy_forbidden) may be emitted for a legitimately-approved active-platform tool")
+}
+
+// TestResume_ApprovedTool_WithheldByFreshWhitelist_Rejected is the fail-on-revert
+// guard for the resume-time whitelist re-check. A Manual-floor tool is approved
+// while paused, then the project whitelist is revoked before the approval
+// resolves (WhitelistMode=none => "allow nothing"). The fresh resume body carries
+// that revocation, so state.AvailableTools no longer offers the tool. The resume
+// dispatch MUST reject it as policy_forbidden and MUST NOT publish it to NATS —
+// mirroring the fresh-run enforceOffered boundary. hitl.Resolve is whitelist-blind
+// (it reads only the registry floor + business/project approval maps, which the
+// whitelist revocation does not touch), so without the offered re-check the
+// withheld tool would still dispatch.
+func TestResume_ApprovedTool_WithheldByFreshWhitelist_Rejected(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	var dispatched int32
+	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
+	reg := toolregistry.NewRegistry()
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "d", Parameters: map[string]interface{}{}},
+	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-revoked", []domain.PendingCall{
+		{CallID: "c-revoked", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
+	})
+	repo.store["batch-revoked"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{
+		BatchID:            "batch-revoked",
+		ActiveIntegrations: []string{"telegram"},
+		WhitelistMode:      domain.WhitelistModeNone,
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatched),
+		"a tool the fresh whitelist withholds MUST NOT be dispatched to NATS")
+	for _, tc := range findEvents(evts, orchestrator.EventToolCall) {
+		assert.NotEqual(t, "c-revoked", tc.ToolCallID,
+			"withheld tool MUST NOT emit a tool_call event")
+	}
+	rejects := findEvents(evts, orchestrator.EventToolRejected)
+	require.Len(t, rejects, 1)
+	assert.Equal(t, "policy_forbidden", rejects[0].Content)
+	assert.Equal(t, "c-revoked", rejects[0].ToolCallID)
+}
+
+// TestResume_ApprovedTool_ExplicitWhitelistOmits_Rejected covers the second
+// revocation shape: the fresh whitelist is WhitelistMode=explicit with an
+// allowlist that OMITS the approved Manual-floor tool. Same invariant — the
+// resume dispatch must reject it as policy_forbidden, never NATS-publish it —
+// while a different active-platform tool that IS on the allowlist would still be
+// offered.
+func TestResume_ApprovedTool_ExplicitWhitelistOmits_Rejected(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	var dispatched int32
+	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
+	reg := toolregistry.NewRegistry()
+	for _, name := range []string{"telegram__send_channel_post", "vk__publish_post"} {
+		reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
+			Type:     llm.ToolCallTypeFunction,
+			Function: llm.FunctionDefinition{Name: name, Description: "d", Parameters: map[string]interface{}{}},
+		}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
+	}
+
+	repo := newMockPendingRepo()
+	batch := batchWithCalls(t, "batch-explicit", []domain.PendingCall{
+		{CallID: "c-omitted", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "x"}, Verdict: "approve"},
+	})
+	repo.store["batch-explicit"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{
+		BatchID:            "batch-explicit",
+		ActiveIntegrations: []string{"telegram", "vk"},
+		WhitelistMode:      domain.WhitelistModeExplicit,
+		AllowedTools:       []string{"vk__publish_post"},
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+
+	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatched),
+		"a tool omitted from the explicit fresh whitelist MUST NOT be dispatched")
+	rejects := findEvents(evts, orchestrator.EventToolRejected)
+	require.Len(t, rejects, 1)
+	assert.Equal(t, "policy_forbidden", rejects[0].Content)
+	assert.Equal(t, "c-omitted", rejects[0].ToolCallID)
 }
 
 // TestResume_PostApproval_OffersActivePlatformTools is the multi-step approved
