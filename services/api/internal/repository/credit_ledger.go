@@ -47,9 +47,15 @@ func NewCreditLedgerRepository(pool pgxPool) domain.CreditLedgerRepository {
 }
 
 // currentBalanceSQL reads the running balance as the balance_after of the
-// most-recent ledger row, collapsing "no rows yet" to 0 via COALESCE.
+// most-recent ledger row, collapsing "no rows yet" to 0 via COALESCE. Ordering
+// is by the monotonic seq, NOT created_at: created_at defaults to now(), which
+// is transaction-START time in Postgres, so a meter whose tx started earlier but
+// committed later (after acquiring the per-business advisory lock) carries an
+// EARLIER created_at yet is the true latest row. seq is assigned at INSERT time
+// and is monotonic with commit order per business, so it always yields the
+// latest row.
 const currentBalanceSQL = `SELECT COALESCE(` +
-	`(SELECT balance_after FROM credit_ledger WHERE business_id = $1 ORDER BY created_at DESC LIMIT 1), 0)`
+	`(SELECT balance_after FROM credit_ledger WHERE business_id = $1 ORDER BY seq DESC LIMIT 1), 0)`
 
 // CurrentBalance returns the latest balance_after for a business, or 0 when the
 // business has no ledger rows yet.
@@ -114,7 +120,7 @@ func (r *creditLedgerRepository) MeterUsage(ctx context.Context, tx pgx.Tx, busi
 
 	var prevBalance int
 	err := tx.QueryRow(ctx,
-		"SELECT balance_after FROM credit_ledger WHERE business_id = $1 ORDER BY created_at DESC LIMIT 1",
+		"SELECT balance_after FROM credit_ledger WHERE business_id = $1 ORDER BY seq DESC LIMIT 1",
 		businessID,
 	).Scan(&prevBalance)
 	if err != nil {
