@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -25,24 +26,33 @@ type IntegrationService interface {
 // IntegrationHandler handles integration endpoints
 type IntegrationHandler struct {
 	integrationService IntegrationService
+	businessService    businessGetter
 	audit              audit.Logger
 }
 
 // NewIntegrationHandler creates a new integration handler instance.
 //
+// businessService lets DeleteIntegration reject disconnects against a
+// soft-deleted (erasure-pending) organization, which the RequireBusinessAccess
+// middleware does not filter.
+//
 // auditLogger receives the integration.disconnected
 // event emitted from DeleteIntegration. Connected + token_rotated are emitted
 // from the service layer (one call site per action — ). nil-safe via
 // audit.Nop so existing handler tests that pass nil still work.
-func NewIntegrationHandler(integrationService IntegrationService, _ BusinessService, auditLogger audit.Logger) (*IntegrationHandler, error) {
+func NewIntegrationHandler(integrationService IntegrationService, businessService BusinessService, auditLogger audit.Logger) (*IntegrationHandler, error) {
 	if integrationService == nil {
 		return nil, fmt.Errorf("NewIntegrationHandler: integrationService cannot be nil")
+	}
+	if businessService == nil {
+		return nil, fmt.Errorf("NewIntegrationHandler: businessService cannot be nil")
 	}
 	if auditLogger == nil {
 		auditLogger = audit.Nop()
 	}
 	return &IntegrationHandler{
 		integrationService: integrationService,
+		businessService:    businessService,
 		audit:              auditLogger,
 	}, nil
 }
@@ -68,6 +78,16 @@ func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Req
 func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "DeleteIntegration", authz.PermIntegrationsDisconnect)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "delete integration: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
