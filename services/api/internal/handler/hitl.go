@@ -27,6 +27,11 @@ import (
 // "don't hammer" vs "feels responsive". See docs/api/handlers/hitl.md.
 const hitlBatchResolvingRetryAfterMs = 500
 
+// maxResolveBodyBytes caps the resolve request body. The body carries HITL
+// decisions (edited args + reject reasons), so a moderate limit is generous
+// enough for legitimate payloads while bounding the decoder.
+const maxResolveBodyBytes = 256 * 1024
+
 // chatResumer is the narrow slice of the chat-turn lifecycle that Resume needs:
 // run the orchestrator resume stream AND persist the finalized assistant
 // message. *chatturn.Turn satisfies it. Kept as an interface so HITL tests can
@@ -157,6 +162,7 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxResolveBodyBytes)
 	var req resolveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")

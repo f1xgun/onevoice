@@ -53,10 +53,18 @@ func requireUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	return userID, true
 }
 
+// maxDecodeBodyBytes caps the JSON request body for every decodeAndValidate
+// caller. It is deliberately generous so no legitimate auth, profile, or
+// conversation body is rejected while still bounding the decoder against an
+// unbounded body. Callers that pre-wrap r.Body with a tighter cap keep it:
+// their inner MaxBytesReader triggers first on the wrapped reader.
+const maxDecodeBodyBytes = 1 << 20
+
 // decodeAndValidate decodes the JSON request body into T then runs the
 // package validator, writing the given decodeErrCode (400) on a decode failure
 // and a field-level validation error on a struct-validation failure.
 func decodeAndValidate[T any](w http.ResponseWriter, r *http.Request, decodeErrCode string) (T, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxDecodeBodyBytes)
 	var req T
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, decodeErrCode)
