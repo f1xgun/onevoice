@@ -107,6 +107,10 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		ParsedFormat: service.ParsedFormatAccessToken,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
 		slog.Error("failed to connect VK integration", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "failed to connect")
 		return

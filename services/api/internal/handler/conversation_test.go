@@ -254,8 +254,10 @@ func (m *MockMessageRepository) SearchByConversationIDs(_ context.Context, _ str
 	return nil, nil
 }
 
-// noopBusinessService returns ErrBusinessNotFound by default. Tests that need
-// a populated business override GetByIDFunc.
+// noopBusinessService returns a live (non-deleted) business by default so the
+// CreateConversation soft-delete-aware existence gate passes. Tests that need a
+// soft-deleted (pending-erasure) organization override GetByIDFunc to return
+// domain.ErrBusinessNotFound.
 type noopBusinessService struct {
 	GetByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 }
@@ -267,7 +269,7 @@ func (s *noopBusinessService) GetByID(ctx context.Context, id uuid.UUID) (*domai
 	if s.GetByIDFunc != nil {
 		return s.GetByIDFunc(ctx, id)
 	}
-	return nil, domain.ErrBusinessNotFound
+	return &domain.Business{ID: id}, nil
 }
 func (s *noopBusinessService) Update(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
@@ -453,6 +455,50 @@ func TestCreateConversation_Success(t *testing.T) {
 	assert.Equal(t, "My New Conversation", response.Title)
 	assert.False(t, response.CreatedAt.IsZero())
 	assert.False(t, response.UpdatedAt.IsZero())
+}
+
+// TestCreateConversation_SoftDeletedBusiness pins the 152-ФЗ data-lifecycle
+// gate: creating a new PII conversation against a soft-deleted (pending-erasure)
+// organization must 404 and persist nothing. authz.RequireBusinessAccess gates
+// the route on the surviving membership row alone, so during the deletion grace
+// window a member still reaches this handler; the soft-delete-aware
+// businessService.GetByID (deleted_at IS NULL) surfaces the org as
+// ErrBusinessNotFound, which the handler maps to 404. Reverting the existence
+// check lets the conversation be created against an organization awaiting
+// erasure — this test then fails on the created flag.
+func TestCreateConversation_SoftDeletedBusiness(t *testing.T) {
+	var created bool
+	mockRepo := &MockConversationRepository{
+		CreateFunc: func(_ context.Context, _ *domain.Conversation) error {
+			created = true
+			return nil
+		},
+	}
+
+	softDeletedBiz := &noopBusinessService{
+		GetByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return nil, domain.ErrBusinessNotFound
+		},
+	}
+	convSvc, err := service.NewConversationService(mockRepo, &MockMessageRepository{}, &stubProjectRepoForHandler{}, &MockPendingToolCallRepository{})
+	require.NoError(t, err)
+	handler, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, softDeletedBiz, &noopProjectService{}, convSvc)
+	require.NoError(t, err)
+
+	body, _ := json.Marshal(map[string]any{"title": "My New Conversation"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
+	req = req.WithContext(convBizCtx(uuid.New(), uuid.New()))
+
+	w := httptest.NewRecorder()
+	handler.CreateConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.False(t, created,
+		"no conversation may be created against a soft-deleted organization — reverting the existence gate reproduces the 152-ФЗ ingestion leak")
+
+	var response ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	assert.Equal(t, "business not found", response.Error)
 }
 
 // TestCreateConversation_NoBusinessContext tests creation without BusinessContext in context

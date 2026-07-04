@@ -300,6 +300,8 @@ func connectErrorRedirectCode(err error) string {
 		return "email_verification_required"
 	case errors.Is(err, domain.ErrActorPendingDeletion):
 		return "account_pending_deletion"
+	case errors.Is(err, domain.ErrBusinessNotFound):
+		return "business_not_found"
 	default:
 		return "connect_failed"
 	}
