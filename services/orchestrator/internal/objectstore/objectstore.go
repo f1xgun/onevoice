@@ -32,6 +32,12 @@ type ObjectStore interface {
 // (nginx in prod, a dev rewrite locally) — matches services/api's "/media".
 const mediaPathPrefix = "/media/"
 
+// requiredPublicURLScheme is the only accepted PublicURL scheme prefix. It must
+// be https:// because the produced photo_url is later fetched through
+// safefetch.ValidateURL, which rejects any non-https scheme; an http:// origin
+// would boot fine but silently yield unpostable URLs.
+const requiredPublicURLScheme = "https://"
+
 // Config holds MinIO/S3 connection settings plus the absolute public base URL.
 type Config struct {
 	// Endpoint is the S3 host:port (no scheme).
@@ -57,8 +63,8 @@ type MinioStore struct {
 }
 
 // NewMinioStore creates a MinIO-backed ObjectStore and ensures the bucket
-// exists. It requires a non-empty absolute PublicURL so it can never emit a
-// host-less URL that safefetch would reject downstream.
+// exists. It requires an absolute https:// PublicURL so it can never emit a URL
+// that safefetch would reject downstream (host-less or non-https).
 func NewMinioStore(ctx context.Context, cfg Config) (*MinioStore, error) {
 	if cfg.Endpoint == "" {
 		return nil, fmt.Errorf("objectstore: endpoint is required")
@@ -67,8 +73,8 @@ func NewMinioStore(ctx context.Context, cfg Config) (*MinioStore, error) {
 		return nil, fmt.Errorf("objectstore: bucket is required")
 	}
 	publicURL := strings.TrimRight(cfg.PublicURL, "/")
-	if !strings.HasPrefix(publicURL, "https://") && !strings.HasPrefix(publicURL, "http://") {
-		return nil, fmt.Errorf("objectstore: PublicURL must be an absolute http(s) URL, got %q", cfg.PublicURL)
+	if !strings.HasPrefix(publicURL, requiredPublicURLScheme) {
+		return nil, fmt.Errorf("objectstore: PublicURL must be an absolute https:// URL, got %q", cfg.PublicURL)
 	}
 
 	cli, err := minio.New(cfg.Endpoint, &minio.Options{
