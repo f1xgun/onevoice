@@ -170,14 +170,21 @@ func (s *ConversationService) MoveToProject(
 	return updated, nil
 }
 
-// DeleteWithMessages cascade-deletes a conversation: its messages FIRST, then
-// the conversation document — matching ProjectRepository.HardDeleteCascade's
-// ordering. Messages carry only conversation_id, so a partial failure may only
-// leave a conversation whose messages are already gone (re-deletable), never a
-// removed conversation orphaning unreachable message bodies. The caller is
+// DeleteWithMessages cascade-deletes a conversation: its pending approval
+// batches and its messages FIRST, then the conversation document — matching
+// ProjectRepository.HardDeleteCascade's ordering. Both messages and pending
+// batches carry only conversation_id, so a partial failure may only leave a
+// conversation whose messages/batches are already gone (re-deletable), never a
+// removed conversation orphaning unreachable message bodies or a batch's
+// ModelMessages PII snapshot. Pending batches go first because an un-promoted
+// "preparing" or reconciled "expired" batch carries no expires_at and so is
+// never reaped by the TTL sweep once its conversation is gone. The caller is
 // responsible for the cross-business 404 + ownership/permission guards before
 // invoking this.
 func (s *ConversationService) DeleteWithMessages(ctx context.Context, conversationID string) error {
+	if _, err := s.pendingRepo.DeleteByConversationID(ctx, conversationID); err != nil {
+		return err
+	}
 	if _, err := s.messageRepo.DeleteByConversationID(ctx, conversationID); err != nil {
 		return err
 	}

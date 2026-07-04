@@ -22,10 +22,11 @@ import (
 // domain.ProjectRepository interface so callers never depend on the concrete
 // type — the wiring invariant.
 type projectRepository struct {
-	pool     pgxPool
-	sb       squirrel.StatementBuilderType
-	convColl *mongo.Collection // conversations collection (for CountConversationsByID + cascade)
-	msgColl  *mongo.Collection // messages collection (for cascade)
+	pool        pgxPool
+	sb          squirrel.StatementBuilderType
+	convColl    *mongo.Collection // conversations collection (for CountConversationsByID + cascade)
+	msgColl     *mongo.Collection // messages collection (for cascade)
+	pendingColl *mongo.Collection // pending_tool_calls collection (for cascade of HITL batches)
 }
 
 // NewProjectRepository returns a domain.ProjectRepository backed by Postgres
@@ -35,10 +36,11 @@ type projectRepository struct {
 // a type assertion.
 func NewProjectRepository(pool pgxPool, mongoDB *mongo.Database) domain.ProjectRepository {
 	return &projectRepository{
-		pool:     pool,
-		sb:       squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
-		convColl: mongoDB.Collection("conversations"),
-		msgColl:  mongoDB.Collection("messages"),
+		pool:        pool,
+		sb:          squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		convColl:    mongoDB.Collection("conversations"),
+		msgColl:     mongoDB.Collection("messages"),
+		pendingColl: mongoDB.Collection("pending_tool_calls"),
 	}
 }
 
@@ -252,13 +254,20 @@ func (r *projectRepository) CountConversationsByID(ctx context.Context, id uuid.
 	return int(count), nil
 }
 
-// HardDeleteCascade deletes every Mongo message whose conversation belongs to
-// the project, then every enumerated Mongo conversation, then the Postgres
-// project row. Returns (deletedConversations, deletedMessages, err).
+// HardDeleteCascade deletes every Mongo pending_tool_calls batch and every
+// Mongo message whose conversation belongs to the project, then every
+// enumerated Mongo conversation, then the Postgres project row. Returns
+// (deletedConversations, deletedMessages, err).
 //
-// Both Mongo deletes key off the SAME enumerated convIDs set: messages by
-// conversation_id $in convIDs and conversations by _id $in convIDs. This binds
-// a conversation's deletion to its messages' deletion — a partial enumeration
+// Pending batches are removed first because they carry a ModelMessages snapshot
+// — a full conversation-history PII copy — and are unreachable by any read path
+// or the TTL sweep once their conversation is gone, so failing to cascade them
+// leaves that snapshot orphaned indefinitely.
+//
+// Both message/conversation Mongo deletes key off the SAME enumerated convIDs
+// set: messages by conversation_id $in convIDs and conversations by _id $in
+// convIDs. This binds a conversation's deletion to its messages' deletion — a
+// partial enumeration
 // can only ever drop a matching subset of conversations+messages together,
 // never conversations without their messages (which would orphan messages that
 // carry no project_id and so are unreachable by any read path or sweep).
@@ -301,6 +310,10 @@ func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID)
 			return 0, 0, fmt.Errorf("delete project row: %w", delErr)
 		}
 		return 0, 0, nil
+	}
+
+	if _, pendErr := r.pendingColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}}); pendErr != nil {
+		return 0, 0, fmt.Errorf("delete cascade pending tool calls: %w", pendErr)
 	}
 
 	msgRes, msgErr := r.msgColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}})

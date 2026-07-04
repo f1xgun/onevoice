@@ -386,12 +386,43 @@ func (r *pendingToolCallRepo) MarkExpired(ctx context.Context, batchID string) e
 	return nil
 }
 
+// DeleteByConversationIDs hard-deletes every batch whose conversation_id is in
+// ids, returning the count removed. An empty ids slice is a no-op (returns 0)
+// so the caller can skip the round-trip when a conversation has no batches. This
+// is the cascade hook that keeps a batch's ModelMessages snapshot — a full
+// conversation-history PII copy — from outliving its conversation. It is needed
+// precisely because a batch carries no reachable link back once its conversation
+// is deleted, and because an un-promoted "preparing" or reconciled "expired"
+// batch carries no expires_at, so the TTL sweep would otherwise never reap it.
+func (r *pendingToolCallRepo) DeleteByConversationIDs(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	res, err := r.coll.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": ids}})
+	if err != nil {
+		return 0, fmt.Errorf("pending_tool_call: delete by conversation ids: %w", err)
+	}
+	return res.DeletedCount, nil
+}
+
+// DeleteByConversationID is the single-conversation form of
+// DeleteByConversationIDs.
+func (r *pendingToolCallRepo) DeleteByConversationID(ctx context.Context, conversationID string) (int64, error) {
+	return r.DeleteByConversationIDs(ctx, []string{conversationID})
+}
+
 // ReconcileOrphanPreparing sweeps batches stuck in status="preparing"
-// older than olderThan, marking them expired. Crash-recovery for the
-// Persist gap between InsertOne and the promotion UpdateOne. Called once
-// at API startup; idempotent.
+// older than olderThan, marking them expired AND stamping expires_at. A
+// "preparing" row carries no expires_at (it is set only on promotion to
+// "pending"), so flipping status alone would leave the TTL index — which skips
+// documents whose indexed field is absent — unable to ever reap the row,
+// retaining its ModelMessages PII snapshot indefinitely. Setting expires_at to
+// now makes the reconciled row immediately TTL-reapable. Crash-recovery for the
+// Persist gap between InsertOne and the promotion UpdateOne. Called once at API
+// startup; idempotent.
 func (r *pendingToolCallRepo) ReconcileOrphanPreparing(ctx context.Context, olderThan time.Duration) (int64, error) {
-	cutoff := time.Now().UTC().Add(-olderThan)
+	now := time.Now().UTC()
+	cutoff := now.Add(-olderThan)
 	res, err := r.coll.UpdateMany(ctx,
 		bson.M{
 			"status":     "preparing",
@@ -399,7 +430,8 @@ func (r *pendingToolCallRepo) ReconcileOrphanPreparing(ctx context.Context, olde
 		},
 		bson.M{"$set": bson.M{
 			"status":     "expired",
-			"updated_at": time.Now().UTC(),
+			"expires_at": now,
+			"updated_at": now,
 		}},
 	)
 	if err != nil {

@@ -158,6 +158,12 @@ func (f *fakeHITLPendingRepo) ReconcileOrphanPreparing(_ context.Context, _ time
 func (f *fakeHITLPendingRepo) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
+func (f *fakeHITLPendingRepo) DeleteByConversationIDs(_ context.Context, _ []string) (int64, error) {
+	return 0, nil
+}
+func (f *fakeHITLPendingRepo) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 
 type fakeBusinessRepoHITL struct {
 	biz *domain.Business

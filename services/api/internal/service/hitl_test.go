@@ -138,6 +138,12 @@ func (s *stubPendingRepo) ReconcileOrphanPreparing(_ context.Context, _ time.Dur
 func (s *stubPendingRepo) ReconcileOrphanResolving(_ context.Context, _ time.Duration) (int64, error) {
 	return 0, nil
 }
+func (s *stubPendingRepo) DeleteByConversationIDs(_ context.Context, _ []string) (int64, error) {
+	return 0, nil
+}
+func (s *stubPendingRepo) DeleteByConversationID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 
 // stubBusinessRepo returns a preconfigured Business (with optional settings).
 type stubBusinessRepo struct {
