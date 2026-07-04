@@ -74,6 +74,16 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "create conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
 	req, ok := decodeAndValidate[openapi.CreateConversationRequest](w, r, "invalid request body")
 	if !ok {
 		return

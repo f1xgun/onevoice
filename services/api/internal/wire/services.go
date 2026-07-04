@@ -190,6 +190,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.Integration = service.NewIntegrationService(repos.Integration, h.Envelope, h.PG, refresher, s.AuditLogger)
 	s.Integration = service.WithActorGate(s.Integration, repos.User)
 	s.Integration = service.WithMembershipGate(s.Integration, s.AuthzCache)
+	s.Integration = service.WithBusinessGate(s.Integration, repos.Business)
 	if h.NATS != nil {
 		s.Integration = service.WithNATSPublisher(s.Integration, h.NATS)
 	}

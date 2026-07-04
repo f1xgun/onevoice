@@ -330,6 +330,10 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 			writeJSONError(w, http.StatusConflict, "this channel is already connected to another organization")
 			return
 		}
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
 		slog.Error("failed to connect Telegram integration", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "failed to connect")
 		return

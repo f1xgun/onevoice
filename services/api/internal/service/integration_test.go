@@ -2173,6 +2173,153 @@ func TestConnect_MembershipGate(t *testing.T) {
 	})
 }
 
+// fakeBusinessLookup mirrors the two businesses-table read semantics the
+// soft-delete-aware connect-business gate depends on: GetByID filters out
+// soft-deleted rows (deleted_at IS NOT NULL → ErrBusinessNotFound), exactly like
+// repository.businessRepository.GetByID, while getByIDIncludingDeleted (the read
+// the /restore path uses) returns the row regardless of deleted_at. deletedAt
+// non-nil models a business inside its deletion grace window; a nil business
+// models a genuinely absent row.
+type fakeBusinessLookup struct {
+	business  *domain.Business
+	deletedAt *time.Time
+}
+
+func (f fakeBusinessLookup) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+	if f.business == nil || f.deletedAt != nil {
+		return nil, domain.ErrBusinessNotFound
+	}
+	return f.business, nil
+}
+
+func (f fakeBusinessLookup) getByIDIncludingDeleted(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+	if f.business == nil {
+		return nil, domain.ErrBusinessNotFound
+	}
+	return f.business, nil
+}
+
+// TestConnect_BusinessGate is the fail-on-revert guard for the 152-ФЗ
+// data-lifecycle gap: integrationService.Connect, when a WithBusinessGate lookup
+// is attached, must reject a fresh integration bound to a soft-deleted
+// (pending-erasure) organization BEFORE any envelope-encrypted token is
+// persisted. authz.RequireBusinessAccess gates the connect routes on the
+// surviving business_members row alone, so during the deletion grace window a
+// member still reaches Connect; the gate re-loads the business through the
+// soft-delete-aware GetByID (deleted_at IS NULL) and returns ErrBusinessNotFound.
+//
+// Reverting the gateBusiness call in Connect reproduces the bug: the
+// soft-deleted-org case persists a live token, turning its assertion red.
+func TestConnect_BusinessGate(t *testing.T) {
+	ctx := context.Background()
+	deletedAt := time.Now().Add(-24 * time.Hour)
+
+	baseParams := func() ConnectParams {
+		return ConnectParams{
+			BusinessID:   uuid.New(),
+			ActorID:      uuid.New(),
+			Platform:     "yandex_business",
+			ExternalID:   "default",
+			AccessToken:  "tok",
+			ParsedFormat: ParsedFormatOAuthCode,
+		}
+	}
+
+	liveBiz := &domain.Business{ID: uuid.New()}
+
+	tests := []struct {
+		name        string
+		lookup      fakeBusinessLookup
+		wantErr     error
+		wantCreated bool
+	}{
+		{
+			name:        "soft-deleted organization is rejected before persist",
+			lookup:      fakeBusinessLookup{business: liveBiz, deletedAt: &deletedAt},
+			wantErr:     domain.ErrBusinessNotFound,
+			wantCreated: false,
+		},
+		{
+			name:        "missing organization is rejected before persist",
+			lookup:      fakeBusinessLookup{business: nil},
+			wantErr:     domain.ErrBusinessNotFound,
+			wantCreated: false,
+		},
+		{
+			name:        "live organization connects",
+			lookup:      fakeBusinessLookup{business: liveBiz},
+			wantCreated: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var created bool
+			repo := &mockIntegrationRepository{
+				createFunc: func(_ context.Context, integration *domain.Integration) error {
+					created = true
+					integration.ID = uuid.New()
+					return nil
+				},
+			}
+
+			svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, audit.Nop())
+			svc = WithBusinessGate(svc, tc.lookup)
+
+			_, err := svc.Connect(ctx, baseParams())
+
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantCreated, created,
+				"repo.Create call expectation mismatch — the business gate must reject before persisting")
+		})
+	}
+
+	// no_gate_attached pins the no-over-block side: when no BusinessLookup is
+	// wired (in-process callers pass a live business), Connect must not block on
+	// business existence.
+	t.Run("no_gate_attached connects without business source", func(t *testing.T) {
+		var created bool
+		repo := &mockIntegrationRepository{
+			createFunc: func(_ context.Context, integration *domain.Integration) error {
+				created = true
+				integration.ID = uuid.New()
+				return nil
+			},
+		}
+
+		svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, audit.Nop())
+
+		_, err := svc.Connect(ctx, baseParams())
+
+		require.NoError(t, err)
+		assert.True(t, created, "no business gate attached → Connect must not block")
+	})
+
+	// restore_path_untouched guards the CRITICAL non-regression: the connect gate
+	// consults the soft-delete-aware GetByID (deleted_at IS NULL), so a
+	// soft-deleted org is rejected there — but the /restore path reads the SAME
+	// org through an including-deleted lookup, which must still resolve it so the
+	// owner can cancel the pending deletion. This proves the two reads diverge as
+	// intended: the gate 404s the soft-deleted org while the including-deleted
+	// read still finds it.
+	t.Run("restore_path_untouched sees the soft-deleted org via including-deleted read", func(t *testing.T) {
+		lookup := fakeBusinessLookup{business: liveBiz, deletedAt: &deletedAt}
+
+		_, gateErr := lookup.GetByID(ctx, liveBiz.ID)
+		require.ErrorIs(t, gateErr, domain.ErrBusinessNotFound,
+			"connect gate must reject the soft-deleted org")
+
+		restored, restoreErr := lookup.getByIDIncludingDeleted(ctx, liveBiz.ID)
+		require.NoError(t, restoreErr,
+			"the including-deleted read the /restore path uses must still resolve the soft-deleted org")
+		assert.Equal(t, liveBiz.ID, restored.ID)
+	})
+}
+
 // TestGetDecryptedToken_RefresherIsPlatformGated proves the Google OAuth
 // refresher is applied only to google_business rows. A yandex_business row also
 // persists a refresh token + expiry, but its refresh token must never be POSTed

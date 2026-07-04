@@ -113,6 +113,23 @@ type MembershipChecker interface {
 	GetRole(ctx context.Context, roleID uuid.UUID) (authz.CachedRole, error)
 }
 
+// BusinessLookup is the narrow slice of domain.BusinessRepository the connect
+// path needs to re-assert that the target business is still live before a fresh
+// token is persisted. It reads through the soft-delete-aware GetByID
+// (deleted_at IS NULL), which surfaces a soft-deleted (pending-erasure)
+// organization as domain.ErrBusinessNotFound.
+//
+// authz.RequireBusinessAccess gates the /businesses/{id} routes purely on the
+// business_members membership row; it does NOT re-load the business through the
+// soft-delete-aware read, so during the deletion grace window a member can still
+// reach Connect and bind new personal data (envelope-encrypted OAuth/bot tokens)
+// to an organization awaiting erasure. Re-checking existence here — at the single
+// choke point every platform connect funnels through — blocks that new-PII
+// ingestion without regressing /restore or reads, which never reach Connect.
+type BusinessLookup interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+}
+
 // IntegrationService defines the interface for platform integration management.
 // See docs/services/integration.md.
 type IntegrationService interface {
@@ -138,6 +155,7 @@ type integrationService struct {
 	nats      NATSPublisher     // nil when NATS is unreachable — revoke publish is skipped (fail-open)
 	actors    ActorLookup       // nil disables the connect-actor gate (in-process callers already gated upstream)
 	members   MembershipChecker // nil disables the connect-membership gate (in-process callers already gated upstream)
+	business  BusinessLookup    // nil disables the connect-business-existence gate (in-process callers pass a live business)
 }
 
 // Compile-time check that integrationService implements IntegrationService
@@ -203,6 +221,20 @@ func WithActorGate(svc IntegrationService, actors ActorLookup) IntegrationServic
 func WithMembershipGate(svc IntegrationService, members MembershipChecker) IntegrationService {
 	if s, ok := svc.(*integrationService); ok {
 		s.members = members
+	}
+	return svc
+}
+
+// WithBusinessGate attaches the soft-delete-aware business lookup that lets
+// Connect reject an integration bound to an organization awaiting erasure,
+// returning svc for chaining. When the lookup is unset (or nil), or svc is not
+// the concrete service, Connect skips the existence gate. Attached so a member
+// acting inside the deletion grace window — whose membership row still satisfies
+// authz.RequireBusinessAccess — cannot persist fresh envelope-encrypted tokens
+// to a soft-deleted business. Mirrors WithMembershipGate's wiring pattern.
+func WithBusinessGate(svc IntegrationService, business BusinessLookup) IntegrationService {
+	if s, ok := svc.(*integrationService); ok {
+		s.business = business
 	}
 	return svc
 }
@@ -381,6 +413,10 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
+	if err := s.gateBusiness(ctx, params.BusinessID); err != nil {
+		return nil, err
+	}
+
 	if params.ExternalID != "" {
 		claimant, claimErr := s.repo.GetActiveByPlatformExternal(ctx, params.Platform, params.ExternalID)
 		switch {
@@ -529,6 +565,28 @@ func (s *integrationService) gateMembership(ctx context.Context, actorID, busine
 		}
 	}
 	return domain.ErrForbidden
+}
+
+// gateBusiness re-loads the target business through the soft-delete-aware
+// GetByID (deleted_at IS NULL) and rejects with domain.ErrBusinessNotFound when
+// the organization is soft-deleted (pending erasure), before any integration row
+// or token is created. This is the single choke point every platform connect
+// funnels through, so it blocks new-PII ingestion (fresh OAuth/bot tokens) into
+// an organization inside its deletion grace window — a window in which the
+// membership row still satisfies authz.RequireBusinessAccess. It is a no-op when
+// no BusinessLookup is attached (in-process callers pass a live business) or when
+// businessID is the nil UUID.
+func (s *integrationService) gateBusiness(ctx context.Context, businessID uuid.UUID) error {
+	if s.business == nil || businessID == uuid.Nil {
+		return nil
+	}
+	if _, err := s.business.GetByID(ctx, businessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			return domain.ErrBusinessNotFound
+		}
+		return fmt.Errorf("load connect business: %w", err)
+	}
+	return nil
 }
 
 // GetDecryptedToken returns decrypted tokens, refreshing on expiry; empty externalID falls back to first-active.
