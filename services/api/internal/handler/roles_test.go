@@ -73,7 +73,9 @@ func withRoleIDParam(r *http.Request, roleID string) *http.Request {
 
 // newRolesHandlerForTest constructs a RolesHandler from test mocks.
 // audit defaults to audit.Nop so existing tests don't have to
-// thread a logger through every call site.
+// thread a logger through every call site. businessService defaults to a
+// getter that resolves every ID to a live business; soft-deleted-org tests
+// override it via the constructor directly.
 func newRolesHandlerForTest(
 	rr domain.RoleRepository,
 	mr domain.BusinessMembershipRepository,
@@ -81,11 +83,12 @@ func newRolesHandlerForTest(
 	inv roleCacheInvalidator,
 ) *RolesHandler {
 	return &RolesHandler{
-		roleRepo:       rr,
-		membershipRepo: mr,
-		pool:           pool,
-		invalidator:    inv,
-		audit:          audit.Nop(),
+		roleRepo:        rr,
+		membershipRepo:  mr,
+		businessService: &mockBusinessGetter{},
+		pool:            pool,
+		invalidator:     inv,
+		audit:           audit.Nop(),
 	}
 }
 
@@ -102,15 +105,17 @@ func ownerRoleUUID(t *testing.T) uuid.UUID {
 
 func TestRolesHandler_NewRolesHandler_NilCheck(t *testing.T) {
 	t.Parallel()
-	_, err := NewRolesHandler(nil, &MockBusinessMembershipRepository{}, mustPool(t), &recordingInvalidator{}, audit.Nop())
+	_, err := NewRolesHandler(nil, &MockBusinessMembershipRepository{}, &mockBusinessGetter{}, mustPool(t), &recordingInvalidator{}, audit.Nop())
 	assert.Error(t, err)
-	_, err = NewRolesHandler(&MockRoleRepository{}, nil, mustPool(t), &recordingInvalidator{}, audit.Nop())
+	_, err = NewRolesHandler(&MockRoleRepository{}, nil, &mockBusinessGetter{}, mustPool(t), &recordingInvalidator{}, audit.Nop())
 	assert.Error(t, err)
-	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, nil, &recordingInvalidator{}, audit.Nop())
+	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, nil, mustPool(t), &recordingInvalidator{}, audit.Nop())
 	assert.Error(t, err)
-	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, mustPool(t), nil, audit.Nop())
+	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, &mockBusinessGetter{}, nil, &recordingInvalidator{}, audit.Nop())
 	assert.Error(t, err)
-	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, mustPool(t), &recordingInvalidator{}, nil)
+	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, &mockBusinessGetter{}, mustPool(t), nil, audit.Nop())
+	assert.Error(t, err)
+	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, &mockBusinessGetter{}, mustPool(t), &recordingInvalidator{}, nil)
 	assert.Error(t, err)
 }
 
@@ -1385,5 +1390,86 @@ func TestRolesHandler_MyPermissions(t *testing.T) {
 		h.MyPermissions(w, req)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+}
+
+// newRolesHandlerWithBiz builds a RolesHandler through the constructor with an
+// explicit businessGetter so soft-deleted-org tests can inject a getter that
+// returns domain.ErrBusinessNotFound.
+func newRolesHandlerWithBiz(
+	t *testing.T,
+	rr domain.RoleRepository,
+	bs businessGetter,
+) *RolesHandler {
+	t.Helper()
+	h, err := NewRolesHandler(rr, &MockBusinessMembershipRepository{}, bs, mustPool(t), &recordingInvalidator{}, audit.Nop())
+	require.NoError(t, err)
+	return h
+}
+
+// TestRolesHandler_WriteEndpoints_SoftDeletedBusiness_Returns404 asserts the
+// write endpoints (Create, Update, Delete) reject mutations against a
+// soft-deleted (erasure-pending) organization with 404 and never reach the
+// mutating repo. The businessGetter returns domain.ErrBusinessNotFound; removing
+// the existence gate would let the mutation proceed — fail-on-revert.
+func TestRolesHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *testing.T) {
+	deletedBiz := &mockBusinessGetter{
+		getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return nil, domain.ErrBusinessNotFound
+		},
+	}
+
+	t.Run("Create", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		h := newRolesHandlerWithBiz(t, rr, deletedBiz)
+
+		bizID := uuid.New()
+		ctx := businessContextFull(context.Background(), bizID, uuid.New(), ownerRoleUUID(t),
+			authz.PermRolesCreate, authz.PermContentRead)
+		body, _ := json.Marshal(map[string]interface{}{"name": "Editor", "permissions": []string{"content.read"}})
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)).WithContext(ctx)
+		w := httptest.NewRecorder()
+		h.Create(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assertErrorCode(t, w, "business not found")
+		rr.AssertNotCalled(t, "CreateInTx")
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		h := newRolesHandlerWithBiz(t, rr, deletedBiz)
+
+		bizID := uuid.New()
+		roleID := uuid.New()
+		ctx := businessContextFull(context.Background(), bizID, uuid.New(), ownerRoleUUID(t),
+			authz.PermRolesUpdate, authz.PermContentRead)
+		body, _ := json.Marshal(map[string]interface{}{"name": "New", "permissions": []string{"content.read"}})
+		req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(body)).WithContext(ctx)
+		req = withRoleIDParam(req, roleID.String())
+		w := httptest.NewRecorder()
+		h.Update(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assertErrorCode(t, w, "business not found")
+		rr.AssertNotCalled(t, "UpdateInTx")
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		rr := &MockRoleRepository{}
+		h := newRolesHandlerWithBiz(t, rr, deletedBiz)
+
+		bizID := uuid.New()
+		roleID := uuid.New()
+		ctx := businessContextFull(context.Background(), bizID, uuid.New(), ownerRoleUUID(t), authz.PermRolesDelete)
+		req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
+		req = withRoleIDParam(req, roleID.String())
+		w := httptest.NewRecorder()
+		h.Delete(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assertErrorCode(t, w, "business not found")
+		rr.AssertNotCalled(t, "DeleteInTx")
+		rr.AssertNotCalled(t, "DeleteWithReassignInTx")
 	})
 }

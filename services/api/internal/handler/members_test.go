@@ -259,6 +259,8 @@ func businessContextWith(ctx context.Context, businessID, userID uuid.UUID, perm
 // newMembersHandlerForTest constructs a MembersHandler with the given dependencies
 // using the mockable pool interface. : audit defaults to audit.Nop
 // so existing tests don't have to thread a logger through every call site.
+// businessService defaults to a getter that resolves every ID to a live
+// business; soft-deleted-org tests override it via the constructor directly.
 func newMembersHandlerForTest(
 	mr domain.BusinessMembershipRepository,
 	rr domain.RoleRepository,
@@ -267,12 +269,13 @@ func newMembersHandlerForTest(
 	inv memberCacheInvalidator,
 ) *MembersHandler {
 	return &MembersHandler{
-		membershipRepo: mr,
-		roleRepo:       rr,
-		userRepo:       ur,
-		pool:           pool,
-		invalidator:    inv,
-		audit:          audit.Nop(),
+		membershipRepo:  mr,
+		roleRepo:        rr,
+		userRepo:        ur,
+		businessService: &mockBusinessGetter{},
+		pool:            pool,
+		invalidator:     inv,
+		audit:           audit.Nop(),
 	}
 }
 
@@ -880,26 +883,87 @@ func TestMembersHandler_NewMembersHandler_NilChecks(t *testing.T) {
 	require.NoError(t, err)
 	validInv := &MockCacheInvalidator{}
 	validAudit := audit.Nop()
+	validBS := &mockBusinessGetter{}
 
-	_, err = NewMembersHandler(nil, validRR, validUR, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(nil, validRR, validUR, validBS, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, nil, validUR, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, nil, validUR, validBS, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, nil, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, nil, validBS, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, nil, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, validUR, nil, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, mockPool, nil, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, validUR, validBS, nil, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, mockPool, validInv, nil)
+	_, err = NewMembersHandler(validMR, validRR, validUR, validBS, mockPool, nil, validAudit)
 	assert.Error(t, err)
 
-	h, err := NewMembersHandler(validMR, validRR, validUR, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, validUR, validBS, mockPool, validInv, nil)
+	assert.Error(t, err)
+
+	h, err := NewMembersHandler(validMR, validRR, validUR, validBS, mockPool, validInv, validAudit)
 	require.NoError(t, err)
 	assert.NotNil(t, h)
+}
+
+// TestMembersHandler_WriteEndpoints_SoftDeletedBusiness_Returns404 asserts the
+// write endpoints (UpdateMemberRole, RemoveMember) reject mutations against a
+// soft-deleted (erasure-pending) organization with 404 and never reach the
+// mutating repo. The businessGetter returns domain.ErrBusinessNotFound; removing
+// the existence gate would let the mutation proceed — fail-on-revert.
+func TestMembersHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *testing.T) {
+	deletedBiz := &mockBusinessGetter{
+		getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return nil, domain.ErrBusinessNotFound
+		},
+	}
+	newHandler := func(t *testing.T, mr *MockBusinessMembershipRepository) *MembersHandler {
+		t.Helper()
+		h, err := NewMembersHandler(mr, &MockRoleRepository{}, &MockUserRepository{}, deletedBiz, mustPool(t), &MockCacheInvalidator{}, audit.Nop())
+		require.NoError(t, err)
+		return h
+	}
+
+	t.Run("UpdateMemberRole", func(t *testing.T) {
+		mr := &MockBusinessMembershipRepository{}
+		h := newHandler(t, mr)
+
+		bizID := uuid.New()
+		actorID := uuid.New()
+		targetID := uuid.New()
+		ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersUpdateRole)
+		body := map[string]interface{}{"role_id": uuid.New().String()}
+		bodyBytes, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(bodyBytes)).WithContext(ctx)
+		req = withChiParams(req, map[string]string{"userId": targetID.String()})
+		w := httptest.NewRecorder()
+		h.UpdateMemberRole(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assertErrorCode(t, w, "business not found")
+		mr.AssertNotCalled(t, "UpdateRoleInTx")
+	})
+
+	t.Run("RemoveMember", func(t *testing.T) {
+		mr := &MockBusinessMembershipRepository{}
+		h := newHandler(t, mr)
+
+		bizID := uuid.New()
+		actorID := uuid.New()
+		targetID := uuid.New()
+		ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersRemove)
+		req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
+		req = withChiParams(req, map[string]string{"userId": targetID.String()})
+		w := httptest.NewRecorder()
+		h.RemoveMember(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assertErrorCode(t, w, "business not found")
+		mr.AssertNotCalled(t, "DeleteInTx")
+	})
 }

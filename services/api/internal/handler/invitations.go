@@ -36,24 +36,29 @@ const (
 
 // InvitationsHandler serves the invitation CRUD + accept endpoints.
 type InvitationsHandler struct {
-	invitationRepo domain.InvitationRepository
-	membershipRepo domain.BusinessMembershipRepository
-	roleRepo       domain.RoleRepository
-	userRepo       domain.UserRepository
-	businessRepo   domain.BusinessRepository
-	pool           poolBeginner
-	invalidator    memberCacheInvalidator
-	audit          audit.Logger
-	now            func() time.Time // clock seam for test determinism
+	invitationRepo  domain.InvitationRepository
+	membershipRepo  domain.BusinessMembershipRepository
+	roleRepo        domain.RoleRepository
+	userRepo        domain.UserRepository
+	businessRepo    domain.BusinessRepository
+	businessService businessGetter
+	pool            poolBeginner
+	invalidator     memberCacheInvalidator
+	audit           audit.Logger
+	now             func() time.Time // clock seam for test determinism
 }
 
 // NewInvitationsHandler constructs an InvitationsHandler; every dep is required.
+// businessService lets the write endpoints reject mutations against a
+// soft-deleted (erasure-pending) organization that RequireBusinessAccess
+// (membership-only) does not gate.
 func NewInvitationsHandler(
 	ir domain.InvitationRepository,
 	mr domain.BusinessMembershipRepository,
 	rr domain.RoleRepository,
 	ur domain.UserRepository,
 	br domain.BusinessRepository,
+	bs businessGetter,
 	pool poolBeginner,
 	inv memberCacheInvalidator,
 	auditLogger audit.Logger,
@@ -73,6 +78,9 @@ func NewInvitationsHandler(
 	if br == nil {
 		return nil, fmt.Errorf("NewInvitationsHandler: businessRepo cannot be nil")
 	}
+	if bs == nil {
+		return nil, fmt.Errorf("NewInvitationsHandler: businessService cannot be nil")
+	}
 	if pool == nil {
 		return nil, fmt.Errorf("NewInvitationsHandler: pool cannot be nil")
 	}
@@ -83,15 +91,16 @@ func NewInvitationsHandler(
 		return nil, fmt.Errorf("NewInvitationsHandler: auditLogger cannot be nil")
 	}
 	return &InvitationsHandler{
-		invitationRepo: ir,
-		membershipRepo: mr,
-		roleRepo:       rr,
-		userRepo:       ur,
-		businessRepo:   br,
-		pool:           pool,
-		invalidator:    inv,
-		audit:          auditLogger,
-		now:            time.Now,
+		invitationRepo:  ir,
+		membershipRepo:  mr,
+		roleRepo:        rr,
+		userRepo:        ur,
+		businessRepo:    br,
+		businessService: bs,
+		pool:            pool,
+		invalidator:     inv,
+		audit:           auditLogger,
+		now:             time.Now,
 	}, nil
 }
 
@@ -157,6 +166,16 @@ func computeTokenHash(raw string) string {
 func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "create invitation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -301,6 +320,16 @@ func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	invID, ok := parseInvitationIDParam(w, r)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "revoke invitation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 

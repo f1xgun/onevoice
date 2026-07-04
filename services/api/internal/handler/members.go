@@ -38,23 +38,27 @@ type memberCacheInvalidator interface {
 //	PATCH  /businesses/{id}/members/{userId} → UpdateMemberRole (MEMBER-02 + MEMBER-05 + MEMBER-06)
 //	DELETE /businesses/{id}/members/{userId} → RemoveMember  (MEMBER-03 + MEMBER-04 + MEMBER-05)
 type MembersHandler struct {
-	membershipRepo domain.BusinessMembershipRepository
-	roleRepo       domain.RoleRepository
-	userRepo       domain.UserRepository
-	pool           poolBeginner
-	invalidator    memberCacheInvalidator
-	audit          audit.Logger
+	membershipRepo  domain.BusinessMembershipRepository
+	roleRepo        domain.RoleRepository
+	userRepo        domain.UserRepository
+	businessService businessGetter
+	pool            poolBeginner
+	invalidator     memberCacheInvalidator
+	audit           audit.Logger
 }
 
 // NewMembersHandler constructs a MembersHandler. All dependencies are required.
 //
 // adds `auditLogger` so PATCH/DELETE member endpoints
 // can emit rbac.role_granted / rbac.member_removed audit events AFTER the
-// underlying transaction commits.
+// underlying transaction commits. businessService lets the write endpoints
+// reject mutations against a soft-deleted (erasure-pending) organization that
+// RequireBusinessAccess (membership-only) does not gate.
 func NewMembersHandler(
 	mr domain.BusinessMembershipRepository,
 	rr domain.RoleRepository,
 	ur domain.UserRepository,
+	bs businessGetter,
 	pool poolBeginner,
 	inv memberCacheInvalidator,
 	auditLogger audit.Logger,
@@ -68,6 +72,9 @@ func NewMembersHandler(
 	if ur == nil {
 		return nil, fmt.Errorf("NewMembersHandler: userRepo cannot be nil")
 	}
+	if bs == nil {
+		return nil, fmt.Errorf("NewMembersHandler: businessService cannot be nil")
+	}
 	if pool == nil {
 		return nil, fmt.Errorf("NewMembersHandler: pool cannot be nil")
 	}
@@ -78,12 +85,13 @@ func NewMembersHandler(
 		return nil, fmt.Errorf("NewMembersHandler: auditLogger cannot be nil")
 	}
 	return &MembersHandler{
-		membershipRepo: mr,
-		roleRepo:       rr,
-		userRepo:       ur,
-		pool:           pool,
-		invalidator:    inv,
-		audit:          auditLogger,
+		membershipRepo:  mr,
+		roleRepo:        rr,
+		userRepo:        ur,
+		businessService: bs,
+		pool:            pool,
+		invalidator:     inv,
+		audit:           auditLogger,
 	}, nil
 }
 
@@ -161,6 +169,16 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	}
 	targetUserID, ok := parseMemberUserIDParam(w, r)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "update member role: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -278,6 +296,16 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 	targetUserID, ok := parseMemberUserIDParam(w, r)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "remove member: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
