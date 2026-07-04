@@ -198,6 +198,16 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "update conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
 	conversationID := chi.URLParam(r, "id")
 
 	req, ok := decodeAndValidate[openapi.UpdateConversationRequest](w, r, "invalid request body")
@@ -240,6 +250,16 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "DeleteConversation", authz.PermContentDelete)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "delete conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -307,6 +327,16 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "move conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
 	conversationID := chi.URLParam(r, "id")
 
 	var req openapi.MoveConversationRequest
@@ -342,6 +372,16 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "Pin", authz.PermContentUpdate)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "pin conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -383,6 +423,16 @@ func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 func (h *ConversationHandler) Unpin(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "Unpin", authz.PermContentUpdate)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "unpin conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 

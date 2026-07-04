@@ -140,6 +140,16 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "resolve: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
 	conversationID := chi.URLParam(r, "id")
 	batchID := chi.URLParam(r, "batch_id")
 	if conversationID == "" || batchID == "" {
