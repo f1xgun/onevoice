@@ -117,6 +117,18 @@ func (s *stubPendingRepo) ResetResolvingToPending(_ context.Context, batchID str
 	b.Status = "pending"
 	return nil
 }
+func (s *stubPendingRepo) AtomicTransitionResumingToResolving(_ context.Context, batchID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.Batches[batchID]
+	if !ok {
+		return domain.ErrBatchNotFound
+	}
+	if b.Status == "resuming" {
+		b.Status = "resolving"
+	}
+	return nil
+}
 func (s *stubPendingRepo) MarkDispatched(_ context.Context, _, _ string) error { return nil }
 func (s *stubPendingRepo) MarkResolved(_ context.Context, _ string) error      { return nil }
 func (s *stubPendingRepo) MarkExpired(_ context.Context, _ string) error       { return nil }

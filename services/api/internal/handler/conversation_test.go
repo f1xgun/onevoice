@@ -189,6 +189,9 @@ func (m *MockPendingToolCallRepository) AtomicTransitionResolvingToResuming(ctx 
 func (m *MockPendingToolCallRepository) ResetResolvingToPending(_ context.Context, _ string) error {
 	return nil
 }
+func (m *MockPendingToolCallRepository) AtomicTransitionResumingToResolving(_ context.Context, _ string) error {
+	return nil
+}
 func (m *MockPendingToolCallRepository) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
 	return nil
 }

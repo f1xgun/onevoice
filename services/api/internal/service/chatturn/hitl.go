@@ -494,6 +494,7 @@ func (t *Turn) runResumeStream(
 
 	if streamErr != nil && !terminated && strings.Contains(streamErr.Error(), "stream resume:") {
 		slog.ErrorContext(ctx, "chatturn: orchestrator resume request failed", "error", streamErr)
+		t.compensateResuming(ctx, batchID)
 		return OutcomeOrchestratorUnavailable, fmt.Errorf("chatturn: orchestrator resume: %w", streamErr)
 	}
 	if streamErr != nil {
@@ -529,6 +530,31 @@ func (t *Turn) runResumeStream(
 	}
 	t.auditRPAMutations(saveCtx, businessID, actorUserID, recCalls, recResults)
 	return OutcomeRejoinedResume, nil
+}
+
+// resumeCompensationTimeout bounds the compensating reset issued when the
+// resume stream fails to open after the resolving→resuming claim. It runs on a
+// fresh context so a canceled request ctx cannot skip the compensation.
+const resumeCompensationTimeout = 5 * time.Second
+
+// compensateResuming rolls a batch back resuming→resolving after the resume
+// stream failed to open (orchestrator unavailable at resume time). Without it
+// the batch is permanently stranded at "resuming": the approved tool never
+// dispatched, a retried /resume can never re-win the resolving→resuming claim,
+// and the approved publish/reply is silently dropped. It runs detached from the
+// request context — the failure may itself be a request-context deadline — and
+// is best-effort: a residual orphan is healed at startup by
+// ReconcileOrphanResolving.
+func (t *Turn) compensateResuming(parentCtx context.Context, batchID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), resumeCompensationTimeout)
+	defer cancel()
+	if corrID := logger.CorrelationIDFromContext(parentCtx); corrID != "" {
+		ctx = logger.WithCorrelationID(ctx, corrID)
+	}
+	if err := t.deps.Pending.AtomicTransitionResumingToResolving(ctx, batchID); err != nil {
+		slog.ErrorContext(ctx, "chatturn: compensating reset of resuming batch failed",
+			"batch_id", batchID, "error", err)
+	}
 }
 
 // persistResumeRePause keeps the assistant message ACTIVE when the resume loop

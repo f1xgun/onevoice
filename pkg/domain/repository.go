@@ -446,6 +446,13 @@ type PendingToolCallRepository interface {
 	// after a successful transition: it flips status resolving→pending only while
 	// no verdicts were recorded, so a retried resolve can win the transition again.
 	ResetResolvingToPending(ctx context.Context, batchID string) error
+	// AtomicTransitionResumingToResolving compensates a resume that claimed the
+	// batch (resolving→resuming) but failed to open the orchestrator stream, so
+	// the approved tool never dispatched: it flips status resuming→resolving so a
+	// retried /resume can re-win the resolving→resuming claim and dispatch the
+	// approved tool. It is a no-op once the resume progressed past "resuming".
+	// Returns ErrBatchNotFound when the _id is missing.
+	AtomicTransitionResumingToResolving(ctx context.Context, batchID string) error
 	RecordDecisions(ctx context.Context, batchID string, calls []PendingCall) error
 	MarkDispatched(ctx context.Context, batchID, callID string) error
 	MarkResolved(ctx context.Context, batchID string) error

@@ -95,6 +95,10 @@ func (m *mockPendingRepo) ResetResolvingToPending(_ context.Context, _ string) e
 	return nil
 }
 
+func (m *mockPendingRepo) AtomicTransitionResumingToResolving(_ context.Context, _ string) error {
+	return nil
+}
+
 func (m *mockPendingRepo) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
 	return nil
 }

@@ -251,6 +251,38 @@ func (r *pendingToolCallRepo) AtomicTransitionResolvingToResuming(ctx context.Co
 	return &doc, nil
 }
 
+// AtomicTransitionResumingToResolving is the compensating write for a resume
+// that claimed the batch (resolving→resuming) but then failed to open the
+// orchestrator stream, so the approved tool never dispatched. It flips the
+// batch back resuming→resolving so a retried /resume can re-win the
+// resolving→resuming claim and actually dispatch the approved tool. The filter
+// constraint status=="resuming" makes it a no-op once the resume genuinely
+// progressed (the winner moved the batch on to "resolved"), so a stale
+// compensation cannot clobber a completed resume. A no-op (MatchedCount == 0)
+// is not an error. A missing _id yields ErrBatchNotFound.
+//
+// See docs/pkg/hitlstore.md.
+func (r *pendingToolCallRepo) AtomicTransitionResumingToResolving(ctx context.Context, batchID string) error {
+	res, err := r.coll.UpdateOne(ctx,
+		bson.M{"_id": batchID, "status": statusResuming},
+		bson.M{"$set": bson.M{
+			"status":     statusResolving,
+			"updated_at": time.Now().UTC(),
+		}},
+	)
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		var probe domain.PendingToolCallBatch
+		probeErr := r.coll.FindOne(ctx, bson.M{"_id": batchID}).Decode(&probe)
+		if errors.Is(probeErr, mongo.ErrNoDocuments) {
+			return domain.ErrBatchNotFound
+		}
+	}
+	return nil
+}
+
 // recordedVerdicts is the set of per-call verdict values RecordDecisions
 // persists. A resolving batch whose calls carry none of these has had no
 // verdicts recorded, so resetting it to pending cannot drop a decision.
@@ -376,24 +408,37 @@ func (r *pendingToolCallRepo) ReconcileOrphanPreparing(ctx context.Context, olde
 	return res.ModifiedCount, nil
 }
 
-// ReconcileOrphanResolving resets batches stuck in status="resolving" OR
-// "resuming" with no recorded verdicts and older than olderThan back to
-// "pending". Crash-recovery for two gaps: (1) a RecordDecisions failure between
-// AtomicTransitionToResolving and ResetResolvingToPending leaves the batch
-// resolving with empty verdicts; (2) a process death mid-resume after
-// AtomicTransitionResolvingToResuming leaves it resuming. Either is unreachable
-// by a retried /resolve (its filter wants status="pending") and resume treats
-// it as a fail-closed reject. The empty-verdicts guard keeps the sweep from
-// clobbering a batch that already recorded a decision. The olderThan window
-// keeps it off a legitimately in-flight resolve/resume, which holds the
-// transient status only momentarily. Called once at API startup; idempotent.
+// ReconcileOrphanResolving heals two distinct strands at API startup:
+//
+//  1. A batch stuck in status="resolving" with no recorded verdicts, older than
+//     olderThan, is reset back to "pending". Crash-recovery for a RecordDecisions
+//     failure between AtomicTransitionToResolving and ResetResolvingToPending.
+//     The empty-verdicts guard keeps the sweep from clobbering a batch that
+//     already recorded a decision, and a reset-to-pending batch is retryable by a
+//     /resolve (its filter wants status="pending").
+//
+//  2. A batch stuck in status="resuming", older than olderThan, is reset back to
+//     "resolving". Crash-recovery for a resume that claimed the batch
+//     (resolving→resuming) but died before dispatching the approved tool — most
+//     commonly because the orchestrator was briefly unavailable at resume time.
+//     A "resuming" batch is ALWAYS reached via a resolve that recorded finalized
+//     verdicts BEFORE the resolving→resuming claim, so it legitimately carries
+//     recorded verdicts — the empty-verdicts guard MUST NOT apply here, or every
+//     stranded resuming batch is excluded and permanently silently drops the
+//     approved publish/reply. Reset to "resolving" makes it retryable by a
+//     /resume (its filter wants status="resolving").
+//
+// The olderThan window keeps the sweep off a legitimately in-flight
+// resolve/resume, which holds the transient status only momentarily. Called once
+// at API startup; idempotent.
 //
 // See docs/pkg/hitlstore.md.
 func (r *pendingToolCallRepo) ReconcileOrphanResolving(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().UTC().Add(-olderThan)
-	res, err := r.coll.UpdateMany(ctx,
+
+	resolvingRes, err := r.coll.UpdateMany(ctx,
 		bson.M{
-			"status":        bson.M{"$in": []string{statusResolving, statusResuming}},
+			"status":        statusResolving,
 			"updated_at":    bson.M{"$lt": cutoff},
 			"calls.verdict": bson.M{"$nin": recordedVerdicts},
 		},
@@ -405,5 +450,20 @@ func (r *pendingToolCallRepo) ReconcileOrphanResolving(ctx context.Context, olde
 	if err != nil {
 		return 0, err
 	}
-	return res.ModifiedCount, nil
+
+	resumingRes, err := r.coll.UpdateMany(ctx,
+		bson.M{
+			"status":     statusResuming,
+			"updated_at": bson.M{"$lt": cutoff},
+		},
+		bson.M{"$set": bson.M{
+			"status":     statusResolving,
+			"updated_at": time.Now().UTC(),
+		}},
+	)
+	if err != nil {
+		return resolvingRes.ModifiedCount, err
+	}
+
+	return resolvingRes.ModifiedCount + resumingRes.ModifiedCount, nil
 }

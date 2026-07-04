@@ -137,6 +137,18 @@ func (f *fakeHITLPendingRepo) ResetResolvingToPending(_ context.Context, batchID
 	}
 	return nil
 }
+func (f *fakeHITLPendingRepo) AtomicTransitionResumingToResolving(_ context.Context, batchID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b, ok := f.batches[batchID]
+	if !ok {
+		return domain.ErrBatchNotFound
+	}
+	if b.Status == "resuming" {
+		b.Status = "resolving"
+	}
+	return nil
+}
 func (f *fakeHITLPendingRepo) MarkDispatched(_ context.Context, _, _ string) error { return nil }
 func (f *fakeHITLPendingRepo) MarkResolved(_ context.Context, _ string) error      { return nil }
 func (f *fakeHITLPendingRepo) MarkExpired(_ context.Context, _ string) error       { return nil }
