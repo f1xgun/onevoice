@@ -36,15 +36,24 @@ type Sender interface {
 // SenderFactory creates a Sender from a bot token.
 type SenderFactory func(botToken string) (Sender, error)
 
-// resolveChatTarget chooses the Telegram chat_id for a send. Telegram accepts
-// either a numeric ID (private chats/channels) or a public @channelusername, so
-// both forms are valid as-is. The LLM-supplied value wins when it is well-formed;
-// otherwise (empty, a business name, or any non-id hallucination) we fall back to
-// the integration's resolved external_id — the connect flow stored it in the same
-// numeric-or-@username form. Errors with channel_not_found only when neither is
-// usable. See AGENTS.md §"Channel ID Resolution Pattern".
+// resolveChatTarget chooses the Telegram chat_id for a send. The one OneVoice
+// system bot administers every tenant's connected channel, so an unverified
+// LLM-supplied channel_id must never be trusted as the target: it could name a
+// DIFFERENT tenant's channel (via hallucination or prompt injection through
+// untrusted review/comment text) and the shared bot — being an admin there —
+// would post the acting tenant's content onto the victim's channel. resolved is
+// always one of the ACTING business's OWN integration external_ids: it equals
+// supplied exactly when supplied matched one of that business's integrations,
+// and is the business's first-active own channel otherwise (the token resolver's
+// fallback). We therefore honor supplied only when it exactly equals resolved (a
+// legitimate own-channel target selected by external_id); every other supplied
+// value falls back to the owned resolved channel, making it impossible to post
+// to a channel the acting business does not own. Telegram accepts either a
+// numeric ID or a public @channelusername, both stored by the connect flow.
+// Errors with channel_not_found only when the owned channel is itself unusable.
+// See AGENTS.md §"Channel ID Resolution Pattern".
 func resolveChatTarget(supplied, resolved string) (string, error) {
-	if isValidChatTarget(supplied) {
+	if supplied != "" && supplied == resolved && isValidChatTarget(supplied) {
 		return supplied, nil
 	}
 	if isValidChatTarget(resolved) {

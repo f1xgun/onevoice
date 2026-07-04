@@ -45,6 +45,22 @@ func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, ext
 	return agent.TokenInfo{AccessToken: f.token, ExternalID: resolvedExtID}, nil
 }
 
+// firstActiveTokenFetcher models the API's first-active fallback: when the
+// LLM-supplied externalID matches none of the acting business's integrations,
+// GetDecryptedToken silently returns that business's OWN first active
+// integration (its token + its ownExternalID), NOT an echo of the unmatched
+// supplied value. This is the exact condition that lets a foreign channel_id
+// reach the send path, so cross-tenant tests must use this fake — not the
+// echoing fakeTokenFetcher, which only models the exact-match path.
+type firstActiveTokenFetcher struct {
+	token         string
+	ownExternalID string
+}
+
+func (f *firstActiveTokenFetcher) GetToken(_ context.Context, _, _, _, _ string) (agent.TokenInfo, error) {
+	return agent.TokenInfo{AccessToken: f.token, ExternalID: f.ownExternalID}, nil
+}
+
 // fakeSender records the last message sent.
 type fakeSender struct {
 	sentMessage    string
@@ -155,6 +171,111 @@ func TestHandler_SendChannelPost_EmptyChannelID_FallsBackToResolved(t *testing.T
 	require.NotNil(t, resp)
 	assert.True(t, resp.Success)
 	assert.Equal(t, "@onevoice_test", sender.sentChat)
+}
+
+// TestHandler_SendChannelPost_ForeignChannelID_ScopedToOwnChannel is the
+// cross-tenant regression: one shared OneVoice system bot administers EVERY
+// tenant's connected channel. Business A owns integration X; the LLM is steered
+// (by hallucination or prompt injection via untrusted review text) to pass a
+// channel_id naming a DIFFERENT channel A does not own. The token resolver's
+// first-active fallback still returns A's token + resolved=X, so the send target
+// must be X (A's own channel), never the foreign supplied value — otherwise the
+// admin bot would post A's content onto the victim's channel. Reverting the
+// resolveChatTarget ownership check sends to the foreign channel and fails this.
+func TestHandler_SendChannelPost_ForeignChannelID_ScopedToOwnChannel(t *testing.T) {
+	foreignTargets := []string{"@victim_channel", "-1009999999999"}
+	for _, foreign := range foreignTargets {
+		t.Run(foreign, func(t *testing.T) {
+			fetcher := &firstActiveTokenFetcher{token: "biz-A-token", ownExternalID: "-1001111111111"}
+			sender := &fakeSender{}
+			h := newHandlerWithSender(fetcher, sender)
+
+			resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+				Tool:       tools.TelegramSendChannelPost,
+				BusinessID: "biz-A",
+				Args:       map[string]interface{}{"text": "A's content", "channel_id": foreign},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			assert.True(t, resp.Success)
+			assert.Equal(t, "-1001111111111", sender.sentChat,
+				"send must target the acting business's OWN resolved channel, never an unowned supplied channel_id")
+			assert.NotEqual(t, foreign, sender.sentChat,
+				"the shared system bot must never post to a channel the acting business does not own")
+		})
+	}
+}
+
+// TestHandler_SendChannelPost_OwnChannelID_HonorsExactMatch is the companion
+// regression: when the supplied channel_id exactly equals one of the acting
+// business's own integration external_ids (the token resolver returns
+// resolved == supplied), that exact id must be honored so legitimate
+// multi-channel targeting by external_id keeps working.
+func TestHandler_SendChannelPost_OwnChannelID_HonorsExactMatch(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "biz-A-token", externalID: "@onevoice_test"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramSendChannelPost,
+		BusinessID: "biz-A",
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "@onevoice_test"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, "@onevoice_test", sender.sentChat,
+		"an exact match on the business's own external_id must be honored verbatim")
+}
+
+// TestHandler_SendChannelPhoto_ForeignChannelID_ScopedToOwnChannel proves the
+// same cross-tenant scoping holds for the photo send path.
+func TestHandler_SendChannelPhoto_ForeignChannelID_ScopedToOwnChannel(t *testing.T) {
+	fetcher := &firstActiveTokenFetcher{token: "biz-A-token", ownExternalID: "-1001111111111"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramSendChannelPhoto,
+		BusinessID: "biz-A",
+		Args:       map[string]interface{}{"photo_url": "http://x/p.jpg", "caption": "c", "channel_id": "@victim_channel"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, "-1001111111111", sender.sentChat,
+		"photo send must target the acting business's OWN resolved channel, never an unowned supplied channel_id")
+}
+
+// TestHandler_ReplyToComment_ForeignChatID_ScopedToOwnChannel proves the reply
+// path is likewise scoped: the LLM supplies a foreign chat_id (a channel A does
+// not own) while getSender resolves A's own channel; the reply must land on A's
+// own channel, not the foreign chat.
+func TestHandler_ReplyToComment_ForeignChatID_ScopedToOwnChannel(t *testing.T) {
+	fetcher := &firstActiveTokenFetcher{token: "biz-A-token", ownExternalID: "-1001111111111"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramReplyToComment,
+		BusinessID: "biz-A",
+		Args: map[string]interface{}{
+			"text":       "reply",
+			"chat_id":    "@victim_channel",
+			"channel_id": "@victim_channel",
+			"message_id": float64(7),
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.True(t, sender.replyCalled)
+	assert.Equal(t, "-1001111111111", sender.replyChat,
+		"reply must target the acting business's OWN resolved channel, never an unowned supplied chat_id")
 }
 
 func TestHandler_SendNotification_FetchesTokenPerRequest(t *testing.T) {
