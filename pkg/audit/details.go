@@ -259,6 +259,32 @@ type IntegrationDeletedDetails struct {
 	ExternalID    string    `json:"external_id"`
 }
 
+// IntegrationMetadataUpdatedDetails records a metadata-only heal. UpdatedKeys
+// carries the metadata KEYS ONLY — never the values, which may be identifiers.
+type IntegrationMetadataUpdatedDetails struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	Platform      string    `json:"platform"`
+	UpdatedKeys   []string  `json:"updated_keys"`
+}
+
+// IntegrationExternalIDUpdatedDetails records an external_id heal, capturing
+// both the old and new provider identifier for the forensic trail.
+type IntegrationExternalIDUpdatedDetails struct {
+	IntegrationID uuid.UUID `json:"integration_id"`
+	Platform      string    `json:"platform"`
+	OldExternalID string    `json:"old_external_id"`
+	NewExternalID string    `json:"new_external_id"`
+}
+
+// IntegrationTokenExpiredDetails records a status flip to token_expired.
+// RowsAffected reports how many active rows flipped (an empty externalID flips
+// every active integration for the platform).
+type IntegrationTokenExpiredDetails struct {
+	Platform     string `json:"platform"`
+	ExternalID   string `json:"external_id"`
+	RowsAffected int    `json:"rows_affected"`
+}
+
 // ---- business -----------------------------------------------------------
 
 // BusinessCreatedDetails records the human-readable name at creation time.

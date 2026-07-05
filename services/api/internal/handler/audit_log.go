@@ -63,48 +63,54 @@ type AuditLogListResponse = openapi.AuditLogListResponse
 // knownActions is the closed validation set for the ?action= query parameter.
 // Adding a new audit action requires a matching entry here (failure mode: 400 invalid_action).
 var knownActions = map[string]struct{}{
-	audit.ActionRoleGranted:               {},
-	audit.ActionMemberRemoved:             {},
-	audit.ActionRoleCreated:               {},
-	audit.ActionRoleUpdated:               {},
-	audit.ActionRoleDeleted:               {},
-	audit.ActionInvitationCreated:         {},
-	audit.ActionInvitationRevoked:         {},
-	audit.ActionInvitationAccepted:        {},
-	audit.ActionLoginSuccess:              {},
-	audit.ActionLoginFailed:               {},
-	audit.ActionLogout:                    {},
-	audit.ActionPasswordChanged:           {},
-	audit.ActionUserRegistered:            {},
-	audit.ActionIntegrationConnected:      {},
-	audit.ActionIntegrationDisconnected:   {},
-	audit.ActionIntegrationTokenRotated:   {},
-	audit.ActionIntegrationTokenDecrypted: {},
-	audit.ActionIntegrationDeleted:        {},
-	audit.ActionBusinessCreated:           {},
-	audit.ActionBusinessUpdated:           {},
-	audit.ActionBusinessDeletionRequested: {},
-	audit.ActionBusinessDeletionCanceled:  {},
-	audit.ActionBusinessNotOwnerBlocked:   {},
-	audit.ActionBusinessSelfDeleted:       {},
-	audit.ActionProjectCreated:            {},
-	audit.ActionProjectUpdated:            {},
-	audit.ActionProjectDeleted:            {},
-	audit.ActionRPAScopeViolation:         {},
-	audit.ActionRPAReviewReplied:          {},
-	audit.ActionRPAPostPublished:          {},
-	audit.ActionRPAPhotoUploaded:          {},
-	audit.ActionRPAInfoUpdated:            {},
-	audit.ActionRPAHoursUpdated:           {},
+	audit.ActionRoleGranted:                  {},
+	audit.ActionMemberRemoved:                {},
+	audit.ActionRoleCreated:                  {},
+	audit.ActionRoleUpdated:                  {},
+	audit.ActionRoleDeleted:                  {},
+	audit.ActionInvitationCreated:            {},
+	audit.ActionInvitationRevoked:            {},
+	audit.ActionInvitationAccepted:           {},
+	audit.ActionLoginSuccess:                 {},
+	audit.ActionLoginFailed:                  {},
+	audit.ActionLogout:                       {},
+	audit.ActionPasswordChanged:              {},
+	audit.ActionUserRegistered:               {},
+	audit.ActionIntegrationConnected:         {},
+	audit.ActionIntegrationDisconnected:      {},
+	audit.ActionIntegrationTokenRotated:      {},
+	audit.ActionIntegrationTokenDecrypted:    {},
+	audit.ActionIntegrationDeleted:           {},
+	audit.ActionIntegrationMetadataUpdated:   {},
+	audit.ActionIntegrationExternalIDUpdated: {},
+	audit.ActionIntegrationTokenExpired:      {},
+	audit.ActionBusinessCreated:              {},
+	audit.ActionBusinessUpdated:              {},
+	audit.ActionBusinessDeletionRequested:    {},
+	audit.ActionBusinessDeletionCanceled:     {},
+	audit.ActionBusinessNotOwnerBlocked:      {},
+	audit.ActionBusinessSelfDeleted:          {},
+	audit.ActionProjectCreated:               {},
+	audit.ActionProjectUpdated:               {},
+	audit.ActionProjectDeleted:               {},
+	audit.ActionRPAScopeViolation:            {},
+	audit.ActionRPAReviewReplied:             {},
+	audit.ActionRPAPostPublished:             {},
+	audit.ActionRPAPhotoUploaded:             {},
+	audit.ActionRPAInfoUpdated:               {},
+	audit.ActionRPAHoursUpdated:              {},
 }
 
 // noiseActionsHiddenByDefault lists high-volume system events suppressed from
 // the default journal feed. integration.token_decrypted fires once per sync /
-// agent action (every action decrypts a token first), so it would otherwise
-// drown out the human-meaningful events. It stays reachable when the caller
-// explicitly selects it via ?action= — see the ExcludeActions wiring in List.
+// agent action (every action decrypts a token first), and
+// integration.metadata_updated fires once per sync (metadata heal), so both
+// would otherwise drown out the human-meaningful events. They stay reachable
+// when the caller explicitly selects one via ?action= — see the ExcludeActions
+// wiring in List.
 var noiseActionsHiddenByDefault = []string{
 	audit.ActionIntegrationTokenDecrypted,
+	audit.ActionIntegrationMetadataUpdated,
 }
 
 // hiddenActionsExcept returns the default-hidden noise actions to exclude from

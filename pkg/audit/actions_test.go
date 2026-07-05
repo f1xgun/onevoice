@@ -41,6 +41,9 @@ func TestActionConstants(t *testing.T) {
 		"integration.token_rotated":                 ActionIntegrationTokenRotated,
 		"integration.token_decrypted":               ActionIntegrationTokenDecrypted,
 		"integration.deleted":                       ActionIntegrationDeleted,
+		"integration.metadata_updated":              ActionIntegrationMetadataUpdated,
+		"integration.external_id_updated":           ActionIntegrationExternalIDUpdated,
+		"integration.token_expired":                 ActionIntegrationTokenExpired,
 		"business.created":                          ActionBusinessCreated,
 		"business.updated":                          ActionBusinessUpdated,
 		"project.created":                           ActionProjectCreated,
@@ -51,7 +54,7 @@ func TestActionConstants(t *testing.T) {
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 39, "expected 39 audit actions (base + password reset + email verify + account deletion + consent + integration sec hardening + rpa scope gate)")
+	require.Len(t, tests, 42, "expected 42 audit actions (base + password reset + email verify + account deletion + consent + integration sec hardening + integration mutation audit + rpa scope gate)")
 }
 
 func TestActionCategory(t *testing.T) {
@@ -61,6 +64,9 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "auth", ActionCategory(ActionLoginSuccess))
 	require.Equal(t, "integration", ActionCategory(ActionIntegrationConnected))
 	require.Equal(t, "integration", ActionCategory(ActionIntegrationTokenRotated))
+	require.Equal(t, "integration", ActionCategory(ActionIntegrationMetadataUpdated))
+	require.Equal(t, "integration", ActionCategory(ActionIntegrationExternalIDUpdated))
+	require.Equal(t, "integration", ActionCategory(ActionIntegrationTokenExpired))
 	require.Equal(t, "business", ActionCategory(ActionBusinessCreated))
 	require.Equal(t, "project", ActionCategory(ActionProjectDeleted))
 	require.Equal(t, "account", ActionCategory(ActionDeletionRequested))

@@ -1253,6 +1253,109 @@ func TestUpdateExternalID_DoesNotRevertConcurrentTokenExpiredFlip(t *testing.T) 
 		"the external_id write itself must still land")
 }
 
+func TestUpdateMetadata_EmitsMetadataUpdatedAudit(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+	rec := &recordingSyncLogger{}
+
+	repo := &mockIntegrationRepository{
+		getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+			return &domain.Integration{ID: id, BusinessID: businessID, Platform: "yandex_business"}, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, rec)
+	require.NoError(t, svc.UpdateMetadata(ctx, integrationID, map[string]interface{}{"business_name": "n", "address": "a"}))
+
+	require.Len(t, rec.asyncCalls, 1, "expected one integration.metadata_updated audit entry")
+	entry := rec.asyncCalls[0]
+	assert.Equal(t, audit.ActionIntegrationMetadataUpdated, entry.Action)
+	require.NotNil(t, entry.BusinessID)
+	assert.Equal(t, businessID, *entry.BusinessID)
+	assert.Nil(t, entry.UserID, "metadata heal is a system event with no actor")
+
+	var d audit.IntegrationMetadataUpdatedDetails
+	require.NoError(t, json.Unmarshal(entry.Details, &d))
+	assert.Equal(t, integrationID, d.IntegrationID)
+	assert.Equal(t, "yandex_business", d.Platform)
+	assert.Equal(t, []string{"address", "business_name"}, d.UpdatedKeys, "keys must be sorted and value-free")
+}
+
+func TestUpdateExternalID_EmitsExternalIDUpdatedAudit(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+	rec := &recordingSyncLogger{}
+
+	repo := &mockIntegrationRepository{
+		getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Integration, error) {
+			return &domain.Integration{ID: id, BusinessID: businessID, Platform: "yandex_business", ExternalID: "sprav_old"}, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, rec)
+	require.NoError(t, svc.UpdateExternalID(ctx, integrationID, "sprav_new"))
+
+	require.Len(t, rec.asyncCalls, 1, "expected one integration.external_id_updated audit entry")
+	entry := rec.asyncCalls[0]
+	assert.Equal(t, audit.ActionIntegrationExternalIDUpdated, entry.Action)
+	require.NotNil(t, entry.BusinessID)
+	assert.Equal(t, businessID, *entry.BusinessID)
+	assert.Nil(t, entry.UserID, "external_id heal is a system event with no actor")
+
+	var d audit.IntegrationExternalIDUpdatedDetails
+	require.NoError(t, json.Unmarshal(entry.Details, &d))
+	assert.Equal(t, integrationID, d.IntegrationID)
+	assert.Equal(t, "yandex_business", d.Platform)
+	assert.Equal(t, "sprav_old", d.OldExternalID)
+	assert.Equal(t, "sprav_new", d.NewExternalID)
+}
+
+func TestMarkTokenExpired_EmitsTokenExpiredAuditWhenRowsFlipped(t *testing.T) {
+	ctx := context.Background()
+	businessID := uuid.New()
+	rec := &recordingSyncLogger{}
+
+	repo := &mockIntegrationRepository{
+		markTokenExpiredFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (int64, error) {
+			return 2, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, rec)
+	require.NoError(t, svc.MarkTokenExpired(ctx, businessID, "telegram", "chan_1"))
+
+	require.Len(t, rec.asyncCalls, 1, "expected one integration.token_expired audit entry when rows flip")
+	entry := rec.asyncCalls[0]
+	assert.Equal(t, audit.ActionIntegrationTokenExpired, entry.Action)
+	require.NotNil(t, entry.BusinessID)
+	assert.Equal(t, businessID, *entry.BusinessID)
+	assert.Nil(t, entry.UserID, "token-expiry flip is a system event with no actor")
+
+	var d audit.IntegrationTokenExpiredDetails
+	require.NoError(t, json.Unmarshal(entry.Details, &d))
+	assert.Equal(t, "telegram", d.Platform)
+	assert.Equal(t, "chan_1", d.ExternalID)
+	assert.Equal(t, 2, d.RowsAffected)
+}
+
+func TestMarkTokenExpired_NoAuditWhenZeroRows(t *testing.T) {
+	ctx := context.Background()
+	rec := &recordingSyncLogger{}
+
+	repo := &mockIntegrationRepository{
+		markTokenExpiredFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (int64, error) {
+			return 0, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, rec)
+	require.NoError(t, svc.MarkTokenExpired(ctx, uuid.New(), "telegram", "chan_1"))
+
+	assert.Empty(t, rec.asyncCalls, "a zero-row flip is a no-op and must not audit")
+}
+
 func TestListByBusinessAndPlatform_NilBusinessID(t *testing.T) {
 	ctx := context.Background()
 	enc := testEncryptor(t)

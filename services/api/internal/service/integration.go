@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -316,13 +317,34 @@ func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID u
 		metadata = map[string]interface{}{}
 	}
 
+	integ, err := s.repo.GetByID(ctx, integrationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrIntegrationNotFound) {
+			return err
+		}
+		return fmt.Errorf("get integration: %w", err)
+	}
+
 	if err := s.repo.UpdateMetadata(ctx, integrationID, metadata); err != nil {
 		if errors.Is(err, domain.ErrIntegrationNotFound) {
 			return err
 		}
 		return fmt.Errorf("update integration: %w", err)
 	}
+
+	audit.LogIntegrationMetadataUpdated(ctx, s.audit, integ.BusinessID, integrationID, integ.Platform, sortedKeys(metadata))
 	return nil
+}
+
+// sortedKeys returns the map's keys in deterministic sorted order for a stable
+// audit payload. Values are never included — keys only.
+func sortedKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // UpdateExternalID heals the external_id post-connect (e.g. Yandex Sprav
@@ -341,12 +363,22 @@ func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID
 		return fmt.Errorf("external id is required")
 	}
 
+	integ, err := s.repo.GetByID(ctx, integrationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrIntegrationNotFound) {
+			return err
+		}
+		return fmt.Errorf("get integration: %w", err)
+	}
+
 	if err := s.repo.UpdateExternalID(ctx, integrationID, externalID); err != nil {
 		if errors.Is(err, domain.ErrIntegrationNotFound) {
 			return err
 		}
 		return fmt.Errorf("update integration: %w", err)
 	}
+
+	audit.LogIntegrationExternalIDUpdated(ctx, s.audit, integ.BusinessID, integrationID, integ.Platform, integ.ExternalID, externalID)
 	return nil
 }
 
@@ -876,5 +908,9 @@ func (s *integrationService) MarkTokenExpired(ctx context.Context, businessID uu
 		"external_id", externalID,
 		"rows_affected", n,
 	)
+
+	if n > 0 {
+		audit.LogIntegrationTokenExpired(ctx, s.audit, businessID, platform, externalID, int(n))
+	}
 	return nil
 }
