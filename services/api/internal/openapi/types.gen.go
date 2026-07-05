@@ -640,12 +640,6 @@ type DescriptionTemplateResponse struct {
 	Placeholders []string `json:"placeholders" validate:"required"`
 }
 
-// VoiceProfileResponse defines model for VoiceProfileResponse.
-type VoiceProfileResponse struct {
-	// VoiceProfile Stored brand-voice profile; empty string when unset.
-	VoiceProfile string `json:"voiceProfile" validate:"required"`
-}
-
 // DraftReplyExample defines model for DraftReplyExample.
 type DraftReplyExample struct {
 	Rating     *int   `json:"rating,omitempty" validate:"omitempty,min=0,max=5"`
@@ -1511,15 +1505,6 @@ type UpdateDescriptionTemplateRequest struct {
 	DescriptionTemplate *string `json:"descriptionTemplate,omitempty" validate:"omitempty,max=1024"`
 }
 
-// UpdateVoiceProfileRequest defines model for UpdateVoiceProfileRequest.
-type UpdateVoiceProfileRequest struct {
-	// VoiceProfile Free-form brand-voice profile (do/don't phrases, emoji policy,
-	// short exemplars) that governs the AI chat loop and the review
-	// drafter. A non-empty value is stored verbatim; an empty string
-	// clears the override.
-	VoiceProfile *string `json:"voiceProfile,omitempty" validate:"omitempty,max=400"`
-}
-
 // UpdateMemberRoleRequest defines model for UpdateMemberRoleRequest.
 type UpdateMemberRoleRequest struct {
 	RoleId openapi_types.UUID `json:"role_id" validate:"required,uuid"`
@@ -1563,6 +1548,15 @@ type UpdateScheduleRequest struct {
 // UpdateToolApprovalsRequest defines model for UpdateToolApprovalsRequest.
 type UpdateToolApprovalsRequest struct {
 	ToolApprovals map[string]ToolFloor `json:"toolApprovals" validate:"required"`
+}
+
+// UpdateVoiceProfileRequest defines model for UpdateVoiceProfileRequest.
+type UpdateVoiceProfileRequest struct {
+	// VoiceProfile Free-form brand-voice profile (do/don't phrases, emoji policy,
+	// short exemplars) that governs the AI chat loop and the review
+	// drafter. A non-empty value is stored verbatim; an empty string
+	// clears the override.
+	VoiceProfile *string `json:"voiceProfile,omitempty" validate:"omitempty,max=400"`
 }
 
 // UpdateVoiceToneRequest defines model for UpdateVoiceToneRequest.
@@ -1638,6 +1632,12 @@ type VersionMismatchResponse struct {
 
 // VersionMismatchResponseCode defines model for VersionMismatchResponse.Code.
 type VersionMismatchResponseCode string
+
+// VoiceProfileResponse defines model for VoiceProfileResponse.
+type VoiceProfileResponse struct {
+	// VoiceProfile Stored brand-voice profile; empty string when unset.
+	VoiceProfile string `json:"voiceProfile" validate:"required"`
+}
 
 // YandexCompaniesResponse defines model for YandexCompaniesResponse.
 type YandexCompaniesResponse struct {
@@ -1933,6 +1933,9 @@ type UpdateBusinessScheduleJSONRequestBody = UpdateScheduleRequest
 
 // UpdateBusinessToolApprovalsJSONRequestBody defines body for UpdateBusinessToolApprovals for application/json ContentType.
 type UpdateBusinessToolApprovalsJSONRequestBody = UpdateToolApprovalsRequest
+
+// UpdateBusinessVoiceProfileJSONRequestBody defines body for UpdateBusinessVoiceProfile for application/json ContentType.
+type UpdateBusinessVoiceProfileJSONRequestBody = UpdateVoiceProfileRequest
 
 // UpdateBusinessVoiceToneJSONRequestBody defines body for UpdateBusinessVoiceTone for application/json ContentType.
 type UpdateBusinessVoiceToneJSONRequestBody = UpdateVoiceToneRequest
