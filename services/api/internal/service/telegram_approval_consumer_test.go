@@ -48,6 +48,18 @@ func ownerIntegration(businessID uuid.UUID, ownerTelegramID string) domain.Integ
 	}
 }
 
+// revokedOwnerIntegration builds a Telegram integration with a matching owner
+// telegram_user_id but a non-active (revoked/disconnected) status, used to prove
+// a severed channel's stale owner id can no longer authorize an approval.
+func revokedOwnerIntegration(businessID uuid.UUID, ownerTelegramID, status string) domain.Integration {
+	return domain.Integration{
+		BusinessID: businessID,
+		Platform:   a2a.AgentTelegram,
+		Status:     status,
+		Metadata:   map[string]interface{}{"telegram_user_id": ownerTelegramID},
+	}
+}
+
 // fakeResumer records whether ResumeApproved was invoked and with which batch,
 // standing in for the chat-turn lifecycle so the consumer test does not need a
 // live orchestrator.
@@ -499,6 +511,122 @@ func TestTelegramApproval_ConcurrentTaps_ExactlyOnceResolve(t *testing.T) {
 	if events := f.audit.approvalEvents(); len(events) != 1 {
 		t.Fatalf("concurrent taps must emit exactly one audit event, got %d", len(events))
 	}
+}
+
+// --- SAFETY GATE (fail-on-revert): revoked integration no longer authorizes --
+
+// TestTelegramApproval_RevokedIntegration_NoLongerAuthorizes proves a
+// revoked/disconnected Telegram integration whose stale telegram_user_id still
+// equals the tapper's from.id can NO LONGER authorize an approval. Reverting the
+// Status guard in tapperIsOwner re-authorizes it and fails this test.
+func TestTelegramApproval_RevokedIntegration_NoLongerAuthorizes(t *testing.T) {
+	for _, status := range []string{domain.IntegrationStatusTokenExpired, "disconnected"} {
+		t.Run(status, func(t *testing.T) {
+			f := newConsumerFixture(t, nil)
+			owners := &fakeOwnerResolver{byBusiness: map[string][]domain.Integration{
+				f.bizID.String(): {revokedOwnerIntegration(f.bizID, "987654321", status)},
+			}}
+			svc := newSvc(t, f.pending, &stubBusinessRepo{Business: &domain.Business{ID: f.bizID}}, &stubProjectRepo{})
+			consumer := service.NewTelegramApprovalConsumer(svc, f.resumer, owners, f.audit, nil, approvalTestSecret)
+
+			if err := consumer.HandleForTest(context.Background(), a2a.TelegramApprovalCallback{
+				FromID:          ownerTelegramID,
+				Data:            f.signedData(t, telegramcallback.ActionApprove),
+				CallbackQueryID: "cbq-1",
+			}); err != nil {
+				t.Fatalf("handle error: %v", err)
+			}
+
+			if f.pending.RecordedBatchID != "" {
+				t.Fatalf("status=%q: revoked integration's stale owner id must not resolve the batch", status)
+			}
+			if f.resumer.calls() != 0 {
+				t.Fatalf("status=%q: revoked integration must not drive a resume", status)
+			}
+			if len(f.audit.approvalEvents()) != 0 {
+				t.Fatalf("status=%q: revoked integration must emit no audit event", status)
+			}
+			if f.batchStatus() != "pending" {
+				t.Fatalf("status=%q: batch must stay pending", status)
+			}
+		})
+	}
+}
+
+// TestTelegramApproval_ActiveIntegrationStillAuthorizes proves the Status guard
+// does not over-block: an ACTIVE integration with the matching owner id still
+// authorizes the approval.
+func TestTelegramApproval_ActiveIntegrationStillAuthorizes(t *testing.T) {
+	f := newConsumerFixture(t, nil)
+
+	f.handle(t, a2a.TelegramApprovalCallback{
+		FromID:          ownerTelegramID,
+		Data:            f.signedData(t, telegramcallback.ActionApprove),
+		CallbackQueryID: "cbq-1",
+	})
+
+	if f.pending.RecordedBatchID != f.batchID {
+		t.Fatalf("active integration with matching owner id must authorize the approval")
+	}
+	if f.resumer.calls() != 1 {
+		t.Fatalf("active integration approval must drive a resume, got %d", f.resumer.calls())
+	}
+	if len(f.audit.approvalEvents()) != 1 {
+		t.Fatalf("active integration approval must emit exactly one audit event")
+	}
+}
+
+// TestTelegramApproval_MixedActiveAndRevoked_OnlyActiveCounts proves that within
+// one business a revoked integration's owner id is ignored while an active
+// integration's owner id still authorizes: a tap from the revoked id is declined
+// and a tap from the active id is approved.
+func TestTelegramApproval_MixedActiveAndRevoked_OnlyActiveCounts(t *testing.T) {
+	const revokedOwner = int64(111111111)
+	const activeOwner = int64(222222222)
+
+	newFixtureWithMix := func(t *testing.T) *consumerFixture {
+		t.Helper()
+		f := newConsumerFixture(t, nil)
+		owners := &fakeOwnerResolver{byBusiness: map[string][]domain.Integration{
+			f.bizID.String(): {
+				revokedOwnerIntegration(f.bizID, "111111111", domain.IntegrationStatusTokenExpired),
+				ownerIntegration(f.bizID, "222222222"),
+			},
+		}}
+		svc := newSvc(t, f.pending, &stubBusinessRepo{Business: &domain.Business{ID: f.bizID}}, &stubProjectRepo{})
+		f.consumer = service.NewTelegramApprovalConsumer(svc, f.resumer, owners, f.audit, nil, approvalTestSecret)
+		return f
+	}
+
+	t.Run("revoked_id_declined", func(t *testing.T) {
+		f := newFixtureWithMix(t)
+		f.handle(t, a2a.TelegramApprovalCallback{
+			FromID:          revokedOwner,
+			Data:            f.signedData(t, telegramcallback.ActionApprove),
+			CallbackQueryID: "cbq-1",
+		})
+		if f.pending.RecordedBatchID != "" {
+			t.Fatalf("revoked integration's owner id must not resolve the batch")
+		}
+		if f.batchStatus() != "pending" {
+			t.Fatalf("batch must stay pending for a revoked-id tap")
+		}
+	})
+
+	t.Run("active_id_approved", func(t *testing.T) {
+		f := newFixtureWithMix(t)
+		f.handle(t, a2a.TelegramApprovalCallback{
+			FromID:          activeOwner,
+			Data:            f.signedData(t, telegramcallback.ActionApprove),
+			CallbackQueryID: "cbq-1",
+		})
+		if f.pending.RecordedBatchID != f.batchID {
+			t.Fatalf("active integration's owner id must authorize the approval")
+		}
+		if f.resumer.calls() != 1 {
+			t.Fatalf("active-id approval must drive a resume, got %d", f.resumer.calls())
+		}
+	})
 }
 
 // --- Subscribe fail-closed when secret unset --------------------------------

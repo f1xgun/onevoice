@@ -218,7 +218,9 @@ func (c *TelegramApprovalConsumer) handle(ctx context.Context, cb a2a.TelegramAp
 // Telegram user-id. It FAILS CLOSED: any lookup error, an absent integration, or
 // an unset/blank telegram_user_id returns false, so no takeover is possible when
 // the binding anchor is unknown. The only accept path is an exact match against
-// the stored, numeric owner id.
+// the stored, numeric owner id of an ACTIVE integration — a revoked/disconnected
+// integration (Status != active) can never authorize its stale owner id, so a
+// severed channel cannot approve on a business's behalf.
 func (c *TelegramApprovalConsumer) tapperIsOwner(ctx context.Context, businessID string, fromID int64) bool {
 	bizUUID, err := uuid.Parse(businessID)
 	if err != nil {
@@ -230,6 +232,9 @@ func (c *TelegramApprovalConsumer) tapperIsOwner(ctx context.Context, businessID
 		return false
 	}
 	for i := range integrations {
+		if integrations[i].Status != domain.IntegrationStatusActive {
+			continue
+		}
 		ownerID, ok := ownerTelegramUserID(integrations[i].Metadata)
 		if ok && ownerID == fromID {
 			return true
