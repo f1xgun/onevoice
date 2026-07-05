@@ -631,6 +631,15 @@ type DeleteAccountRequest struct {
 	Password string `json:"password" validate:"required,min=1"`
 }
 
+// DescriptionTemplateResponse defines model for DescriptionTemplateResponse.
+type DescriptionTemplateResponse struct {
+	// DescriptionTemplate Stored template override; empty string when unset.
+	DescriptionTemplate string `json:"descriptionTemplate" validate:"required"`
+
+	// Placeholders Allowed placeholder names the template may reference.
+	Placeholders []string `json:"placeholders" validate:"required"`
+}
+
 // DraftReplyExample defines model for DraftReplyExample.
 type DraftReplyExample struct {
 	Rating     *int   `json:"rating,omitempty" validate:"omitempty,min=0,max=5"`
@@ -1487,6 +1496,15 @@ type UpdateConversationRequest struct {
 	Title string `json:"title" validate:"required,max=200"`
 }
 
+// UpdateDescriptionTemplateRequest defines model for UpdateDescriptionTemplateRequest.
+type UpdateDescriptionTemplateRequest struct {
+	// DescriptionTemplate Free-text template with single-brace placeholders drawn from the
+	// allowed set (name, category, address, phone, website, hours,
+	// description). A non-empty value fully replaces the platform
+	// description; an empty string clears the override.
+	DescriptionTemplate *string `json:"descriptionTemplate,omitempty" validate:"omitempty,max=1024"`
+}
+
 // UpdateMemberRoleRequest defines model for UpdateMemberRoleRequest.
 type UpdateMemberRoleRequest struct {
 	RoleId openapi_types.UUID `json:"role_id" validate:"required,uuid"`
@@ -1843,6 +1861,9 @@ type MoveConversationJSONRequestBody = MoveConversationRequest
 
 // HitlResolveBatchJSONRequestBody defines body for HitlResolveBatch for application/json ContentType.
 type HitlResolveBatchJSONRequestBody = HITLResolveRequest
+
+// UpdateBusinessDescriptionTemplateJSONRequestBody defines body for UpdateBusinessDescriptionTemplate for application/json ContentType.
+type UpdateBusinessDescriptionTemplateJSONRequestBody = UpdateDescriptionTemplateRequest
 
 // SelectGoogleLocationJSONRequestBody defines body for SelectGoogleLocation for application/json ContentType.
 type SelectGoogleLocationJSONRequestBody = GoogleSelectLocationRequest

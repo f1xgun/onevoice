@@ -38,7 +38,7 @@ tags:
 - name: auth
   description: Authentication, password reset, email verification, locale.
 - name: business
-  description: Business CRUD + schedule + voice-tone + logo + tool-approvals.
+  description: Business CRUD + schedule + voice-tone + logo + tool-approvals + description-template.
 - name: integrations
   description: Per-business integration list + connect helpers (Telegram, VK).
 - name: oauth
@@ -146,6 +146,8 @@ paths:
     $ref: paths/business.yaml#/~1businesses~1{id}~1logo
   /businesses/{id}/tool-approvals:
     $ref: paths/business.yaml#/~1businesses~1{id}~1tool-approvals
+  /businesses/{id}/description-template:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1description-template
   /businesses/{id}/integrations/vk/auth-url:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1auth-url
   /businesses/{id}/integrations/vk/communities:
@@ -932,6 +934,31 @@ components:
       properties:
         tones:
           type: array
+          items:
+            type: string
+    UpdateDescriptionTemplateRequest:
+      type: object
+      properties:
+        descriptionTemplate:
+          type: string
+          maxLength: 1024
+          description: |
+            Free-text template with single-brace placeholders drawn from the
+            allowed set (name, category, address, phone, website, hours,
+            description). A non-empty value fully replaces the platform
+            description; an empty string clears the override.
+    DescriptionTemplateResponse:
+      type: object
+      required:
+      - descriptionTemplate
+      - placeholders
+      properties:
+        descriptionTemplate:
+          type: string
+          description: Stored template override; empty string when unset.
+        placeholders:
+          type: array
+          description: Allowed placeholder names the template may reference.
           items:
             type: string
     UploadLogoRequest:

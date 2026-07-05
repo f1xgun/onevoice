@@ -92,18 +92,19 @@ type RemoteSnapshot struct {
 }
 
 // SyncedSnapshot builds the STORED side of the reconciliation comparison for a
-// platform, using the SAME formatters the write path uses (formatTelegram
-// Description with its 255-rune truncation, scheduleToYandexJSON). Building the
-// stored side through the writer's formatter is the core false-positive guard:
-// a value OneVoice just pushed reads back identical, so it never surfaces as
-// drift. The returned map is keyed by the Field* constants and contains only the
-// fields the platform's writer actually pushes.
+// platform, using the SAME formatters the write path uses (renderBusiness
+// Description with its per-business template override and 255-rune truncation,
+// scheduleToYandexJSON). Building the stored side through the writer's formatter
+// is the core false-positive guard: a value OneVoice just pushed reads back
+// identical, so it never surfaces as drift. The returned map is keyed by the
+// Field* constants and contains only the fields the platform's writer actually
+// pushes.
 func SyncedSnapshot(b *domain.Business, platformID string) map[string]string {
 	switch platformID {
 	case a2a.AgentTelegram:
 		return map[string]string{
 			FieldTitle:       b.Name,
-			FieldDescription: formatTelegramDescription(b),
+			FieldDescription: renderBusinessDescription(b, maxTelegramDescription),
 		}
 	case a2a.AgentVK:
 		out := map[string]string{

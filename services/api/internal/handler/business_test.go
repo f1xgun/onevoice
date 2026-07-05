@@ -628,6 +628,174 @@ func TestBusinessHandler_UpdateVoiceTone(t *testing.T) {
 	})
 }
 
+// ----- DescriptionTemplate -----
+
+func TestBusinessHandler_GetDescriptionTemplate(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	t.Run("returns stored template and placeholder list", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
+			ID:       testBusinessID,
+			Settings: map[string]interface{}{"descriptionTemplate": "{name} — {phone}"},
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/description-template", http.NoBody)
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.GetDescriptionTemplate(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			DescriptionTemplate string   `json:"descriptionTemplate"`
+			Placeholders        []string `json:"placeholders"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "{name} — {phone}", body.DescriptionTemplate)
+		assert.Contains(t, body.Placeholders, "name")
+		assert.Contains(t, body.Placeholders, "hours")
+	})
+
+	t.Run("returns empty template when unset", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
+			ID:       testBusinessID,
+			Settings: map[string]interface{}{},
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/description-template", http.NoBody)
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.GetDescriptionTemplate(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			DescriptionTemplate string `json:"descriptionTemplate"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "", body.DescriptionTemplate)
+	})
+
+	t.Run("missing PermBusinessRead returns 403", func(t *testing.T) {
+		h, err := NewBusinessHandler(new(MockBusinessService), nil, nil)
+		require.NoError(t, err)
+
+		bc := authz.BusinessContext{
+			BusinessID:  testBusinessID,
+			Permissions: []authz.Permission{authz.PermBusinessUpdate},
+		}
+		req := httptest.NewRequest(http.MethodGet, "/description-template", http.NoBody)
+		req = withBizCtx(req, bc)
+		w := httptest.NewRecorder()
+
+		h.GetDescriptionTemplate(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
+func TestBusinessHandler_UpdateDescriptionTemplate(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	t.Run("valid template persists and fans out to syncer", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		syncer := &fakeScheduleSyncer{called: make(chan *domain.Business, 1)}
+
+		var captured map[string]interface{}
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			captured = keys
+			return true
+		}), mock.Anything).Return(&domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, syncer, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/description-template", bytes.NewBufferString(`{"descriptionTemplate":"{name} · {phone}"}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateDescriptionTemplate(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, captured)
+		assert.Equal(t, "{name} · {phone}", captured["descriptionTemplate"])
+
+		select {
+		case b := <-syncer.called:
+			assert.Equal(t, testBusinessID, b.ID)
+		case <-time.After(2 * time.Second):
+			t.Fatal("syncer was not called within 2s")
+		}
+		mockSvc.AssertExpectations(t)
+	})
+
+	t.Run("unknown placeholder returns 400 naming the token", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/description-template", bytes.NewBufferString(`{"descriptionTemplate":"{name} {foo}"}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateDescriptionTemplate(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "{foo}")
+		mockSvc.AssertNotCalled(t, "UpdateSettingsKeys")
+	})
+
+	t.Run("empty string clears override", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		var captured map[string]interface{}
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			captured = keys
+			return true
+		}), mock.Anything).Return(&domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/description-template", bytes.NewBufferString(`{"descriptionTemplate":""}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateDescriptionTemplate(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, captured)
+		assert.Equal(t, "", captured["descriptionTemplate"])
+		mockSvc.AssertExpectations(t)
+	})
+
+	t.Run("missing PermBusinessUpdate returns 403", func(t *testing.T) {
+		h, err := NewBusinessHandler(new(MockBusinessService), nil, nil)
+		require.NoError(t, err)
+
+		bc := authz.BusinessContext{
+			BusinessID:  testBusinessID,
+			Permissions: []authz.Permission{authz.PermBusinessRead},
+		}
+		req := httptest.NewRequest(http.MethodPut, "/description-template", bytes.NewBufferString(`{"descriptionTemplate":"{name}"}`))
+		req = withBizCtx(req, bc)
+		w := httptest.NewRecorder()
+
+		h.UpdateDescriptionTemplate(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
 // ----- UploadLogo (refactored) -----
 
 // mockUploader is a test double for storage.Uploader.

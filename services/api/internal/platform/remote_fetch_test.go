@@ -121,3 +121,31 @@ func TestSyncedSnapshot_TelegramTruncates(t *testing.T) {
 	// the write path's own output.
 	assert.Equal(t, formatTelegramDescription(b), stored[FieldDescription])
 }
+
+// TestSyncedSnapshot_TelegramHonorsTemplate proves the stored side renders a
+// per-business descriptionTemplate the SAME way the write path
+// (SyncDescription → renderBusinessDescription) does. Without this, a business
+// with a custom template would show permanent false-positive "description" drift
+// because the stored side used the default formatter while the live channel
+// carries the rendered template.
+func TestSyncedSnapshot_TelegramHonorsTemplate(t *testing.T) {
+	site := "example.com"
+	b := &domain.Business{
+		ID:      uuid.New(),
+		Name:    "Кофейня",
+		Phone:   "+7 900 000-00-00",
+		Website: &site,
+		Settings: map[string]interface{}{
+			DescriptionTemplateSettingsKey: "{name} · {phone} · {website}",
+		},
+	}
+
+	stored := SyncedSnapshot(b, "telegram")
+
+	assert.Equal(t, renderBusinessDescription(b, maxTelegramDescription), stored[FieldDescription],
+		"stored side must be built through the write path's renderBusinessDescription")
+	assert.Equal(t, "Кофейня · +7 900 000-00-00 · example.com", stored[FieldDescription],
+		"stored description must equal the rendered template, not the default formatter")
+	assert.NotEqual(t, formatTelegramDescription(b), stored[FieldDescription],
+		"a custom template must diverge from the default formatter, else the regression is masked")
+}

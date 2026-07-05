@@ -3,6 +3,7 @@ package platform
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -10,6 +11,125 @@ import (
 
 // maxTelegramDescription is Telegram's setChatDescription character limit.
 const maxTelegramDescription = 255
+
+// DescriptionTemplateSettingsKey is the businesses.settings JSONB sub-key
+// holding a per-business description template. When absent or blank the
+// platform-default formatter is used instead.
+const DescriptionTemplateSettingsKey = "descriptionTemplate"
+
+// AllowedDescriptionPlaceholders lists the placeholder tokens a description
+// template may contain, in canonical order. It is the single source of truth
+// shared by the write-path validator and the render substitution, so the two
+// can never drift.
+var AllowedDescriptionPlaceholders = []string{
+	"name", "category", "address", "phone", "website", "hours", "description",
+}
+
+// descriptionPlaceholderRE matches single-brace placeholder tokens like {name}.
+// It captures any brace group with no nested braces so the write-path validator
+// can reject tokens outside AllowedDescriptionPlaceholders.
+var descriptionPlaceholderRE = regexp.MustCompile(`\{[^{}]*\}`)
+
+// renderBusinessDescription composes the platform description for b, truncated
+// to maxRunes. When the business has a non-empty descriptionTemplate override
+// it is a full replacement: placeholders are substituted and nothing is
+// auto-appended. When absent it falls back to the platform default formatter,
+// byte-for-byte identical to the pre-template behavior for every business that
+// never set an override.
+//
+//nolint:unparam // maxRunes is the platform cap; only Telegram (255) calls this today, but the helper is deliberately platform-agnostic so VK can pass its own cap later.
+func renderBusinessDescription(b *domain.Business, maxRunes int) string {
+	tmpl := descriptionTemplateFromSettings(b.Settings)
+	if tmpl == "" {
+		return formatTelegramDescription(b)
+	}
+	return truncateRunes(substitutePlaceholders(tmpl, b), maxRunes)
+}
+
+// descriptionTemplateFromSettings reads the descriptionTemplate override from
+// the settings blob, returning "" when the key is absent, blank, or not a
+// string.
+func descriptionTemplateFromSettings(settings map[string]interface{}) string {
+	if settings == nil {
+		return ""
+	}
+	raw, ok := settings[DescriptionTemplateSettingsKey]
+	if !ok {
+		return ""
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+// substitutePlaceholders replaces every allowed {placeholder} in tmpl with the
+// business field it maps to. A field with no value (including a nil website)
+// renders as an empty string. Tokens outside AllowedDescriptionPlaceholders are
+// left untouched; the write path rejects them so a stored template never
+// contains one. Values are inserted as plain text — the platform description
+// APIs send no parse_mode, so no markup can be injected.
+func substitutePlaceholders(tmpl string, b *domain.Business) string {
+	values := descriptionPlaceholderValues(b)
+	pairs := make([]string, 0, len(AllowedDescriptionPlaceholders)*2)
+	for _, name := range AllowedDescriptionPlaceholders {
+		pairs = append(pairs, "{"+name+"}", values[name])
+	}
+	return strings.NewReplacer(pairs...).Replace(tmpl)
+}
+
+// descriptionPlaceholderValues resolves each allowed placeholder name to its
+// business field value. {hours} reuses the default schedule string without the
+// leading ⏰ so the template author controls all surrounding formatting.
+func descriptionPlaceholderValues(b *domain.Business) map[string]string {
+	website := ""
+	if b.Website != nil {
+		website = *b.Website
+	}
+	return map[string]string{
+		"name":        b.Name,
+		"category":    b.Category,
+		"address":     b.Address,
+		"phone":       b.Phone,
+		"website":     website,
+		"hours":       formatScheduleCompact(b.Settings),
+		"description": b.Description,
+	}
+}
+
+// UnknownDescriptionPlaceholders returns the brace tokens in tmpl that are not
+// in AllowedDescriptionPlaceholders, de-duplicated in first-appearance order.
+// An empty result means every placeholder is renderable.
+func UnknownDescriptionPlaceholders(tmpl string) []string {
+	allowed := make(map[string]struct{}, len(AllowedDescriptionPlaceholders))
+	for _, p := range AllowedDescriptionPlaceholders {
+		allowed["{"+p+"}"] = struct{}{}
+	}
+	var unknown []string
+	seen := make(map[string]struct{})
+	for _, tok := range descriptionPlaceholderRE.FindAllString(tmpl, -1) {
+		if _, ok := allowed[tok]; ok {
+			continue
+		}
+		if _, dup := seen[tok]; dup {
+			continue
+		}
+		seen[tok] = struct{}{}
+		unknown = append(unknown, tok)
+	}
+	return unknown
+}
+
+// truncateRunes clamps s to at most maxRunes runes, replacing the trailing rune
+// with an ellipsis when it overflows (matching the platform description cap).
+func truncateRunes(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes-1]) + "…"
+	}
+	return s
+}
 
 // formatTelegramDescription builds a compact Telegram channel description
 // from all business fields. Telegram's description limit is 255 characters.
@@ -38,14 +158,7 @@ func formatTelegramDescription(b *domain.Business) string {
 		parts = append(parts, sched)
 	}
 
-	result := strings.Join(parts, "\n\n")
-
-	runes := []rune(result)
-	if len(runes) > maxTelegramDescription {
-		result = string(runes[:maxTelegramDescription-1]) + "…"
-	}
-
-	return result
+	return truncateRunes(strings.Join(parts, "\n\n"), maxTelegramDescription)
 }
 
 // dayOrder is the canonical Mon→Sun ordering used to group consecutive days
@@ -59,10 +172,20 @@ var dayRU = map[string]string{
 	"fri": "Пт", "sat": "Сб", "sun": "Вс",
 }
 
-// formatSchedule converts the schedule stored in Settings["schedule"] into a
-// compact string. Groups consecutive days with identical hours:
-// "Пн-Пт 09:00-21:00, Сб 10:00-18:00".
+// formatSchedule renders the schedule for the default Telegram description,
+// prefixed with the ⏰ marker. Empty schedule → empty string.
 func formatSchedule(settings map[string]interface{}) string {
+	compact := formatScheduleCompact(settings)
+	if compact == "" {
+		return ""
+	}
+	return "⏰ " + compact
+}
+
+// formatScheduleCompact converts the schedule stored in Settings["schedule"]
+// into a compact string without the ⏰ marker. Groups consecutive days with
+// identical hours: "Пн-Пт 09:00-21:00, Сб 10:00-18:00".
+func formatScheduleCompact(settings map[string]interface{}) string {
 	if settings == nil {
 		return ""
 	}
@@ -126,7 +249,7 @@ func formatSchedule(settings map[string]interface{}) string {
 		}
 		segments = append(segments, fmt.Sprintf("%s %s-%s", label, g.open, g.cls))
 	}
-	return "⏰ " + strings.Join(segments, ", ")
+	return strings.Join(segments, ", ")
 }
 
 // dayKeyToEnglish maps the frontend's 3-letter day key to the full English

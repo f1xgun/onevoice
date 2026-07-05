@@ -442,3 +442,87 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/description-template:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getBusinessDescriptionTemplate
+    summary: Return the per-business platform description template.
+    description: |
+      Returns the stored template override (empty string when unset) plus the
+      list of allowed placeholder names for the editor.
+    tags:
+    - business
+    responses:
+      '200':
+        description: Description template and allowed placeholder names.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/DescriptionTemplateResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateBusinessDescriptionTemplate
+    summary: Set or clear the per-business platform description template.
+    description: |
+      A non-empty template becomes a full replacement of the platform
+      description (nothing is auto-appended). An empty string clears the
+      override and restores the default formatter. Unknown placeholder tokens
+      are rejected with 400. On success the change is synced to connected
+      platforms.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateDescriptionTemplateRequest
+    responses:
+      '200':
+        description: Updated business with the new template stored in settings.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Malformed body, template too long, or unknown placeholder.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
