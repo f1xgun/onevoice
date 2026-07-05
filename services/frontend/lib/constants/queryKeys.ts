@@ -21,6 +21,8 @@ export const QUERY_KEYS = {
   // entry never resolves data; we keep the param nullable so callers can
   // forward the store value verbatim without ad-hoc non-null assertions.
   BUSINESS_INTEGRATIONS: (bizId: string | null) => ['businesses', bizId, 'integrations'] as const,
+  BUSINESS_INTEGRATIONS_DRIFT: (bizId: string | null) =>
+    ['businesses', bizId, 'integrations', 'drift'] as const,
   BUSINESS_PROFILE: (bizId: string | null) => ['businesses', bizId, 'business'] as const,
   BUSINESS_REVIEWS: (bizId: string | null) => ['businesses', bizId, 'reviews'] as const,
   BUSINESS_TASKS: (bizId: string | null) => ['businesses', bizId, 'tasks'] as const,

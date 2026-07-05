@@ -23,6 +23,7 @@ import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
+import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
 import type { PlatformId } from '@/lib/platforms';
@@ -289,6 +290,10 @@ export default function IntegrationsPage() {
             );
           })}
         </div>
+
+        {activeBusinessId && integrations.length > 0 && (
+          <IntegrationsSyncPanel businessId={activeBusinessId} integrations={integrations} />
+        )}
 
         {comingSoonPlatforms.length > 0 && (
           <>

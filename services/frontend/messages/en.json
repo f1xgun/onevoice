@@ -998,6 +998,30 @@
       "linkedGroupMissing": "The bot still isn't in the discussion group.",
       "linkedGroupCheckFailed": "Couldn't check the status"
     },
+    "sync": {
+      "sectionTitle": "Data sync",
+      "sectionSubtitle": "Compares your saved organization details with what is published on the connected platforms.",
+      "verify": "Check sync",
+      "verifying": "Checking…",
+      "confirmTitle": "Check sync?",
+      "confirmBody": "This re-sends your saved organization details to the connected platforms and refreshes the sync status. Changes appear on the platforms within a few minutes.",
+      "confirmAction": "Re-send and check",
+      "cancel": "Cancel",
+      "started": "Check started. The status will update in a few minutes.",
+      "failed": "Could not start the sync check. Please try again.",
+      "loadFailed": "Could not load the sync status.",
+      "statusInSync": "In sync",
+      "statusOutOfSync": "Out of sync",
+      "statusNotChecked": "Not checked",
+      "notCheckedHint": "Sync has not been checked yet.",
+      "outOfSyncHint": "Differs from the platform: {fields}",
+      "fields": {
+        "title": "name",
+        "description": "description",
+        "website": "website",
+        "schedule": "business hours"
+      }
+    },
     "vkCommunity": {
       "title": "Connect VK community",
       "tokenIntro": "Where to get the key",
