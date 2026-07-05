@@ -24,6 +24,56 @@ const DescriptionTemplateSettingsKey = "descriptionTemplate"
 // chat and review-drafter prompts render exactly as they did before.
 const VoiceProfileSettingsKey = "voiceProfile"
 
+// ReviewAutopilotSettingsKey is the businesses.settings JSONB sub-key holding
+// the per-business review-reply autopilot configuration. Absent key means the
+// autopilot is disabled (default-off): a positive reply is never auto-published
+// and every review stays pending for HITL. It is a sibling of voiceProfile and
+// descriptionTemplate, written via UpdateSettingsKeys (jsonb_set, no migration).
+const ReviewAutopilotSettingsKey = "reviewAutopilot"
+
+// ReviewAutopilotMinRatingFloor is the lowest rating an autopilot may ever
+// auto-publish. It equals ReviewNeedsReviewMaxRating+1 so the positive floor
+// can be RAISED by a stricter minRating (e.g. 5-star-only) but never lowered
+// below a positive review.
+const ReviewAutopilotMinRatingFloor = domain.ReviewNeedsReviewMaxRating + 1
+
+// ReviewAutopilotConfig is the stored per-business autopilot setting. Enabled is
+// the single opt-in control; MinRating raises the positive floor (clamped to at
+// least ReviewAutopilotMinRatingFloor at read time).
+type ReviewAutopilotConfig struct {
+	Enabled   bool `json:"enabled"`
+	MinRating int  `json:"minRating"`
+}
+
+// ReviewAutopilotFromSettings reads the reviewAutopilot sub-key from the
+// settings blob. A missing, blank, or malformed key yields the zero value
+// (Enabled=false, MinRating=0), i.e. the default-off state. When the stored
+// minRating is below the positive floor it is raised to
+// ReviewAutopilotMinRatingFloor so a misconfigured setting can never auto-publish
+// a negative or neutral review. Mirrors the marshal-roundtrip idiom
+// formatScheduleCompact uses to read Settings["schedule"].
+func ReviewAutopilotFromSettings(settings map[string]interface{}) ReviewAutopilotConfig {
+	if settings == nil {
+		return ReviewAutopilotConfig{}
+	}
+	raw, ok := settings[ReviewAutopilotSettingsKey]
+	if !ok || raw == nil {
+		return ReviewAutopilotConfig{}
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return ReviewAutopilotConfig{}
+	}
+	var cfg ReviewAutopilotConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return ReviewAutopilotConfig{}
+	}
+	if cfg.MinRating < ReviewAutopilotMinRatingFloor {
+		cfg.MinRating = ReviewAutopilotMinRatingFloor
+	}
+	return cfg
+}
+
 // AllowedDescriptionPlaceholders lists the placeholder tokens a description
 // template may contain, in canonical order. It is the single source of truth
 // shared by the write-path validator and the render substitution, so the two

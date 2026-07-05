@@ -339,6 +339,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		reviewRefresher = s.ReviewSyncer
 	}
 	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher, reviewDrafter)
+	if h.NATS != nil {
+		reviewDrafter.SetAutoPublisher(s.Review, s.AuditLogger)
+	}
 
 	adapter := IntegrationSyncAdapter(s.Integration)
 	platformHTTPClient := &http.Client{Timeout: 10 * time.Second}

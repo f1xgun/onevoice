@@ -203,6 +203,15 @@ func strDeref(s *string) string {
 	return *s
 }
 
+// boolDeref returns the dereferenced value or false when ptr is nil. Used for
+// optional bool fields in spec-generated request structs (absent == false).
+func boolDeref(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
+}
+
 // Register handles user registration and auto-login. Validates the consents
 // block against legalconfig.CurrentVersion(slug); missing/stale → 400
 // consent_required. On success, writes consents + user + verify token +

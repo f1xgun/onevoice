@@ -150,6 +150,8 @@ paths:
     $ref: paths/business.yaml#/~1businesses~1{id}~1description-template
   /businesses/{id}/voice-profile:
     $ref: paths/business.yaml#/~1businesses~1{id}~1voice-profile
+  /businesses/{id}/review-autopilot:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1review-autopilot
   /businesses/{id}/integrations/vk/auth-url:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1auth-url
   /businesses/{id}/integrations/vk/communities:
@@ -982,6 +984,40 @@ components:
         voiceProfile:
           type: string
           description: Stored brand-voice profile; empty string when unset.
+    UpdateReviewAutopilotRequest:
+      type: object
+      required:
+      - minRating
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Opt-in switch for the review-reply autopilot. When true, a positive
+            drafted reply on a direct-API platform (Telegram/VK) is auto-published;
+            Yandex.Business, negative, and needs_review replies always stay pending
+            for manual approval. Absent is treated as false (disabled).
+        minRating:
+          type: integer
+          minimum: 4
+          maximum: 5
+          description: |
+            The minimum star rating that may be auto-published. Bounded to the
+            positive range so the floor can only be raised (e.g. 5-star-only) and
+            can never be lowered to auto-publish a negative or neutral review.
+    ReviewAutopilotResponse:
+      type: object
+      required:
+      - enabled
+      - minRating
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the review-reply autopilot is enabled (default false).
+        minRating:
+          type: integer
+          description: |
+            The minimum star rating that may be auto-published (default 4 when
+            unset; always at least 4).
     UploadLogoRequest:
       type: object
       required:
@@ -1563,6 +1599,7 @@ components:
       - project.created
       - project.updated
       - project.deleted
+      - review.auto_replied
     AuditEvent:
       type: object
       required:
@@ -1590,6 +1627,7 @@ components:
           - integration
           - business
           - project
+          - review
           - other
         resource:
           type: string

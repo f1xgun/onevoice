@@ -209,3 +209,79 @@ func TestDescriptionPlaceholderValues_CoversAllowedSet(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewAutopilotFromSettings(t *testing.T) {
+	cases := []struct {
+		name        string
+		settings    map[string]interface{}
+		wantEnabled bool
+		wantMin     int
+	}{
+		{
+			name:        "nil settings -> default off",
+			settings:    nil,
+			wantEnabled: false,
+			wantMin:     0,
+		},
+		{
+			name:        "absent key -> default off",
+			settings:    map[string]interface{}{"voiceProfile": "x"},
+			wantEnabled: false,
+			wantMin:     0,
+		},
+		{
+			name:        "nil value -> default off",
+			settings:    map[string]interface{}{ReviewAutopilotSettingsKey: nil},
+			wantEnabled: false,
+			wantMin:     0,
+		},
+		{
+			name:        "malformed (string) -> default off",
+			settings:    map[string]interface{}{ReviewAutopilotSettingsKey: "not-an-object"},
+			wantEnabled: false,
+			wantMin:     0,
+		},
+		{
+			name:        "enabled with minRating 5 preserved",
+			settings:    map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{"enabled": true, "minRating": 5}},
+			wantEnabled: true,
+			wantMin:     5,
+		},
+		{
+			name:        "minRating below floor clamped up to 4",
+			settings:    map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{"enabled": true, "minRating": 2}},
+			wantEnabled: true,
+			wantMin:     ReviewAutopilotMinRatingFloor,
+		},
+		{
+			name:        "enabled with zero minRating clamped up to 4",
+			settings:    map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{"enabled": true}},
+			wantEnabled: true,
+			wantMin:     ReviewAutopilotMinRatingFloor,
+		},
+		{
+			name:        "disabled with minRating clamped still reads floor",
+			settings:    map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{"enabled": false, "minRating": 3}},
+			wantEnabled: false,
+			wantMin:     ReviewAutopilotMinRatingFloor,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ReviewAutopilotFromSettings(tc.settings)
+			if got.Enabled != tc.wantEnabled {
+				t.Errorf("Enabled = %v, want %v", got.Enabled, tc.wantEnabled)
+			}
+			if got.MinRating != tc.wantMin {
+				t.Errorf("MinRating = %d, want %d", got.MinRating, tc.wantMin)
+			}
+		})
+	}
+}
+
+func TestReviewAutopilotMinRatingFloor_IsPositive(t *testing.T) {
+	if ReviewAutopilotMinRatingFloor != domain.ReviewNeedsReviewMaxRating+1 {
+		t.Fatalf("floor = %d, want ReviewNeedsReviewMaxRating+1 = %d",
+			ReviewAutopilotMinRatingFloor, domain.ReviewNeedsReviewMaxRating+1)
+	}
+}

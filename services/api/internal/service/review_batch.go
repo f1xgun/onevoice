@@ -200,7 +200,20 @@ func (s *reviewService) bulkApproveOne(ctx context.Context, businessID uuid.UUID
 // negative threshold), and it must not be flagged needs_review. A negative
 // review carries needs_review AND fails the rating gate, so it is excluded on
 // two independent conditions — reverting either one alone still holds the line.
+//
+// It defers to isPositiveDraftReady, the shared positive-only definition the
+// autopilot also gates on, so the two paths can never diverge on what "positive"
+// means.
 func isBulkApprovable(review *domain.Review) bool {
+	return isPositiveDraftReady(review)
+}
+
+// isPositiveDraftReady is the single positive-only definition shared by the
+// one-tap bulk-approve path and the review-reply autopilot: a ready non-empty
+// draft, not flagged needs_review, and a rating strictly above the negative
+// threshold. The needs_review and rating checks are independent so reverting
+// either one alone still excludes a negative review.
+func isPositiveDraftReady(review *domain.Review) bool {
 	if review.DraftStatus != domain.ReviewDraftStatusReady || review.DraftReply == "" {
 		return false
 	}

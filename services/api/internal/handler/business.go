@@ -35,6 +35,10 @@ const maxBusinessBodyBytes = 64 * 1024
 // single business row cannot be bloated by an arbitrarily large blob.
 const maxSettingsBlobBytes = 16 * 1024
 
+// maxReviewRating is the inclusive upper bound of a review star rating; it caps
+// the review-autopilot minRating so a stored floor can never exceed 5 stars.
+const maxReviewRating = 5
+
 var allowedMimeTypes = map[string]string{
 	"image/jpeg": ".jpg",
 	"image/png":  ".png",
@@ -502,6 +506,74 @@ func (h *BusinessHandler) UpdateVoiceProfile(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		slog.ErrorContext(r.Context(), "failed to update voice profile", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// GetReviewAutopilot handles GET /business/{id}/review-autopilot.
+// Returns the stored review-reply autopilot config. When unset the response is
+// the default-off state {enabled:false, minRating:ReviewAutopilotMinRatingFloor}.
+// Requires PermBusinessRead.
+func (h *BusinessHandler) GetReviewAutopilot(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "GetReviewAutopilot", authz.PermBusinessRead)
+	if !ok {
+		return
+	}
+
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "get review autopilot failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	cfg := platform.ReviewAutopilotFromSettings(business.Settings)
+	writeJSON(w, http.StatusOK, openapi.ReviewAutopilotResponse{
+		Enabled:   cfg.Enabled,
+		MinRating: cfg.MinRating,
+	})
+}
+
+// UpdateReviewAutopilot handles PUT /business/{id}/review-autopilot.
+// Stores the opt-in autopilot config. minRating is bounded to the positive range
+// [ReviewAutopilotMinRatingFloor..5] so the setting can only RAISE the positive
+// floor and can never be configured to auto-publish a negative or neutral review.
+// Like the voice profile it is prompt/automation-only and is NOT fanned out to
+// any connected platform. Requires PermBusinessUpdate.
+func (h *BusinessHandler) UpdateReviewAutopilot(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "UpdateReviewAutopilot", authz.PermBusinessUpdate)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
+	req, ok := decodeAndValidate[openapi.UpdateReviewAutopilotRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+
+	if req.MinRating < platform.ReviewAutopilotMinRatingFloor || req.MinRating > maxReviewRating {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("minRating must be between %d and %d", platform.ReviewAutopilotMinRatingFloor, maxReviewRating),
+		})
+		return
+	}
+
+	cfg := platform.ReviewAutopilotConfig{Enabled: boolDeref(req.Enabled), MinRating: req.MinRating}
+	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, map[string]interface{}{platform.ReviewAutopilotSettingsKey: cfg}, bc.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to update review autopilot", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

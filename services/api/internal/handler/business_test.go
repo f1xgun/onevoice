@@ -21,6 +21,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -954,6 +955,193 @@ func TestBusinessHandler_UpdateVoiceProfile(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		h.UpdateVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
+func TestBusinessHandler_GetReviewAutopilot(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	t.Run("returns stored config", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
+			ID: testBusinessID,
+			Settings: map[string]interface{}{"reviewAutopilot": map[string]interface{}{
+				"enabled": true, "minRating": 5,
+			}},
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/review-autopilot", http.NoBody)
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.GetReviewAutopilot(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			Enabled   bool `json:"enabled"`
+			MinRating int  `json:"minRating"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.True(t, body.Enabled)
+		assert.Equal(t, 5, body.MinRating)
+	})
+
+	t.Run("returns default off with floor when unset", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
+			ID:       testBusinessID,
+			Settings: map[string]interface{}{},
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/review-autopilot", http.NoBody)
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.GetReviewAutopilot(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			Enabled   bool `json:"enabled"`
+			MinRating int  `json:"minRating"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.False(t, body.Enabled)
+		assert.Equal(t, 0, body.MinRating)
+	})
+
+	t.Run("missing PermBusinessRead returns 403", func(t *testing.T) {
+		h, err := NewBusinessHandler(new(MockBusinessService), nil, nil)
+		require.NoError(t, err)
+
+		bc := authz.BusinessContext{
+			BusinessID:  testBusinessID,
+			Permissions: []authz.Permission{authz.PermBusinessUpdate},
+		}
+		req := httptest.NewRequest(http.MethodGet, "/review-autopilot", http.NoBody)
+		req = withBizCtx(req, bc)
+		w := httptest.NewRecorder()
+
+		h.GetReviewAutopilot(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
+func TestBusinessHandler_UpdateReviewAutopilot(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	t.Run("valid config persists under reviewAutopilot and does not sync", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		syncer := &fakeScheduleSyncer{called: make(chan *domain.Business, 1)}
+
+		var captured map[string]interface{}
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			captured = keys
+			return true
+		}), mock.Anything).Return(&domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, syncer, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/review-autopilot", bytes.NewBufferString(`{"enabled":true,"minRating":5}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateReviewAutopilot(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, captured)
+		cfg, ok := captured["reviewAutopilot"].(platform.ReviewAutopilotConfig)
+		require.True(t, ok, "expected a ReviewAutopilotConfig under reviewAutopilot, got %T", captured["reviewAutopilot"])
+		assert.True(t, cfg.Enabled)
+		assert.Equal(t, 5, cfg.MinRating)
+
+		select {
+		case <-syncer.called:
+			t.Fatal("review-autopilot edit must NOT fan out to the platform syncer")
+		case <-time.After(200 * time.Millisecond):
+		}
+		mockSvc.AssertExpectations(t)
+	})
+
+	t.Run("disable persists enabled false", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		var captured map[string]interface{}
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			captured = keys
+			return true
+		}), mock.Anything).Return(&domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/review-autopilot", bytes.NewBufferString(`{"enabled":false,"minRating":4}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateReviewAutopilot(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, captured)
+		cfg := captured["reviewAutopilot"].(platform.ReviewAutopilotConfig)
+		assert.False(t, cfg.Enabled)
+		assert.Equal(t, 4, cfg.MinRating)
+		mockSvc.AssertExpectations(t)
+	})
+
+	t.Run("minRating below floor returns 400 and does not persist", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/review-autopilot", bytes.NewBufferString(`{"enabled":true,"minRating":3}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateReviewAutopilot(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "UpdateSettingsKeys")
+	})
+
+	t.Run("minRating above 5 returns 400 and does not persist", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/review-autopilot", bytes.NewBufferString(`{"enabled":true,"minRating":6}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateReviewAutopilot(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "UpdateSettingsKeys")
+	})
+
+	t.Run("missing PermBusinessUpdate returns 403", func(t *testing.T) {
+		h, err := NewBusinessHandler(new(MockBusinessService), nil, nil)
+		require.NoError(t, err)
+
+		bc := authz.BusinessContext{
+			BusinessID:  testBusinessID,
+			Permissions: []authz.Permission{authz.PermBusinessRead},
+		}
+		req := httptest.NewRequest(http.MethodPut, "/review-autopilot", bytes.NewBufferString(`{"enabled":true,"minRating":4}`))
+		req = withBizCtx(req, bc)
+		w := httptest.NewRecorder()
+
+		h.UpdateReviewAutopilot(w, req)
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
