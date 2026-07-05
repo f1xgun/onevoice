@@ -797,7 +797,9 @@
       "voice": {
         "caption": "Voice",
         "title": "Voice and tone",
-        "sub": "How the AI should sound when speaking for you."
+        "sub": "How the AI should sound when speaking for you.",
+        "profileCaption": "Voice profile",
+        "profileSub": "Describe in your own words how the AI should speak in chats and reply drafts."
       },
       "hours": {
         "caption": "Hours",
@@ -877,6 +879,17 @@
         "playful": "Playful",
         "businesslike": "Businesslike"
       }
+    },
+    "voiceProfile": {
+      "label": "Voice profile",
+      "placeholder": "e.g. Write warmly and briefly, no jargon or emoji. Address customers formally.",
+      "hint": "The AI uses this in chats and review-reply drafts.",
+      "counter": "{count} of {max}",
+      "saveButton": "Save profile",
+      "saving": "Saving…",
+      "saved": "Voice profile saved",
+      "saveError": "Couldn't save",
+      "loadError": "Couldn't load the voice profile"
     },
     "categories": {
       "cafe": "Café / Restaurant",

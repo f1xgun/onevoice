@@ -62,6 +62,7 @@ export const BIZ_API_PATHS = {
     LOGO: '/logo',
     SCHEDULE: '/schedule',
     VOICE_TONE: '/voice-tone',
+    VOICE_PROFILE: '/voice-profile',
   },
   CONVERSATIONS: {
     ROOT: '/conversations',
