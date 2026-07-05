@@ -56,7 +56,10 @@ function SummaryCards({ summary }: { summary: BillingSummary }) {
         <CardContent>
           <dl className="grid grid-cols-2 gap-4">
             <Stat label={t('plan.name')} value={plan.name} />
-            <Stat label={t('plan.monthlyCredits')} value={plan.monthly_credits} />
+            <Stat
+              label={t('plan.monthlyCredits')}
+              value={plan.monthly_credits < 0 ? t('unlimited') : plan.monthly_credits}
+            />
           </dl>
         </CardContent>
       </Card>
@@ -69,10 +72,15 @@ function SummaryCards({ summary }: { summary: BillingSummary }) {
           <dl className="grid grid-cols-2 gap-4">
             <Stat label={t('credits.remaining')} value={credits.remaining} />
             <Stat label={t('credits.used')} value={credits.used} />
-            <Stat label={t('credits.granted')} value={credits.granted} />
+            <Stat
+              label={t('credits.granted')}
+              value={credits.granted < 0 ? t('unlimited') : credits.granted}
+            />
             <Stat label={t('credits.overage')} value={credits.overage} />
           </dl>
-          <Gauge value={credits.used} max={credits.granted} label={t('credits.gaugeLabel')} />
+          {credits.granted > 0 ? (
+            <Gauge value={credits.used} max={credits.granted} label={t('credits.gaugeLabel')} />
+          ) : null}
         </CardContent>
       </Card>
 
@@ -96,13 +104,18 @@ function SummaryCards({ summary }: { summary: BillingSummary }) {
         <CardContent className="space-y-4">
           <dl className="grid grid-cols-2 gap-4">
             <Stat label={t('daily.today')} value={formatUsd(daily_spend.today_usd)} />
-            <Stat label={t('daily.cap')} value={formatUsd(daily_spend.cap_usd)} />
+            <Stat
+              label={t('daily.cap')}
+              value={daily_spend.cap_usd < 0 ? t('unlimited') : formatUsd(daily_spend.cap_usd)}
+            />
           </dl>
-          <Gauge
-            value={daily_spend.today_usd}
-            max={daily_spend.cap_usd}
-            label={t('daily.gaugeLabel')}
-          />
+          {daily_spend.cap_usd > 0 ? (
+            <Gauge
+              value={daily_spend.today_usd}
+              max={daily_spend.cap_usd}
+              label={t('daily.gaugeLabel')}
+            />
+          ) : null}
         </CardContent>
       </Card>
     </div>

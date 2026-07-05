@@ -93,4 +93,48 @@ describe('BillingPage', () => {
       ).toBeInTheDocument();
     });
   });
+
+  it('renders an unlimited daily cap without $-1.00 and hides the daily gauge', async () => {
+    mockedGetSummary.mockResolvedValue({
+      plan: { code: 'enterprise', name: 'Enterprise', monthly_credits: 20000 },
+      credits: { granted: 20000, used: 0, remaining: 20000, overage: 0 },
+      usage_this_month: { actions: 100, spend_usd: 50, images: 3 },
+      daily_spend: { today_usd: 12.5, cap_usd: -1 },
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText('Enterprise')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Безлимит')).toBeInTheDocument();
+    expect(screen.queryByText('$-1.00')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('progressbar', {
+        name: 'Расход за сегодня относительно дневного лимита',
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Использовано кредитов из начисленных' })
+    ).toBeInTheDocument();
+  });
+
+  it('renders unlimited monthly credits and hides the credits gauge', async () => {
+    mockedGetSummary.mockResolvedValue({
+      plan: { code: 'enterprise', name: 'Enterprise', monthly_credits: -1 },
+      credits: { granted: -1, used: 0, remaining: 0, overage: 0 },
+      usage_this_month: { actions: 100, spend_usd: 50, images: 3 },
+      daily_spend: { today_usd: 1, cap_usd: 5 },
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText('Enterprise')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Безлимит').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('-1')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('progressbar', { name: 'Использовано кредитов из начисленных' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Расход за сегодня относительно дневного лимита' })
+    ).toBeInTheDocument();
+  });
 });

@@ -1698,6 +1698,7 @@
     "billing": {
       "title": "Plan & usage",
       "subtitle": "Your plan, credits, and the organization's spend this month.",
+      "unlimited": "Unlimited",
       "plan": {
         "title": "Plan",
         "name": "Name",
