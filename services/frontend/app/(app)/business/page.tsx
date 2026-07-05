@@ -19,6 +19,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
 import { VoiceToneSection } from '@/components/business/VoiceToneSection';
+import { VoiceProfileSection } from '@/components/business/VoiceProfileSection';
 import { AISummaryRail } from '@/components/business/AISummaryRail';
 import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { DangerZone } from '@/components/business/DangerZone';
@@ -131,7 +132,16 @@ export default function BusinessPage() {
                 title={tSections('voice.title')}
                 sub={tSections('voice.sub')}
               >
-                <VoiceToneSection initial={tones} onChange={setTones} />
+                <div className="flex flex-col gap-6">
+                  <VoiceToneSection initial={tones} onChange={setTones} />
+                  <div className="border-t border-line-soft pt-6">
+                    <MonoLabel>{tSections('voice.profileCaption')}</MonoLabel>
+                    <p className="mb-4 mt-1 text-[13px] text-ink-mid">
+                      {tSections('voice.profileSub')}
+                    </p>
+                    <VoiceProfileSection />
+                  </div>
+                </div>
               </Section>
 
               <Section

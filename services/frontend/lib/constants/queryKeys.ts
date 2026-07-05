@@ -24,6 +24,7 @@ export const QUERY_KEYS = {
   BUSINESS_INTEGRATIONS_DRIFT: (bizId: string | null) =>
     ['businesses', bizId, 'integrations', 'drift'] as const,
   BUSINESS_PROFILE: (bizId: string | null) => ['businesses', bizId, 'business'] as const,
+  BUSINESS_VOICE_PROFILE: (bizId: string | null) => ['businesses', bizId, 'voice-profile'] as const,
   BUSINESS_REVIEWS: (bizId: string | null) => ['businesses', bizId, 'reviews'] as const,
   BUSINESS_TASKS: (bizId: string | null) => ['businesses', bizId, 'tasks'] as const,
   // Per-business membership data. Plural-form keys keep them adjacent to
