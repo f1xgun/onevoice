@@ -119,4 +119,8 @@ export const BIZ_API_PATHS = {
   SEARCH: {
     ROOT: '/search',
   },
+  BILLING: {
+    // GET /businesses/{id}/billing/summary → read-only usage transparency.
+    SUMMARY: '/billing/summary',
+  },
 } as const;

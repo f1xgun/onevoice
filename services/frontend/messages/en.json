@@ -1637,6 +1637,7 @@
       "tools": "Tools",
       "team": "Team",
       "roles": "Roles",
+      "billing": "Plan",
       "audit": "Activity log",
       "privacy": "Privacy",
       "navAria": "Settings — sections"
@@ -1692,6 +1693,39 @@
       "toast": {
         "scheduled": "Deletion scheduled for {deletionDate}",
         "error": "Could not withdraw consent. Please try again."
+      }
+    },
+    "billing": {
+      "title": "Plan & usage",
+      "subtitle": "Your plan, credits, and the organization's spend this month.",
+      "plan": {
+        "title": "Plan",
+        "name": "Name",
+        "monthlyCredits": "Monthly credits"
+      },
+      "credits": {
+        "title": "Credits",
+        "granted": "Granted",
+        "used": "Used",
+        "remaining": "Remaining",
+        "overage": "Overage",
+        "gaugeLabel": "Credits used out of granted"
+      },
+      "usage": {
+        "title": "Usage this month",
+        "actions": "Actions",
+        "spend": "Spend",
+        "images": "Images"
+      },
+      "daily": {
+        "title": "Daily spend",
+        "today": "Today",
+        "cap": "Daily cap",
+        "gaugeLabel": "Today's spend against the daily cap"
+      },
+      "errors": {
+        "forbidden": "You don't have access to the plan and usage section.",
+        "loadFailed": "Couldn't load billing data. Please refresh the page."
       }
     }
   },
