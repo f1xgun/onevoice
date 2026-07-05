@@ -101,6 +101,9 @@ type Services struct {
 	// Feedback persists in-app user feedback + founder notification.
 	Feedback *service.FeedbackService
 
+	// ChannelRequest records demand for not-yet-supported channels (fake-door).
+	ChannelRequest *service.ChannelRequestService
+
 	// PlanResolver resolves the per-business billing plan + rate-limit tier
 	// (v1.6). Fail-safe: DB error / no subscription → Free. Injected into the
 	// chat turn (tier forwarding) and the billing summary service.
@@ -453,6 +456,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 
 	s.Telemetry = service.NewTelemetryService(repos.TelemetryEvent)
 	s.Feedback = service.NewFeedbackService(h.PG, repos.ProductFeedback, repos.EmailOutbox, repos.User, cfg.FeedbackNotifyEmail)
+	s.ChannelRequest = service.NewChannelRequestService(repos.ChannelDemandSignal)
 
 	if registerSetter, ok := s.User.(interface {
 		SetRegisterCollaborators(

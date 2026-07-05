@@ -695,3 +695,82 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+
+/businesses/{id}/channel-requests:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: createChannelRequest
+    summary: Record demand for a not-yet-supported channel.
+    description: |
+      Captures a business's interest in a channel OneVoice does not yet
+      support (fake-door) so pull can be measured before the channel is
+      built. Requires content.create.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CreateChannelRequestRequest
+    responses:
+      '204':
+        description: Demand signal recorded.
+      '400':
+        description: Unknown channel or note too long.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  get:
+    operationId: listChannelRequests
+    summary: Aggregate channel-demand counts for this business.
+    description: |
+      Returns the per-channel count of demand signals recorded by this
+      business. Requires content.read. Tenant-scoped.
+    tags:
+    - business
+    responses:
+      '200':
+        description: Per-channel demand counts.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ChannelDemandSummary
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

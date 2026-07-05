@@ -58,6 +58,15 @@ const (
 	AuditEventActionCategoryReview      AuditEventActionCategory = "review"
 )
 
+// Defines values for ChannelRequestChannel.
+const (
+	ChannelRequestChannelAvito       ChannelRequestChannel = "avito"
+	ChannelRequestChannelN2gis       ChannelRequestChannel = "2gis"
+	ChannelRequestChannelOther       ChannelRequestChannel = "other"
+	ChannelRequestChannelOzon        ChannelRequestChannel = "ozon"
+	ChannelRequestChannelWildberries ChannelRequestChannel = "wildberries"
+)
+
 // Defines values for ChatHistoryEntryRole.
 const (
 	ChatHistoryEntryRoleAssistant ChatHistoryEntryRole = "assistant"
@@ -85,6 +94,15 @@ const (
 	ConversationTitleStatusAuto        ConversationTitleStatus = "auto"
 	ConversationTitleStatusAutoPending ConversationTitleStatus = "auto_pending"
 	ConversationTitleStatusManual      ConversationTitleStatus = "manual"
+)
+
+// Defines values for CreateChannelRequestRequestChannel.
+const (
+	Avito       CreateChannelRequestRequestChannel = "avito"
+	N2gis       CreateChannelRequestRequestChannel = "2gis"
+	Other       CreateChannelRequestRequestChannel = "other"
+	Ozon        CreateChannelRequestRequestChannel = "ozon"
+	Wildberries CreateChannelRequestRequestChannel = "wildberries"
 )
 
 // Defines values for HITLAlreadyResolvedErrorError.
@@ -462,6 +480,25 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"newPassword" validate:"required,min=8"`
 }
 
+// ChannelDemandCount defines model for ChannelDemandCount.
+type ChannelDemandCount struct {
+	// Channel A not-yet-supported channel a business is expressing demand for.
+	// Backs a fake-door affordance so pull is measured before the channel
+	// is built.
+	Channel ChannelRequestChannel `json:"channel"`
+	Count   int                   `json:"count" validate:"required"`
+}
+
+// ChannelDemandSummary defines model for ChannelDemandSummary.
+type ChannelDemandSummary struct {
+	Channels []ChannelDemandCount `json:"channels" validate:"required"`
+}
+
+// ChannelRequestChannel A not-yet-supported channel a business is expressing demand for.
+// Backs a fake-door affordance so pull is measured before the channel
+// is built.
+type ChannelRequestChannel string
+
 // ChatHistoryEntry defines model for ChatHistoryEntry.
 type ChatHistoryEntry struct {
 	Content string               `json:"content" validate:"required"`
@@ -594,6 +631,16 @@ type CreateBusinessRequest struct {
 	Phone       *string `json:"phone,omitempty" validate:"omitempty,max=255"`
 	Website     *string `json:"website" validate:"omitempty,max=255"`
 }
+
+// CreateChannelRequestRequest defines model for CreateChannelRequestRequest.
+type CreateChannelRequestRequest struct {
+	// Channel A not-yet-supported channel a business is expressing demand for.
+	Channel CreateChannelRequestRequestChannel `json:"channel" validate:"required,oneof=avito wildberries ozon 2gis other"`
+	Note    *string                            `json:"note,omitempty" validate:"omitempty,max=280"`
+}
+
+// CreateChannelRequestRequestChannel A not-yet-supported channel a business is expressing demand for.
+type CreateChannelRequestRequestChannel string
 
 // CreateConversationRequest defines model for CreateConversationRequest.
 type CreateConversationRequest struct {
@@ -1935,6 +1982,9 @@ type CreateBusinessJSONRequestBody = CreateBusinessRequest
 
 // UpdateBusinessJSONRequestBody defines body for UpdateBusiness for application/json ContentType.
 type UpdateBusinessJSONRequestBody = UpdateBusinessRequest
+
+// CreateChannelRequestJSONRequestBody defines body for CreateChannelRequest for application/json ContentType.
+type CreateChannelRequestJSONRequestBody = CreateChannelRequestRequest
 
 // ChatTurnJSONRequestBody defines body for ChatTurn for application/json ContentType.
 type ChatTurnJSONRequestBody = ChatTurnRequest

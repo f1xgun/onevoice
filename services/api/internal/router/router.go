@@ -84,6 +84,7 @@ type Handlers struct {
 	BusinessDeletion *handler.BusinessDeletionHandler
 	Consents         *handler.ConsentsHandler
 	Feedback         *handler.FeedbackHandler
+	ChannelRequest   *handler.ChannelRequestHandler
 }
 
 // Setup creates and configures the public Chi router. See
@@ -308,6 +309,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				r.Get("/posts", handlers.Post.ListPosts)
 				r.Get("/posts/{id}", handlers.Post.GetPost)
+
+				if handlers.ChannelRequest != nil {
+					r.With(writeLimit).Post("/channel-requests", handlers.ChannelRequest.Create)
+					r.Get("/channel-requests", handlers.ChannelRequest.List)
+				}
 
 				r.Get("/tasks", handlers.AgentTask.ListTasks)
 				r.Get("/tasks/stream", handlers.AgentTask.StreamTasks)
