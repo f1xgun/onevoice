@@ -1164,6 +1164,35 @@
         "hint": "Add people to your organization.",
         "cta": "Invite"
       }
+    },
+    "wizard": {
+      "title": "Your first AI action",
+      "subtitle": "The AI drafts a reply to a recent review — you publish it in one click.",
+      "preparing": "Preparing your first action",
+      "preparingHint": "Gathering recent reviews and drafting a reply. This can take up to a minute.",
+      "draftLabel": "AI-drafted reply",
+      "draftHint": "Review before publishing",
+      "ratingAria": "Rating {rating} out of 5",
+      "publish": "Publish",
+      "publishError": "Could not publish the reply. Please try again.",
+      "later": "Later",
+      "close": "Close",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "skipToChat": "Go to chat",
+      "composeInChat": "Compose a post in chat",
+      "empty": {
+        "title": "No reviews yet",
+        "body": "Your organization has no reviews to reply to yet. Start by publishing a post — describe the task in chat and the AI will carry it out for you."
+      },
+      "failed": {
+        "title": "Couldn't prepare an action",
+        "body": "We couldn't gather reviews or prepare a draft. Try again, or go to chat and compose a post."
+      },
+      "done": {
+        "title": "Done — reply published",
+        "body": "Your first AI action is complete. Keep going in chat: describe a task and the AI will do it."
+      }
     }
   },
   "help": {
