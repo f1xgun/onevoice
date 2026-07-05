@@ -64,6 +64,10 @@ const (
 
 	ActionIntegrationTokenDecrypted = "integration.token_decrypted"
 	ActionIntegrationDeleted        = "integration.deleted"
+
+	ActionIntegrationMetadataUpdated   = "integration.metadata_updated"
+	ActionIntegrationExternalIDUpdated = "integration.external_id_updated"
+	ActionIntegrationTokenExpired      = "integration.token_expired"
 )
 
 // business.* — business lifecycle. ActionBusinessSelfDeleted is written by

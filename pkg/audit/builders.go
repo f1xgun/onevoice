@@ -449,6 +449,54 @@ func LogIntegrationDeleted(ctx context.Context, l Logger, businessID, actorID, i
 	})
 }
 
+// LogIntegrationMetadataUpdated records a metadata-only heal. UserID
+// intentionally nil — system/agent-initiated event with no user actor.
+// updatedKeys logs the metadata KEYS ONLY, never the values.
+func LogIntegrationMetadataUpdated(ctx context.Context, l Logger, businessID, integrationID uuid.UUID, platform string, updatedKeys []string) {
+	l.Log(ctx, Entry{
+		Action:     ActionIntegrationMetadataUpdated,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		Details: mustMarshal(IntegrationMetadataUpdatedDetails{
+			IntegrationID: integrationID,
+			Platform:      platform,
+			UpdatedKeys:   updatedKeys,
+		}),
+	})
+}
+
+// LogIntegrationExternalIDUpdated records an external_id heal. UserID
+// intentionally nil — system/agent-initiated event with no user actor.
+func LogIntegrationExternalIDUpdated(ctx context.Context, l Logger, businessID, integrationID uuid.UUID, platform, oldExternalID, newExternalID string) {
+	l.Log(ctx, Entry{
+		Action:     ActionIntegrationExternalIDUpdated,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		Details: mustMarshal(IntegrationExternalIDUpdatedDetails{
+			IntegrationID: integrationID,
+			Platform:      platform,
+			OldExternalID: oldExternalID,
+			NewExternalID: newExternalID,
+		}),
+	})
+}
+
+// LogIntegrationTokenExpired records a status flip to token_expired. UserID
+// intentionally nil — system/agent-initiated event with no user actor. There
+// is no single integrationID because an empty externalID may flip several rows.
+func LogIntegrationTokenExpired(ctx context.Context, l Logger, businessID uuid.UUID, platform, externalID string, rowsAffected int) {
+	l.Log(ctx, Entry{
+		Action:     ActionIntegrationTokenExpired,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		Details: mustMarshal(IntegrationTokenExpiredDetails{
+			Platform:     platform,
+			ExternalID:   externalID,
+			RowsAffected: rowsAffected,
+		}),
+	})
+}
+
 // ---- business builders --------------------------------------------------
 
 // LogBusinessCreated records a new business + owner.

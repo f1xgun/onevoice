@@ -19,30 +19,33 @@ var forbiddenKeyPattern = regexp.MustCompile(`(?i)token|secret|password|cookie|a
 func populatedSamples() map[string]interface{} {
 	u := uuid.New()
 	return map[string]interface{}{
-		"RoleGrantedDetails":             RoleGrantedDetails{TargetUserID: u, OldRoleID: &u, NewRoleID: u},
-		"MemberRemovedDetails":           MemberRemovedDetails{TargetUserID: u, SelfRemoval: true},
-		"RoleCreatedDetails":             RoleCreatedDetails{RoleID: u, RoleName: "x", Permissions: []string{"a.b"}},
-		"RoleUpdatedDetails":             RoleUpdatedDetails{RoleID: u, NewName: "x", Permissions: []string{"a.b"}},
-		"RoleDeletedDetails":             RoleDeletedDetails{RoleID: u, RoleName: "x", ReassignedTo: &u, AffectedUsers: 3},
-		"InvitationCreatedDetails":       InvitationCreatedDetails{InvitationID: u, RoleID: u, ExpiresAt: "2026-01-01T00:00:00Z"},
-		"InvitationRevokedDetails":       InvitationRevokedDetails{InvitationID: u},
-		"InvitationAcceptedDetails":      InvitationAcceptedDetails{InvitationID: u, GrantedRoleID: u},
-		"LoginSuccessDetails":            LoginSuccessDetails{IP: "1.2.3.4", UserAgent: "ua"},
-		"LoginFailedDetails":             LoginFailedDetails{AttemptedEmail: "a@b.c", IP: "1.2.3.4", UserAgent: "ua", Reason: "invalid_credentials"},
-		"LogoutDetails":                  LogoutDetails{},
-		"PasswordChangedDetails":         PasswordChangedDetails{IP: "1.2.3.4", UserAgent: "ua"},
-		"UserRegisteredDetails":          UserRegisteredDetails{Email: "a@b.c", IP: "1.2.3.4", UserAgent: "ua"},
-		"IntegrationConnectedDetails":    IntegrationConnectedDetails{IntegrationID: u, Platform: "telegram", ExternalID: "@chan", ActorIP: "1.2.3.4", UserAgent: "ua", ParsedFormat: "json"},
-		"IntegrationDisconnectedDetails": IntegrationDisconnectedDetails{IntegrationID: u, Platform: "telegram"},
-		"IntegrationTokenRotatedDetails": IntegrationTokenRotatedDetails{IntegrationID: u, Platform: "telegram"},
-		"TokenDecryptedDetails":          TokenDecryptedDetails{IntegrationID: u, Platform: "telegram", CallerService: "agent-telegram", CorrelationID: "corr-1", Reason: "telegram_notify"},
-		"IntegrationDeletedDetails":      IntegrationDeletedDetails{IntegrationID: u, Platform: "telegram", ExternalID: "@chan"},
-		"BusinessCreatedDetails":         BusinessCreatedDetails{Name: "x"},
-		"BusinessUpdatedDetails":         BusinessUpdatedDetails{},
-		"ProjectCreatedDetails":          ProjectCreatedDetails{ProjectID: u, Name: "x"},
-		"ProjectUpdatedDetails":          ProjectUpdatedDetails{ProjectID: u},
-		"ProjectDeletedDetails":          ProjectDeletedDetails{ProjectID: u, Name: "x", DeletedConversations: 5},
-		"RPAScopeViolationDetails":       RPAScopeViolationDetails{Hostname: "evil.example.com", AttemptedURL: "https://evil.example.com/api", AllowedScope: "business.yandex.ru"},
+		"RoleGrantedDetails":                  RoleGrantedDetails{TargetUserID: u, OldRoleID: &u, NewRoleID: u},
+		"MemberRemovedDetails":                MemberRemovedDetails{TargetUserID: u, SelfRemoval: true},
+		"RoleCreatedDetails":                  RoleCreatedDetails{RoleID: u, RoleName: "x", Permissions: []string{"a.b"}},
+		"RoleUpdatedDetails":                  RoleUpdatedDetails{RoleID: u, NewName: "x", Permissions: []string{"a.b"}},
+		"RoleDeletedDetails":                  RoleDeletedDetails{RoleID: u, RoleName: "x", ReassignedTo: &u, AffectedUsers: 3},
+		"InvitationCreatedDetails":            InvitationCreatedDetails{InvitationID: u, RoleID: u, ExpiresAt: "2026-01-01T00:00:00Z"},
+		"InvitationRevokedDetails":            InvitationRevokedDetails{InvitationID: u},
+		"InvitationAcceptedDetails":           InvitationAcceptedDetails{InvitationID: u, GrantedRoleID: u},
+		"LoginSuccessDetails":                 LoginSuccessDetails{IP: "1.2.3.4", UserAgent: "ua"},
+		"LoginFailedDetails":                  LoginFailedDetails{AttemptedEmail: "a@b.c", IP: "1.2.3.4", UserAgent: "ua", Reason: "invalid_credentials"},
+		"LogoutDetails":                       LogoutDetails{},
+		"PasswordChangedDetails":              PasswordChangedDetails{IP: "1.2.3.4", UserAgent: "ua"},
+		"UserRegisteredDetails":               UserRegisteredDetails{Email: "a@b.c", IP: "1.2.3.4", UserAgent: "ua"},
+		"IntegrationConnectedDetails":         IntegrationConnectedDetails{IntegrationID: u, Platform: "telegram", ExternalID: "@chan", ActorIP: "1.2.3.4", UserAgent: "ua", ParsedFormat: "json"},
+		"IntegrationDisconnectedDetails":      IntegrationDisconnectedDetails{IntegrationID: u, Platform: "telegram"},
+		"IntegrationTokenRotatedDetails":      IntegrationTokenRotatedDetails{IntegrationID: u, Platform: "telegram"},
+		"TokenDecryptedDetails":               TokenDecryptedDetails{IntegrationID: u, Platform: "telegram", CallerService: "agent-telegram", CorrelationID: "corr-1", Reason: "telegram_notify"},
+		"IntegrationDeletedDetails":           IntegrationDeletedDetails{IntegrationID: u, Platform: "telegram", ExternalID: "@chan"},
+		"IntegrationMetadataUpdatedDetails":   IntegrationMetadataUpdatedDetails{IntegrationID: u, Platform: "telegram", UpdatedKeys: []string{"business_name"}},
+		"IntegrationExternalIDUpdatedDetails": IntegrationExternalIDUpdatedDetails{IntegrationID: u, Platform: "telegram", OldExternalID: "@old", NewExternalID: "@new"},
+		"IntegrationTokenExpiredDetails":      IntegrationTokenExpiredDetails{Platform: "telegram", ExternalID: "@chan", RowsAffected: 2},
+		"BusinessCreatedDetails":              BusinessCreatedDetails{Name: "x"},
+		"BusinessUpdatedDetails":              BusinessUpdatedDetails{},
+		"ProjectCreatedDetails":               ProjectCreatedDetails{ProjectID: u, Name: "x"},
+		"ProjectUpdatedDetails":               ProjectUpdatedDetails{ProjectID: u},
+		"ProjectDeletedDetails":               ProjectDeletedDetails{ProjectID: u, Name: "x", DeletedConversations: 5},
+		"RPAScopeViolationDetails":            RPAScopeViolationDetails{Hostname: "evil.example.com", AttemptedURL: "https://evil.example.com/api", AllowedScope: "business.yandex.ru"},
 	}
 }
 
@@ -72,7 +75,7 @@ func TestNoSensitiveFields_inDetailsJSON(t *testing.T) {
 		require.Falsef(t, strings.Contains(strings.ToLower(s), "\"cookie\""),
 			"%s: 'cookie' key leaked: %s", name, s)
 	}
-	require.Len(t, samples, 24, "expected 24 Details structs total")
+	require.Len(t, samples, 27, "expected 27 Details structs total")
 }
 
 func TestTokenDecryptedDetails_RoundTrip(t *testing.T) {

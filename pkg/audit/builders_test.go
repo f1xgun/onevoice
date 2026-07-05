@@ -113,6 +113,61 @@ func TestBuilder_LogIntegrationTokenRotated_NoActor(t *testing.T) {
 	require.Equal(t, integ, d.IntegrationID)
 }
 
+func TestBuilder_LogIntegrationMetadataUpdated_NoActor_KeysOnly(t *testing.T) {
+	c := &captureLogger{}
+	biz, integ := uuid.New(), uuid.New()
+	LogIntegrationMetadataUpdated(context.Background(), c, biz, integ, "yandex_business", []string{"business_name", "address"})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, ActionIntegrationMetadataUpdated, c.last.Action)
+	require.Equal(t, "integration", c.last.Resource)
+	require.NotNil(t, c.last.BusinessID)
+	require.Equal(t, biz, *c.last.BusinessID)
+	require.Nil(t, c.last.UserID, "metadata heal is a system event with no actor")
+	var d IntegrationMetadataUpdatedDetails
+	require.NoError(t, json.Unmarshal(c.last.Details, &d))
+	require.Equal(t, "yandex_business", d.Platform)
+	require.Equal(t, integ, d.IntegrationID)
+	require.Equal(t, []string{"business_name", "address"}, d.UpdatedKeys)
+}
+
+func TestBuilder_LogIntegrationExternalIDUpdated_NoActor_OldAndNew(t *testing.T) {
+	c := &captureLogger{}
+	biz, integ := uuid.New(), uuid.New()
+	LogIntegrationExternalIDUpdated(context.Background(), c, biz, integ, "yandex_business", "sprav_old", "sprav_new")
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, ActionIntegrationExternalIDUpdated, c.last.Action)
+	require.Equal(t, "integration", c.last.Resource)
+	require.NotNil(t, c.last.BusinessID)
+	require.Equal(t, biz, *c.last.BusinessID)
+	require.Nil(t, c.last.UserID, "external_id heal is a system event with no actor")
+	var d IntegrationExternalIDUpdatedDetails
+	require.NoError(t, json.Unmarshal(c.last.Details, &d))
+	require.Equal(t, "yandex_business", d.Platform)
+	require.Equal(t, integ, d.IntegrationID)
+	require.Equal(t, "sprav_old", d.OldExternalID)
+	require.Equal(t, "sprav_new", d.NewExternalID)
+}
+
+func TestBuilder_LogIntegrationTokenExpired_NoActor_RowsAffected(t *testing.T) {
+	c := &captureLogger{}
+	biz := uuid.New()
+	LogIntegrationTokenExpired(context.Background(), c, biz, "telegram", "chan_1", 2)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, ActionIntegrationTokenExpired, c.last.Action)
+	require.Equal(t, "integration", c.last.Resource)
+	require.NotNil(t, c.last.BusinessID)
+	require.Equal(t, biz, *c.last.BusinessID)
+	require.Nil(t, c.last.UserID, "token-expiry flip is a system event with no actor")
+	var d IntegrationTokenExpiredDetails
+	require.NoError(t, json.Unmarshal(c.last.Details, &d))
+	require.Equal(t, "telegram", d.Platform)
+	require.Equal(t, "chan_1", d.ExternalID)
+	require.Equal(t, 2, d.RowsAffected)
+}
+
 func TestBuilder_LogInvitationCreated_NoToken(t *testing.T) {
 	c := &captureLogger{}
 	biz, actor, inv, role := uuid.New(), uuid.New(), uuid.New(), uuid.New()
@@ -160,6 +215,9 @@ func TestBuilder_AllBuildersExist_smoke(_ *testing.T) {
 	LogIntegrationConnected(ctx, c, u, u, u, "tg", "ext", "1.2.3.4", "ua", "bot_token")
 	LogIntegrationDisconnected(ctx, c, u, u, u, "tg")
 	LogIntegrationTokenRotated(ctx, c, u, u, "tg")
+	LogIntegrationMetadataUpdated(ctx, c, u, u, "tg", []string{"k"})
+	LogIntegrationExternalIDUpdated(ctx, c, u, u, "tg", "old", "new")
+	LogIntegrationTokenExpired(ctx, c, u, "tg", "ext", 1)
 	LogBusinessCreated(ctx, c, u, u, "n")
 	LogBusinessUpdated(ctx, c, u, u)
 	LogProjectCreated(ctx, c, u, u, u, "n")

@@ -1507,6 +1507,9 @@ components:
       - integration.connected
       - integration.disconnected
       - integration.token_rotated
+      - integration.metadata_updated
+      - integration.external_id_updated
+      - integration.token_expired
       - business.created
       - business.updated
       - project.created
