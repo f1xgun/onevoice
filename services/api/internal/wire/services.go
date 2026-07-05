@@ -32,6 +32,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/creditgrant"
 	"github.com/f1xgun/onevoice/services/api/internal/service/planresolver"
+	"github.com/f1xgun/onevoice/services/api/internal/service/presencehealth"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -120,6 +121,15 @@ type Services struct {
 	// unavailable (Mongo-only mode), which leaves the worker a no-op.
 	OwnerBrief *service.OwnerBriefService
 
+	// PresenceHealth composes the read-only composite presence-health score for
+	// one business (backs the GET /businesses/{id}/presence-health handler).
+	PresenceHealth *service.PresenceHealthService
+
+	// PresenceHealthSnapshot stamps the weekly presence-health snapshot across
+	// the active-business fleet. Started as a background worker
+	// (StartPresenceHealthSnapshot).
+	PresenceHealthSnapshot *presencehealth.Service
+
 	// Lockout is non-nil whenever h.Redis is non-nil (Redis is the storage
 	// layer). SmartCaptcha is always non-nil — Noop impl when
 	// SMARTCAPTCHA_SECRET_KEY is empty so the handler has a stable
@@ -142,6 +152,10 @@ type Services struct {
 	// ownerBriefCancel stops the weekly owner-brief loop. nil when the worker is
 	// not started (OWNER_BRIEF_ENABLED=false or OwnerBrief nil).
 	ownerBriefCancel context.CancelFunc
+
+	// presenceHealthSnapshotCancel stops the weekly presence-health snapshot loop.
+	// nil when the worker is not started (PRESENCE_HEALTH_SNAPSHOT_ENABLED=false).
+	presenceHealthSnapshotCancel context.CancelFunc
 }
 
 // Close stops background goroutines (review syncer ticker). Safe to call
@@ -161,6 +175,9 @@ func (s *Services) Close() {
 	}
 	if s.ownerBriefCancel != nil {
 		s.ownerBriefCancel()
+	}
+	if s.presenceHealthSnapshotCancel != nil {
+		s.presenceHealthSnapshotCancel()
 	}
 }
 
@@ -391,6 +408,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		remoteFetchers,
 		s.PlanResolver,
 	)
+
+	s.PresenceHealth = service.NewPresenceHealthService(repos.Review, repos.SyncState)
+	s.PresenceHealthSnapshot = presencehealth.New(repos.PresenceHealthSnapshot, s.PresenceHealth, repos.PresenceHealthSnapshot, log)
 
 	s.ToolsCache = service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, toolsCacheTTL)
 	s.HITL = service.NewHITLService(

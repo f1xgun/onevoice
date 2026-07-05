@@ -70,6 +70,10 @@ func (f *fakeReviewRepo) ListForSLA(context.Context, string) ([]domain.Review, e
 	panic("unused")
 }
 
+func (f *fakeReviewRepo) ListForRatingStats(context.Context, string) ([]domain.Review, error) {
+	panic("unused")
+}
+
 func (f *fakeReviewRepo) ListPendingWithoutDraft(_ context.Context, _, _ string, _ int) ([]domain.Review, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
