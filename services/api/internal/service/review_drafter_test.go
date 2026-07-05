@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,10 +34,11 @@ type fakeReviewRepo struct {
 }
 
 type updateDraftCall struct {
-	ID     string
-	Draft  string
-	Status string
-	ErrMsg string
+	ID          string
+	Draft       string
+	Status      string
+	ErrMsg      string
+	NeedsReview bool
 }
 
 func (f *fakeReviewRepo) ListByBusinessID(context.Context, string, domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -108,11 +110,11 @@ func (f *fakeReviewRepo) ClaimDraftForGenerating(_ context.Context, id string) (
 	return true, nil
 }
 
-func (f *fakeReviewRepo) UpdateDraft(_ context.Context, id, draft, status, errMsg string) error {
+func (f *fakeReviewRepo) UpdateDraft(_ context.Context, id, draft, status, errMsg string, needsReview bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updateDraftCalls = append(f.updateDraftCalls, updateDraftCall{
-		ID: id, Draft: draft, Status: status, ErrMsg: errMsg,
+		ID: id, Draft: draft, Status: status, ErrMsg: errMsg, NeedsReview: needsReview,
 	})
 	return f.updateDraftErr
 }
@@ -418,6 +420,106 @@ func TestNewReviewDrafter_NilOrchPanics(t *testing.T) {
 		}
 	}()
 	_ = NewReviewDrafter(&fakeReviewRepo{}, &fakeBusinessRepo{}, nil, 5, 10)
+}
+
+// TestDraftReviewByID_GoesThroughOrchestratorPath asserts the batch entry
+// point drives the SAME orchestrator DraftReply call the sync path uses. The
+// orchestrator owns the transborder-PDn redaction and the per-draft metering, so
+// funneling every batch draft through this one call is what makes the batch path
+// inherit both without re-implementing them. If a future refactor bypassed the
+// orchestrator client here, requests would stay empty and this fails.
+func TestDraftReviewByID_GoesThroughOrchestratorPath(t *testing.T) {
+	repo := &fakeReviewRepo{}
+	biz := &domain.Business{Name: "Кофейня"}
+	orchC := &fakeDraftClient{
+		resp: &orchestratorclient.DraftReplyResponse{DraftReply: "Спасибо!"},
+	}
+	d := newDrafter(repo, &fakeBusinessRepo{business: biz}, orchC)
+
+	review := &domain.Review{
+		ID: "r1", BusinessID: "b1", Platform: "telegram",
+		Text: "Отлично", Rating: 5, ReplyStatus: domain.ReviewReplyStatusPending,
+	}
+	if err := d.DraftReviewByID(context.Background(), biz, review, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(orchC.requests) != 1 {
+		t.Fatalf("expected exactly one orchestrator DraftReply call (the metered + redacted path), got %d", len(orchC.requests))
+	}
+	last := repo.updateDraftCalls[len(repo.updateDraftCalls)-1]
+	if last.Status != domain.ReviewDraftStatusReady {
+		t.Errorf("expected ready draft, got %q", last.Status)
+	}
+}
+
+// TestDraftReviewByID_FlagsNeedsReviewForNegative asserts a rating<=3 review is
+// stored with needs_review=true and a positive one with false, so the store-path
+// flag matches the exclusion the bulk-approve gate depends on.
+func TestDraftReviewByID_FlagsNeedsReviewForNegative(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		rating      int
+		wantFlagged bool
+	}{
+		{"negative", 2, true},
+		{"neutral_boundary", 3, true},
+		{"positive_boundary", 4, false},
+		{"positive", 5, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeReviewRepo{}
+			biz := &domain.Business{Name: "Кофейня"}
+			orchC := &fakeDraftClient{resp: &orchestratorclient.DraftReplyResponse{DraftReply: "ответ"}}
+			d := newDrafter(repo, &fakeBusinessRepo{business: biz}, orchC)
+
+			review := &domain.Review{
+				ID: "r1", BusinessID: "b1", Platform: "telegram",
+				Text: "текст", Rating: tc.rating, ReplyStatus: domain.ReviewReplyStatusPending,
+			}
+			if err := d.DraftReviewByID(context.Background(), biz, review, nil); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			last := repo.updateDraftCalls[len(repo.updateDraftCalls)-1]
+			if last.NeedsReview != tc.wantFlagged {
+				t.Errorf("needs_review = %v, want %v for rating %d", last.NeedsReview, tc.wantFlagged, tc.rating)
+			}
+		})
+	}
+}
+
+// TestDraftReviewByID_ClampsYandexDraft asserts a Yandex draft longer than the
+// platform reply ceiling is clamped before persistence, while a Telegram draft
+// of the same length is left intact.
+func TestDraftReviewByID_ClampsYandexDraft(t *testing.T) {
+	long := strings.Repeat("я", yandexReplyMaxRunes+500)
+
+	for _, tc := range []struct {
+		name     string
+		platform string
+		wantMax  int
+	}{
+		{"yandex_clamped", "yandex_business", yandexReplyMaxRunes},
+		{"telegram_untouched", "telegram", yandexReplyMaxRunes + 500},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeReviewRepo{}
+			biz := &domain.Business{Name: "Кофейня"}
+			orchC := &fakeDraftClient{resp: &orchestratorclient.DraftReplyResponse{DraftReply: long}}
+			d := newDrafter(repo, &fakeBusinessRepo{business: biz}, orchC)
+
+			review := &domain.Review{
+				ID: "r1", BusinessID: "b1", Platform: tc.platform,
+				Text: "текст", Rating: 5, ReplyStatus: domain.ReviewReplyStatusPending,
+			}
+			if err := d.DraftReviewByID(context.Background(), biz, review, nil); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			last := repo.updateDraftCalls[len(repo.updateDraftCalls)-1]
+			if got := utf8.RuneCountInString(last.Draft); got != tc.wantMax {
+				t.Errorf("stored draft rune count = %d, want %d", got, tc.wantMax)
+			}
+		})
+	}
 }
 
 // Compile-time guard: fakeDraftClient implements DraftReplyClient.

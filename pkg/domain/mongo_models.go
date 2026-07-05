@@ -45,6 +45,13 @@ const (
 	ReviewReplyStatusError   = "error"
 )
 
+// ReviewNeedsReviewMaxRating is the inclusive upper rating bound at which a
+// drafted reply is flagged NeedsReview: ratings at or below it are negative /
+// neutral, so their drafts are held back for careful individual approval and
+// are never eligible for a one-tap bulk publish. Ratings strictly above it are
+// treated as positive.
+const ReviewNeedsReviewMaxRating = 3
+
 // Conversation is a chat thread stored in MongoDB.
 // ProjectID intentionally omits bson `omitempty` so nil serializes as
 // explicit `null` (the virtual "Без проекта" bucket) rather
@@ -193,6 +200,13 @@ type Review struct {
 	DraftStatus      string    `json:"draftStatus,omitempty" bson:"draft_status,omitempty"`
 	DraftGeneratedAt time.Time `json:"draftGeneratedAt,omitempty" bson:"draft_generated_at,omitempty"`
 	DraftError       string    `json:"draftError,omitempty" bson:"draft_error,omitempty"`
+
+	// NeedsReview marks a drafted reply that must be approved individually and
+	// is excluded from any one-tap bulk publish. It is set true when a draft is
+	// generated for a negative / neutral review (rating <= ReviewNeedsReviewMaxRating)
+	// so a critical reply is never auto-sent from a batch. Default false for
+	// legacy docs — a reader that gates on it treats missing as false.
+	NeedsReview bool `json:"needsReview,omitempty" bson:"needs_review,omitempty"`
 }
 
 type Post struct {
