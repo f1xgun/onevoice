@@ -177,12 +177,12 @@ func (h *ConnectHandler) telegramGetChat(ctx context.Context, botToken, chatID s
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
-		return telegramChatInfo{}, &telegramAPIError{Kind: telegramErrUnreachable, Err: err}
+		return telegramChatInfo{}, &telegramAPIError{Kind: telegramErrUnreachable, Err: redactURLErr(err)}
 	}
 
 	resp, err := h.httpClient.Do(httpReq)
 	if err != nil {
-		return telegramChatInfo{}, &telegramAPIError{Kind: telegramErrUnreachable, Err: err}
+		return telegramChatInfo{}, &telegramAPIError{Kind: telegramErrUnreachable, Err: redactURLErr(err)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 

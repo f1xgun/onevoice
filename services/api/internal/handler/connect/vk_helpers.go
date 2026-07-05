@@ -29,18 +29,23 @@ var (
 	ErrVKWallPermissionMissing = errors.New("connect: vk wall permission missing")
 )
 
-// redactURLErr scrubs the query string from a *url.Error before the error is
-// wrapped, logged, or surfaced to a client. VK outbound calls carry the
-// service key / community token in the URL query (access_token=…); on a
-// transport failure net/http returns a *url.Error whose .Error() embeds the
-// FULL URL, which would otherwise leak the secret into log lines and JSON
-// error bodies. Non-*url.Error inputs are returned unchanged.
+// redactURLErr scrubs both the path and the query string from a *url.Error
+// before the error is wrapped, logged, or surfaced to a client. Outbound calls
+// in this package carry secrets in two places: VK puts the service key /
+// community token in the query (access_token=…), while the Telegram Bot API
+// puts the bot token in the PATH (…/bot<TOKEN>/getChat). On a transport failure
+// net/http returns a *url.Error whose .Error() embeds the FULL URL, which would
+// otherwise leak either secret into log lines and JSON error bodies. Blanking
+// both segments covers every case: harmless for VK (secret is in the query) and
+// required for Telegram (secret is in the path). Non-*url.Error inputs are
+// returned unchanged.
 func redactURLErr(err error) error {
 	var ue *url.Error
 	if !errors.As(err, &ue) {
 		return err
 	}
-	if u, parseErr := url.Parse(ue.URL); parseErr == nil && u.RawQuery != "" {
+	if u, parseErr := url.Parse(ue.URL); parseErr == nil {
+		u.Path = "/REDACTED"
 		u.RawQuery = "REDACTED"
 		ue.URL = u.String()
 	}
