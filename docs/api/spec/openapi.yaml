@@ -152,6 +152,8 @@ paths:
     $ref: paths/business.yaml#/~1businesses~1{id}~1voice-profile
   /businesses/{id}/review-autopilot:
     $ref: paths/business.yaml#/~1businesses~1{id}~1review-autopilot
+  /businesses/{id}/owner-brief:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1owner-brief
   /businesses/{id}/integrations/vk/auth-url:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1auth-url
   /businesses/{id}/integrations/vk/communities:
@@ -1022,6 +1024,51 @@ components:
           description: |
             The minimum star rating that may be auto-published (default 4 when
             unset; always at least 4).
+    OwnerBriefResponse:
+      type: object
+      required:
+      - enabled
+      - weekday
+      - hour
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Whether the proactive weekly owner-brief DM is enabled. Default-on:
+            true when the business never set a preference.
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Weekday the brief fires on (0=Sunday .. 6=Saturday).
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Hour-of-day (0-23) the brief fires at.
+        lastSent:
+          type: string
+          description: |
+            ISO year-week ("<year>-W<week>") of the last successful send; absent
+            when a brief has never been sent.
+    UpdateOwnerBriefRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Enable or disable the weekly owner-brief DM. Setting false is the
+            one-tap opt-out. Absent leaves the enabled flag unchanged.
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Weekday the brief fires on (0=Sunday .. 6=Saturday).
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Hour-of-day (0-23) the brief fires at.
     UploadLogoRequest:
       type: object
       required:

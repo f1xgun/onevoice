@@ -223,6 +223,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(writeLimit).Put("/voice-profile", handlers.Business.UpdateVoiceProfile)
 				r.Get("/review-autopilot", handlers.Business.GetReviewAutopilot)
 				r.With(writeLimit).Put("/review-autopilot", handlers.Business.UpdateReviewAutopilot)
+				r.Get("/owner-brief", handlers.Business.GetOwnerBrief)
+				r.With(writeLimit).Put("/owner-brief", handlers.Business.UpdateOwnerBrief)
 
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
 				r.Get("/integrations/drift", handlers.Integration.GetIntegrationsDrift)

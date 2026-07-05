@@ -225,6 +225,22 @@ type Config struct {
 	LLMTier     string
 	TitlerModel string
 
+	// OwnerBriefEnabled gates the weekly owner-brief worker that composes and
+	// dispatches a proactive weekly summary DM to each eligible business owner.
+	// Defaults ON: the brief is the whole point of the feature (weekly AI-actioned
+	// presence value without the owner opening the dashboard), and per-business
+	// opt-out lives in businesses.settings.ownerBrief.enabled, so a fleet-wide
+	// off-switch is only for an operational emergency.
+	OwnerBriefEnabled bool
+	// OwnerBriefPollInterval is how often the worker re-checks the fleet for due
+	// briefs. The per-week idempotency stamp makes each poll cheap; the interval
+	// only bounds how tightly the weekday/hour window is hit. Default 1h.
+	OwnerBriefPollInterval time.Duration
+	// OwnerBriefModel is the LLM model the brief composer meters through the
+	// shared titler Router. Defaults to TITLER_MODEL (which itself falls back to
+	// LLM_MODEL), so the cheap background model is reused unless overridden.
+	OwnerBriefModel string
+
 	OpenRouterAPIKey    string
 	OpenAIAPIKey        string
 	AnthropicAPIKey     string
@@ -314,6 +330,9 @@ func Load() (*Config, error) {
 		CreditGrantEnabled:      getEnv("CREDIT_GRANT_ENABLED", envBoolTrue) == envBoolTrue,
 		CreditGrantPollInterval: getEnvDuration("CREDIT_GRANT_POLL_INTERVAL", time.Hour),
 
+		OwnerBriefEnabled:      getEnv("OWNER_BRIEF_ENABLED", envBoolTrue) == envBoolTrue,
+		OwnerBriefPollInterval: getEnvDuration("OWNER_BRIEF_POLL_INTERVAL", time.Hour),
+
 		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),
 		S3SecretKey:       getEnv("S3_SECRET_KEY", "minioadmin"),
@@ -388,6 +407,10 @@ func Load() (*Config, error) {
 	cfg.TitlerModel = os.Getenv("TITLER_MODEL")
 	if cfg.TitlerModel == "" {
 		cfg.TitlerModel = cfg.LLMModel
+	}
+	cfg.OwnerBriefModel = os.Getenv("OWNER_BRIEF_MODEL")
+	if cfg.OwnerBriefModel == "" {
+		cfg.OwnerBriefModel = cfg.TitlerModel
 	}
 	cfg.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")

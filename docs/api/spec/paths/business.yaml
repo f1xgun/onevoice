@@ -696,6 +696,90 @@
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 
+/businesses/{id}/owner-brief:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getBusinessOwnerBrief
+    summary: Return the per-business weekly owner-brief preferences.
+    description: |
+      Returns whether the proactive weekly owner-brief DM is enabled and the
+      weekday/hour window it fires in. The brief is default-on: a business that
+      never set a preference reads back enabled=true.
+    tags:
+    - business
+    responses:
+      '200':
+        description: Stored owner-brief preferences.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/OwnerBriefResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateBusinessOwnerBrief
+    summary: Set the per-business weekly owner-brief preferences.
+    description: |
+      Enables or disables the proactive weekly owner-brief DM and optionally sets
+      the weekday (0=Sunday..6=Saturday) and hour (0-23) it fires in. Setting
+      enabled=false is the one-tap opt-out.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateOwnerBriefRequest
+    responses:
+      '200':
+        description: Updated business with the new preferences stored in settings.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Malformed body or out-of-range weekday/hour.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+
 /businesses/{id}/channel-requests:
   parameters:
   - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
