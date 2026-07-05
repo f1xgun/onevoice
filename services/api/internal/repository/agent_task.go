@@ -13,6 +13,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
+// taskStatusDone is the terminal success status. On this transition Update
+// clears any stale error/error_code so a retried task that succeeds no longer
+// carries its prior failure in the tasks list.
+const taskStatusDone = "done"
+
 type agentTaskRepository struct {
 	collection *mongo.Collection
 }
@@ -67,10 +72,15 @@ func (r *agentTaskRepository) Update(ctx context.Context, task *domain.AgentTask
 		set["completed_at"] = task.CompletedAt
 	}
 
+	update := bson.M{"$set": set}
+	if task.Status == taskStatusDone {
+		update["$unset"] = bson.M{"error": "", "error_code": ""}
+	}
+
 	res, err := r.collection.UpdateOne(
 		ctx,
 		bson.M{"_id": task.ID, "business_id": task.BusinessID},
-		bson.M{"$set": set},
+		update,
 	)
 	if err != nil {
 		return fmt.Errorf("update agent task: %w", err)

@@ -46,6 +46,43 @@ func TestAgentTaskRepository_Update_StampsErrorCode(t *testing.T) {
 	assert.Equal(t, "integration_token_invalid", fetched.ErrorCode)
 }
 
+// TestAgentTaskRepository_Update_DoneClearsError proves a retried task that
+// succeeds no longer carries its prior failure: transitioning to "done" unsets
+// error/error_code so the tasks list shows a clean success. Reverting the
+// $unset on the done transition leaves the stale error and fails this test.
+func TestAgentTaskRepository_Update_DoneClearsError(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewAgentTaskRepository(db)
+	ctx := context.Background()
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	task := &domain.AgentTask{
+		BusinessID: "biz-1",
+		Type:       "send_channel_post",
+		Status:     "error",
+		Platform:   "telegram",
+		Error:      "temporary network blip",
+		ErrorCode:  "transient",
+		StartedAt:  &now,
+	}
+	require.NoError(t, repo.Create(ctx, task))
+
+	completed := now.Add(3 * time.Second)
+	require.NoError(t, repo.Update(ctx, &domain.AgentTask{
+		ID:          task.ID,
+		BusinessID:  task.BusinessID,
+		Status:      "done",
+		Output:      map[string]interface{}{"message_id": int64(7)},
+		CompletedAt: &completed,
+	}))
+
+	fetched, err := repo.GetByID(ctx, task.BusinessID, task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "done", fetched.Status)
+	assert.Empty(t, fetched.Error, "a done retry must clear the prior error text")
+	assert.Empty(t, fetched.ErrorCode, "a done retry must clear the prior error code")
+}
+
 func TestAgentTaskRepository_Update_EmptyErrorCode_LeavesExisting(t *testing.T) {
 	db := setupMongoTestDB(t)
 	repo := NewAgentTaskRepository(db)

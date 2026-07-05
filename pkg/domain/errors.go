@@ -133,6 +133,14 @@ var (
 // AgentTask errors.
 var (
 	ErrAgentTaskNotFound = errors.New("agent task not found")
+	// ErrAgentTaskNotFailed rejects a retry of a task that is not in a failed
+	// state — only a task whose dispatch failed at the platform may be re-sent.
+	ErrAgentTaskNotFailed = errors.New("agent task is not in a failed state")
+	// ErrAgentTaskNotRetryable rejects a retry whose failure classifier is not
+	// transient — a token/session rejection needs a reconnect and a permanent
+	// validation failure (oversized media, malformed input) cannot succeed on a
+	// blind re-dispatch.
+	ErrAgentTaskNotRetryable = errors.New("agent task failure is not retryable")
 )
 
 // Project errors.
