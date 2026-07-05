@@ -76,11 +76,14 @@ type Generator interface {
 type Config struct {
 	// Enabled gates construction; when false New returns nil.
 	Enabled bool
-	// Provider selects the backend ("openai" is the only one today; "" ==
-	// "openai").
+	// Provider selects the backend ("openai" (default when "") or "yandexart").
 	Provider string
-	// APIKey is the provider credential; when empty New returns nil.
+	// APIKey is the provider credential; when empty New returns nil. For
+	// yandexart this is the Yandex Cloud "Api-Key".
 	APIKey string
+	// FolderID is the Yandex Cloud folder id, the second yandexart credential;
+	// it forms the art:// model uri. Unused by the openai provider.
+	FolderID string
 	// Model overrides the provider default model id.
 	Model string
 	// Size is the default image size when a request omits it.
@@ -100,6 +103,8 @@ func New(cfg Config) Generator {
 	switch cfg.Provider {
 	case "", "openai":
 		return NewOpenAIGenerator(cfg)
+	case "yandexart":
+		return NewYandexARTGenerator(cfg)
 	default:
 		return nil
 	}
