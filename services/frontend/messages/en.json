@@ -1127,6 +1127,62 @@
       "fallback": "Couldn't connect: {error}"
     }
   },
+  "gettingStarted": {
+    "caption": "Getting started",
+    "title": "Get started",
+    "sub": "A few steps to put the AI to work for you.",
+    "progress": "{done} of {total} done",
+    "progressAria": "Setup progress",
+    "dismissAria": "Dismiss",
+    "complete": {
+      "title": "All set",
+      "body": "Setup complete — the AI is ready to work."
+    },
+    "steps": {
+      "createOrg": {
+        "label": "Create your organization",
+        "hint": "Organization created.",
+        "cta": "Open"
+      },
+      "connectChannel": {
+        "label": "Connect a channel",
+        "hint": "Connect a channel so the AI can publish posts and reply to reviews.",
+        "cta": "Connect"
+      },
+      "describeOrg": {
+        "label": "Describe your organization",
+        "hint": "The description sets the AI's voice and tone.",
+        "cta": "Fill in"
+      },
+      "firstAction": {
+        "label": "Run your first AI action",
+        "hint": "Type a request — the AI will carry it out for you.",
+        "cta": "Start"
+      },
+      "inviteTeam": {
+        "label": "Invite a teammate",
+        "hint": "Add people to your organization.",
+        "cta": "Invite"
+      }
+    }
+  },
+  "help": {
+    "reopen": "Help",
+    "reopenAria": "Open help: {title}",
+    "dismissAria": "Dismiss",
+    "chat": {
+      "title": "How to talk to the AI",
+      "body": "Describe the task in plain words — for example, \"post an update about our sale\". The AI proposes an action and you approve it before it runs."
+    },
+    "integrations": {
+      "title": "Why connect channels",
+      "body": "Connect your channels so the AI can publish posts, update your information, and reply to reviews on behalf of your organization."
+    },
+    "business": {
+      "title": "Your profile trains the AI",
+      "body": "The description, hours, and tone help the AI reply in your organization's voice."
+    }
+  },
   "nav": {
     "chat": "Chat",
     "integrations": "Integrations",

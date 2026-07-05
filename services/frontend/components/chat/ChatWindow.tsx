@@ -10,6 +10,8 @@ import { MessageBubble } from './MessageBubble';
 import { ProjectChip } from './ProjectChip';
 import { ProjectPickerChip } from './ProjectPickerChip';
 import { ConnectChannelHint, shouldPromptConnectChannel } from './ConnectChannelHint';
+import { GettingStartedChecklist } from '@/components/onboarding/GettingStartedChecklist';
+import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { ProcessingApprovalBanner } from './ProcessingApprovalBanner';
@@ -182,7 +184,11 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
         {isLoading ? (
           <SkeletonChat className="bg-transparent p-0" />
         ) : messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4">
+          <div className="flex min-h-full flex-col items-center justify-center gap-4 py-6">
+            {/* Self-contained activation checklist. Kept independent of the
+                composer/chips so the surface stays shared-safe with the
+                parallel first-action wizard, which mounts via onOpenWizard. */}
+            <GettingStartedChecklist className="w-full max-w-lg" />
             <ProjectPickerChip
               value={conversation?.projectId ?? null}
               onChange={handlePickerChange}
@@ -205,6 +211,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
                 ))}
               </div>
             )}
+            <SectionHelp section="chat" className="w-full max-w-md" />
           </div>
         ) : (
           messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
