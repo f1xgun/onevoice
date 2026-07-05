@@ -155,6 +155,39 @@ func TestBusinessRepository_SettingsSubKeyWriters_NoLostUpdate(t *testing.T) {
 	})
 }
 
+// TestBusinessRepository_VoiceProfileWrite_PreservesSiblingKeys proves the
+// voiceProfile settings write goes through the same targeted jsonb_set path and
+// therefore cannot clobber a concurrently-written sibling key. Writer A tightens
+// a HITL floor from a snapshot taken before writer B set the voiceProfile; both
+// survive because each statement touches only the sub-key it owns.
+func TestBusinessRepository_VoiceProfileWrite_PreservesSiblingKeys(t *testing.T) {
+	const gatedTool = "telegram__send_channel_post"
+	ctx := context.Background()
+	pool, repo := settingsRacePool(t)
+
+	id := uuid.New()
+	_, err := pool.Exec(ctx, `INSERT INTO businesses (id, name, settings) VALUES ($1, $2, $3::jsonb)`,
+		id, "Acme", `{"tool_approvals":{"`+gatedTool+`":"auto"},"descriptionTemplate":"{name}"}`)
+	require.NoError(t, err)
+
+	require.NoError(t, repo.UpdateSettingsKeys(ctx, id, map[string]interface{}{
+		"voiceProfile": "Пиши тепло, без эмодзи.",
+	}))
+	require.NoError(t, repo.UpdateToolApprovals(ctx, id, map[string]domain.ToolFloor{
+		gatedTool: domain.ToolFloorManual,
+	}))
+
+	final, err := repo.GetByID(ctx, id)
+	require.NoError(t, err)
+
+	require.Equal(t, "Пиши тепло, без эмодзи.", final.Settings["voiceProfile"],
+		"voiceProfile write must persist")
+	require.Equal(t, domain.ToolFloorManual, final.ToolApprovals()[gatedTool],
+		"a concurrent voiceProfile write must not revert the tightened HITL floor")
+	require.Equal(t, "{name}", final.Settings["descriptionTemplate"],
+		"the pre-existing descriptionTemplate sibling key must survive a voiceProfile write")
+}
+
 // TestBusinessRepository_Update_DoesNotTouchSettings asserts the generic profile
 // Update never rewrites the settings JSONB, so a profile/logo edit carrying a
 // stale settings snapshot cannot revert a concurrent settings sub-key change.

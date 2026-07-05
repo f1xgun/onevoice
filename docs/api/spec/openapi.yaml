@@ -148,6 +148,8 @@ paths:
     $ref: paths/business.yaml#/~1businesses~1{id}~1tool-approvals
   /businesses/{id}/description-template:
     $ref: paths/business.yaml#/~1businesses~1{id}~1description-template
+  /businesses/{id}/voice-profile:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1voice-profile
   /businesses/{id}/integrations/vk/auth-url:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1auth-url
   /businesses/{id}/integrations/vk/communities:
@@ -961,6 +963,25 @@ components:
           description: Allowed placeholder names the template may reference.
           items:
             type: string
+    UpdateVoiceProfileRequest:
+      type: object
+      properties:
+        voiceProfile:
+          type: string
+          maxLength: 400
+          description: |
+            Free-form brand-voice profile (do/don't phrases, emoji policy,
+            short exemplars) that governs the AI chat loop and the review
+            drafter. A non-empty value is stored verbatim; an empty string
+            clears the override.
+    VoiceProfileResponse:
+      type: object
+      required:
+      - voiceProfile
+      properties:
+        voiceProfile:
+          type: string
+          description: Stored brand-voice profile; empty string when unset.
     UploadLogoRequest:
       type: object
       required:

@@ -17,6 +17,13 @@ const maxTelegramDescription = 255
 // platform-default formatter is used instead.
 const DescriptionTemplateSettingsKey = "descriptionTemplate"
 
+// VoiceProfileSettingsKey is the businesses.settings JSONB sub-key holding a
+// per-business free-form brand-voice profile (do/don't phrases, emoji policy,
+// short exemplars). It is a sibling of voiceTone, not a replacement: voiceTone
+// is the tag picker, voiceProfile is authored prose. When absent or blank the
+// chat and review-drafter prompts render exactly as they did before.
+const VoiceProfileSettingsKey = "voiceProfile"
+
 // AllowedDescriptionPlaceholders lists the placeholder tokens a description
 // template may contain, in canonical order. It is the single source of truth
 // shared by the write-path validator and the render substitution, so the two
@@ -54,6 +61,25 @@ func descriptionTemplateFromSettings(settings map[string]interface{}) string {
 		return ""
 	}
 	raw, ok := settings[DescriptionTemplateSettingsKey]
+	if !ok {
+		return ""
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+// VoiceProfileFromSettings reads the voiceProfile override from the settings
+// blob, returning "" when the key is absent, blank, or not a string. Shared by
+// the read handler, the chat-turn prompt builder, and the review drafter so the
+// three surfaces resolve the profile identically.
+func VoiceProfileFromSettings(settings map[string]interface{}) string {
+	if settings == nil {
+		return ""
+	}
+	raw, ok := settings[VoiceProfileSettingsKey]
 	if !ok {
 		return ""
 	}

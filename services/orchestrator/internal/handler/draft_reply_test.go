@@ -268,6 +268,67 @@ func TestBuildDraftReplyPrompt_RussianLocale_PreservesLegacyShape(t *testing.T) 
 	}
 }
 
+// TestBuildDraftReplyPrompt_VoiceProfile_RendersInSystemPrompt asserts a set
+// VoiceProfile appears in the review-drafter system prompt (RU + EN). This is
+// the behavioral guard that fails if the draft-reply threading is reverted.
+func TestBuildDraftReplyPrompt_VoiceProfile_RendersInSystemPrompt(t *testing.T) {
+	t.Run("ru", func(t *testing.T) {
+		profile := "Пиши тепло, эмодзи не используем."
+		msgs := buildDraftReplyPrompt(DraftReplyRequest{
+			BusinessName: "Кофейня",
+			VoiceProfile: profile,
+			ReviewText:   "хороший кофе",
+			Rating:       5,
+		}, language.Russian)
+		sys := msgs[0].Content
+		if !strings.Contains(sys, profile) {
+			t.Errorf("RU draft system prompt missing voice profile\nfull:\n%s", sys)
+		}
+		if !strings.Contains(sys, "Бренд-голос") {
+			t.Errorf("RU draft system prompt missing voice-profile header\nfull:\n%s", sys)
+		}
+	})
+	t.Run("en", func(t *testing.T) {
+		profile := "Write warmly, we never use emoji."
+		msgs := buildDraftReplyPrompt(DraftReplyRequest{
+			BusinessName: "Cozy Café",
+			VoiceProfile: profile,
+			ReviewText:   "great coffee",
+			Rating:       5,
+		}, language.English)
+		sys := msgs[0].Content
+		if !strings.Contains(sys, profile) {
+			t.Errorf("EN draft system prompt missing voice profile\nfull:\n%s", sys)
+		}
+		if !strings.Contains(sys, "Brand voice") {
+			t.Errorf("EN draft system prompt missing voice-profile header\nfull:\n%s", sys)
+		}
+	})
+}
+
+// TestBuildDraftReplyPrompt_VoiceProfile_UnsetOmitsHeader asserts an empty
+// VoiceProfile leaves the draft-reply system prompt free of the header — the
+// prompt is unchanged for a business that never set one.
+func TestBuildDraftReplyPrompt_VoiceProfile_UnsetOmitsHeader(t *testing.T) {
+	ru := buildDraftReplyPrompt(DraftReplyRequest{
+		BusinessName: "Кофейня",
+		ReviewText:   "хороший кофе",
+		Rating:       5,
+	}, language.Russian)[0].Content
+	en := buildDraftReplyPrompt(DraftReplyRequest{
+		BusinessName: "Cozy Café",
+		ReviewText:   "great coffee",
+		Rating:       5,
+	}, language.English)[0].Content
+
+	if strings.Contains(ru, "Бренд-голос") {
+		t.Errorf("unset voice profile must not emit RU header\nfull:\n%s", ru)
+	}
+	if strings.Contains(en, "Brand voice") {
+		t.Errorf("unset voice profile must not emit EN header\nfull:\n%s", en)
+	}
+}
+
 // Smoke: end-to-end wire format match between the api drafter request and
 // the orchestrator handler. If field names ever diverge this test fails.
 func TestApiDrafterWireCompatibility(t *testing.T) {
@@ -276,6 +337,7 @@ func TestApiDrafterWireCompatibility(t *testing.T) {
 		"businessName":        "n",
 		"businessCategory":    "c",
 		"businessDescription": "d",
+		"voiceProfile":        "vp",
 		"platform":            "p",
 		"reviewText":          "rt",
 		"rating":              5,
@@ -291,6 +353,9 @@ func TestApiDrafterWireCompatibility(t *testing.T) {
 	}
 	if got.BusinessName != "n" || got.ReviewText != "rt" || got.Rating != 5 {
 		t.Errorf("field mapping drift: %+v", got)
+	}
+	if got.VoiceProfile != "vp" {
+		t.Errorf("voiceProfile wire mapping drift: %+v", got)
 	}
 	if len(got.Examples) != 1 || got.Examples[0].ReplyText != "y" {
 		t.Errorf("example mapping drift: %+v", got.Examples)

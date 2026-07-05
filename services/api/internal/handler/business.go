@@ -447,6 +447,68 @@ func (h *BusinessHandler) UpdateDescriptionTemplate(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, updated)
 }
 
+// GetVoiceProfile handles GET /business/{id}/voice-profile.
+// Returns the stored brand-voice profile (empty string when unset).
+// Requires PermBusinessRead.
+func (h *BusinessHandler) GetVoiceProfile(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "GetVoiceProfile", authz.PermBusinessRead)
+	if !ok {
+		return
+	}
+
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "get voice profile failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, openapi.VoiceProfileResponse{
+		VoiceProfile: platform.VoiceProfileFromSettings(business.Settings),
+	})
+}
+
+// UpdateVoiceProfile handles PUT /business/{id}/voice-profile.
+// A non-empty value is stored verbatim and governs both the chat loop and the
+// review drafter; an empty string clears the override. Unlike the description
+// template it is not fanned out to any platform — it changes prompt text only,
+// not a platform-visible field.
+// Requires PermBusinessUpdate.
+func (h *BusinessHandler) UpdateVoiceProfile(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "UpdateVoiceProfile", authz.PermBusinessUpdate)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
+	req, ok := decodeAndValidate[openapi.UpdateVoiceProfileRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+
+	profile := strDeref(req.VoiceProfile)
+	if !settingsBlobWithinCap(w, profile, "voice profile too large") {
+		return
+	}
+
+	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, map[string]interface{}{platform.VoiceProfileSettingsKey: profile}, bc.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to update voice profile", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
 // GetBusinessToolApprovals handles GET /business/{id}/tool-approvals.
 // Response shape: `{"toolApprovals": {"tool_name": "auto"|"manual", ...}}`.
 // Absence from the map means the registry floor applies.

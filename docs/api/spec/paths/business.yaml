@@ -526,3 +526,86 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/voice-profile:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getBusinessVoiceProfile
+    summary: Return the per-business brand-voice profile.
+    description: |
+      Returns the stored brand-voice profile (empty string when unset) that
+      governs the AI chat loop and the review drafter.
+    tags:
+    - business
+    responses:
+      '200':
+        description: Stored brand-voice profile.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/VoiceProfileResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateBusinessVoiceProfile
+    summary: Set or clear the per-business brand-voice profile.
+    description: |
+      A non-empty value is stored verbatim and governs both the AI chat loop
+      and the review drafter. An empty string clears the override. Unlike the
+      description template the profile is prompt-only and is not synced to any
+      connected platform.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateVoiceProfileRequest
+    responses:
+      '200':
+        description: Updated business with the new profile stored in settings.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Malformed body or profile too long.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

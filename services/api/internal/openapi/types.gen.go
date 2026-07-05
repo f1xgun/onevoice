@@ -1550,6 +1550,15 @@ type UpdateToolApprovalsRequest struct {
 	ToolApprovals map[string]ToolFloor `json:"toolApprovals" validate:"required"`
 }
 
+// UpdateVoiceProfileRequest defines model for UpdateVoiceProfileRequest.
+type UpdateVoiceProfileRequest struct {
+	// VoiceProfile Free-form brand-voice profile (do/don't phrases, emoji policy,
+	// short exemplars) that governs the AI chat loop and the review
+	// drafter. A non-empty value is stored verbatim; an empty string
+	// clears the override.
+	VoiceProfile *string `json:"voiceProfile,omitempty" validate:"omitempty,max=400"`
+}
+
 // UpdateVoiceToneRequest defines model for UpdateVoiceToneRequest.
 type UpdateVoiceToneRequest struct {
 	Tones *[]string `json:"tones,omitempty"`
@@ -1623,6 +1632,12 @@ type VersionMismatchResponse struct {
 
 // VersionMismatchResponseCode defines model for VersionMismatchResponse.Code.
 type VersionMismatchResponseCode string
+
+// VoiceProfileResponse defines model for VoiceProfileResponse.
+type VoiceProfileResponse struct {
+	// VoiceProfile Stored brand-voice profile; empty string when unset.
+	VoiceProfile string `json:"voiceProfile" validate:"required"`
+}
 
 // YandexCompaniesResponse defines model for YandexCompaniesResponse.
 type YandexCompaniesResponse struct {
@@ -1918,6 +1933,9 @@ type UpdateBusinessScheduleJSONRequestBody = UpdateScheduleRequest
 
 // UpdateBusinessToolApprovalsJSONRequestBody defines body for UpdateBusinessToolApprovals for application/json ContentType.
 type UpdateBusinessToolApprovalsJSONRequestBody = UpdateToolApprovalsRequest
+
+// UpdateBusinessVoiceProfileJSONRequestBody defines body for UpdateBusinessVoiceProfile for application/json ContentType.
+type UpdateBusinessVoiceProfileJSONRequestBody = UpdateVoiceProfileRequest
 
 // UpdateBusinessVoiceToneJSONRequestBody defines body for UpdateBusinessVoiceTone for application/json ContentType.
 type UpdateBusinessVoiceToneJSONRequestBody = UpdateVoiceToneRequest
