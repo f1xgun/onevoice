@@ -58,7 +58,7 @@ func TestConnectTelegram_TransportError_NoBotTokenLeak(t *testing.T) {
 
 	cfg := ConnectConfig{TelegramBotToken: botToken}
 	h := NewConnectHandler(
-		new(MockConnectIntegrationService), new(MockBusinessService), cfg, failingTelegramClient(),
+		new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, failingTelegramClient(),
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
@@ -89,7 +89,7 @@ func TestTelegramGetChat_TransportError_NoBotTokenLeak(t *testing.T) {
 
 	h := NewConnectHandler(
 		new(MockConnectIntegrationService), new(MockBusinessService),
-		ConnectConfig{TelegramBotToken: botToken}, failingTelegramClient(),
+		nil, ConnectConfig{TelegramBotToken: botToken}, failingTelegramClient(),
 	)
 
 	_, err := h.telegramGetChat(context.Background(), botToken, "@mychannel")

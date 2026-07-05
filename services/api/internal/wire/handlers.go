@@ -65,9 +65,17 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		oauthHandler.WithAgentTaskPublisher(svcs.AgentTaskPublisher)
 	}
 
+	var ownerLinkMinter connect.TelegramOwnerLinkMinter
+	if svcs.TelegramOwnerLink != nil {
+		// Assign only when non-nil so a nil *TelegramOwnerLinkService never becomes
+		// a non-nil interface with a nil concrete (the handler's nil check would
+		// then miss and Enabled() would panic).
+		ownerLinkMinter = svcs.TelegramOwnerLink
+	}
 	connectHandler := connect.NewConnectHandler(
 		svcs.Integration,
 		svcs.Business,
+		ownerLinkMinter,
 		connect.ConnectConfig{
 			TelegramBotToken: cfg.TelegramBotToken,
 			VKServiceKey:     cfg.VKServiceKey,

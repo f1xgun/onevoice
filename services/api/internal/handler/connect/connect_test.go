@@ -32,7 +32,7 @@ func TestConnectTelegram_ForensicMetadata(t *testing.T) {
 		Return(&domain.Integration{ID: uuid.New(), Platform: "telegram"}, nil)
 
 	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, tgServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
@@ -72,7 +72,7 @@ func TestConnectVKCommunity_ForensicMetadata(t *testing.T) {
 		Return(&domain.Integration{ID: uuid.New(), Platform: "vk", ExternalID: "236912172"}, nil)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, vkServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "vk1.a.PASTED_COMMUNITY_TOKEN"}`))

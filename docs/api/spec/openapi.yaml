@@ -132,6 +132,8 @@ paths:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1telegram~1connect
   /businesses/{id}/integrations/telegram/refresh:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1telegram~1refresh
+  /businesses/{id}/integrations/telegram/owner-link:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1telegram~1owner-link
   /businesses:
     $ref: paths/business.yaml#/~1businesses
   /businesses/{id}:
@@ -1291,6 +1293,21 @@ components:
       properties:
         channel_id:
           type: string
+    TelegramOwnerLinkResponse:
+      type: object
+      required:
+      - start_url
+      - expires_in_seconds
+      properties:
+        start_url:
+          type: string
+          description: >-
+            A one-time Telegram deep link the business admin opens or forwards to
+            the owner. Tapping it delivers "/start <token>" to the bot; the first
+            authentic tapper within the TTL becomes the verified owner. Single-use.
+        expires_in_seconds:
+          type: integer
+          description: Seconds until the deep link expires.
     RefreshTelegramResponse:
       type: object
       required:

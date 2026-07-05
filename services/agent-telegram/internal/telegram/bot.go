@@ -74,7 +74,7 @@ type Bot struct {
 // (api.telegram.org drops ~20% of TLS handshakes on some networks).
 func New(token string) (*Bot, error) {
 	var api *tgbotapi.BotAPI
-	err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
+	err := retryTransient(func() error {
 		var e error
 		api, e = tgbotapi.NewBotAPIWithClient(token, tgbotapi.APIEndpoint, telegramAPIClient)
 		return e
@@ -85,18 +85,19 @@ func New(token string) (*Bot, error) {
 	return &Bot{api: api, token: token}, nil
 }
 
-// retryTransient invokes fn up to `attempts` times, backing off exponentially
-// from `baseDelay`. Only network/TLS errors that are known to be safe to retry
-// are considered transient; anything else is returned immediately.
-func retryTransient(attempts int, baseDelay time.Duration, fn func() error) error {
+// retryTransient invokes fn up to defaultBotRetryAttempts times, backing off
+// exponentially from defaultBotRetryDelay. Only network/TLS errors that are known
+// to be safe to retry are considered transient; anything else is returned
+// immediately.
+func retryTransient(fn func() error) error {
 	var err error
-	for i := 0; i < attempts; i++ {
+	for i := 0; i < defaultBotRetryAttempts; i++ {
 		err = fn()
 		if err == nil || !isTransientBotError(err) {
 			return err
 		}
-		if i < attempts-1 {
-			time.Sleep(baseDelay << i)
+		if i < defaultBotRetryAttempts-1 {
+			time.Sleep(defaultBotRetryDelay << i)
 		}
 	}
 	return err
@@ -234,7 +235,7 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 	offset := 0
 	for {
 		var batch []tgbotapi.Update
-		err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
+		err := retryTransient(func() error {
 			var e error
 			batch, e = b.api.GetUpdates(tgbotapi.UpdateConfig{
 				Offset:         offset,
@@ -362,7 +363,7 @@ func (b *Bot) PollCallbacks(ctx context.Context, onCallback func(cq CallbackEven
 			return ctx.Err()
 		}
 		var batch []tgbotapi.Update
-		err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
+		err := retryTransient(func() error {
 			var e error
 			batch, e = b.api.GetUpdates(tgbotapi.UpdateConfig{
 				Offset:         offset,
@@ -403,6 +404,93 @@ func callbackChatID(cq *tgbotapi.CallbackQuery) int64 {
 		return cq.Message.Chat.ID
 	}
 	return 0
+}
+
+// StartEvent is the subset of a "/start <token>" message the owner-link
+// handshake needs. FromID is message.from.id — the tapper's user id, which
+// Telegram guarantees is authentic; the api-side consumer binds it as the
+// verified owner ONLY after the token validates. Token is the opaque deep-link
+// token; Username is the @handle for logging only (never used for auth).
+type StartEvent struct {
+	Token    string
+	FromID   int64
+	Username string
+}
+
+// PollStart long-polls GetUpdates for "/start <token>" message updates and
+// invokes onStart for each. It runs until ctx is canceled, then returns
+// ctx.Err(). Poll errors are logged and retried after a short backoff rather than
+// terminating the loop.
+//
+// Offset ownership (shares the message plane with the on-demand review poll):
+// the offset is advanced ONLY past a contiguous leading run of handled /start
+// commands and STOPS at the first non-/start message, so a review comment is
+// never confirmed/consumed here and stays available to GetReviews. A /start
+// message may be re-delivered before its offset advances; that is harmless —
+// the token's single-use consume makes a second bind a no-op.
+func (b *Bot) PollStart(ctx context.Context, onStart func(ev StartEvent)) error {
+	offset := 0
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		var batch []tgbotapi.Update
+		err := retryTransient(func() error {
+			var e error
+			batch, e = b.api.GetUpdates(tgbotapi.UpdateConfig{
+				Offset:         offset,
+				Timeout:        startPollTimeout,
+				AllowedUpdates: startUpdateTypes,
+			})
+			return e
+		})
+		if err != nil {
+			slog.Warn("telegram agent: start poll failed, retrying", "error", sanitizeTokenError(err, b.token))
+			if !sleepCtx(ctx, defaultBotRetryDelay) {
+				return ctx.Err()
+			}
+			continue
+		}
+		for i := range batch {
+			u := batch[i]
+			msg := u.Message
+			token, ok := parseStartToken(msg)
+			if !ok {
+				// A non-/start message (e.g. a review comment): stop advancing so
+				// it stays unconfirmed for GetReviews. Everything after it in this
+				// batch is left for the next poll too.
+				break
+			}
+			offset = u.UpdateID + 1
+			ev := StartEvent{Token: token, FromID: msg.From.ID}
+			ev.Username = msg.From.UserName
+			onStart(ev)
+		}
+	}
+}
+
+// parseStartToken extracts the deep-link token from a "/start <token>" message.
+// It returns (token,true) only for a well-formed private-chat start command with
+// exactly one non-empty argument; anything else — a plain message, a bare
+// /start, a group message, or a nil author — returns ("",false) so the caller
+// leaves it for the review plane and never binds off a malformed payload.
+func parseStartToken(msg *tgbotapi.Message) (string, bool) {
+	if msg == nil || msg.From == nil {
+		return "", false
+	}
+	text := strings.TrimSpace(msg.Text)
+	if !strings.HasPrefix(text, startCommandPrefix) {
+		return "", false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(text, startCommandPrefix))
+	if rest == "" {
+		return "", false
+	}
+	fields := strings.Fields(rest)
+	if len(fields) != 1 {
+		return "", false
+	}
+	return fields[0], true
 }
 
 // AnswerCallback acknowledges a callback_query so Telegram stops the button

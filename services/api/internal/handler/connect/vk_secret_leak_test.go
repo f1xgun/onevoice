@@ -53,7 +53,7 @@ func TestResolveVKGroupID_TransportError_NoServiceKeyLeak(t *testing.T) {
 
 	const serviceKey = "SUPER_SECRET_VK_SERVICE_KEY"
 	cfg := ConnectConfig{vkAPIBaseURL: srv.URL, VKServiceKey: serviceKey}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, srv.Client())
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, srv.Client())
 
 	// Non-numeric input forces the VK lookup (numeric ids short-circuit).
 	_, err := h.resolveVKGroupID(context.Background(), "onevoice")
@@ -73,7 +73,7 @@ func TestProbeVKCommunityToken_TransportError_NoTokenLeak(t *testing.T) {
 
 	const pastedToken = "vk1.a.SUPER_SECRET_COMMUNITY_TOKEN"
 	cfg := ConnectConfig{vkAPIBaseURL: srv.URL}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, srv.Client())
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, srv.Client())
 
 	_, _, err := h.probeVKCommunityToken(context.Background(), pastedToken, "")
 	if err == nil {
@@ -92,7 +92,7 @@ func TestResolveVKGroupID_ViaProbe_TransportError_NoServiceKeyLeak(t *testing.T)
 
 	const serviceKey = "SUPER_SECRET_VK_SERVICE_KEY"
 	cfg := ConnectConfig{vkAPIBaseURL: srv.URL, VKServiceKey: serviceKey}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, srv.Client())
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, srv.Client())
 
 	_, _, err := h.probeVKCommunityToken(context.Background(), "tok", "onevoice")
 	if err == nil {
@@ -111,7 +111,7 @@ func TestFetchVKCommunityName_TransportError_NoTokenLeak(t *testing.T) {
 
 	const decryptedToken = "vk1.a.DECRYPTED_COMMUNITY_TOKEN"
 	cfg := ConnectConfig{vkAPIBaseURL: srv.URL}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, srv.Client())
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, srv.Client())
 
 	_, err := h.fetchVKCommunityName(context.Background(), "236912172", decryptedToken)
 	if err == nil {

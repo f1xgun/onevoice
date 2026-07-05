@@ -109,7 +109,7 @@ func TestConnectVK_Paste_Success(t *testing.T) {
 	})).Return(&domain.Integration{ID: uuid.New(), Platform: "vk", ExternalID: "236912172"}, nil)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, vkServer.Client())
 
 	body := `{"access_token": "vk1.a.PASTED_COMMUNITY_TOKEN"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect", strings.NewReader(body))
@@ -139,7 +139,7 @@ func TestConnectVK_Paste_TokenWithoutWallScope_400(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, vkServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "tok"}`))
@@ -187,7 +187,7 @@ func TestConnectVK_Paste_TokenPermissionsRateLimited_StillConnects(t *testing.T)
 	})).Return(&domain.Integration{ID: uuid.New(), Platform: "vk", ExternalID: "236912172"}, nil)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, vkServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "vk1.a.PASTED_COMMUNITY_TOKEN"}`))
@@ -220,7 +220,7 @@ func TestConnectVK_Paste_VKAPIError_400(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, vkServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "broken"}`))
@@ -241,7 +241,7 @@ func TestConnectVK_Paste_EmptyToken_400(t *testing.T) {
 	userID := uuid.New()
 	mockBusiness := new(MockBusinessService)
 	mockIntegration := new(MockConnectIntegrationService)
-	h := NewConnectHandler(mockIntegration, mockBusiness, ConnectConfig{}, nil)
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "  "}`))
@@ -266,7 +266,7 @@ func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, vkServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, vkServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "tok"}`))
@@ -289,7 +289,7 @@ func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
 // fails to seed BusinessContext. Renamed from _Unauthorized — see
 // TestConnectTelegram_NoBusinessContext for rationale.
 func TestConnectVK_Paste_NoBusinessContext(t *testing.T) {
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "tok"}`))
@@ -308,7 +308,7 @@ func TestConnectVK_Paste_NoBusinessContext(t *testing.T) {
 func TestConnectVK_Paste_Forbidden(t *testing.T) {
 	businessID := uuid.New()
 	userID := uuid.New()
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "tok"}`))

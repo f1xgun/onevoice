@@ -57,13 +57,24 @@ type Services struct {
 	// wire.Handlers (needs the shared chat-turn Turn as resumer); nil when the
 	// HMAC secret is unset (plane disabled fail-closed).
 	TelegramApproval *service.TelegramApprovalConsumer
-	Searcher         *service.Searcher
-	ToolsCache       *service.ToolsRegistryCache
-	PlatformSync     *platform.Syncer
-	ReviewSyncer     *service.ReviewSyncer
-	Reconciler       *service.ReconciliationService
-	TaskHub          *taskhub.Hub
-	ObjectStorage    *storage.MinioClient
+
+	// TelegramOwnerLink mints the /start deep-link that binds a business's
+	// VERIFIED Telegram owner user id, replacing the previous user-supplied id.
+	// nil (Enabled() false) when TELEGRAM_BOT_USERNAME is unset — the mint
+	// endpoint then returns 404 and no bind path exists.
+	TelegramOwnerLink *service.TelegramOwnerLinkService
+
+	// TelegramOwnerLinkConsumer consumes the /start handshake plane and binds
+	// the authentic message.from.id as the verified owner. nil when the
+	// handshake is disabled (no bot username).
+	TelegramOwnerLinkConsumer *service.TelegramOwnerLinkConsumer
+	Searcher                  *service.Searcher
+	ToolsCache                *service.ToolsRegistryCache
+	PlatformSync              *platform.Syncer
+	ReviewSyncer              *service.ReviewSyncer
+	Reconciler                *service.ReconciliationService
+	TaskHub                   *taskhub.Hub
+	ObjectStorage             *storage.MinioClient
 
 	// OrchClient is the shared orchestrator HTTP client (chat / resume /
 	// internal tool registry). Timeout=0 — per-call ctx bounds the budget so
@@ -167,6 +178,10 @@ type Services struct {
 	// telegramApprovalUnsub releases the inbound approval-callback subscription.
 	// nil when the plane is not started (no NATS or no HMAC secret).
 	telegramApprovalUnsub func()
+
+	// telegramOwnerLinkUnsub releases the inbound /start handshake subscription.
+	// nil when the plane is not started (no NATS or no bot username).
+	telegramOwnerLinkUnsub func()
 }
 
 // Close stops background goroutines (review syncer ticker). Safe to call
@@ -193,6 +208,9 @@ func (s *Services) Close() {
 	if s.telegramApprovalUnsub != nil {
 		s.telegramApprovalUnsub()
 	}
+	if s.telegramOwnerLinkUnsub != nil {
+		s.telegramOwnerLinkUnsub()
+	}
 }
 
 // StartTelegramApproval subscribes the inbound approval-callback consumer on nc.
@@ -211,6 +229,24 @@ func (s *Services) StartTelegramApproval(log *slog.Logger, nc *natslib.Conn) {
 	}
 	s.telegramApprovalUnsub = unsub
 	log.Info("telegram approval callback consumer started", "subject", a2a.TelegramApprovalCallbackSubject)
+}
+
+// StartTelegramOwnerLink subscribes the inbound /start owner-link handshake
+// consumer on nc. Idempotent no-op when the consumer is nil (handshake disabled)
+// or nc is nil (no NATS). Subscribe itself refuses to attach when the bot
+// username is unset, so an unconfigured deployment never opens a bind path. The
+// subscription is released on Services.Close.
+func (s *Services) StartTelegramOwnerLink(log *slog.Logger, nc *natslib.Conn) {
+	if s == nil || s.TelegramOwnerLinkConsumer == nil || nc == nil {
+		return
+	}
+	unsub, err := s.TelegramOwnerLinkConsumer.Subscribe(nc)
+	if err != nil {
+		log.Warn("telegram owner-link plane not started", "error", err)
+		return
+	}
+	s.telegramOwnerLinkUnsub = unsub
+	log.Info("telegram owner-link handshake consumer started", "subject", a2a.TelegramOwnerLinkSubject)
 }
 
 // StartReviewSyncer starts the background review-syncer ticker. Idempotent
@@ -571,6 +607,14 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	} else {
 		s.SmartCaptcha = service.NewNoopSmartCaptcha()
 		log.Warn("smartcaptcha: disabled (no SMARTCAPTCHA_SECRET_KEY) — captcha tier will not gate logins")
+	}
+
+	s.TelegramOwnerLink = service.NewTelegramOwnerLinkService(repos.TelegramOwnerLinkToken, s.Integration, cfg.TelegramBotUsername)
+	if s.TelegramOwnerLink.Enabled() {
+		s.TelegramOwnerLinkConsumer = service.NewTelegramOwnerLinkConsumer(s.TelegramOwnerLink)
+		log.Info("telegram owner-link handshake enabled", "bot_username", cfg.TelegramBotUsername)
+	} else {
+		log.Warn("telegram owner-link handshake disabled (no TELEGRAM_BOT_USERNAME) — mint endpoint returns 404")
 	}
 
 	return s, nil

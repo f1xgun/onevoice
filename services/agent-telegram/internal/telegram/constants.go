@@ -42,3 +42,23 @@ var callbackUpdateTypes = []string{"callback_query"}
 // until an update arrives or the window elapses, so the loop does not busy-spin;
 // it stays under the botAPITimeout HTTP deadline so the round-trip cannot wedge.
 const callbackPollTimeout = 25
+
+// startUpdateTypes restricts the /start owner-link handshake long-poll to
+// message updates (the plane a "/start <token>" DM arrives on). It OVERLAPS
+// allowedUpdateTypes because a review comment also arrives as "message"; the
+// on-demand review poll (GetReviews) and this continuous /start poll therefore
+// share the message plane. To avoid consuming a review comment, PollStart
+// advances the getUpdates offset ONLY past a contiguous prefix of handled
+// /start-command updates and STOPS at the first non-/start message, leaving that
+// message (and everything after it) unconfirmed for GetReviews. A /start message
+// re-delivered before its offset advances is deduped downstream by the token's
+// single-use consume, so at-least-once delivery here is safe.
+var startUpdateTypes = []string{"message"}
+
+// startPollTimeout mirrors callbackPollTimeout: a bounded long-poll held below
+// the botAPITimeout HTTP deadline so the round-trip cannot wedge.
+const startPollTimeout = 25
+
+// startCommandPrefix is the exact command token that opens a deep-link session.
+// Telegram delivers "?start=<token>" as the message text "/start <token>".
+const startCommandPrefix = "/start"

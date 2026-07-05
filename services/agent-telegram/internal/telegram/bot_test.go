@@ -492,3 +492,178 @@ func atoiSafe(s string) int {
 	}
 	return n
 }
+
+// TestStartPoll_AllowedUpdatesIsMessagePlane pins the /start poller to the
+// message plane and documents the deliberate overlap with the review poll.
+func TestStartPoll_AllowedUpdatesIsMessagePlane(t *testing.T) {
+	assert.Equal(t, []string{"message"}, startUpdateTypes,
+		"start poll must request only message updates")
+	assert.NotContains(t, startUpdateTypes, "callback_query",
+		"the /start plane must never pull callback_query (that is the approval plane)")
+}
+
+// TestParseStartToken covers the strict /start parse: only a well-formed
+// "/start <token>" DM with exactly one argument and a non-nil author yields a
+// token; everything else is left for the review plane.
+func TestParseStartToken(t *testing.T) {
+	from := &tgbotapi.User{ID: 123, UserName: "u"}
+	cases := []struct {
+		name    string
+		msg     *tgbotapi.Message
+		wantTok string
+		wantOK  bool
+	}{
+		{"valid", &tgbotapi.Message{From: from, Text: "/start abcDEF-_123"}, "abcDEF-_123", true},
+		{"valid_extra_space", &tgbotapi.Message{From: from, Text: "  /start   tok123  "}, "tok123", true},
+		{"bare_start", &tgbotapi.Message{From: from, Text: "/start"}, "", false},
+		{"two_args", &tgbotapi.Message{From: from, Text: "/start a b"}, "", false},
+		{"plain_message", &tgbotapi.Message{From: from, Text: "hello there"}, "", false},
+		{"nil_author", &tgbotapi.Message{Text: "/start tok"}, "", false},
+		{"nil_message", nil, "", false},
+		{"not_start_command", &tgbotapi.Message{From: from, Text: "/startx tok"}, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tok, ok := parseStartToken(tc.msg)
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.wantTok, tok)
+		})
+	}
+}
+
+// TestPollStart_CapturesTokenAndAuthenticFromID proves the /start poller
+// surfaces (token, from.id int64, username) for a "/start <token>" DM, advances
+// the offset past it, and returns on ctx cancel.
+func TestPollStart_CapturesTokenAndAuthenticFromID(t *testing.T) {
+	var mu sync.Mutex
+	var offsets []int
+	var allowed []string
+	served := false
+
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		mu.Lock()
+		offsets = append(offsets, atoiSafe(r.FormValue("offset")))
+		if a := r.FormValue("allowed_updates"); a != "" {
+			allowed = append(allowed, a)
+		}
+		first := !served
+		served = true
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		if first {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"result": []map[string]interface{}{{
+					"update_id": 200,
+					"message": map[string]interface{}{
+						"message_id": 1,
+						"from":       map[string]interface{}{"id": 9007199254740993, "is_bot": false, "first_name": "Owner", "username": "owner_h"},
+						"chat":       map[string]interface{}{"id": 9007199254740993, "type": "private"},
+						"text":       "/start deep-link-token-xyz",
+					},
+				}},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "result": []interface{}{}})
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	got := make(chan StartEvent, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- bot.PollStart(ctx, func(ev StartEvent) {
+			select {
+			case got <- ev:
+			default:
+			}
+		})
+	}()
+
+	select {
+	case ev := <-got:
+		assert.Equal(t, "deep-link-token-xyz", ev.Token)
+		assert.Equal(t, int64(9007199254740993), ev.FromID, "from.id must be captured int64-exact past float64 precision")
+		assert.Equal(t, "owner_h", ev.Username)
+	case <-time.After(3 * time.Second):
+		t.Fatal("PollStart did not deliver the /start within the deadline")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(3 * time.Second):
+		t.Fatal("PollStart did not return after ctx cancel")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, allowed)
+	assert.Contains(t, allowed[0], "message", "start poller must request message updates")
+	assert.NotContains(t, allowed[0], "callback_query", "start poller must not request callback_query")
+	require.GreaterOrEqual(t, len(offsets), 2)
+	assert.Equal(t, 0, offsets[0], "first poll starts at offset 0")
+	assert.Equal(t, 201, offsets[1], "offset must advance past the delivered /start update_id 200")
+}
+
+// TestPollStart_ReviewMessageLeavesOffsetUnadvanced proves the /start poller does
+// NOT consume a plain (review) message: it stops advancing the offset at the
+// first non-/start message, leaving it unconfirmed for GetReviews. It never
+// surfaces a StartEvent for a plain message.
+func TestPollStart_ReviewMessageLeavesOffsetUnadvanced(t *testing.T) {
+	var mu sync.Mutex
+	var offsets []int
+
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		mu.Lock()
+		offsets = append(offsets, atoiSafe(r.FormValue("offset")))
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		// Always return a plain (non-/start) review-comment message.
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok": true,
+			"result": []map[string]interface{}{{
+				"update_id": 300,
+				"message": map[string]interface{}{
+					"message_id": 1,
+					"from":       map[string]interface{}{"id": 42, "is_bot": false, "first_name": "Commenter"},
+					"chat":       map[string]interface{}{"id": -100, "type": "supergroup"},
+					"text":       "great service!",
+				},
+			}},
+		})
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+
+	var starts int
+	var smu sync.Mutex
+	_ = bot.PollStart(ctx, func(StartEvent) {
+		smu.Lock()
+		starts++
+		smu.Unlock()
+	})
+
+	smu.Lock()
+	assert.Equal(t, 0, starts, "a plain review message must never surface as a /start event")
+	smu.Unlock()
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, offsets)
+	for i, off := range offsets {
+		assert.Equal(t, 0, off, "poll %d: offset must stay at 0 so the review message is never confirmed/consumed", i)
+	}
+}

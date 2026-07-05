@@ -13,3 +13,10 @@ import (
 func (c *TelegramApprovalConsumer) HandleForTest(ctx context.Context, cb a2a.TelegramApprovalCallback) error {
 	return c.handle(ctx, cb)
 }
+
+// HandleForTest exposes the unexported /start owner-link bind core so the
+// external service_test package can drive it without a live NATS subscription.
+// Test-only.
+func (c *TelegramOwnerLinkConsumer) HandleForTest(ctx context.Context, link a2a.TelegramOwnerLink) error {
+	return c.handle(ctx, link)
+}

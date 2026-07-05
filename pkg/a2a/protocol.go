@@ -43,6 +43,30 @@ type TelegramApprovalCallback struct {
 	ChatID          int64  `json:"chat_id,omitempty"`
 }
 
+// TelegramOwnerLinkSubject is the NATS subject the Telegram agent PUBLISHES a
+// captured "/start <token>" deep-link handshake to, and the API CONSUMES. Like
+// TelegramApprovalCallbackSubject it is a fire-and-forget inbound plane: the
+// agent surfaces the authentic tapper's message.from.id alongside the one-time
+// token, and the api-side consumer validates the token (exists, not expired, not
+// already used) before binding that from.id as the VERIFIED owner
+// telegram_user_id. Nothing published here is trusted as authorization: the token
+// is single-use + business-bound and the bound owner id is exactly from.id.
+const TelegramOwnerLinkSubject = "hitl.owner_link.telegram"
+
+// TelegramOwnerLink is the payload the Telegram agent publishes on
+// TelegramOwnerLinkSubject after seeing "/start <token>" in a message update.
+// Token is the crypto-random one-time token minted by the api (opaque to the
+// agent); FromID is Telegram's guaranteed-authentic message.from.id (int64 —
+// serialized as a JSON integer, NOT float64, so a large id round-trips exactly);
+// Username is the tapper's @handle for logging only (never used for auth). The
+// api consumer binds FromID only after the token validates against the mint
+// store, and only onto the business the token was minted for.
+type TelegramOwnerLink struct {
+	Token    string `json:"token"`
+	FromID   int64  `json:"from_id"`
+	Username string `json:"username,omitempty"`
+}
+
 // ToolRequest is sent from the orchestrator to an agent over NATS.
 type ToolRequest struct {
 	TaskID     string                 `json:"task_id"`

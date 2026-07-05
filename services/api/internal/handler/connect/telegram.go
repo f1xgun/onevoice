@@ -342,6 +342,52 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusCreated, integration)
 }
 
+// ownerLinkTTLSeconds mirrors service.ownerLinkTokenTTL for the response's
+// expires_in_seconds field. Kept as a literal here (the handler package does not
+// import the service TTL const) — both are 10 minutes; a change to one must
+// change the other.
+const ownerLinkTTLSeconds = 600
+
+// StartTelegramOwnerLink mints a one-time /start deep link that binds the
+// business's VERIFIED Telegram owner user-id. Authz mirrors ConnectTelegram
+// exactly: an authenticated admin of THIS business with PermIntegrationsConnect;
+// the business id comes from BusinessContext, never request input. The returned
+// start_url is rendered by the FE for the admin to open or forward — the FIRST
+// authentic tapper within the short TTL becomes the bound owner (documented
+// first-tapper-wins residual, mitigated by admin-only mint + short TTL +
+// single-use). Fail-closed: when the handshake is unconfigured (no bot username)
+// this returns 404 rather than minting a dead link.
+func (h *ConnectHandler) StartTelegramOwnerLink(w http.ResponseWriter, r *http.Request) {
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "StartTelegramOwnerLink: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	if h.ownerLink == nil || !h.ownerLink.Enabled() {
+		writeJSONError(w, http.StatusNotFound, "owner-link handshake is not configured")
+		return
+	}
+
+	startURL, err := h.ownerLink.Mint(r.Context(), bc.BusinessID)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "StartTelegramOwnerLink: mint failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to create owner link")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, openapi.TelegramOwnerLinkResponse{
+		StartUrl:         startURL,
+		ExpiresInSeconds: ownerLinkTTLSeconds,
+	})
+}
+
 // RefreshTelegramLinkedGroup re-probes a Telegram channel's linked
 // discussion group and updates integration metadata with the latest
 // linked_chat_id and linked_group_status. Used after the user invites

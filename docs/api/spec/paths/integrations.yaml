@@ -293,3 +293,38 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/telegram/owner-link:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: startTelegramOwnerLink
+    summary: >-
+      Mint a one-time Telegram deep link that binds the verified owner user id
+      via a /start handshake.
+    tags:
+    - integrations
+    responses:
+      '200':
+        description: One-time deep link minted.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/TelegramOwnerLinkResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Owner-link handshake is not configured.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

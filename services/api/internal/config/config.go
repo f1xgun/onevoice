@@ -113,6 +113,14 @@ type Config struct {
 	// subscribe, so absence never exposes an unvalidated off-app approval path.
 	TelegramApprovalHMACSecret string
 
+	// TelegramBotUsername is the @-less username of the system bot (e.g.
+	// "onevoice_bot"). It is used only to render the /start owner-link deep link
+	// https://t.me/<username>?start=<token>. Empty disables the owner-link
+	// handshake fail-closed: the mint endpoint returns 404 and the bind consumer
+	// refuses to subscribe. Read from config rather than a getMe call so the hot
+	// mint path never makes a runtime Bot API request.
+	TelegramBotUsername string
+
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRedirectURI  string
@@ -331,6 +339,7 @@ func Load() (*Config, error) {
 		YandexRedirectURI:          getEnv("YANDEX_REDIRECT_URI", defaultYandexRedirectURI),
 		TelegramBotToken:           os.Getenv("TELEGRAM_BOT_TOKEN"),
 		TelegramApprovalHMACSecret: os.Getenv("TELEGRAM_APPROVAL_HMAC_SECRET"),
+		TelegramBotUsername:        os.Getenv("TELEGRAM_BOT_USERNAME"),
 		GoogleClientID:             os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:         os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleRedirectURI:          getEnv("GOOGLE_REDIRECT_URI", defaultGoogleRedirectURI),

@@ -54,7 +54,9 @@ func run() error {
 				return nil, fmt.Errorf("revoke subscriber: %w", err)
 			}
 			stopPoller := startCallbackPoller(nc)
+			stopStartPoller := startOwnerLinkPoller(nc)
 			return func() {
+				stopStartPoller()
 				stopPoller()
 				_ = revokeSub.Close()
 			}, nil
@@ -97,6 +99,64 @@ func startCallbackPoller(nc *natslib.Conn) func() {
 	return func() {
 		cancel()
 		<-done
+	}
+}
+
+// startOwnerLinkPoller launches the /start deep-link handshake poller in a
+// background goroutine and returns a stop func. It uses the same OneVoice SYSTEM
+// bot as the callback poller and long-polls the message plane for
+// "/start <token>" DMs, publishing each authentic (token, from.id, username) on
+// a2a.TelegramOwnerLinkSubject for the api consumer to validate + bind. When
+// TELEGRAM_BOT_TOKEN is unset the poller is disabled with a warning. Binding is
+// gated api-side: the consumer refuses to subscribe unless TELEGRAM_BOT_USERNAME
+// is set, so a publish here is inert until the handshake is configured.
+func startOwnerLinkPoller(nc *natslib.Conn) func() {
+	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if botToken == "" {
+		slog.Warn("telegram agent: TELEGRAM_BOT_TOKEN unset — owner-link /start poller disabled")
+		return func() {}
+	}
+	bot, err := telegram.New(botToken)
+	if err != nil {
+		slog.Error("telegram agent: failed to init system bot for owner-link /start poller — plane disabled", "error", err)
+		return func() {}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pollErr := bot.PollStart(ctx, func(ev telegram.StartEvent) {
+			publishOwnerLink(nc, ev)
+		})
+		if pollErr != nil && ctx.Err() == nil {
+			slog.Error("telegram agent: owner-link /start poller exited", "error", pollErr)
+		}
+	}()
+	slog.Info("telegram agent: owner-link /start poller started")
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+// publishOwnerLink publishes a captured "/start <token>" handshake for the api
+// consumer. from.id is Telegram-guaranteed authentic; the api consumer binds it
+// only after the token validates (single-use, unexpired, business-bound). A
+// publish failure is logged, not retried — the token is single-use and the owner
+// can tap the still-valid link again within its TTL.
+func publishOwnerLink(nc *natslib.Conn, ev telegram.StartEvent) {
+	payload, err := json.Marshal(a2a.TelegramOwnerLink{
+		Token:    ev.Token,
+		FromID:   ev.FromID,
+		Username: ev.Username,
+	})
+	if err != nil {
+		slog.Error("telegram agent: failed to marshal owner-link handshake", "error", err)
+		return
+	}
+	if err := nc.Publish(a2a.TelegramOwnerLinkSubject, payload); err != nil {
+		slog.Warn("telegram agent: failed to publish owner-link handshake", "error", err)
 	}
 }
 
