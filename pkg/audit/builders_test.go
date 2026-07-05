@@ -403,3 +403,30 @@ func TestLogIntegrationDeleted_FireAndForget(t *testing.T) {
 	require.Equal(t, "vk", d.Platform)
 	require.Equal(t, "club123", d.ExternalID)
 }
+
+func TestLogReviewAutoReplied_AutomatedNoActor_NonPII(t *testing.T) {
+	c := &captureLogger{}
+	biz := uuid.New()
+	LogReviewAutoReplied(context.Background(), c, biz, "telegram", "telegram__reply_to_comment", "chat-123_456")
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.Equal(t, 0, c.syncCalls, "auto-reply audit must be fire-and-forget, not sync")
+	require.Equal(t, ActionReviewAutoReplied, c.last.Action)
+	require.Equal(t, "review", c.last.Resource)
+	require.NotNil(t, c.last.BusinessID)
+	require.Equal(t, biz, *c.last.BusinessID)
+	require.Nil(t, c.last.UserID, "auto-reply is an automated system action with no user actor")
+
+	var d RPAMutationDetails
+	require.NoError(t, json.Unmarshal(c.last.Details, &d))
+	require.Equal(t, "telegram__reply_to_comment", d.Tool)
+	require.Equal(t, "telegram", d.Platform)
+	require.Equal(t, "chat-123_456", d.Target)
+
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(c.last.Details, &raw))
+	for k := range raw {
+		require.NotContains(t, []string{"text", "author", "author_name", "reply", "reply_text"}, k,
+			"auto-reply audit details must not carry review/author/reply PII, found %q", k)
+	}
+}

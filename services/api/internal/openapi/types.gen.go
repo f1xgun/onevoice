@@ -44,6 +44,7 @@ const (
 	RbacRoleDeleted              AuditAction = "rbac.role_deleted"
 	RbacRoleGranted              AuditAction = "rbac.role_granted"
 	RbacRoleUpdated              AuditAction = "rbac.role_updated"
+	ReviewAutoReplied            AuditAction = "review.auto_replied"
 )
 
 // Defines values for AuditEventActionCategory.
@@ -54,6 +55,7 @@ const (
 	AuditEventActionCategoryOther       AuditEventActionCategory = "other"
 	AuditEventActionCategoryProject     AuditEventActionCategory = "project"
 	AuditEventActionCategoryRbac        AuditEventActionCategory = "rbac"
+	AuditEventActionCategoryReview      AuditEventActionCategory = "review"
 )
 
 // Defines values for ChatHistoryEntryRole.
@@ -392,7 +394,7 @@ type AuditAction string
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
 	Action           AuditAction              `json:"action"`
-	ActionCategory   AuditEventActionCategory `json:"action_category" validate:"required,oneof=rbac auth integration business project other"`
+	ActionCategory   AuditEventActionCategory `json:"action_category" validate:"required,oneof=rbac auth integration business project review other"`
 	ActorDisplayName *string                  `json:"actor_display_name"`
 	ActorEmail       *openapi_types.Email     `json:"actor_email" validate:"omitempty,email"`
 	ActorId          *openapi_types.UUID      `json:"actor_id" validate:"omitempty,uuid"`
@@ -1216,6 +1218,16 @@ type ReviewDraftStatus string
 // ReviewReplyStatus defines model for Review.ReplyStatus.
 type ReviewReplyStatus string
 
+// ReviewAutopilotResponse defines model for ReviewAutopilotResponse.
+type ReviewAutopilotResponse struct {
+	// Enabled Whether the review-reply autopilot is enabled (default false).
+	Enabled bool `json:"enabled" validate:"required"`
+
+	// MinRating The minimum star rating that may be auto-published (default 4 when
+	// unset; always at least 4).
+	MinRating int `json:"minRating" validate:"required"`
+}
+
 // ReviewListResponse defines model for ReviewListResponse.
 type ReviewListResponse struct {
 	Reviews []Review `json:"reviews" validate:"required"`
@@ -1573,6 +1585,20 @@ type UpdatePreferredLocaleRequestLocale string
 // UpdateProfileRequest defines model for UpdateProfileRequest.
 type UpdateProfileRequest struct {
 	Name string `json:"name" validate:"required,min=2,max=100"`
+}
+
+// UpdateReviewAutopilotRequest defines model for UpdateReviewAutopilotRequest.
+type UpdateReviewAutopilotRequest struct {
+	// Enabled Opt-in switch for the review-reply autopilot. When true, a positive
+	// drafted reply on a direct-API platform (Telegram/VK) is auto-published;
+	// Yandex.Business, negative, and needs_review replies always stay pending
+	// for manual approval. Absent is treated as false (disabled).
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// MinRating The minimum star rating that may be auto-published. Bounded to the
+	// positive range so the floor can only be raised (e.g. 5-star-only) and
+	// can never be lowered to auto-publish a negative or neutral review.
+	MinRating int `json:"minRating" validate:"required,min=4,max=5"`
 }
 
 // UpdateRoleRequest defines model for UpdateRoleRequest.
@@ -1966,6 +1992,9 @@ type CreateProjectJSONRequestBody = ProjectRequest
 
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = ProjectRequest
+
+// UpdateBusinessReviewAutopilotJSONRequestBody defines body for UpdateBusinessReviewAutopilot for application/json ContentType.
+type UpdateBusinessReviewAutopilotJSONRequestBody = UpdateReviewAutopilotRequest
 
 // ReplyToReviewJSONRequestBody defines body for ReplyToReview for application/json ContentType.
 type ReplyToReviewJSONRequestBody = ReplyToReviewRequest

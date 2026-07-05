@@ -642,3 +642,21 @@ func LogRPAMutation(ctx context.Context, l Logger, action string, businessID uui
 		Details:    mustMarshal(RPAMutationDetails{Tool: tool, Platform: platform, Target: target}),
 	})
 }
+
+// ---- review builders ----------------------------------------------------
+
+// LogReviewAutoReplied records the review-reply autopilot auto-publishing a
+// positive drafted reply on a direct-API platform. UserID is intentionally nil:
+// no user drove the individual reply, so the event is attributable to businessID
+// alone (an automated system action). tool is the canonical reply tool, platform
+// the listing provider, and target the review's non-PII external id. Details
+// carry no review text, author name, or reply body. Fire-and-forget.
+func LogReviewAutoReplied(ctx context.Context, l Logger, businessID uuid.UUID, platform, tool, target string) {
+	l.Log(ctx, Entry{
+		Action:     ActionReviewAutoReplied,
+		Resource:   "review",
+		BusinessID: &businessID,
+		UserID:     nil,
+		Details:    mustMarshal(RPAMutationDetails{Tool: tool, Platform: platform, Target: target}),
+	})
+}

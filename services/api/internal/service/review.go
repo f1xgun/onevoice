@@ -74,6 +74,11 @@ type reviewService struct {
 // Compile-time check that reviewService implements ReviewService
 var _ ReviewService = (*reviewService)(nil)
 
+// Compile-time check that reviewService satisfies the narrow AutoPublisher the
+// review-reply autopilot dispatches through (Reply reuses the idempotent
+// dispatch-key path + tenant + soft-delete gates).
+var _ AutoPublisher = (*reviewService)(nil)
+
 // NewReviewService creates a new review service instance. nc may be nil — in
 // that mode Reply only updates Mongo and never reaches out to platform agents
 // (preserves the historical behavior for environments without NATS).

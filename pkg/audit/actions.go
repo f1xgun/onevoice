@@ -103,6 +103,15 @@ const (
 	ActionRPAHoursUpdated   = "rpa.hours_updated"
 )
 
+// review.* — review-reply automation. ActionReviewAutoReplied records an
+// opt-in autopilot auto-publishing a positive drafted reply on a direct-API
+// platform (Telegram/VK; Yandex.Business is excluded from the autopilot). It is
+// a system event: no user actor drove the individual reply, so UserID is nil and
+// the row is attributable to the business. Details carry only non-PII operational
+// metadata (tool, platform, target external id) — never the review text, author
+// name, or the reply body.
+const ActionReviewAutoReplied = "review.auto_replied"
+
 // ActionCategory returns the closed-set category for an action string.
 // Unknown prefixes return "other" to bound metric label cardinality.
 func ActionCategory(action string) string {
@@ -110,7 +119,7 @@ func ActionCategory(action string) string {
 		if action[i] == '.' {
 			cat := action[:i]
 			switch cat {
-			case "rbac", "auth", "integration", "business", "project", "account", "rpa":
+			case "rbac", "auth", "integration", "business", "project", "account", "rpa", "review":
 				return cat
 			default:
 				return "other"

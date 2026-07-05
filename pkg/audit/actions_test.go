@@ -50,11 +50,12 @@ func TestActionConstants(t *testing.T) {
 		"project.updated":                           ActionProjectUpdated,
 		"project.deleted":                           ActionProjectDeleted,
 		"rpa.scope_violation":                       ActionRPAScopeViolation,
+		"review.auto_replied":                       ActionReviewAutoReplied,
 	}
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 42, "expected 42 audit actions (base + password reset + email verify + account deletion + consent + integration sec hardening + integration mutation audit + rpa scope gate)")
+	require.Len(t, tests, 43, "expected 43 audit actions (base + password reset + email verify + account deletion + consent + integration sec hardening + integration mutation audit + rpa scope gate + review autopilot)")
 }
 
 func TestActionCategory(t *testing.T) {
@@ -74,6 +75,7 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "account", ActionCategory(ActionSoleOwnerBlocked))
 	require.Equal(t, "account", ActionCategory(ActionUserSelfDeleted))
 	require.Equal(t, "rpa", ActionCategory(ActionRPAScopeViolation))
+	require.Equal(t, "review", ActionCategory(ActionReviewAutoReplied))
 	require.Equal(t, "other", ActionCategory("unknown.thing"))
 	require.Equal(t, "other", ActionCategory("no_dot"))
 	require.Equal(t, "other", ActionCategory(""))

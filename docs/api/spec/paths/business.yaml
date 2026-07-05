@@ -609,3 +609,89 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+
+/businesses/{id}/review-autopilot:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getBusinessReviewAutopilot
+    summary: Return the per-business review-reply autopilot config.
+    description: |
+      Returns the stored review-reply autopilot configuration. When unset the
+      response is the default-off state (enabled=false, minRating=4).
+    tags:
+    - business
+    responses:
+      '200':
+        description: Stored review-reply autopilot config.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ReviewAutopilotResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateBusinessReviewAutopilot
+    summary: Set the per-business review-reply autopilot config.
+    description: |
+      Enables or disables the opt-in review-reply autopilot and sets the minimum
+      star rating that may be auto-published. Auto-publish is positive-only and
+      excludes Yandex.Business; negative and needs_review replies always stay
+      pending for manual approval. minRating is bounded to [4..5] so the positive
+      floor can only be raised. The config is automation-only and is not synced to
+      any connected platform.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateReviewAutopilotRequest
+    responses:
+      '200':
+        description: Updated business with the new autopilot config in settings.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Malformed body or minRating out of range.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
