@@ -12,6 +12,7 @@ import { ProjectPickerChip } from './ProjectPickerChip';
 import { ConnectChannelHint, shouldPromptConnectChannel } from './ConnectChannelHint';
 import { GettingStartedChecklist } from '@/components/onboarding/GettingStartedChecklist';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
+import { GuidedCompose } from '@/components/onboarding/GuidedCompose';
 import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
@@ -208,19 +209,25 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             {showConnectHint ? (
               <ConnectChannelHint />
             ) : (
-              <div className="flex flex-wrap justify-center gap-2">
-                {quickActions.map((action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    onClick={() => sendMessage(action)}
-                    disabled={composerDisabled}
-                    className="rounded-full border border-line bg-paper-raised px-4 py-2 text-sm text-ink-mid transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {action}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {quickActions.map((action) => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => sendMessage(action)}
+                      disabled={composerDisabled}
+                      className="rounded-full border border-line bg-paper-raised px-4 py-2 text-sm text-ink-mid transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {action}
+                    </button>
+                  ))}
+                </div>
+                {/* Guided compose seeds a templated instruction into the SAME
+                    sendMessage path the chips use; the model drafts and its
+                    publish tool call surfaces the existing ToolApprovalCard. */}
+                <GuidedCompose onCompose={sendMessage} disabled={composerDisabled} />
+              </>
             )}
             <SectionHelp section="chat" className="w-full max-w-md" />
           </div>
