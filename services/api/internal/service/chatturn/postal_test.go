@@ -106,6 +106,7 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 		"Отправить пост",
 		"tools.telegram.send_channel_post.name",
 		map[string]interface{}{"text": "hi"},
+		"",
 		idMap,
 	)
 
@@ -117,6 +118,32 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 	assert.Equal(t, "telegram", got.Platform)
 	assert.Equal(t, "send_channel_post", got.Type)
 	assert.Equal(t, "running", got.Status)
+}
+
+// TestOnToolCall_PersistsDispatchApprovalID verifies the original approved
+// dispatch key ("<batch_id>-<call_id>") is stamped onto the created agent_tasks
+// document, so a later retry reads it and dedupes an already-landed call instead
+// of re-executing it. Reverting the DispatchApprovalID stamp fails this test.
+func TestOnToolCall_PersistsDispatchApprovalID(t *testing.T) {
+	repo := &fakeAgentTaskRepo{}
+	turn := newTurnForPostalTest(repo)
+
+	idMap := map[string]string{}
+	turn.onToolCall(
+		context.Background(),
+		"biz-1",
+		"call-1",
+		tools.TelegramSendChannelPost,
+		"Отправить пост",
+		"tools.telegram.send_channel_post.name",
+		map[string]interface{}{"text": "hi"},
+		"batch-9-call-1",
+		idMap,
+	)
+
+	require.Len(t, repo.created, 1)
+	assert.Equal(t, "batch-9-call-1", repo.created[0].DispatchApprovalID,
+		"the original dispatch key must reach the persisted agent_tasks document")
 }
 
 // TestOnToolCall_EmptyDisplayNameKey_BackwardCompat — orchestrators predating
@@ -134,6 +161,7 @@ func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
 		"Отправить пост",
 		"",
 		map[string]interface{}{"text": "hi"},
+		"",
 		idMap,
 	)
 
@@ -327,6 +355,7 @@ func TestOnToolCall_InternalToolSkipped(t *testing.T) {
 		"Внутренний инструмент",
 		"tools.internal.get_business_info.name",
 		nil,
+		"",
 		idMap,
 	)
 
@@ -532,9 +561,10 @@ type reconcilingReviewRepo struct {
 }
 
 type updateReplyCall struct {
-	id     string
-	text   string
-	status string
+	id         string
+	text       string
+	status     string
+	approvalID string
 }
 
 func (r *reconcilingReviewRepo) GetByExternalID(_ context.Context, businessID, platform, externalID string) (*domain.Review, error) {
@@ -548,8 +578,8 @@ func (r *reconcilingReviewRepo) GetByExternalID(_ context.Context, businessID, p
 	return nil, domain.ErrReviewNotFound
 }
 
-func (r *reconcilingReviewRepo) UpdateReply(_ context.Context, id, replyText, replyStatus string) error {
-	r.updateCalls = append(r.updateCalls, updateReplyCall{id: id, text: replyText, status: replyStatus})
+func (r *reconcilingReviewRepo) UpdateReplyDispatched(_ context.Context, id, replyText, replyStatus, dispatchApprovalID string) error {
+	r.updateCalls = append(r.updateCalls, updateReplyCall{id: id, text: replyText, status: replyStatus, approvalID: dispatchApprovalID})
 	return nil
 }
 
@@ -571,9 +601,10 @@ func TestReconcileReviewReplies_FlipsStatusOnSuccessfulYandexReply(t *testing.T)
 	turn := &Turn{deps: Deps{Reviews: repo}}
 
 	toolCalls := []domain.ToolCall{{
-		ID:        "c1",
-		Name:      tools.YandexBusinessReplyReview,
-		Arguments: map[string]interface{}{"review_id": "yreview-77", "text": "Спасибо за отзыв!"},
+		ID:         "c1",
+		Name:       tools.YandexBusinessReplyReview,
+		Arguments:  map[string]interface{}{"review_id": "yreview-77", "text": "Спасибо за отзыв!"},
+		ApprovalID: "batch-7-c1",
 	}}
 	toolResults := []domain.ToolResult{{ToolCallID: "c1"}}
 
@@ -585,6 +616,8 @@ func TestReconcileReviewReplies_FlipsStatusOnSuccessfulYandexReply(t *testing.T)
 	assert.Equal(t, domain.ReviewReplyStatusReplied, got.status,
 		"chat reply must flip the stored review to replied so the manual guard fires")
 	assert.Equal(t, "Спасибо за отзыв!", got.text, "reconcile must persist the reply text the LLM posted")
+	assert.Equal(t, "batch-7-c1", got.approvalID,
+		"reconcile must persist the original dispatch key so a manual retry dedupes the already-posted reply")
 	assert.Equal(t, [3]string{"biz-1", a2a.AgentYandexBusiness, "yreview-77"}, repo.lastLookupKey,
 		"review must be resolved by (business_id, platform, external_id) from the reply args")
 }

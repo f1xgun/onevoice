@@ -187,6 +187,99 @@ func TestReply_ManualDispatchCarriesStableApprovalID(t *testing.T) {
 		"manual reply must carry a stable ApprovalID so a retry dedupes at the agent")
 }
 
+// TestReply_ReusesOriginalDispatchApprovalID asserts that a review carrying a
+// persisted DispatchApprovalID (the "<batch_id>-<call_id>" the LLM-dispatched
+// reply first landed under) re-dispatches a manual retry under that SAME key,
+// not the per-review fallback. Reverting the reuse in manualReplyApprovalID (so
+// the retry keys on "review-reply-<id>") makes this assertion fail.
+func TestReply_ReusesOriginalDispatchApprovalID(t *testing.T) {
+	biz := uuid.New()
+	review := &domain.Review{
+		ID:                 "rev-77",
+		BusinessID:         biz.String(),
+		Platform:           a2a.AgentTelegram,
+		ExternalID:         "-100_7",
+		ReplyStatus:        domain.ReviewReplyStatusError,
+		DispatchApprovalID: "batch-abc-call-9",
+		PlatformMeta:       map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+	}
+	repo := &stubReviewRepo{review: review}
+	nc := &capturingRequester{}
+	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	require.NoError(t, svc.Reply(context.Background(), biz, "rev-77", "спасибо"))
+	require.Equal(t, 1, nc.calls, "a retry must dispatch exactly once")
+	require.Equal(t, "batch-abc-call-9", nc.last.ApprovalID,
+		"the manual retry must reuse the original dispatch key so the agent dedupes an already-posted reply")
+}
+
+// TestReply_RetryOfLandedReplyIsDeduped is the paramount idempotency property
+// for the LIVE review-reply retry: a reply that ALREADY LANDED at the platform
+// (the original chat dispatch executed under its "<batch_id>-<call_id>" key) is
+// re-dispatched by a manual retry under the SAME key and served from the agent's
+// (business_id, approval_id) dedupe cache, so the underlying platform execution
+// count stays at one — NO second public reply. The test drives the REAL
+// pkg/hitldedupe gate. Reverting the key persistence/reuse (so the retry keys on
+// the per-review fallback instead of the original dispatch key) bypasses the
+// dedupe and executes a second reply, failing this test.
+func TestReply_RetryOfLandedReplyIsDeduped(t *testing.T) {
+	biz := uuid.New()
+	originalKey := "batch-live-call-3"
+	nc := newDedupeRequester(t, map[string]interface{}{"ok": true})
+
+	origReq := a2a.ToolRequest{
+		TaskID:     "orig",
+		Tool:       tools.TelegramReplyToComment,
+		Args:       map[string]interface{}{"chat_id": "-100", "message_id": float64(7), "text": "спасибо"},
+		BusinessID: biz.String(),
+		ApprovalID: originalKey,
+	}
+	data, err := json.Marshal(origReq)
+	require.NoError(t, err)
+	_, err = nc.RequestMsgWithContext(context.Background(), &natslib.Msg{Data: data})
+	require.NoError(t, err)
+	require.Equal(t, 1, nc.execs, "the original chat dispatch executes once at the platform")
+
+	review := &domain.Review{
+		ID:                 "rev-live",
+		BusinessID:         biz.String(),
+		Platform:           a2a.AgentTelegram,
+		ExternalID:         "-100_7",
+		ReplyStatus:        domain.ReviewReplyStatusError,
+		DispatchApprovalID: originalKey,
+		PlatformMeta:       map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+	}
+	repo := &stubReviewRepo{review: review}
+	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	require.NoError(t, svc.Reply(context.Background(), biz, "rev-live", "спасибо"))
+	require.Equal(t, 1, nc.execs,
+		"a retry of an already-landed reply must be deduped, not posted a second time")
+	require.Equal(t, originalKey, nc.lastApp, "the retry must re-send the original dispatch key")
+}
+
+// TestReply_LegacyReviewFallsBackToStableKey asserts a review with no persisted
+// DispatchApprovalID (a row that predates the field) still retries under the
+// stable per-review key, so legacy rows stay retry-vs-retry safe.
+func TestReply_LegacyReviewFallsBackToStableKey(t *testing.T) {
+	biz := uuid.New()
+	review := &domain.Review{
+		ID:           "rev-legacy",
+		BusinessID:   biz.String(),
+		Platform:     a2a.AgentTelegram,
+		ExternalID:   "-100_7",
+		ReplyStatus:  domain.ReviewReplyStatusError,
+		PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+	}
+	repo := &stubReviewRepo{review: review}
+	nc := &capturingRequester{}
+	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	require.NoError(t, svc.Reply(context.Background(), biz, "rev-legacy", "спасибо"))
+	require.Equal(t, "review-reply-rev-legacy", nc.last.ApprovalID,
+		"a legacy review without a persisted dispatch key must fall back to the stable per-review key")
+}
+
 func TestBuildPlatformReply_VK(t *testing.T) {
 	r := &domain.Review{Platform: a2a.AgentVK, ExternalID: "11_42"}
 	tool, args, err := buildPlatformReply(r, "Спасибо!")

@@ -182,13 +182,18 @@ func (s *agentTaskService) gateBusiness(ctx context.Context, businessID uuid.UUI
 	return nil
 }
 
-// retryApprovalID derives a STABLE HITL dedupe key for a task retry, keyed on
-// the task ID. Every retry of the same task re-dispatches the identical
-// ApprovalID, so the agent's (business_id, approval_id) Redis dedupe gate
-// (pkg/hitldedupe) returns the cached result of a call that actually landed
-// instead of repeating an irreversible side effect (a public post/reply). This
-// is the whole idempotency guarantee — the key MUST be stable across retries.
+// retryApprovalID derives the HITL dedupe key for a task retry. It reuses the
+// ORIGINAL approved dispatch's ApprovalID ("<batch_id>-<call_id>") persisted on
+// the task at first-dispatch time, so a retry of a call that ALREADY LANDED
+// re-sends the identical key and the agent's (business_id, approval_id) Redis
+// dedupe gate (pkg/hitldedupe) returns the cached result instead of repeating
+// an irreversible side effect (a public post/reply) — closing the
+// retry-vs-original double-post window. Legacy rows that predate the persisted
+// field fall back to the stable per-task key, which stays retry-vs-retry safe.
 func retryApprovalID(task *domain.AgentTask) string {
+	if task.DispatchApprovalID != "" {
+		return task.DispatchApprovalID
+	}
 	return "task-retry-" + task.ID
 }
 

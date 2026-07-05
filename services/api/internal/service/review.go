@@ -214,12 +214,19 @@ func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.R
 	return err
 }
 
-// manualReplyApprovalID derives a stable HITL dedupe key for a manual review
-// reply. Keyed on the review ID, so an operator's retry after a Mongo blip (the
-// platform post already landed, the status write didn't) re-dispatches the same
-// ApprovalID and the agent returns the cached result instead of posting a
-// second public reply.
+// manualReplyApprovalID derives the HITL dedupe key for a manual review reply.
+// It reuses the ORIGINAL approved dispatch's ApprovalID ("<batch_id>-<call_id>")
+// persisted on the review when an LLM-dispatched reply first landed, so an
+// operator's manual retry after a status-write blip (the public reply already
+// posted, the "replied" write didn't) re-dispatches the SAME key and the agent
+// returns the cached result instead of posting a second public reply — closing
+// the retry-vs-original double-post window. Legacy rows and replies never
+// dispatched through the chat path fall back to the stable per-review key, which
+// stays retry-vs-retry safe.
 func manualReplyApprovalID(review *domain.Review) string {
+	if review.DispatchApprovalID != "" {
+		return review.DispatchApprovalID
+	}
 	return "review-reply-" + review.ID
 }
 

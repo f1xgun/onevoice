@@ -149,6 +149,64 @@ func TestRetry_IdempotentReDispatchIsDeduped(t *testing.T) {
 	require.Equal(t, "task-retry-task-1", nc.lastApp, "the retry must reuse the stable dedupe key")
 }
 
+// TestRetry_ReusesOriginalDispatchApprovalID asserts a task carrying a persisted
+// DispatchApprovalID (the "<batch_id>-<call_id>" the approved dispatch first ran
+// under) re-dispatches its retry under that SAME key, not the per-task fallback.
+// Reverting the reuse in retryApprovalID (so the retry keys on "task-retry-<id>")
+// fails this test.
+func TestRetry_ReusesOriginalDispatchApprovalID(t *testing.T) {
+	biz := uuid.New()
+	task := failedTask(biz, "transient")
+	task.DispatchApprovalID = "batch-xyz-call-1"
+	repo := &stubAgentTaskRepo{task: task}
+	nc := newDedupeRequester(t, map[string]interface{}{"ok": true})
+	svc := &agentTaskService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	_, err := svc.Retry(context.Background(), biz, "task-1")
+	require.NoError(t, err)
+	require.Equal(t, 1, nc.execs)
+	require.Equal(t, "batch-xyz-call-1", nc.lastApp,
+		"the retry must reuse the original dispatch key so an already-landed call is deduped")
+}
+
+// TestRetry_RetryOfLandedTaskIsDedupedAgainstOriginal proves the retry-vs-ORIGINAL
+// idempotency property: the original approved dispatch executed under its
+// "<batch_id>-<call_id>" key and the agent cached the result; a retry of the
+// same task (whose DispatchApprovalID persisted that key) re-sends it and is
+// served from the dedupe cache, so the platform execution count stays at one.
+// Reverting the key persistence/reuse keys the retry on the per-task fallback,
+// which never matches the original dispatch, bypasses the dedupe, and executes a
+// second irreversible action — failing this test.
+func TestRetry_RetryOfLandedTaskIsDedupedAgainstOriginal(t *testing.T) {
+	biz := uuid.New()
+	originalKey := "batch-orig-call-5"
+	nc := newDedupeRequester(t, map[string]interface{}{"message_id": float64(7)})
+
+	origReq := a2a.ToolRequest{
+		TaskID:     "orig",
+		Tool:       a2a.AgentTelegram + "__send_channel_post",
+		Args:       map[string]interface{}{"channel_id": "-100", "text": "hi"},
+		BusinessID: biz.String(),
+		ApprovalID: originalKey,
+	}
+	data, err := json.Marshal(origReq)
+	require.NoError(t, err)
+	_, err = nc.RequestMsgWithContext(context.Background(), &natslib.Msg{Data: data})
+	require.NoError(t, err)
+	require.Equal(t, 1, nc.execs, "the original approved dispatch executes once")
+
+	task := failedTask(biz, "transient")
+	task.DispatchApprovalID = originalKey
+	repo := &stubAgentTaskRepo{task: task}
+	svc := &agentTaskService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+
+	_, err = svc.Retry(context.Background(), biz, "task-1")
+	require.NoError(t, err)
+	require.Equal(t, 1, nc.execs,
+		"a retry of an already-landed task must be deduped against the original dispatch, not executed twice")
+	require.Equal(t, originalKey, nc.lastApp, "the retry must re-send the original dispatch key")
+}
+
 // TestRetry_TokenInvalidSignalsReconnect asserts an integration_token_invalid
 // failure is refused with the reconnect reason and never dispatches. Reverting
 // the non-retryable gate lets a doomed re-dispatch fire and fails this test.

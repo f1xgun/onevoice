@@ -85,6 +85,7 @@ func (t *Turn) onToolCall(
 	toolDisplayName string,
 	toolDisplayNameKey string,
 	toolArgs map[string]interface{},
+	approvalID string,
 	idMap map[string]string,
 ) {
 	if t.deps.AgentTasks == nil {
@@ -100,14 +101,15 @@ func (t *Turn) onToolCall(
 	}
 	now := time.Now()
 	task := &domain.AgentTask{
-		BusinessID:     businessID,
-		Type:           toolName[sep+2:],
-		Platform:       toolName[:sep],
-		DisplayName:    toolDisplayName,
-		DisplayNameKey: toolDisplayNameKey,
-		Status:         "running",
-		Input:          toolArgs,
-		StartedAt:      &now,
+		BusinessID:         businessID,
+		Type:               toolName[sep+2:],
+		Platform:           toolName[:sep],
+		DisplayName:        toolDisplayName,
+		DisplayNameKey:     toolDisplayNameKey,
+		Status:             "running",
+		Input:              toolArgs,
+		DispatchApprovalID: approvalID,
+		StartedAt:          &now,
 	}
 	if err := t.deps.AgentTasks.Create(ctx, task); err != nil {
 		slog.ErrorContext(ctx, "chatturn: failed to create agent task record", "tool", toolName, "error", err)
@@ -501,7 +503,7 @@ func (t *Turn) reconcileReviewReplies(
 				"tool", tc.Name, "platform", platform, "external_id", externalID, "error", err)
 			continue
 		}
-		if err := t.deps.Reviews.UpdateReply(ctx, review.ID, replyText, domain.ReviewReplyStatusReplied); err != nil {
+		if err := t.deps.Reviews.UpdateReplyDispatched(ctx, review.ID, replyText, domain.ReviewReplyStatusReplied, tc.ApprovalID); err != nil {
 			slog.WarnContext(ctx, "chatturn: failed to reconcile chat reply into review",
 				"tool", tc.Name, "review_id", review.ID, "error", err)
 		}

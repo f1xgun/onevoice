@@ -416,6 +416,14 @@ type ReviewRepository interface {
 	// review an LLM-dispatched reply tool just answered on the platform.
 	GetByExternalID(ctx context.Context, businessID, platform, externalID string) (*Review, error)
 	UpdateReply(ctx context.Context, id, replyText, replyStatus string) error
+
+	// UpdateReplyDispatched is UpdateReply that also stamps the HITL dedupe key
+	// ("<batch_id>-<call_id>") the LLM-dispatched reply landed under, so an
+	// operator's later manual retry reuses it and the agent dedupes the
+	// already-posted reply instead of publishing it twice. dispatchApprovalID is
+	// left unchanged on the row when empty (no key to persist).
+	UpdateReplyDispatched(ctx context.Context, id, replyText, replyStatus, dispatchApprovalID string) error
+
 	Upsert(ctx context.Context, review *Review) error
 
 	// BulkUpsert upserts many reviews in a single round-trip (used by the sync

@@ -357,6 +357,19 @@ func resumeStreamHeaders(ctx context.Context) map[string]string {
 	return map[string]string{"Accept-Language": i18n.LocaleFromContext(ctx).String()}
 }
 
+// resumeApprovalID reconstructs the HITL dedupe key the orchestrator ran an
+// approved resume dispatch under — "<batch_id>-<call_id>", the same value it
+// forms in orchestrator/resume.go and the agent keys its (business_id,
+// approval_id) dedupe on. Persisting it onto the produced task / review lets a
+// later retry re-send the identical key so an already-landed call is deduped
+// instead of double-posted. Empty when the call carried no id (nothing to key).
+func resumeApprovalID(batchID, callID string) string {
+	if callID == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s-%s", batchID, callID)
+}
+
 func (t *Turn) runResumeStream(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -424,24 +437,27 @@ func (t *Turn) runResumeStream(
 			case "text":
 				postText.WriteString(ev.Content)
 			case "tool_call":
+				approvalID := resumeApprovalID(batchID, ev.ToolCallID)
 				recCalls = append(recCalls, domain.ToolCall{
-					ID:        ev.ToolCallID,
-					Name:      ev.ToolName,
-					Arguments: ev.ToolArgs,
+					ID:         ev.ToolCallID,
+					Name:       ev.ToolName,
+					Arguments:  ev.ToolArgs,
+					ApprovalID: approvalID,
 				})
 				if ev.ToolCallID != "" {
 					freshCallIDs[ev.ToolCallID] = struct{}{}
 					if _, known := callIdx[ev.ToolCallID]; !known {
 						callIdx[ev.ToolCallID] = len(msg.ToolCalls)
 						msg.ToolCalls = append(msg.ToolCalls, domain.ToolCall{
-							ID:        ev.ToolCallID,
-							Name:      ev.ToolName,
-							Arguments: ev.ToolArgs,
-							Status:    domain.ToolCallStatusApproved,
+							ID:         ev.ToolCallID,
+							Name:       ev.ToolName,
+							Arguments:  ev.ToolArgs,
+							ApprovalID: approvalID,
+							Status:     domain.ToolCallStatusApproved,
 						})
 					}
 				}
-				t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
+				t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, approvalID, idMap)
 			case "tool_approval_required":
 				evCopy := ev
 				rePause = &evCopy
