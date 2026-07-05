@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { Send } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -11,6 +11,7 @@ import { ProjectChip } from './ProjectChip';
 import { ProjectPickerChip } from './ProjectPickerChip';
 import { ConnectChannelHint, shouldPromptConnectChannel } from './ConnectChannelHint';
 import { GettingStartedChecklist } from '@/components/onboarding/GettingStartedChecklist';
+import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
@@ -28,6 +29,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { trackEvent } from '@/lib/telemetry';
 import type { Conversation } from '@/lib/conversations';
 
 interface ChatWindowProps {
@@ -50,9 +52,16 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     resolveApproval,
   } = useConversationFlow({ conversationId });
   const [input, setInput] = useState('');
+  const [wizardOpen, setWizardOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+
+  const openWizard = useCallback(() => {
+    trackEvent('activation', 'open_wizard', { metadata: { source: 'getting_started_checklist' } });
+    setWizardOpen(true);
+  }, []);
+  const closeWizard = useCallback(() => setWizardOpen(false), []);
 
   const canSend = usePermission('content.create').allowed;
 
@@ -158,6 +167,8 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
   return (
     <div className="flex h-full flex-col">
+      <FirstActionWizard open={wizardOpen} onClose={closeWizard} />
+
       {/* Chat header — (USER OVERRIDE) Landmine 1:
           isolated, memoized subtree subscribed via useQuery `select` to a
           primitive string. Rendered as a SIBLING of the message list and
@@ -188,7 +199,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             {/* Self-contained activation checklist. Kept independent of the
                 composer/chips so the surface stays shared-safe with the
                 parallel first-action wizard, which mounts via onOpenWizard. */}
-            <GettingStartedChecklist className="w-full max-w-lg" />
+            <GettingStartedChecklist className="w-full max-w-lg" onOpenWizard={openWizard} />
             <ProjectPickerChip
               value={conversation?.projectId ?? null}
               onChange={handlePickerChange}

@@ -89,6 +89,16 @@ describe('NavRail', () => {
     }
   });
 
+  it('renders the getting-started entry linking to /getting-started', () => {
+    render(
+      <Wrapper>
+        <NavRail />
+      </Wrapper>
+    );
+    const link = screen.getByRole('link', { name: 'С чего начать' });
+    expect(link).toHaveAttribute('href', '/getting-started');
+  });
+
   it('does NOT render the project-tree subtree (UnassignedBucket / ProjectSection / + Новый проект)', () => {
     usePathnameMock.mockReturnValue('/chat');
     render(

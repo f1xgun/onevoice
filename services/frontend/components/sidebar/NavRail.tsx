@@ -12,6 +12,7 @@ import {
   FileText,
   ListTodo,
   Settings,
+  Compass,
   MessageSquarePlus,
   LogOut,
 } from 'lucide-react';
@@ -51,6 +52,7 @@ const navItems: NavItem[] = [
   { href: '/reviews', labelKey: 'reviews', icon: Star },
   { href: '/posts', labelKey: 'posts', icon: FileText },
   { href: API_PATHS.TASKS, labelKey: 'tasks', icon: ListTodo },
+  { href: '/getting-started', labelKey: 'gettingStarted', icon: Compass },
   { href: '/settings', labelKey: 'settings', icon: Settings },
 ];
 
