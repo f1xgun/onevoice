@@ -24,6 +24,7 @@ import { GoogleLocationModal } from '@/components/integrations/GoogleLocationMod
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
 import { SectionHelp } from '@/components/onboarding/SectionHelp';
+import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
@@ -79,6 +80,7 @@ export default function IntegrationsPage() {
   const canDisconnect = usePermission('integrations.disconnect').allowed;
   const [activeModalPlatform, setActiveModalPlatform] = useState<ModalPlatform | null>(null);
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
   const baselineBusinessIdRef = useRef<string | null>(null);
 
@@ -98,6 +100,15 @@ export default function IntegrationsPage() {
     if (connected === 'google_business') {
       toast.success(tIntegrations('googleConnected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
+    }
+
+    // After a fresh connect, ?connected=<platform>&wizard=1 auto-opens the
+    // first-action wizard so a new organization lands on a real AI action fast.
+    // Additive: the toasts + cache invalidation above still fire; this only
+    // opens the wizard when the wizard flag is explicitly present.
+    if (connected && searchParams.get('wizard') === '1') {
+      setWizardOpen(true);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
@@ -333,6 +344,8 @@ export default function IntegrationsPage() {
       </div>
 
       {ActiveModal && <ActiveModal open={true} onClose={closeActiveModal} />}
+
+      <FirstActionWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </>
   );
 }
