@@ -1193,6 +1193,21 @@
         "title": "Done — reply published",
         "body": "Your first AI action is complete. Keep going in chat: describe a task and the AI will do it."
       }
+    },
+    "compose": {
+      "trigger": "Compose a post",
+      "title": "Compose a post with AI",
+      "subtitle": "Pick a post type and add a topic — the AI drafts the text and you confirm publishing.",
+      "typeLabel": "Post type",
+      "types": {
+        "announcement": "Announcement",
+        "promo": "Promotion",
+        "newArrival": "New arrival"
+      },
+      "topicLabel": "What is the post about",
+      "topicPlaceholder": "For example: a new hall now open on Saturdays",
+      "submit": "Prepare in chat",
+      "cancel": "Cancel"
     }
   },
   "help": {
