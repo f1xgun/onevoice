@@ -76,8 +76,11 @@ func (r *syncStateRepository) UpsertPending(ctx context.Context, businessID uuid
 // non-deleted integration. The JOIN is the gate that keeps the reconciler from
 // polling revoked/expired tokens: a MarkTokenExpired flip or a disconnect drops
 // the row from this result set without any sync_state mutation. FOR UPDATE OF s
-// SKIP LOCKED locks only the sync_state rows so overlapping passes never
-// double-process a channel.
+// SKIP LOCKED only de-dups pollers that run this query at the same instant — the
+// lock releases when the autocommit SELECT returns, not across the subsequent
+// reconcile+MarkChecked. Exactly-once is not guaranteed under concurrent
+// pollers; final de-dup relies on MarkChecked advancing next_check_at plus
+// reconciliation being idempotent (a duplicate pass recomputes the same drift).
 func (r *syncStateRepository) ListDue(ctx context.Context, now time.Time, limit int) ([]domain.SyncState, error) {
 	q := `
 		SELECT ` + prefixColumns("s") + `
