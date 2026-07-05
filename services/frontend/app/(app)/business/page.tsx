@@ -20,6 +20,7 @@ import { ProfileForm } from '@/components/business/ProfileForm';
 import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
 import { VoiceToneSection } from '@/components/business/VoiceToneSection';
 import { AISummaryRail } from '@/components/business/AISummaryRail';
+import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { DangerZone } from '@/components/business/DangerZone';
 import { BusinessDeletionGraceBanner } from '@/components/business/BusinessDeletionGraceBanner';
 import { PageHeader } from '@/components/ui/page-header';
@@ -107,6 +108,10 @@ export default function BusinessPage() {
     <>
       <BusinessDeletionGraceBanner />
       <PageHeader title={title} sub={sub} />
+
+      <div className="px-4 sm:px-12">
+        <SectionHelp section="business" className="mb-8" />
+      </div>
 
       <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         {/* Main column */}

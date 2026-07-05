@@ -23,6 +23,7 @@ import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
+import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
@@ -237,6 +238,8 @@ export default function IntegrationsPage() {
       <PageHeader title={tIntegrations('title')} sub={tIntegrations('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
+        <SectionHelp section="integrations" className="mb-8" />
+
         {lastRegistered && (
           <div className="mb-8">
             <WhitelistWarningBanner
