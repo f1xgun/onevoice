@@ -130,6 +130,17 @@ type Config struct {
 	ReviewDraftMaxExamples int
 	ReviewDraftBatchLimit  int
 
+	// SyncReconcileEnabled gates the proactive platform-sync reconciler worker.
+	// Ships DARK (false): the sync_state table + drift/verify endpoints exist
+	// regardless, but the background reconcile loop is only started when this is
+	// explicitly enabled, so the default deploy carries zero extra polling load.
+	SyncReconcileEnabled bool
+	// SyncReconcilePollInterval is how often the reconciler wakes to check for
+	// due channels. Per-channel cadence (24h free / 6h paid) is enforced via each
+	// row's next_check_at, so this is only the poll granularity, not the re-check
+	// frequency.
+	SyncReconcilePollInterval time.Duration
+
 	S3Endpoint        string
 	S3AccessKey       string
 	S3SecretKey       string
@@ -282,6 +293,9 @@ func Load() (*Config, error) {
 		ReviewDraftEnabled:     getEnv("REVIEW_DRAFT_ENABLED", "false") == envBoolTrue,
 		ReviewDraftMaxExamples: getEnvInt("REVIEW_DRAFT_MAX_EXAMPLES", 5), //nolint:mnd // env-driven default
 		ReviewDraftBatchLimit:  getEnvInt("REVIEW_DRAFT_BATCH_LIMIT", 10),
+
+		SyncReconcileEnabled:      getEnv("SYNC_RECONCILE_ENABLED", "false") == envBoolTrue,
+		SyncReconcilePollInterval: getEnvDuration("SYNC_RECONCILE_POLL_INTERVAL", 30*time.Minute), //nolint:mnd // env-driven default
 
 		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),

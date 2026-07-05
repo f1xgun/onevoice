@@ -24,6 +24,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/lockout"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -51,6 +52,7 @@ type Services struct {
 	ToolsCache    *service.ToolsRegistryCache
 	PlatformSync  *platform.Syncer
 	ReviewSyncer  *service.ReviewSyncer
+	Reconciler    *service.ReconciliationService
 	TaskHub       *taskhub.Hub
 	ObjectStorage *storage.MinioClient
 
@@ -113,6 +115,10 @@ type Services struct {
 	// reviewSyncerCancel stops the background ticker. nil when ReviewSyncer
 	// is nil.
 	reviewSyncerCancel context.CancelFunc
+
+	// reconcilerCancel stops the proactive-sync reconciler loop. nil when the
+	// reconciler is not started (SYNC_RECONCILE_ENABLED=false).
+	reconcilerCancel context.CancelFunc
 }
 
 // Close stops background goroutines (review syncer ticker). Safe to call
@@ -123,6 +129,9 @@ func (s *Services) Close() {
 	}
 	if s.reviewSyncerCancel != nil {
 		s.reviewSyncerCancel()
+	}
+	if s.reconcilerCancel != nil {
+		s.reconcilerCancel()
 	}
 }
 
@@ -146,6 +155,63 @@ func (s *Services) StartReviewSyncer(ctx context.Context, wg *sync.WaitGroup, lo
 		s.ReviewSyncer.Start(syncCtx)
 	}()
 	log.Info("review syncer started", "interval_minutes", intervalMinutes)
+}
+
+// StartReconciler starts the proactive platform-sync reconciler loop. It is a
+// no-op when the reconciler is nil OR enabled is false — the reconciler SHIPS
+// DARK, so the default deploy carries zero extra polling load while the
+// sync_state table and the drift/verify endpoints still exist.
+//
+// The goroutine is enrolled on wg (wg.Add before the spawn, wg.Done on return)
+// so shutdown joins an in-flight reconcile pass before the database pools close,
+// exactly like StartReviewSyncer. The loop stops when the parent ctx cancels or
+// Services.Close is called.
+func (s *Services) StartReconciler(ctx context.Context, wg *sync.WaitGroup, log *slog.Logger, enabled bool, pollInterval time.Duration) {
+	if s == nil || s.Reconciler == nil {
+		return
+	}
+	if !enabled {
+		log.Info("sync reconciler disabled (SYNC_RECONCILE_ENABLED=false)")
+		return
+	}
+	metrics.MarkSweeperSuccess(metrics.SweeperSyncReconcile)
+	syncCtx, syncCancel := context.WithCancel(ctx)
+	s.reconcilerCancel = syncCancel
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runReconcileLoop(syncCtx, log, s.Reconciler.Reconcile, pollInterval)
+	}()
+	log.Info("sync reconciler started", "poll_interval", pollInterval.String())
+}
+
+// runReconcileLoop drives the reconciler: one pass per tick, each observed via
+// the sweeper_* metrics (so a wedged reconcile is alertable via
+// sweeper_last_success_timestamp) — the same heartbeat idiom as the compliance
+// sweepers in cmd/main.go. Per-pass errors are logged + metric'd but never abort
+// the loop. Bound to ctx so SIGTERM / Close cancels the ticker cleanly.
+func runReconcileLoop(ctx context.Context, log *slog.Logger, fn func(context.Context) (int, error), interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := fn(ctx)
+			if err != nil {
+				metrics.IncSweeperRun(metrics.SweeperSyncReconcile, metrics.SweeperResultError)
+				log.WarnContext(ctx, "sync reconcile pass failed", "err", err)
+				continue
+			}
+			metrics.IncSweeperRun(metrics.SweeperSyncReconcile, metrics.SweeperResultOK)
+			metrics.MarkSweeperSuccess(metrics.SweeperSyncReconcile)
+			if n > 0 {
+				metrics.AddSweeperItems(metrics.SweeperSyncReconcile, n)
+				log.InfoContext(ctx, "sync reconcile: channels drifting", "count", n)
+			}
+		}
+	}
 }
 
 // BuildServices constructs the business-logic layer. See
@@ -265,12 +331,30 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	if s.AgentTaskPublisher != nil {
 		yandexPublisher = s.AgentTaskPublisher
 	}
+	telegramSyncer := platform.NewTelegramSyncer(adapter, platformHTTPClient, "", cfg.PublicURL)
+	vkSyncer := platform.NewVKSyncer(adapter, platformHTTPClient, "")
 	perPlatform := map[string]any{
-		a2a.AgentTelegram:       platform.NewTelegramSyncer(adapter, platformHTTPClient, "", cfg.PublicURL),
-		a2a.AgentVK:             platform.NewVKSyncer(adapter, platformHTTPClient, ""),
+		a2a.AgentTelegram:       telegramSyncer,
+		a2a.AgentVK:             vkSyncer,
 		a2a.AgentYandexBusiness: platform.NewYandexSyncer(yandexPublisher),
 	}
 	s.PlatformSync = platform.NewSyncer(adapter, repos.AgentTask, s.TaskHub, perPlatform)
+
+	// Proactive platform-sync reconciler (ships DARK; the loop is only started
+	// when SYNC_RECONCILE_ENABLED=true). The direct-API platforms are read via
+	// their RemoteFetcher; Yandex is fetched over NATS by the reconciler itself.
+	remoteFetchers := map[string]platform.RemoteFetcher{
+		a2a.AgentTelegram: telegramSyncer,
+		a2a.AgentVK:       vkSyncer,
+	}
+	s.Reconciler = service.NewReconciliationService(
+		repos.SyncState,
+		repos.Integration,
+		repos.Business,
+		h.NATS,
+		remoteFetchers,
+		s.PlanResolver,
+	)
 
 	s.ToolsCache = service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, toolsCacheTTL)
 	s.HITL = service.NewHITLService(

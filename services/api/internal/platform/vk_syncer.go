@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,8 +24,9 @@ type VKSyncer struct {
 	vkBase       string
 }
 
-// Compile-time interface assertion.
+// Compile-time interface assertions.
 var _ InfoSyncer = (*VKSyncer)(nil)
+var _ RemoteFetcher = (*VKSyncer)(nil)
 
 // NewVKSyncer wires a VKSyncer. integrations is required; httpClient defaults
 // to a 10s client; vkBase defaults to vkapi.DefaultAPIBaseURL.
@@ -85,6 +87,71 @@ func (v *VKSyncer) SyncInfo(ctx context.Context, b *domain.Business, integ domai
 		return vkAPIError{msg: apiErr}
 	}
 	return nil
+}
+
+// FetchRemote reads the community's current name + description + site via
+// groups.getById so the reconciler can compare them against the stored profile.
+// A transport failure is returned as a Go error (retryable); a VK error envelope
+// is returned as a non-empty RemoteSnapshot.Err (unknown, never drift).
+//
+// Phone is intentionally excluded: groups.getById does not return the community
+// phone (there is no readable field), so the reconciler cannot detect phone
+// drift on VK and does not compare it — see the VK drift set in the reconciler.
+func (v *VKSyncer) FetchRemote(ctx context.Context, b *domain.Business, integ domain.Integration) (RemoteSnapshot, error) {
+	groupID := integ.ExternalID
+	token, err := v.integrations.GetDecryptedToken(ctx, b.ID, a2a.AgentVK, groupID, reasonVKReconcile)
+	if err != nil {
+		return RemoteSnapshot{}, errTokenFetchFailed{cause: err}
+	}
+
+	params := url.Values{
+		"group_id":     {groupID},
+		"fields":       {"description,site"},
+		"access_token": {token},
+		"v":            {vkapi.APIVersion},
+	}
+	apiURL := v.vkBase + "/method/groups.getById?" + params.Encode()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return RemoteSnapshot{}, err
+	}
+	resp, err := v.httpClient.Do(httpReq)
+	if err != nil {
+		slog.Error("platform reconcile: vk groups.getById request failed", "group_id", groupID, "error", redactURLErr(err))
+		return RemoteSnapshot{}, fmt.Errorf("request failed: %w", redactURLErr(err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Response struct {
+			Groups []struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				Site        string `json:"site"`
+			} `json:"groups"`
+		} `json:"response"`
+		Error *struct {
+			ErrorCode int    `json:"error_code"`
+			ErrorMsg  string `json:"error_msg"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return RemoteSnapshot{}, fmt.Errorf("parse response: %w", err)
+	}
+	if result.Error != nil {
+		return RemoteSnapshot{Err: result.Error.ErrorMsg}, nil
+	}
+	if len(result.Response.Groups) == 0 {
+		return RemoteSnapshot{Err: "groups.getById returned no group"}, nil
+	}
+	g := result.Response.Groups[0]
+	return RemoteSnapshot{Fields: map[string]string{
+		FieldTitle:       g.Name,
+		FieldDescription: g.Description,
+		FieldWebsite:     g.Site,
+	}}, nil
 }
 
 // errTokenFetchFailed wraps a token-fetch error so the recorded AgentTask

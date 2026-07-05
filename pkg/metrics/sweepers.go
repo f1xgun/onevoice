@@ -20,6 +20,7 @@ const (
 	SweeperAccountHardDelete  = "account_hard_delete"
 	SweeperBusinessHardDelete = "business_hard_delete"
 	SweeperDeletionWarning    = "deletion_warning"
+	SweeperSyncReconcile      = "sync_reconcile"
 )
 
 // Sweeper run outcomes — the bounded value set for the {result} label.

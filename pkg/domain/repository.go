@@ -122,6 +122,43 @@ type IntegrationRepository interface {
 	CountRekeyRemaining(ctx context.Context, targetVersion int16) (int, error)
 }
 
+// SyncStateRepository persists the proactive platform-sync reconciliation
+// state — one row per (business, platform, external_id). It tracks when a
+// connected channel was last compared against its stored business profile,
+// whether the platform copy has drifted, the backoff schedule, and the last
+// fetched remote snapshot. See docs/pkg/domain-repository.md.
+type SyncStateRepository interface {
+	// UpsertPending ensures a sync_state row exists for the (businessID,
+	// platform, externalID) tuple, defaulting next_check_at to now() so a
+	// freshly connected integration is enrolled for the next reconcile pass.
+	// A conflicting row is left untouched (no schedule reset).
+	UpsertPending(ctx context.Context, businessID uuid.UUID, platform, externalID string) error
+
+	// ListDue returns rows whose next_check_at <= now, each joined to a still
+	// active, non-deleted integration (so token_expired / disconnected channels
+	// are never polled), locked FOR UPDATE SKIP LOCKED and capped at limit.
+	ListDue(ctx context.Context, now time.Time, limit int) ([]SyncState, error)
+
+	// ListByBusinessID returns every sync_state row for a business, ordered by
+	// platform, for the drift-status endpoint.
+	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]SyncState, error)
+
+	// MarkChecked records a successful reconcile: it stores the remote snapshot
+	// and drift result, resets consecutive_failures + last_error, and schedules
+	// the next check. driftDetected is derived from len(driftFields) > 0.
+	MarkChecked(ctx context.Context, id uuid.UUID, snapshot map[string]string, driftFields []string, checkedAt, nextCheckAt time.Time) error
+
+	// MarkFailure records a failed fetch: it increments consecutive_failures,
+	// stores the (already-redacted) error, and applies the backoff next_check_at.
+	// Drift state is intentionally left unchanged — a fetch failure is "unknown",
+	// never "drift".
+	MarkFailure(ctx context.Context, id uuid.UUID, lastError string, checkedAt, nextCheckAt time.Time) error
+
+	// ScheduleImmediate sets next_check_at = now() for every row of a business so
+	// the manual verify-and-repair endpoint triggers a re-check on the next pass.
+	ScheduleImmediate(ctx context.Context, businessID uuid.UUID) error
+}
+
 // BusinessMembershipRepository persists the v2 RBAC membership graph.
 // See docs/pkg/domain-repository.md — InTx pairs compose with authz invariants under one tx.
 type BusinessMembershipRepository interface {
