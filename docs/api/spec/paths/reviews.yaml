@@ -77,6 +77,48 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/reviews/sla:
+  get:
+    operationId: getReviewSLA
+    summary: Aggregate-only response-SLA metrics for a business's reviews.
+    description: >-
+      Returns counts, unanswered-age buckets, and response-time metrics
+      (median / average created_at → replied_at) plus the share answered within
+      a target window. Aggregate-only: no author, review text, or reply text is
+      read or returned.
+    tags:
+    - reviews
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: target_hours
+      in: query
+      required: false
+      description: >-
+        Answered-within-target window in hours (default 24). Values <= 0 fall
+        back to the default.
+      schema:
+        type: integer
+        default: 24
+        minimum: 1
+    responses:
+      '200':
+        description: Aggregate SLA metrics.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ReviewSLAResponse
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 /businesses/{id}/reviews/{reviewID}:
   get:
     operationId: getReview

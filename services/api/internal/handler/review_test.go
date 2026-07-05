@@ -33,6 +33,7 @@ type mockReviewService struct {
 	refreshFn     func(ctx context.Context, userID uuid.UUID) error
 	batchDraftFn  func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	bulkApproveFn func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
+	slaFn         func(ctx context.Context, businessID uuid.UUID, targetHours int) (service.SLAStats, error)
 }
 
 func (m *mockReviewService) List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -86,6 +87,13 @@ func (m *mockReviewService) BulkApprove(ctx context.Context, businessID uuid.UUI
 		return nil, nil
 	}
 	return m.bulkApproveFn(ctx, businessID, reviewIDs)
+}
+
+func (m *mockReviewService) SLA(ctx context.Context, businessID uuid.UUID, targetHours int) (service.SLAStats, error) {
+	if m.slaFn == nil {
+		return service.SLAStats{}, nil
+	}
+	return m.slaFn(ctx, businessID, targetHours)
 }
 
 func TestNewReviewHandler_NilService(t *testing.T) {
@@ -180,6 +188,109 @@ func TestGetReview_NotFound(t *testing.T) {
 	req = req.WithContext(reviewReadCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func TestGetReviewSLA_Success(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		slaFn: func(_ context.Context, gotBiz uuid.UUID, targetHours int) (service.SLAStats, error) {
+			assert.Equal(t, businessID, gotBiz, "SLA must be scoped to the caller's business")
+			assert.Equal(t, 48, targetHours, "target_hours query param must reach the service")
+			return service.SLAStats{
+				Total:                       10,
+				Unanswered:                  3,
+				Answered:                    7,
+				Buckets:                     service.UnansweredBuckets{Lt24h: 1, H24to72: 1, Gt72h: 1},
+				TargetHours:                 targetHours,
+				MedianResponseHours:         5.5,
+				AverageResponseHours:        8.25,
+				MeasuredResponses:           7,
+				PercentAnsweredWithinTarget: 0.75,
+			}, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews/sla?target_hours=48", http.NoBody)
+	req = req.WithContext(reviewReadCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.GetReviewSLA(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var resp openapi.ReviewSLAResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, 10, resp.Total)
+	assert.Equal(t, 3, resp.Unanswered)
+	assert.Equal(t, 7, resp.Answered)
+	assert.Equal(t, 1, resp.Buckets.Lt24h)
+	assert.Equal(t, 1, resp.Buckets.H24to72)
+	assert.Equal(t, 1, resp.Buckets.Gt72h)
+	assert.Equal(t, 48, resp.TargetHours)
+	assert.InDelta(t, 5.5, resp.MedianResponseHours, 1e-6)
+	assert.InDelta(t, 8.25, resp.AverageResponseHours, 1e-6)
+	assert.Equal(t, 7, resp.MeasuredResponses)
+	assert.InDelta(t, 0.75, resp.PercentAnsweredWithinTarget, 1e-6)
+}
+
+func TestGetReviewSLA_DefaultsTargetOnMalformed(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		slaFn: func(_ context.Context, _ uuid.UUID, targetHours int) (service.SLAStats, error) {
+			assert.Equal(t, 0, targetHours, "an absent or malformed target_hours reaches the service as 0 (service applies the default)")
+			return service.SLAStats{TargetHours: service.SLADefaultTargetHours}, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews/sla?target_hours=notanumber", http.NoBody)
+	req = req.WithContext(reviewReadCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.GetReviewSLA(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestGetReviewSLA_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{},
+	})
+	h, _ := NewReviewHandler(&mockReviewService{
+		slaFn: func(context.Context, uuid.UUID, int) (service.SLAStats, error) {
+			t.Fatal("service must not be called without content:read")
+			return service.SLAStats{}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews/sla", http.NoBody)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	h.GetReviewSLA(rr, req)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+func TestGetReviewSLA_BusinessNotFound(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h, _ := NewReviewHandler(&mockReviewService{
+		slaFn: func(context.Context, uuid.UUID, int) (service.SLAStats, error) {
+			return service.SLAStats{}, domain.ErrBusinessNotFound
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews/sla", http.NoBody)
+	req = req.WithContext(reviewReadCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.GetReviewSLA(rr, req)
 
 	assert.Equal(t, http.StatusNotFound, rr.Code)
 }

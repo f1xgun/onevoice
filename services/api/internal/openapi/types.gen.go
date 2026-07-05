@@ -1222,6 +1222,48 @@ type ReviewListResponse struct {
 	Total   int      `json:"total" validate:"required"`
 }
 
+// ReviewSLAResponse Aggregate-only response-SLA metrics. No author, review text, or reply text is carried — numbers only.
+type ReviewSLAResponse struct {
+	// Answered Reviews whose reply_status is "replied".
+	Answered int `json:"answered" validate:"required"`
+
+	// AverageResponseHours Average response latency in hours (created_at -> replied_at) over measured responses only.
+	AverageResponseHours float32 `json:"averageResponseHours" validate:"required"`
+
+	// Buckets Unanswered reviews partitioned by age (created_at -> now).
+	Buckets ReviewUnansweredBuckets `json:"buckets"`
+
+	// MeasuredResponses Replied reviews carrying a replied_at (the denominator behind the median / average / within-target rate).
+	MeasuredResponses int `json:"measuredResponses" validate:"required"`
+
+	// MedianResponseHours Median response latency in hours (created_at -> replied_at) over measured responses only.
+	MedianResponseHours float32 `json:"medianResponseHours" validate:"required"`
+
+	// PercentAnsweredWithinTarget Share of measured responses answered within targetHours, in [0,1].
+	PercentAnsweredWithinTarget float32 `json:"percentAnsweredWithinTarget" validate:"required"`
+
+	// TargetHours Answered-within-target window in hours the rate was computed against.
+	TargetHours int `json:"targetHours" validate:"required"`
+
+	// Total Total reviews for the business.
+	Total int `json:"total" validate:"required"`
+
+	// Unanswered Reviews whose reply_status is not "replied".
+	Unanswered int `json:"unanswered" validate:"required"`
+}
+
+// ReviewUnansweredBuckets Unanswered reviews partitioned by age (created_at -> now).
+type ReviewUnansweredBuckets struct {
+	// Gt72h Unanswered over 72 hours old.
+	Gt72h int `json:"gt72h" validate:"required"`
+
+	// H24to72 Unanswered between 24 and 72 hours old.
+	H24to72 int `json:"h24to72" validate:"required"`
+
+	// Lt24h Unanswered under 24 hours old.
+	Lt24h int `json:"lt24h" validate:"required"`
+}
+
 // Role defines model for Role.
 type Role struct {
 	BusinessId  *openapi_types.UUID `json:"business_id" validate:"omitempty,uuid"`
@@ -1752,6 +1794,12 @@ type ListReviewsParams struct {
 
 // ListReviewsParamsReplyStatus defines parameters for ListReviews.
 type ListReviewsParamsReplyStatus string
+
+// GetReviewSLAParams defines parameters for GetReviewSLA.
+type GetReviewSLAParams struct {
+	// TargetHours Answered-within-target window in hours (default 24). Values <= 0 fall back to the default.
+	TargetHours *int `form:"target_hours,omitempty" json:"target_hours,omitempty"`
+}
 
 // CreateRoleParams defines parameters for CreateRole.
 type CreateRoleParams struct {

@@ -440,6 +440,14 @@ type ReviewRepository interface {
 	// path, which otherwise fired one UpdateOne per fetched review).
 	BulkUpsert(ctx context.Context, reviews []*Review) error
 
+	// ListForSLA returns every review for businessID projected to the three
+	// SLA-safe fields only (created_at, reply_status, replied_at). It NEVER reads
+	// author_name, text, or reply_text, so no personal data leaves the collection
+	// on the aggregate SLA read — the projection is PDn-safe by construction, the
+	// same discipline the orchestrator's reviewstats read follows. Used by the
+	// read-only GET /businesses/{id}/reviews/sla aggregate endpoint.
+	ListForSLA(ctx context.Context, businessID string) ([]Review, error)
+
 	// ListPendingWithoutDraft excludes status="generating" so concurrent passes don't double-call the LLM.
 	ListPendingWithoutDraft(ctx context.Context, businessID, platform string, limit int) ([]Review, error)
 

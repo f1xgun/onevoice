@@ -244,6 +244,8 @@ paths:
     $ref: paths/reviews.yaml#/~1reviews~1refresh
   /businesses/{id}/reviews:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews
+  /businesses/{id}/reviews/sla:
+    $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1sla
   /businesses/{id}/reviews/{reviewID}:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}
   /businesses/{id}/reviews/{reviewID}/reply:
@@ -2436,6 +2438,72 @@ components:
             $ref: '#/components/schemas/Review'
         total:
           type: integer
+    ReviewUnansweredBuckets:
+      type: object
+      description: Unanswered reviews partitioned by age (created_at -> now).
+      required:
+      - lt24h
+      - h24to72
+      - gt72h
+      properties:
+        lt24h:
+          type: integer
+          description: Unanswered under 24 hours old.
+        h24to72:
+          type: integer
+          description: Unanswered between 24 and 72 hours old.
+        gt72h:
+          type: integer
+          description: Unanswered over 72 hours old.
+    ReviewSLAResponse:
+      type: object
+      description: >-
+        Aggregate-only response-SLA metrics. No author, review text, or reply
+        text is carried — numbers only.
+      required:
+      - total
+      - unanswered
+      - answered
+      - buckets
+      - targetHours
+      - medianResponseHours
+      - averageResponseHours
+      - measuredResponses
+      - percentAnsweredWithinTarget
+      properties:
+        total:
+          type: integer
+          description: Total reviews for the business.
+        unanswered:
+          type: integer
+          description: Reviews whose reply_status is not "replied".
+        answered:
+          type: integer
+          description: Reviews whose reply_status is "replied".
+        buckets:
+          $ref: '#/components/schemas/ReviewUnansweredBuckets'
+        targetHours:
+          type: integer
+          description: Answered-within-target window in hours the rate was computed against.
+        medianResponseHours:
+          type: number
+          description: >-
+            Median response latency in hours (created_at -> replied_at) over
+            measured responses only.
+        averageResponseHours:
+          type: number
+          description: >-
+            Average response latency in hours (created_at -> replied_at) over
+            measured responses only.
+        measuredResponses:
+          type: integer
+          description: >-
+            Replied reviews carrying a replied_at (the denominator behind the
+            median / average / within-target rate).
+        percentAnsweredWithinTarget:
+          type: number
+          description: >-
+            Share of measured responses answered within targetHours, in [0,1].
     ReplyToReviewRequest:
       type: object
       required:
