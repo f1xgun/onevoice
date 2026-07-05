@@ -264,11 +264,24 @@ func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 }
 
 func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, replyStatus string) error {
+	return r.updateReply(ctx, id, replyText, replyStatus, "")
+}
+
+// UpdateReplyDispatched — see domain.ReviewRepository docstring.
+func (r *reviewRepository) UpdateReplyDispatched(ctx context.Context, id, replyText, replyStatus, dispatchApprovalID string) error {
+	return r.updateReply(ctx, id, replyText, replyStatus, dispatchApprovalID)
+}
+
+func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, replyStatus, dispatchApprovalID string) error {
+	set := bson.M{
+		"reply_text":   replyText,
+		"reply_status": replyStatus,
+	}
+	if dispatchApprovalID != "" {
+		set["dispatch_approval_id"] = dispatchApprovalID
+	}
 	update := bson.M{
-		"$set": bson.M{
-			"reply_text":   replyText,
-			"reply_status": replyStatus,
-		},
+		"$set": set,
 		"$unset": bson.M{
 			"draft_reply":        "",
 			"draft_status":       "",
@@ -286,6 +299,23 @@ func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, reply
 		return domain.ErrReviewNotFound
 	}
 
+	return nil
+}
+
+// StampReplyDispatchApprovalID — see domain.ReviewRepository docstring.
+func (r *reviewRepository) StampReplyDispatchApprovalID(ctx context.Context, businessID, platform, externalID, dispatchApprovalID string) error {
+	if dispatchApprovalID == "" || externalID == "" {
+		return nil
+	}
+	filter := bson.M{
+		"business_id": businessID,
+		"platform":    platform,
+		"external_id": externalID,
+	}
+	update := bson.M{"$set": bson.M{"dispatch_approval_id": dispatchApprovalID}}
+	if _, err := r.collection.UpdateOne(ctx, filter, update); err != nil {
+		return fmt.Errorf("stamp review dispatch approval id: %w", err)
+	}
 	return nil
 }
 

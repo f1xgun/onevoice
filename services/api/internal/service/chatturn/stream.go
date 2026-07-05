@@ -107,7 +107,7 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 			Name:      ev.ToolName,
 			Arguments: ev.ToolArgs,
 		})
-		t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, state.idMap)
+		t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, "", state.idMap)
 	case "tool_result":
 		var content map[string]interface{}
 		if m, ok := ev.ToolResult.(map[string]interface{}); ok {
