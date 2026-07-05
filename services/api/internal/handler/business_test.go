@@ -796,6 +796,169 @@ func TestBusinessHandler_UpdateDescriptionTemplate(t *testing.T) {
 	})
 }
 
+func TestBusinessHandler_GetVoiceProfile(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	t.Run("returns stored profile", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
+			ID:       testBusinessID,
+			Settings: map[string]interface{}{"voiceProfile": "Пиши тепло, без эмодзи."},
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/voice-profile", http.NoBody)
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.GetVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			VoiceProfile string `json:"voiceProfile"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "Пиши тепло, без эмодзи.", body.VoiceProfile)
+	})
+
+	t.Run("returns empty profile when unset", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
+			ID:       testBusinessID,
+			Settings: map[string]interface{}{},
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/voice-profile", http.NoBody)
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.GetVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			VoiceProfile string `json:"voiceProfile"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "", body.VoiceProfile)
+	})
+
+	t.Run("missing PermBusinessRead returns 403", func(t *testing.T) {
+		h, err := NewBusinessHandler(new(MockBusinessService), nil, nil)
+		require.NoError(t, err)
+
+		bc := authz.BusinessContext{
+			BusinessID:  testBusinessID,
+			Permissions: []authz.Permission{authz.PermBusinessUpdate},
+		}
+		req := httptest.NewRequest(http.MethodGet, "/voice-profile", http.NoBody)
+		req = withBizCtx(req, bc)
+		w := httptest.NewRecorder()
+
+		h.GetVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
+func TestBusinessHandler_UpdateVoiceProfile(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	t.Run("valid profile persists via UpdateSettingsKeys and does not sync", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		syncer := &fakeScheduleSyncer{called: make(chan *domain.Business, 1)}
+
+		var captured map[string]interface{}
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			captured = keys
+			return true
+		}), mock.Anything).Return(&domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, syncer, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/voice-profile", bytes.NewBufferString(`{"voiceProfile":"Пиши тепло, без эмодзи."}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, captured)
+		assert.Equal(t, "Пиши тепло, без эмодзи.", captured["voiceProfile"])
+
+		select {
+		case <-syncer.called:
+			t.Fatal("voice-profile edit must NOT fan out to the platform syncer")
+		case <-time.After(200 * time.Millisecond):
+		}
+		mockSvc.AssertExpectations(t)
+	})
+
+	t.Run("empty string clears override", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		var captured map[string]interface{}
+		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			captured = keys
+			return true
+		}), mock.Anything).Return(&domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/voice-profile", bytes.NewBufferString(`{"voiceProfile":""}`))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, captured)
+		assert.Equal(t, "", captured["voiceProfile"])
+		mockSvc.AssertExpectations(t)
+	})
+
+	t.Run("over-cap profile returns 400 and does not persist", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		oversized := strings.Repeat("я", 401)
+		payload := `{"voiceProfile":"` + oversized + `"}`
+		req := httptest.NewRequest(http.MethodPut, "/voice-profile", bytes.NewBufferString(payload))
+		req = withBizCtx(req, bizPerms(testBusinessID, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockSvc.AssertNotCalled(t, "UpdateSettingsKeys")
+	})
+
+	t.Run("missing PermBusinessUpdate returns 403", func(t *testing.T) {
+		h, err := NewBusinessHandler(new(MockBusinessService), nil, nil)
+		require.NoError(t, err)
+
+		bc := authz.BusinessContext{
+			BusinessID:  testBusinessID,
+			Permissions: []authz.Permission{authz.PermBusinessRead},
+		}
+		req := httptest.NewRequest(http.MethodPut, "/voice-profile", bytes.NewBufferString(`{"voiceProfile":"hi"}`))
+		req = withBizCtx(req, bc)
+		w := httptest.NewRecorder()
+
+		h.UpdateVoiceProfile(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
 // ----- UploadLogo (refactored) -----
 
 // mockUploader is a test double for storage.Uploader.

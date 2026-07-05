@@ -640,6 +640,12 @@ type DescriptionTemplateResponse struct {
 	Placeholders []string `json:"placeholders" validate:"required"`
 }
 
+// VoiceProfileResponse defines model for VoiceProfileResponse.
+type VoiceProfileResponse struct {
+	// VoiceProfile Stored brand-voice profile; empty string when unset.
+	VoiceProfile string `json:"voiceProfile" validate:"required"`
+}
+
 // DraftReplyExample defines model for DraftReplyExample.
 type DraftReplyExample struct {
 	Rating     *int   `json:"rating,omitempty" validate:"omitempty,min=0,max=5"`
@@ -1503,6 +1509,15 @@ type UpdateDescriptionTemplateRequest struct {
 	// description). A non-empty value fully replaces the platform
 	// description; an empty string clears the override.
 	DescriptionTemplate *string `json:"descriptionTemplate,omitempty" validate:"omitempty,max=1024"`
+}
+
+// UpdateVoiceProfileRequest defines model for UpdateVoiceProfileRequest.
+type UpdateVoiceProfileRequest struct {
+	// VoiceProfile Free-form brand-voice profile (do/don't phrases, emoji policy,
+	// short exemplars) that governs the AI chat loop and the review
+	// drafter. A non-empty value is stored verbatim; an empty string
+	// clears the override.
+	VoiceProfile *string `json:"voiceProfile,omitempty" validate:"omitempty,max=400"`
 }
 
 // UpdateMemberRoleRequest defines model for UpdateMemberRoleRequest.

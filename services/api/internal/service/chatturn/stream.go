@@ -157,6 +157,7 @@ func (t *Turn) buildOrchestratorRequest(ctx context.Context, req TurnRequest, en
 		"business_website":           derefString(business.Website),
 		"business_description":       business.Description,
 		"business_voice_tone":        extractVoiceTone(business.Settings),
+		"business_voice_profile":     extractVoiceProfile(business.Settings),
 		"active_integrations":        enriched.activeIntegrations,
 		"history":                    enriched.history,
 		"project_id":                 enriched.project.id,
@@ -211,6 +212,26 @@ func extractVoiceTone(settings map[string]interface{}) []string {
 	default:
 		return nil
 	}
+}
+
+// extractVoiceProfile reads the free-form voiceProfile override out of
+// business.Settings. It is a sibling of extractVoiceTone: voiceTone is the tag
+// list, voiceProfile is authored prose stored as a single string under
+// settings.voiceProfile (see UpdateVoiceProfile). Returns "" when unset — the
+// orchestrator renders nothing for an empty profile, so the built prompt stays
+// byte-identical to today for every business that never set one.
+func extractVoiceProfile(settings map[string]interface{}) string {
+	if settings == nil {
+		return ""
+	}
+	raw, ok := settings["voiceProfile"]
+	if !ok || raw == nil {
+		return ""
+	}
+	if s, ok := raw.(string); ok {
+		return s
+	}
+	return ""
 }
 
 // newStreamState constructs an empty streamState with a fresh idMap. Helper

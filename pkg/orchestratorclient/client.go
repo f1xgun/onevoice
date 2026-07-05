@@ -71,6 +71,7 @@ type DraftReplyRequest struct {
 	BusinessName        string              `json:"businessName"`
 	BusinessCategory    string              `json:"businessCategory,omitempty"`
 	BusinessDescription string              `json:"businessDescription,omitempty"`
+	VoiceProfile        string              `json:"voiceProfile,omitempty"`
 	Platform            string              `json:"platform"`
 	ReviewText          string              `json:"reviewText"`
 	Rating              int                 `json:"rating"`

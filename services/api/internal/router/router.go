@@ -218,6 +218,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Put("/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
 				r.Get("/description-template", handlers.Business.GetDescriptionTemplate)
 				r.With(writeLimit).Put("/description-template", handlers.Business.UpdateDescriptionTemplate)
+				r.Get("/voice-profile", handlers.Business.GetVoiceProfile)
+				r.With(writeLimit).Put("/voice-profile", handlers.Business.UpdateVoiceProfile)
 
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
 				r.Get("/integrations/drift", handlers.Integration.GetIntegrationsDrift)

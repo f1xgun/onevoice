@@ -49,18 +49,19 @@ type historyEntry struct {
 
 // chatRequest is the POST /chat/{conversationID} body. See docs/orchestrator/chat-handler.md.
 type chatRequest struct {
-	Model              string         `json:"model"`
-	Message            string         `json:"message"`
-	BusinessID         string         `json:"business_id"`
-	BusinessName       string         `json:"business_name"`
-	BusinessCategory   string         `json:"business_category"`
-	BusinessAddress    string         `json:"business_address"`
-	BusinessPhone      string         `json:"business_phone"`
-	BusinessWebsite    string         `json:"business_website"`
-	BusinessDesc       string         `json:"business_description"`
-	BusinessVoiceTone  []string       `json:"business_voice_tone"`
-	ActiveIntegrations []string       `json:"active_integrations"`
-	History            []historyEntry `json:"history"`
+	Model                string         `json:"model"`
+	Message              string         `json:"message"`
+	BusinessID           string         `json:"business_id"`
+	BusinessName         string         `json:"business_name"`
+	BusinessCategory     string         `json:"business_category"`
+	BusinessAddress      string         `json:"business_address"`
+	BusinessPhone        string         `json:"business_phone"`
+	BusinessWebsite      string         `json:"business_website"`
+	BusinessDesc         string         `json:"business_description"`
+	BusinessVoiceTone    []string       `json:"business_voice_tone"`
+	BusinessVoiceProfile string         `json:"business_voice_profile"`
+	ActiveIntegrations   []string       `json:"active_integrations"`
+	History              []historyEntry `json:"history"`
 
 	ProjectID            string   `json:"project_id"`
 	ProjectName          string   `json:"project_name"`
@@ -121,6 +122,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Website:            req.BusinessWebsite,
 		Description:        req.BusinessDesc,
 		Tone:               joinTone(req.BusinessVoiceTone, locale),
+		VoiceProfile:       req.BusinessVoiceProfile,
 		ActiveIntegrations: req.ActiveIntegrations,
 		Now:                time.Now(),
 		Locale:             locale,

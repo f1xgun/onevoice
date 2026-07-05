@@ -71,6 +71,7 @@ type DraftReplyRequest struct {
 	BusinessName        string              `json:"businessName"`
 	BusinessCategory    string              `json:"businessCategory,omitempty"`
 	BusinessDescription string              `json:"businessDescription,omitempty"`
+	VoiceProfile        string              `json:"voiceProfile,omitempty"`
 	Platform            string              `json:"platform"`
 	ReviewText          string              `json:"reviewText"`
 	Rating              int                 `json:"rating"`
@@ -215,6 +216,9 @@ func draftReplySystemPrompt(req DraftReplyRequest, tag language.Tag) string {
 		if req.BusinessDescription != "" {
 			sys.WriteString("Description: " + req.BusinessDescription + "\n")
 		}
+		if profile := strings.TrimSpace(req.VoiceProfile); profile != "" {
+			sys.WriteString("Brand voice (the owner's authored profile — follow it in the reply):\n" + profile + "\n")
+		}
 		if req.Platform != "" {
 			sys.WriteString("Review platform: " + req.Platform + ".\n")
 		}
@@ -236,6 +240,9 @@ func draftReplySystemPrompt(req DraftReplyRequest, tag language.Tag) string {
 	}
 	if req.BusinessDescription != "" {
 		sys.WriteString("Описание: " + req.BusinessDescription + "\n")
+	}
+	if profile := strings.TrimSpace(req.VoiceProfile); profile != "" {
+		sys.WriteString("Бренд-голос (авторский профиль владельца — соблюдай его в ответе):\n" + profile + "\n")
 	}
 	if req.Platform != "" {
 		sys.WriteString("Платформа отзыва: " + req.Platform + ".\n")

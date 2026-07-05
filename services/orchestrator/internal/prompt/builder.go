@@ -17,13 +17,18 @@ import (
 // BusinessContext holds all data needed to build the system prompt.
 // See docs/orchestrator/prompt.md for locale dispatch rules.
 type BusinessContext struct {
-	Name               string
-	Category           string
-	Address            string
-	Phone              string
-	Website            string
-	Description        string
-	Tone               string   // e.g., "дружелюбный", "профессиональный"
+	Name        string
+	Category    string
+	Address     string
+	Phone       string
+	Website     string
+	Description string
+	Tone        string // e.g., "дружелюбный", "профессиональный"
+	// VoiceProfile is the business's free-form brand-voice profile (do/don't
+	// phrases, emoji policy, short exemplars). It is per-business state, so it
+	// renders in Block 2 ONLY, beside the tone line — never in the cache-locked
+	// Block 1 prefix. Empty = nothing rendered (prompt byte-identical to today).
+	VoiceProfile       string
 	ActiveIntegrations []string // e.g., ["telegram", "vk", "google_business"]
 	Now                time.Time
 	// Locale drives the system-prompt language. Zero Tag = RU (legacy).
@@ -226,6 +231,10 @@ func buildBusinessBlockRu(ctx BusinessContext) string {
 	}
 	fmt.Fprintf(&sb, "\nТон общения: %s\n", tone)
 
+	if profile := strings.TrimSpace(ctx.VoiceProfile); profile != "" {
+		fmt.Fprintf(&sb, "\nБренд-голос (авторский профиль владельца, соблюдай его во всех исходящих публикациях и ответах клиентам):\n%s\n", profile)
+	}
+
 	fmt.Fprintf(&sb, "\nТекущая дата и время: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
 
 	if len(ctx.ActiveIntegrations) > 0 {
@@ -277,6 +286,10 @@ func buildBusinessBlockEn(ctx BusinessContext) string {
 		tone = "professional"
 	}
 	fmt.Fprintf(&sb, "\nTone: %s\n", tone)
+
+	if profile := strings.TrimSpace(ctx.VoiceProfile); profile != "" {
+		fmt.Fprintf(&sb, "\nBrand voice (the owner's authored profile — follow it in all outbound posts and customer replies):\n%s\n", profile)
+	}
 
 	fmt.Fprintf(&sb, "\nCurrent date and time: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
 

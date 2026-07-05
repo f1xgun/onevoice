@@ -12,6 +12,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	apiplatform "github.com/f1xgun/onevoice/services/api/internal/platform"
 )
 
 // Drafter tunable defaults / safety limits.
@@ -167,6 +168,7 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 		BusinessName:        business.Name,
 		BusinessCategory:    business.Category,
 		BusinessDescription: business.Description,
+		VoiceProfile:        apiplatform.VoiceProfileFromSettings(business.Settings),
 		Platform:            review.Platform,
 		ReviewText:          review.Text,
 		Rating:              review.Rating,
