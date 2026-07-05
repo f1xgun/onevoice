@@ -39,7 +39,7 @@ func TestVerifyTelegramLogin_ValidHash(t *testing.T) {
 	}
 
 	cfg := ConnectConfig{TelegramBotToken: botToken}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, nil)
 
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/verify", strings.NewReader(string(body)))
@@ -82,7 +82,7 @@ func TestVerifyTelegramLogin_NumericFields_ValidHash(t *testing.T) {
 	})
 
 	cfg := ConnectConfig{TelegramBotToken: botToken}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, nil)
 
 	body := fmt.Sprintf(
 		`{"id":%d,"username":"testuser","auth_date":%d,"hash":%q}`,
@@ -120,7 +120,7 @@ func TestVerifyTelegramLogin_InvalidHash(t *testing.T) {
 	}
 
 	cfg := ConnectConfig{TelegramBotToken: botToken}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, nil)
 
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/verify", strings.NewReader(string(bodyBytes)))
@@ -146,7 +146,7 @@ func TestVerifyTelegramLogin_ExpiredAuthDate(t *testing.T) {
 	fields["hash"] = hash
 
 	cfg := ConnectConfig{TelegramBotToken: botToken}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, nil)
 
 	bodyBytes, _ := json.Marshal(fields)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/verify", strings.NewReader(string(bodyBytes)))
@@ -209,7 +209,7 @@ func TestConnectTelegram_LinkedGroupOK(t *testing.T) {
 	})).Return(&domain.Integration{ID: uuid.New(), Platform: "telegram"}, nil)
 
 	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, tgServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
@@ -257,7 +257,7 @@ func TestRefreshTelegramLinkedGroup_Success(t *testing.T) {
 	})).Return(nil)
 
 	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, tgServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/telegram/refresh",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
@@ -292,7 +292,7 @@ func TestRefreshTelegramLinkedGroup_IntegrationNotFound(t *testing.T) {
 		{ID: uuid.New(), BusinessID: businessID, Platform: "telegram", ExternalID: "@someone_else"},
 	}, nil)
 
-	h := NewConnectHandler(mockIntegration, mockBusiness, ConnectConfig{TelegramBotToken: "t"}, nil)
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, ConnectConfig{TelegramBotToken: "t"}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/telegram/refresh",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
@@ -323,7 +323,7 @@ func TestConnectTelegram_LinkedGroupBotNotMember(t *testing.T) {
 	})).Return(&domain.Integration{ID: uuid.New(), Platform: "telegram"}, nil)
 
 	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, tgServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
@@ -371,7 +371,7 @@ func TestConnectTelegram_Success(t *testing.T) {
 		TelegramBotToken:   "bot_token_123",
 		telegramAPIBaseURL: tgServer.URL,
 	}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, tgServer.Client())
 
 	reqBody := `{"channel_id":"@mychannel"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
@@ -406,7 +406,7 @@ func TestConnectTelegram_ClaimedByOtherTenantConflict(t *testing.T) {
 		Return((*domain.Integration)(nil), domain.ErrIntegrationClaimedByOtherTenant)
 
 	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
-	h := NewConnectHandler(mockIntegration, mockBusiness, cfg, tgServer.Client())
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, tgServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"@victimshop"}`))
@@ -435,7 +435,7 @@ func TestConnectTelegram_BotNoAccess(t *testing.T) {
 		TelegramBotToken:   "bot_token_123",
 		telegramAPIBaseURL: tgServer.URL,
 	}
-	h := NewConnectHandler(new(MockConnectIntegrationService), mockBusiness, cfg, tgServer.Client())
+	h := NewConnectHandler(new(MockConnectIntegrationService), mockBusiness, nil, cfg, tgServer.Client())
 
 	reqBody := `{"channel_id":"-1001234567890"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
@@ -475,7 +475,7 @@ func TestConnectTelegram_BotForbidden(t *testing.T) {
 	businessID := uuid.New()
 
 	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, tgServer.Client())
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, tgServer.Client())
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"-1001234567890"}`))
@@ -514,7 +514,7 @@ func TestConnectTelegram_Unreachable(t *testing.T) {
 
 	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
 	client := &http.Client{Timeout: 50 * time.Millisecond}
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), cfg, client)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, client)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"@onevoice_test"}`))
@@ -535,7 +535,7 @@ func TestConnectTelegram_MissingChannelID(t *testing.T) {
 
 	mockBusiness := new(MockBusinessService)
 
-	h := NewConnectHandler(new(MockConnectIntegrationService), mockBusiness, ConnectConfig{}, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), mockBusiness, nil, ConnectConfig{}, nil)
 
 	reqBody := `{"telegram_user_id":"12345"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
@@ -557,7 +557,7 @@ func TestConnectTelegram_MissingChannelID(t *testing.T) {
 // the handler directly without BusinessContext, the handler treats this as a
 // middleware misconfiguration (500), not as an unauthenticated user (401).
 func TestConnectTelegram_NoBusinessContext(t *testing.T) {
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(`{"channel_id":"@ch"}`))
 	rr := httptest.NewRecorder()
@@ -573,7 +573,7 @@ func TestConnectTelegram_NoBusinessContext(t *testing.T) {
 func TestConnectTelegram_Forbidden(t *testing.T) {
 	businessID := uuid.New()
 	userID := uuid.New()
-	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(`{"channel_id":"@ch"}`))
 	req = req.WithContext(connectBizCtx(businessID, userID))

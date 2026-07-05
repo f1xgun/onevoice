@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,11 +74,19 @@ type fakeSender struct {
 	replyMessageID int
 	replyText      string
 	reviewsLimit   int
+	sentMarkup     *tgbotapi.InlineKeyboardMarkup
 }
 
 func (f *fakeSender) SendMessage(chat, text string) error {
 	f.sentMessage = text
 	f.sentChat = chat
+	return nil
+}
+
+func (f *fakeSender) SendMessageWithMarkup(chat, text string, markup *tgbotapi.InlineKeyboardMarkup) error {
+	f.sentMessage = text
+	f.sentChat = chat
+	f.sentMarkup = markup
 	return nil
 }
 
@@ -306,6 +315,87 @@ func TestHandler_SendNotification_FetchesTokenPerRequest(t *testing.T) {
 	assert.Equal(t, "telegram", fetcher.lastPlatform)
 }
 
+// TestHandler_SendNotification_NoApprovalBatch_NoMarkup proves the inline-button
+// support is strictly additive: a plain notification (no approval_batch_id arg)
+// is sent with a nil markup, exactly like the pre-existing plain send. No
+// regression to the ordinary notification path.
+func TestHandler_SendNotification_NoApprovalBatch_NoMarkup(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token"}
+	sender := &fakeSender{}
+	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) { return sender, nil }, nil,
+		agent.WithApprovalHMACSecret("secret-key"))
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		BusinessID: "biz-1",
+		Tool:       tools.TelegramSendNotification,
+		Args:       map[string]interface{}{"text": "hi", "chat_id": "123456789"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Nil(t, sender.sentMarkup, "plain notification must carry no inline keyboard")
+}
+
+// TestHandler_SendNotification_WithApprovalBatch_AttachesButtons proves the
+// [Approve]/[Reject] inline keyboard is attached when an approval_batch_id arg
+// is present and the HMAC secret is configured. Each button carries a distinct,
+// server-verifiable callback_data (approve vs reject differ) bound to the batch.
+func TestHandler_SendNotification_WithApprovalBatch_AttachesButtons(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token"}
+	sender := &fakeSender{}
+	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) { return sender, nil }, nil,
+		agent.WithApprovalHMACSecret("secret-key"))
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		BusinessID: "biz-1",
+		Tool:       tools.TelegramSendNotification,
+		Args: map[string]interface{}{
+			"text":              "Approve this action?",
+			"chat_id":           "123456789",
+			"approval_batch_id": "550e8400-e29b-41d4-a716-446655440000",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	require.NotNil(t, sender.sentMarkup, "approval notification must carry the inline keyboard")
+	require.Len(t, sender.sentMarkup.InlineKeyboard, 1)
+	require.Len(t, sender.sentMarkup.InlineKeyboard[0], 2, "expected [Approve][Reject] buttons")
+	approveBtn := sender.sentMarkup.InlineKeyboard[0][0]
+	rejectBtn := sender.sentMarkup.InlineKeyboard[0][1]
+	require.NotNil(t, approveBtn.CallbackData)
+	require.NotNil(t, rejectBtn.CallbackData)
+	assert.NotEqual(t, *approveBtn.CallbackData, *rejectBtn.CallbackData, "approve and reject callback_data must differ")
+	assert.LessOrEqual(t, len(*approveBtn.CallbackData), 64, "callback_data must fit Telegram's 64-byte cap")
+}
+
+// TestHandler_SendNotification_ApprovalBatch_NoSecret_NoMarkup proves the
+// fail-closed behavior: when the HMAC secret is unset, an approval_batch_id arg
+// does NOT produce buttons (the notification still sends), so no unsigned
+// approval surface is ever exposed.
+func TestHandler_SendNotification_ApprovalBatch_NoSecret_NoMarkup(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token"}
+	sender := &fakeSender{}
+	h := newHandlerWithSender(fetcher, sender) // no WithApprovalHMACSecret
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		BusinessID: "biz-1",
+		Tool:       tools.TelegramSendNotification,
+		Args: map[string]interface{}{
+			"text":              "Approve this action?",
+			"chat_id":           "123456789",
+			"approval_batch_id": "550e8400-e29b-41d4-a716-446655440000",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Nil(t, sender.sentMarkup, "no HMAC secret must fail closed to a plain notification, never an unsigned button")
+}
+
 // TestHandler_SendNotification_NoChatID_DoesNotLeakToChannel is the regression
 // for the confidentiality leak: telegram__send_notification is advertised to the
 // LLM as a private owner notification and its tool spec exposes no chat_id, so in
@@ -455,6 +545,10 @@ func (e *errSender) SendPhoto(_, _, _ string) error            { return e.err }
 func (e *errSender) SendReply(_ string, _ int, _ string) error { return e.err }
 func (e *errSender) GetReviews(_ int) ([]map[string]interface{}, error) {
 	return nil, e.err
+}
+
+func (e *errSender) SendMessageWithMarkup(_, _ string, _ *tgbotapi.InlineKeyboardMarkup) error {
+	return e.err
 }
 
 func newHandlerWithErrSender(fetcher agent.TokenFetcher, sendErr error) *agent.Handler {

@@ -106,6 +106,20 @@ type Config struct {
 	YandexClientSecret string
 	YandexRedirectURI  string
 	TelegramBotToken   string
+	// TelegramApprovalHMACSecret signs/verifies the opaque callback_data on the
+	// inline [Approve]/[Reject] buttons of an owner HITL approval notification.
+	// It MUST match the telegram agent's TELEGRAM_APPROVAL_HMAC_SECRET. Empty
+	// disables the inbound approval plane fail-closed: the consumer refuses to
+	// subscribe, so absence never exposes an unvalidated off-app approval path.
+	TelegramApprovalHMACSecret string
+
+	// TelegramBotUsername is the @-less username of the system bot (e.g.
+	// "onevoice_bot"). It is used only to render the /start owner-link deep link
+	// https://t.me/<username>?start=<token>. Empty disables the owner-link
+	// handshake fail-closed: the mint endpoint returns 404 and the bind consumer
+	// refuses to subscribe. Read from config rather than a getMe call so the hot
+	// mint path never makes a runtime Bot API request.
+	TelegramBotUsername string
 
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -316,21 +330,23 @@ func Load() (*Config, error) {
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
 		SecureCookies: getEnv("SECURE_COOKIES", envBoolTrue) == envBoolTrue,
 
-		VKClientID:         os.Getenv("VK_CLIENT_ID"),
-		VKClientSecret:     os.Getenv("VK_CLIENT_SECRET"),
-		VKRedirectURI:      getEnv("VK_REDIRECT_URI", defaultVKRedirectURI),
-		VKServiceKey:       os.Getenv("VK_SERVICE_KEY"),
-		YandexClientID:     os.Getenv("YANDEX_CLIENT_ID"),
-		YandexClientSecret: os.Getenv("YANDEX_CLIENT_SECRET"),
-		YandexRedirectURI:  getEnv("YANDEX_REDIRECT_URI", defaultYandexRedirectURI),
-		TelegramBotToken:   os.Getenv("TELEGRAM_BOT_TOKEN"),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleRedirectURI:  getEnv("GOOGLE_REDIRECT_URI", defaultGoogleRedirectURI),
-		InternalPort:       getEnv("INTERNAL_PORT", "8443"),
-		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", defaultOrchestratorURL),
-		NATSUrl:            os.Getenv("NATS_URL"),
-		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30), //nolint:mnd // env-driven default
+		VKClientID:                 os.Getenv("VK_CLIENT_ID"),
+		VKClientSecret:             os.Getenv("VK_CLIENT_SECRET"),
+		VKRedirectURI:              getEnv("VK_REDIRECT_URI", defaultVKRedirectURI),
+		VKServiceKey:               os.Getenv("VK_SERVICE_KEY"),
+		YandexClientID:             os.Getenv("YANDEX_CLIENT_ID"),
+		YandexClientSecret:         os.Getenv("YANDEX_CLIENT_SECRET"),
+		YandexRedirectURI:          getEnv("YANDEX_REDIRECT_URI", defaultYandexRedirectURI),
+		TelegramBotToken:           os.Getenv("TELEGRAM_BOT_TOKEN"),
+		TelegramApprovalHMACSecret: os.Getenv("TELEGRAM_APPROVAL_HMAC_SECRET"),
+		TelegramBotUsername:        os.Getenv("TELEGRAM_BOT_USERNAME"),
+		GoogleClientID:             os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:         os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleRedirectURI:          getEnv("GOOGLE_REDIRECT_URI", defaultGoogleRedirectURI),
+		InternalPort:               getEnv("INTERNAL_PORT", "8443"),
+		OrchestratorURL:            getEnv("ORCHESTRATOR_URL", defaultOrchestratorURL),
+		NATSUrl:                    os.Getenv("NATS_URL"),
+		ReviewSyncInterval:         getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30), //nolint:mnd // env-driven default
 
 		ReviewDraftEnabled:     getEnv("REVIEW_DRAFT_ENABLED", "false") == envBoolTrue,
 		ReviewDraftMaxExamples: getEnvInt("REVIEW_DRAFT_MAX_EXAMPLES", 5), //nolint:mnd // env-driven default

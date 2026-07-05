@@ -29,3 +29,36 @@ const tokenRedactionMarker = "***REDACTED_BOT_TOKEN***" //nolint:gosec // G101: 
 // pending reviews; customer comments arrive as plain "message" updates in
 // linked discussion groups instead.
 var allowedUpdateTypes = []string{"message", "edited_message"}
+
+// callbackUpdateTypes restricts the approval-callback long-poll to
+// callback_query updates only. It is deliberately DISJOINT from
+// allowedUpdateTypes so the review poll never pulls callback_query (which would
+// let an inline-button tap surface as a false-positive review) and this poll
+// never pulls plain messages (which belong to the review/comment plane).
+var callbackUpdateTypes = []string{"callback_query"}
+
+// callbackPollTimeout is the Telegram long-poll timeout (seconds) for the
+// approval-callback poller. A positive value makes GetUpdates block server-side
+// until an update arrives or the window elapses, so the loop does not busy-spin;
+// it stays under the botAPITimeout HTTP deadline so the round-trip cannot wedge.
+const callbackPollTimeout = 25
+
+// startUpdateTypes restricts the /start owner-link handshake long-poll to
+// message updates (the plane a "/start <token>" DM arrives on). It OVERLAPS
+// allowedUpdateTypes because a review comment also arrives as "message"; the
+// on-demand review poll (GetReviews) and this continuous /start poll therefore
+// share the message plane. To avoid consuming a review comment, PollStart
+// advances the getUpdates offset ONLY past a contiguous prefix of handled
+// /start-command updates and STOPS at the first non-/start message, leaving that
+// message (and everything after it) unconfirmed for GetReviews. A /start message
+// re-delivered before its offset advances is deduped downstream by the token's
+// single-use consume, so at-least-once delivery here is safe.
+var startUpdateTypes = []string{"message"}
+
+// startPollTimeout mirrors callbackPollTimeout: a bounded long-poll held below
+// the botAPITimeout HTTP deadline so the round-trip cannot wedge.
+const startPollTimeout = 25
+
+// startCommandPrefix is the exact command token that opens a deep-link session.
+// Telegram delivers "?start=<token>" as the message text "/start <token>".
+const startCommandPrefix = "/start"

@@ -7,10 +7,14 @@ import (
 	"strconv"
 	"strings"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/telegramcallback"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/agent-telegram/internal/telegram"
 )
 
 // TokenInfo aliases agentbase.TokenInfo so test files that construct
@@ -31,6 +35,11 @@ type Sender interface {
 	SendPhoto(chat, photoURL, caption string) error
 	SendReply(chat string, messageID int, text string) error
 	GetReviews(limit int) ([]map[string]interface{}, error)
+	// SendMessageWithMarkup is the additive send path that carries an optional
+	// inline keyboard. A nil markup is exactly equivalent to SendMessage, so
+	// existing callers are unaffected and the [Approve]/[Reject] approval buttons
+	// are strictly opt-in.
+	SendMessageWithMarkup(chat, text string, markup *tgbotapi.InlineKeyboardMarkup) error
 }
 
 // SenderFactory creates a Sender from a bot token.
@@ -83,6 +92,21 @@ type Handler struct {
 	tokens        TokenFetcher
 	senderFactory SenderFactory
 	exec          agentbase.ToolExec
+	// approvalHMACSecret signs the callback_data on the [Approve]/[Reject]
+	// buttons attached to an owner approval notification. Empty disables the
+	// buttons fail-closed — the notification still sends, just without the inline
+	// keyboard, so no unsigned approval surface is ever exposed.
+	approvalHMACSecret string
+}
+
+// Option configures a Handler at construction time.
+type Option func(*Handler)
+
+// WithApprovalHMACSecret enables the inline approve/reject buttons on owner
+// notifications by supplying the HMAC secret used to sign each button's opaque
+// callback_data. An empty secret is a no-op (buttons stay disabled fail-closed).
+func WithApprovalHMACSecret(secret string) Option {
+	return func(h *Handler) { h.approvalHMACSecret = secret }
 }
 
 // NewHandler creates a Handler with the given TokenFetcher, SenderFactory, and
@@ -90,9 +114,13 @@ type Handler struct {
 // classification — see pkg/agentbase. Tests may pass a dispatcher built with
 // nil dedupe / nil classifier, or pass nil here to skip HITL entirely. On the
 // nil-dispatcher path the router applies ClassifyTelegramError as the fallback
-// classifier so the contract matches the legacy Handle implementation.
-func NewHandler(tokens TokenFetcher, factory SenderFactory, dispatcher agentbase.Dispatcher) *Handler {
+// classifier so the contract matches the legacy Handle implementation. Optional
+// behavior (e.g. approval buttons) is supplied via Option.
+func NewHandler(tokens TokenFetcher, factory SenderFactory, dispatcher agentbase.Dispatcher, opts ...Option) *Handler {
 	h := &Handler{tokens: tokens, senderFactory: factory}
+	for _, opt := range opts {
+		opt(h)
+	}
 	h.exec = agentbase.NewRouter(h.routes(), dispatcher, agentbase.FuncClassifier(ClassifyTelegramError))
 	return h
 }
@@ -233,11 +261,56 @@ func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a
 		return nil, err
 	}
 
-	if err := sender.SendMessage(chatIDStr, text); err != nil {
+	markup, err := h.approvalMarkup(req.Args)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := sender.SendMessageWithMarkup(chatIDStr, text, markup); err != nil {
 		return nil, fmt.Errorf("telegram: send notification: %w", classifyTelegramError(err))
 	}
 
 	return a2a.OK(req, map[string]any{"status": "sent"}), nil
+}
+
+// approvalMarkup builds the optional [Approve]/[Reject] inline keyboard for an
+// owner approval notification. It returns nil (plain send) when no
+// approval_batch_id arg is present or the HMAC secret is unset — the buttons are
+// strictly opt-in and fail closed to a plain notification when signing is
+// unavailable, never to an unsigned button. locale (ru|en) selects the
+// owner-facing labels; anything else defaults to ru. A build error on a present
+// batch id is surfaced (non-retryable) rather than silently dropping the buttons,
+// so a misconfiguration is visible instead of degrading to an approval-less DM.
+func (h *Handler) approvalMarkup(args map[string]interface{}) (*tgbotapi.InlineKeyboardMarkup, error) {
+	batchID, _ := args["approval_batch_id"].(string)
+	if batchID == "" {
+		return nil, nil
+	}
+	if h.approvalHMACSecret == "" {
+		slog.Warn("telegram agent: approval_batch_id supplied but TELEGRAM_APPROVAL_HMAC_SECRET unset — sending notification without inline buttons")
+		return nil, nil
+	}
+	approveData, err := telegramcallback.BuildCallbackData(batchID, telegramcallback.ActionApprove, h.approvalHMACSecret)
+	if err != nil {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("telegram: build approve callback: %w", err))
+	}
+	rejectData, err := telegramcallback.BuildCallbackData(batchID, telegramcallback.ActionReject, h.approvalHMACSecret)
+	if err != nil {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("telegram: build reject callback: %w", err))
+	}
+	locale, _ := args["locale"].(string)
+	approveLabel, rejectLabel := approvalButtonLabels(locale)
+	markup := telegram.ApprovalKeyboard(approveLabel, approveData, rejectLabel, rejectData)
+	return &markup, nil
+}
+
+// approvalButtonLabels returns the owner-facing approve/reject button captions
+// for the given locale. ru is the default; en is selected for an "en" locale.
+func approvalButtonLabels(locale string) (approve, reject string) {
+	if strings.HasPrefix(strings.ToLower(locale), "en") {
+		return "Approve", "Reject"
+	}
+	return "Одобрить", "Отклонить"
 }
 
 func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {

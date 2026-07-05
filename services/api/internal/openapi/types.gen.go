@@ -27,6 +27,7 @@ const (
 	AuthUserRegistered           AuditAction = "auth.user_registered"
 	BusinessCreated              AuditAction = "business.created"
 	BusinessUpdated              AuditAction = "business.updated"
+	HitlApprovalResolved         AuditAction = "hitl.approval_resolved"
 	IntegrationConnected         AuditAction = "integration.connected"
 	IntegrationDisconnected      AuditAction = "integration.disconnected"
 	IntegrationExternalIdUpdated AuditAction = "integration.external_id_updated"
@@ -1591,6 +1592,15 @@ type TelegramLoginRequest_AuthDate struct {
 type TelegramLoginVerifiedResponse struct {
 	User     map[string]interface{} `json:"user" validate:"required"`
 	Verified bool                   `json:"verified" validate:"required"`
+}
+
+// TelegramOwnerLinkResponse defines model for TelegramOwnerLinkResponse.
+type TelegramOwnerLinkResponse struct {
+	// ExpiresInSeconds Seconds until the deep link expires.
+	ExpiresInSeconds int `json:"expires_in_seconds" validate:"required"`
+
+	// StartUrl A one-time Telegram deep link the business admin opens or forwards to the owner. Tapping it delivers "/start <token>" to the bot; the first authentic tapper within the TTL becomes the verified owner. Single-use.
+	StartUrl string `json:"start_url" validate:"required"`
 }
 
 // TelemetryEvent defines model for TelemetryEvent.

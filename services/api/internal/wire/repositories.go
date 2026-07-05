@@ -39,6 +39,11 @@ type Repos struct {
 	// directly without an intervening interface.
 	PasswordResetToken *repository.PasswordResetTokenRepository
 
+	// telegram_owner_link_tokens repository — single-use short-TTL tokens
+	// backing the /start deep-link owner-id handshake. Concrete pointer like
+	// PasswordResetToken: only TelegramOwnerLinkService depends on it.
+	TelegramOwnerLinkToken *repository.TelegramOwnerLinkTokenRepository
+
 	// tx-aware password setter, exposed separately from the
 	// domain.UserRepository interface (which stays tx-free). The concrete
 	// *repository.UserResetExtAdapter satisfies service.UserRepoForReset
@@ -118,6 +123,7 @@ func Repositories(h *DBHandles) *Repos {
 		AuditLog:               repository.NewAuditLogRepository(h.PG),
 		EmailOutbox:            repository.NewEmailOutboxRepository(h.PG),
 		PasswordResetToken:     repository.NewPasswordResetTokenRepository(h.PG),
+		TelegramOwnerLinkToken: repository.NewTelegramOwnerLinkTokenRepository(h.PG),
 		UserResetExt:           repository.NewUserResetExtAdapter(h.PG),
 		BusinessDeletionExt:    repository.NewBusinessDeletionExtAdapter(h.PG),
 		EmailVerificationToken: repository.NewEmailVerificationTokenRepository(h.PG),

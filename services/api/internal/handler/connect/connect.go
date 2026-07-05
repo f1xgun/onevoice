@@ -66,21 +66,34 @@ type ConnectConfig struct {
 	telegramAPIBaseURL string
 }
 
+// TelegramOwnerLinkMinter mints the one-time /start deep link that binds the
+// verified owner telegram_user_id. Defined locally per CONVENTIONS.md
+// §"Service Interfaces". *service.TelegramOwnerLinkService satisfies it. nil
+// means the handshake is unconfigured and the mint endpoint returns 404.
+type TelegramOwnerLinkMinter interface {
+	Enabled() bool
+	Mint(ctx context.Context, businessID uuid.UUID) (string, error)
+}
+
 // ConnectHandler handles paste-flow integration endpoints (Telegram
 // bot-token + Login Widget verify, VK community access token).
 type ConnectHandler struct {
 	integrationService ConnectIntegrationService
 	businessService    BusinessService
+	ownerLink          TelegramOwnerLinkMinter
 	cfg                ConnectConfig
 	httpClient         *http.Client
 }
 
-// NewConnectHandler constructs a ConnectHandler. nil dependencies panic
-// (matches NewOAuthHandler's contract); a nil httpClient defaults to a
-// 10-second timeout client (used by VK + Telegram API probes).
+// NewConnectHandler constructs a ConnectHandler. nil integration/business deps
+// panic (matches NewOAuthHandler's contract); ownerLink may be nil (the /start
+// owner-link handshake is then unconfigured and its mint endpoint returns 404). A
+// nil httpClient defaults to a 10-second timeout client (used by VK + Telegram
+// API probes).
 func NewConnectHandler(
 	integrationService ConnectIntegrationService,
 	businessService BusinessService,
+	ownerLink TelegramOwnerLinkMinter,
 	cfg ConnectConfig,
 	httpClient *http.Client,
 ) *ConnectHandler {
@@ -102,6 +115,7 @@ func NewConnectHandler(
 	return &ConnectHandler{
 		integrationService: integrationService,
 		businessService:    businessService,
+		ownerLink:          ownerLink,
 		cfg:                cfg,
 		httpClient:         httpClient,
 	}

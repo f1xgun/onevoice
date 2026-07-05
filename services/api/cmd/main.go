@@ -123,6 +123,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return err
 	}
 
+	svcs.StartTelegramApproval(log, handles.NATS)
+	svcs.StartTelegramOwnerLink(log, handles.NATS)
+
 	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
 	var mongoClient *mongo.Client
 	if handles.Mongo != nil {

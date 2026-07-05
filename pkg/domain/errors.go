@@ -86,6 +86,15 @@ var (
 	ErrResetTokenCollision = errors.New("password reset token hash collision")
 )
 
+// Telegram owner-link handshake errors. ConsumeAtomic collapses
+// (expired | already-consumed | unknown-hash) → ErrLinkTokenInvalid so no path
+// distinguishes the failure mode to a caller; ErrLinkTokenCollision is the
+// astronomically improbable UNIQUE-hash violation the mint path may retry on.
+var (
+	ErrLinkTokenInvalid   = errors.New("telegram owner-link token invalid")
+	ErrLinkTokenCollision = errors.New("telegram owner-link token hash collision")
+)
+
 // Email verification errors. ConsumeAtomic collapses the same three failure
 // modes as password reset into ErrVerifyTokenInvalid; the handler runs a
 // follow-up "row present but expired?" lookup to distinguish copy. See
