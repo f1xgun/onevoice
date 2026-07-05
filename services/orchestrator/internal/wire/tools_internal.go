@@ -259,7 +259,7 @@ func newGenerateImageExecutor(
 			return nil, mapGenError(err)
 		}
 
-		key := "generated/" + businessID + "/" + uuid.NewString() + ".png"
+		key := "generated/" + businessID + "/" + uuid.NewString() + extForContentType(res.ContentType)
 		if upErr := store.Upload(ctx, key, bytes.NewReader(res.Data), int64(len(res.Data)), res.ContentType); upErr != nil {
 			slog.ErrorContext(ctx, "generate_image: upload failed", "error", upErr, "business_id", businessID)
 			return nil, fmt.Errorf("generate_image: could not store the generated image, try again")
@@ -339,17 +339,41 @@ func stringArg(args map[string]interface{}, key string) string {
 	return ""
 }
 
+// extForContentType maps a generated image's MIME type onto the object-key
+// suffix so a JPEG result is stored as .jpg and a PNG as .png. An unknown type
+// falls back to .png (the historical default).
+func extForContentType(contentType string) string {
+	switch contentType {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ".png"
+	}
+}
+
 // ImageGen builds the configured image generator, or nil when image generation
 // is disabled/unconfigured. nil is the signal Tools uses to skip registration.
+// The credential passed depends on the selected provider: OpenAI uses
+// OPENAI_API_KEY; YandexART uses YANDEX_ART_API_KEY + YANDEX_ART_FOLDER_ID. The
+// nil-when-disabled off-switch lives in imagegen.New (Enabled && APIKey != "").
 func ImageGen(cfg *config.Config) imagegen.Generator {
-	return imagegen.New(imagegen.Config{
+	icfg := imagegen.Config{
 		Enabled:  cfg.ImageGenEnabled,
 		Provider: cfg.ImageGenProvider,
-		APIKey:   cfg.OpenAIAPIKey,
 		Model:    cfg.ImageGenModel,
 		Size:     cfg.ImageGenSize,
 		MaxBytes: cfg.ImageGenMaxBytes,
-	})
+	}
+	switch cfg.ImageGenProvider {
+	case "yandexart":
+		icfg.APIKey = cfg.YandexArtAPIKey
+		icfg.FolderID = cfg.YandexArtFolderID
+	default:
+		icfg.APIKey = cfg.OpenAIAPIKey
+	}
+	return imagegen.New(icfg)
 }
 
 // ImageStore builds the orchestrator-local object store for generated media.

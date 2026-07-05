@@ -140,13 +140,19 @@ type Config struct {
 	EnableGoogleBusiness bool
 
 	// Image generation (generate_image tool). OFF by default: the tool is only
-	// registered when ImageGenEnabled is true AND both an OpenAI key and an S3
-	// endpoint are configured. See docs/orchestrator/config.md.
+	// registered when ImageGenEnabled is true AND the selected provider's
+	// credential plus an S3 endpoint are configured. See docs/orchestrator/config.md.
 	ImageGenEnabled  bool
 	ImageGenProvider string
 	ImageGenModel    string
 	ImageGenSize     string
 	ImageGenMaxBytes int64
+
+	// YandexArtAPIKey / YandexArtFolderID are the YandexART (Yandex Cloud AI
+	// Studio) credentials, consulted only when ImageGenProvider is "yandexart".
+	// Empty by default so the feature stays off until keys are supplied.
+	YandexArtAPIKey   string
+	YandexArtFolderID string
 
 	// ImageGenMaxPerTurn caps images generated within a single agent turn.
 	// <= 0 disables the cap. Defaults to defaultImageGenMaxPerTurn.
@@ -380,6 +386,9 @@ func Load() (*Config, error) {
 		ImageGenMaxBytes:      imageGenMaxBytes,
 		ImageGenMaxPerTurn:    imageGenMaxPerTurn,
 		ImageGenBucketTimeout: imageGenBucketTimeout,
+
+		YandexArtAPIKey:   os.Getenv("YANDEX_ART_API_KEY"),
+		YandexArtFolderID: os.Getenv("YANDEX_ART_FOLDER_ID"),
 
 		PublicURL:   os.Getenv("PUBLIC_URL"),
 		S3Endpoint:  os.Getenv("S3_ENDPOINT"),
