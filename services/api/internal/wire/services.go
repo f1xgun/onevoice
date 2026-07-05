@@ -273,7 +273,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	}
 	s.OAuth = service.NewOAuthService(h.Redis)
 	s.Post = service.NewPostService(repos.Post, s.Business)
-	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business)
+	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business, h.NATS)
 	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
 
 	conversationService, err := service.NewConversationService(repos.Conversation, repos.Message, repos.Project, h.PendingToolCallRepo)

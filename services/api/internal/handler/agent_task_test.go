@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,16 +15,22 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 // mockAgentTaskService implements AgentTaskService for tests.
 type mockAgentTaskService struct {
-	listFn func(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
+	listFn  func(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
+	retryFn func(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
 }
 
 func (m *mockAgentTaskService) List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
 	return m.listFn(ctx, businessID, filter)
+}
+
+func (m *mockAgentTaskService) Retry(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error) {
+	return m.retryFn(ctx, businessID, taskID)
 }
 
 // agentTaskBizCtx seeds a BusinessContext with PermContentRead for agent task handler tests.
@@ -133,4 +140,125 @@ func TestListTasks_BusinessNotFound(t *testing.T) {
 	h.ListTasks(rr, req)
 
 	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+// retryTaskCtx seeds a BusinessContext with the given permissions and the
+// {taskId} chi URL param for RetryTask handler tests.
+func retryTaskCtx(businessID, userID uuid.UUID, taskID string, perms ...authz.Permission) context.Context {
+	ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: perms,
+	})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("taskId", taskID)
+	return context.WithValue(ctx, chi.RouteCtxKey, rctx)
+}
+
+func retryRequest(t *testing.T, businessID, userID uuid.UUID, taskID string, perms ...authz.Permission) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+taskID+"/retry", http.NoBody)
+	return req.WithContext(retryTaskCtx(businessID, userID, taskID, perms...))
+}
+
+// TestRetryTask_ForbiddenWithoutWritePerm asserts a read-only viewer cannot
+// trigger a retry (it drives external platform work). Reverting the
+// PermContentUpdate gate to PermContentRead fails this test.
+func TestRetryTask_ForbiddenWithoutWritePerm(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{retryFn: func(context.Context, uuid.UUID, string) (*domain.AgentTask, error) {
+		t.Fatal("service must not be called without write permission")
+		return nil, nil
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	rr := httptest.NewRecorder()
+	h.RetryTask(rr, retryRequest(t, businessID, userID, "task-1", authz.PermContentRead))
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+func TestRetryTask_Success(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{retryFn: func(_ context.Context, bid uuid.UUID, id string) (*domain.AgentTask, error) {
+		assert.Equal(t, businessID, bid)
+		assert.Equal(t, "task-1", id)
+		return &domain.AgentTask{ID: id, BusinessID: businessID.String(), Platform: "telegram", Type: "send_channel_post", Status: "done"}, nil
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	rr := httptest.NewRecorder()
+	h.RetryTask(rr, retryRequest(t, businessID, userID, "task-1", authz.PermContentUpdate))
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var got openapi.AgentTask
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&got))
+	assert.Equal(t, "done", got.Status)
+}
+
+func TestRetryTask_NotFound(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{retryFn: func(context.Context, uuid.UUID, string) (*domain.AgentTask, error) {
+		return nil, domain.ErrAgentTaskNotFound
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	rr := httptest.NewRecorder()
+	h.RetryTask(rr, retryRequest(t, businessID, userID, "missing", authz.PermContentUpdate))
+
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func TestRetryTask_NonFailedConflict(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{retryFn: func(context.Context, uuid.UUID, string) (*domain.AgentTask, error) {
+		return nil, domain.ErrAgentTaskNotFailed
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	rr := httptest.NewRecorder()
+	h.RetryTask(rr, retryRequest(t, businessID, userID, "task-1", authz.PermContentUpdate))
+
+	assert.Equal(t, http.StatusConflict, rr.Code)
+	assert.Contains(t, rr.Body.String(), "task_not_failed")
+}
+
+// TestRetryTask_ReconnectReason asserts a token-invalid rejection surfaces the
+// reconnect reason code so the FE can route the user to reconnect the
+// integration rather than showing a generic failure.
+func TestRetryTask_ReconnectReason(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{retryFn: func(context.Context, uuid.UUID, string) (*domain.AgentTask, error) {
+		return nil, &service.RetryRejectedError{Reason: service.RetryReasonReconnect}
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	rr := httptest.NewRecorder()
+	h.RetryTask(rr, retryRequest(t, businessID, userID, "task-1", authz.PermContentUpdate))
+
+	assert.Equal(t, http.StatusConflict, rr.Code)
+	assert.Contains(t, rr.Body.String(), string(service.RetryReasonReconnect))
+}
+
+// TestRetryTask_PermanentReason asserts a permanent rejection surfaces the
+// not-retryable reason code.
+func TestRetryTask_PermanentReason(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{retryFn: func(context.Context, uuid.UUID, string) (*domain.AgentTask, error) {
+		return nil, &service.RetryRejectedError{Reason: service.RetryReasonPermanent}
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	rr := httptest.NewRecorder()
+	h.RetryTask(rr, retryRequest(t, businessID, userID, "task-1", authz.PermContentUpdate))
+
+	assert.Equal(t, http.StatusConflict, rr.Code)
+	assert.Contains(t, rr.Body.String(), string(service.RetryReasonPermanent))
 }
