@@ -250,6 +250,8 @@ paths:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews
   /businesses/{id}/reviews/sla:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1sla
+  /businesses/{id}/presence-health:
+    $ref: paths/presence_health.yaml#/~1businesses~1{id}~1presence-health
   /businesses/{id}/reviews/{reviewID}:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}
   /businesses/{id}/reviews/{reviewID}/reply:
@@ -2591,6 +2593,119 @@ components:
           type: number
           description: >-
             Share of measured responses answered within targetHours, in [0,1].
+    PresenceSubScores:
+      type: object
+      description: >-
+        The four normalized 0-100 presence-health dimensions. rating, sla, and
+        coverage are null in the empty state (no reviews); sync is null when the
+        business has no connected-channel sync signal (the sync dimension is
+        dropped and the other weights renormalize).
+      required:
+      - ratingScore
+      - slaScore
+      - coverageScore
+      - syncScore
+      properties:
+        ratingScore:
+          type: integer
+          nullable: true
+          description: Average star rating normalized to 0-100. Null when no rated reviews.
+        slaScore:
+          type: integer
+          nullable: true
+          description: Percent answered within target normalized to 0-100. Null when no measurable responses.
+        coverageScore:
+          type: integer
+          nullable: true
+          description: Answered share (replied / total) as 0-100. Null when no reviews.
+        syncScore:
+          type: integer
+          nullable: true
+          description: Connected-channel sync health as 0-100. Null when no sync signal exists.
+    PresenceWeights:
+      type: object
+      description: >-
+        The weight set the composite was computed under. When the sync dimension
+        is dropped the other three renormalize over 0.90, so these fractions
+        reflect the mix actually used rather than the nominal weights.
+      required:
+      - rating
+      - sla
+      - coverage
+      - sync
+      properties:
+        rating:
+          type: number
+          description: Weight applied to ratingScore.
+        sla:
+          type: number
+          description: Weight applied to slaScore.
+        coverage:
+          type: number
+          description: Weight applied to coverageScore.
+        sync:
+          type: number
+          description: Weight applied to syncScore (0 when the sync dimension was dropped).
+    PresenceRecommendation:
+      type: object
+      description: >-
+        The single next-action nudge — the weakest present sub-score area, a
+        localized message key the client resolves, and the composite points
+        recovering that area to 100 would add.
+      required:
+      - area
+      - message
+      - potentialGain
+      properties:
+        area:
+          type: string
+          enum: [rating, sla, coverage, sync]
+          description: The composite dimension this recommendation targets.
+        message:
+          type: string
+          description: i18n message key the client resolves to a localized fix suggestion.
+        potentialGain:
+          type: integer
+          description: >-
+            Composite points recovering this area to 100 would add
+            (round(weight_of_area * (100 - subScore))).
+    PresenceHealthResponse:
+      type: object
+      description: >-
+        Read-only composite presence-health score. Aggregate-only: no author,
+        review text, or reply text is carried — numbers only. composite and
+        trendDelta are null when there is not yet enough data.
+      required:
+      - composite
+      - trendDelta
+      - subScores
+      - weights
+      - topRecommendation
+      - computedAt
+      properties:
+        composite:
+          type: integer
+          nullable: true
+          description: The weighted 0-100 composite. Null in the empty state (no reviews).
+        trendDelta:
+          type: integer
+          nullable: true
+          description: >-
+            composite minus the most-recent prior-week snapshot's composite.
+            Null when no prior-week snapshot exists.
+        subScores:
+          $ref: '#/components/schemas/PresenceSubScores'
+        weights:
+          $ref: '#/components/schemas/PresenceWeights'
+        topRecommendation:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/PresenceRecommendation'
+          description: The single next-action nudge. Null in the empty state.
+        computedAt:
+          type: string
+          format: date-time
+          description: When the score was computed.
     ReplyToReviewRequest:
       type: object
       required:

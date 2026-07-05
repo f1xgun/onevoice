@@ -241,6 +241,18 @@ type Config struct {
 	// LLM_MODEL), so the cheap background model is reused unless overridden.
 	OwnerBriefModel string
 
+	// PresenceHealthSnapshotEnabled gates the weekly presence-health snapshot
+	// worker that stamps each active business's composite score per ISO-week.
+	// Defaults ON: the snapshot is what the read-only presence-health trend reads
+	// a prior week from, and the per-week UNIQUE + upsert makes the pass cheap and
+	// idempotent, so a fleet-wide off-switch is only for an operational emergency.
+	PresenceHealthSnapshotEnabled bool
+	// PresenceHealthSnapshotPollInterval is how often the worker re-checks the
+	// fleet. The snapshot is idempotent per (business, week), so a poll only
+	// bounds how promptly a fresh deploy or a new week's first point lands.
+	// Default 24h.
+	PresenceHealthSnapshotPollInterval time.Duration
+
 	OpenRouterAPIKey    string
 	OpenAIAPIKey        string
 	AnthropicAPIKey     string
@@ -332,6 +344,9 @@ func Load() (*Config, error) {
 
 		OwnerBriefEnabled:      getEnv("OWNER_BRIEF_ENABLED", envBoolTrue) == envBoolTrue,
 		OwnerBriefPollInterval: getEnvDuration("OWNER_BRIEF_POLL_INTERVAL", time.Hour),
+
+		PresenceHealthSnapshotEnabled:      getEnv("PRESENCE_HEALTH_SNAPSHOT_ENABLED", envBoolTrue) == envBoolTrue,
+		PresenceHealthSnapshotPollInterval: getEnvDuration("PRESENCE_HEALTH_SNAPSHOT_POLL_INTERVAL", 24*time.Hour), //nolint:mnd // env-driven default
 
 		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),

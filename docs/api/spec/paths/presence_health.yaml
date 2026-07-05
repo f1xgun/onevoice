@@ -1,0 +1,45 @@
+/businesses/{id}/presence-health:
+  get:
+    operationId: getPresenceHealth
+    summary: Composite presence-health score for a business.
+    description: >-
+      Returns a read-only composite 0-100 presence-health score, its
+      week-over-week trend delta, the four normalized sub-scores
+      (rating, SLA, coverage, sync), the weight set used, and a single
+      next-action recommendation. Aggregate-only: no author, review text, or
+      reply text is read or returned. composite and trendDelta are null when
+      there is not yet enough data (no reviews / no prior-week snapshot);
+      syncScore is null when the business has no connected-channel sync signal.
+    tags:
+    - reviews
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: target_hours
+      in: query
+      required: false
+      description: >-
+        Answered-within-target window in hours (default 24) the SLA sub-score
+        is computed against. Values <= 0 fall back to the default.
+      schema:
+        type: integer
+        default: 24
+        minimum: 1
+    responses:
+      '200':
+        description: Composite presence-health score.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PresenceHealthResponse
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

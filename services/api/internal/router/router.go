@@ -66,6 +66,7 @@ type Handlers struct {
 	InternalBilling  *handler.InternalBillingHandler // mTLS internal only
 	ChatProxy        *handler.ChatProxyHandler
 	Review           *handler.ReviewHandler
+	PresenceHealth   *handler.PresenceHealthHandler
 	Post             *handler.PostHandler
 	AgentTask        *handler.AgentTaskHandler
 	Telemetry        *handler.TelemetryHandler
@@ -306,6 +307,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(writeLimit).Post("/reviews/batch-draft", handlers.Review.BatchDraftReviews)
 				r.With(writeLimit).Post("/reviews/bulk-approve", handlers.Review.BulkApproveReviews)
 				r.Get("/reviews/sla", handlers.Review.GetReviewSLA)
+				r.Get("/presence-health", handlers.PresenceHealth.GetPresenceHealth)
 				r.Get("/reviews/{id}", handlers.Review.GetReview)
 				r.With(writeLimit).Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
 

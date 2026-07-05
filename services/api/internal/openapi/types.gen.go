@@ -180,6 +180,14 @@ const (
 	OauthNotConfigured PlatformStatus = "oauth_not_configured"
 )
 
+// Defines values for PresenceRecommendationArea.
+const (
+	Coverage PresenceRecommendationArea = "coverage"
+	Rating   PresenceRecommendationArea = "rating"
+	Sla      PresenceRecommendationArea = "sla"
+	Sync     PresenceRecommendationArea = "sync"
+)
+
 // Defines values for ProjectApprovalOverrides.
 const (
 	ProjectApprovalOverridesAuto   ProjectApprovalOverrides = "auto"
@@ -1109,6 +1117,72 @@ type PostPlatformResult struct {
 	Url    string  `json:"url" validate:"required"`
 }
 
+// PresenceHealthResponse Read-only composite presence-health score. Aggregate-only: no author, review text, or reply text is carried — numbers only. composite and trendDelta are null when there is not yet enough data.
+type PresenceHealthResponse struct {
+	// Composite The weighted 0-100 composite. Null in the empty state (no reviews).
+	Composite *int `json:"composite"`
+
+	// ComputedAt When the score was computed.
+	ComputedAt time.Time `json:"computedAt" validate:"required"`
+
+	// SubScores The four normalized 0-100 presence-health dimensions. rating, sla, and coverage are null in the empty state (no reviews); sync is null when the business has no connected-channel sync signal (the sync dimension is dropped and the other weights renormalize).
+	SubScores PresenceSubScores `json:"subScores"`
+
+	// TopRecommendation The single next-action nudge. Null in the empty state.
+	TopRecommendation *PresenceRecommendation `json:"topRecommendation"`
+
+	// TrendDelta composite minus the most-recent prior-week snapshot's composite. Null when no prior-week snapshot exists.
+	TrendDelta *int `json:"trendDelta"`
+
+	// Weights The weight set the composite was computed under. When the sync dimension is dropped the other three renormalize over 0.90, so these fractions reflect the mix actually used rather than the nominal weights.
+	Weights PresenceWeights `json:"weights"`
+}
+
+// PresenceRecommendation The single next-action nudge — the weakest present sub-score area, a localized message key the client resolves, and the composite points recovering that area to 100 would add.
+type PresenceRecommendation struct {
+	// Area The composite dimension this recommendation targets.
+	Area PresenceRecommendationArea `json:"area" validate:"required,oneof=rating sla coverage sync"`
+
+	// Message i18n message key the client resolves to a localized fix suggestion.
+	Message string `json:"message" validate:"required"`
+
+	// PotentialGain Composite points recovering this area to 100 would add (round(weight_of_area * (100 - subScore))).
+	PotentialGain int `json:"potentialGain" validate:"required"`
+}
+
+// PresenceRecommendationArea The composite dimension this recommendation targets.
+type PresenceRecommendationArea string
+
+// PresenceSubScores The four normalized 0-100 presence-health dimensions. rating, sla, and coverage are null in the empty state (no reviews); sync is null when the business has no connected-channel sync signal (the sync dimension is dropped and the other weights renormalize).
+type PresenceSubScores struct {
+	// CoverageScore Answered share (replied / total) as 0-100. Null when no reviews.
+	CoverageScore *int `json:"coverageScore"`
+
+	// RatingScore Average star rating normalized to 0-100. Null when no rated reviews.
+	RatingScore *int `json:"ratingScore"`
+
+	// SlaScore Percent answered within target normalized to 0-100. Null when no measurable responses.
+	SlaScore *int `json:"slaScore"`
+
+	// SyncScore Connected-channel sync health as 0-100. Null when no sync signal exists.
+	SyncScore *int `json:"syncScore"`
+}
+
+// PresenceWeights The weight set the composite was computed under. When the sync dimension is dropped the other three renormalize over 0.90, so these fractions reflect the mix actually used rather than the nominal weights.
+type PresenceWeights struct {
+	// Coverage Weight applied to coverageScore.
+	Coverage float32 `json:"coverage" validate:"required"`
+
+	// Rating Weight applied to ratingScore.
+	Rating float32 `json:"rating" validate:"required"`
+
+	// Sla Weight applied to slaScore.
+	Sla float32 `json:"sla" validate:"required"`
+
+	// Sync Weight applied to syncScore (0 when the sync dimension was dropped).
+	Sync float32 `json:"sync" validate:"required"`
+}
+
 // Project defines model for Project.
 type Project struct {
 	AllowedTools      []string                             `json:"allowedTools" validate:"required"`
@@ -1885,6 +1959,12 @@ type ListPostsParams struct {
 	Status   *string `form:"status,omitempty" json:"status,omitempty"`
 	Limit    *int    `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetPresenceHealthParams defines parameters for GetPresenceHealth.
+type GetPresenceHealthParams struct {
+	// TargetHours Answered-within-target window in hours (default 24) the SLA sub-score is computed against. Values <= 0 fall back to the default.
+	TargetHours *int `form:"target_hours,omitempty" json:"target_hours,omitempty"`
 }
 
 // ListReviewsParams defines parameters for ListReviews.

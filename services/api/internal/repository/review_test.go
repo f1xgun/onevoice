@@ -439,6 +439,70 @@ func TestReviewRepository_ListForSLA_TenantScopedAndPDnFree(t *testing.T) {
 	}(), "an empty business id returns no rows")
 }
 
+// ListForRatingStats is the read behind the presence-health rating / coverage
+// sub-scores. Like ListForSLA it must be scoped to the business_id (tenant
+// boundary) and project OUT every personal field — author_name, text,
+// reply_text — while projecting IN rating (which the SLA read omits). Reverting
+// the business_id filter surfaces another tenant's rows here; reverting the
+// projection surfaces the author name / review text.
+func TestReviewRepository_ListForRatingStats_TenantScopedAndPDnFree(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	bizA := uuid.NewString()
+	bizB := uuid.NewString()
+
+	insert := func(biz, ext string, rating int, status string, repliedAt interface{}) {
+		doc := bson.M{
+			"_id":          uuid.NewString(),
+			"business_id":  biz,
+			"platform":     "telegram",
+			"external_id":  ext,
+			"rating":       rating,
+			"author_name":  "Иван Петров",
+			"text":         "Отличное место, мой телефон +7 900 000 00 00",
+			"reply_text":   "Спасибо за отзыв!",
+			"reply_status": status,
+			"created_at":   time.Now().UTC().Add(-10 * time.Hour),
+		}
+		if repliedAt != nil {
+			doc["replied_at"] = repliedAt
+		}
+		_, err := db.Collection("reviews").InsertOne(ctx, doc)
+		require.NoError(t, err)
+	}
+
+	insert(bizA, "a-1", 5, domain.ReviewReplyStatusReplied, time.Now().UTC().Add(-8*time.Hour))
+	insert(bizA, "a-2", 3, domain.ReviewReplyStatusPending, nil)
+	insert(bizB, "b-1", 1, domain.ReviewReplyStatusPending, nil)
+
+	got, err := repo.ListForRatingStats(ctx, bizA)
+	require.NoError(t, err)
+	require.Len(t, got, 2, "ListForRatingStats must return only the caller's business reviews, never another tenant's")
+
+	var sawRating, sawReplied bool
+	for _, r := range got {
+		require.Empty(t, r.AuthorName, "author_name must be projected out of the rating read")
+		require.Empty(t, r.Text, "text must be projected out of the rating read")
+		require.Empty(t, r.ReplyText, "reply_text must be projected out of the rating read")
+		require.False(t, r.CreatedAt.IsZero(), "created_at must be projected in")
+		if r.Rating > 0 {
+			sawRating = true
+		}
+		if r.RepliedAt != nil {
+			sawReplied = true
+		}
+	}
+	require.True(t, sawRating, "rating must be projected in for the rating sub-score")
+	require.True(t, sawReplied, "replied_at must be projected in for the SLA sub-score")
+
+	require.Empty(t, func() []domain.Review {
+		out, err := repo.ListForRatingStats(ctx, "")
+		require.Error(t, err, "an empty business id must be rejected, not fan out to a full-collection scan")
+		return out
+	}(), "an empty business id returns no rows")
+}
+
 func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()

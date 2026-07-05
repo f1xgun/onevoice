@@ -228,6 +228,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	svcs.StartReconciler(ctx, workers, log, cfg.SyncReconcileEnabled, cfg.SyncReconcilePollInterval)
 	svcs.StartCreditGrant(ctx, workers, log, cfg.CreditGrantEnabled, cfg.CreditGrantPollInterval)
 	svcs.StartOwnerBrief(ctx, workers, log, cfg.OwnerBriefEnabled, cfg.OwnerBriefPollInterval)
+	svcs.StartPresenceHealthSnapshot(ctx, workers, log, cfg.PresenceHealthSnapshotEnabled, cfg.PresenceHealthSnapshotPollInterval)
 
 	select {
 	case <-ctx.Done():

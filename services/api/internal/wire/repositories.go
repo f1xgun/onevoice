@@ -90,6 +90,10 @@ type Repos struct {
 	// like BusinessDeletionExt: it spans the businesses + credit_ledger tables and
 	// is consumed only by the background grant worker.
 	CreditGrant *repository.CreditGrantExtAdapter
+
+	// PresenceHealthSnapshot persists the weekly presence-health snapshot behind
+	// the read-only trend endpoint and the weekly snapshot worker.
+	PresenceHealthSnapshot domain.PresenceHealthSnapshotRepository
 }
 
 // Repositories constructs every domain repository against the connections
@@ -126,5 +130,6 @@ func Repositories(h *DBHandles) *Repos {
 		Subscription:           repository.NewSubscriptionRepository(h.PG),
 		PlanDefinition:         repository.NewPlanDefinitionRepository(h.PG),
 		CreditGrant:            repository.NewCreditGrantExtAdapter(h.PG),
+		PresenceHealthSnapshot: repository.NewPresenceHealthSnapshotRepository(h.PG),
 	}
 }

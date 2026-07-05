@@ -359,6 +359,41 @@ func (r *reviewRepository) ListForSLA(ctx context.Context, businessID string) ([
 	return out, nil
 }
 
+// ratingStatsProjection restricts the presence-health rating read to the four
+// fields the rating / coverage aggregate needs. It is slaProjection plus rating:
+// author_name, text, reply_text and draft_* are never fetched, so no personal
+// data leaves the collection on this path — the query is aggregate-safe by
+// construction, mirroring the orchestrator's reviewstats statsProjection.
+var ratingStatsProjection = bson.D{
+	{Key: "rating", Value: 1},
+	{Key: "reply_status", Value: 1},
+	{Key: "created_at", Value: 1},
+	{Key: "replied_at", Value: 1},
+	{Key: "_id", Value: 0},
+}
+
+// ListForRatingStats — see domain.ReviewRepository docstring.
+func (r *reviewRepository) ListForRatingStats(ctx context.Context, businessID string) ([]domain.Review, error) {
+	if businessID == "" {
+		return nil, fmt.Errorf("list reviews for rating stats: business id is required")
+	}
+
+	cursor, err := r.collection.Find(ctx,
+		bson.M{"business_id": businessID},
+		options.Find().SetProjection(ratingStatsProjection),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find reviews for rating stats: %w", err)
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+
+	out := make([]domain.Review, 0)
+	if err := cursor.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("decode reviews for rating stats: %w", err)
+	}
+	return out, nil
+}
+
 // ListPendingWithoutDraft — see domain.ReviewRepository docstring.
 func (r *reviewRepository) ListPendingWithoutDraft(ctx context.Context, businessID, platform string, limit int) ([]domain.Review, error) {
 	if limit <= 0 {

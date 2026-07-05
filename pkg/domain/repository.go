@@ -448,6 +448,16 @@ type ReviewRepository interface {
 	// read-only GET /businesses/{id}/reviews/sla aggregate endpoint.
 	ListForSLA(ctx context.Context, businessID string) ([]Review, error)
 
+	// ListForRatingStats returns every review for businessID projected to the
+	// rating-aggregate fields only (rating, reply_status, created_at,
+	// replied_at). Like ListForSLA it NEVER reads author_name, text, or
+	// reply_text, so no personal data leaves the collection on this path — the
+	// projection is PDn-safe by construction, mirroring the orchestrator's
+	// reviewstats read. It differs from ListForSLA only in also carrying rating,
+	// which the presence-health rating/coverage sub-scores need. Used by the
+	// read-only GET /businesses/{id}/presence-health aggregate endpoint.
+	ListForRatingStats(ctx context.Context, businessID string) ([]Review, error)
+
 	// ListPendingWithoutDraft excludes status="generating" so concurrent passes don't double-call the LLM.
 	ListPendingWithoutDraft(ctx context.Context, businessID, platform string, limit int) ([]Review, error)
 
