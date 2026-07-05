@@ -14,18 +14,22 @@ import (
 	"github.com/f1xgun/onevoice/pkg/vkapi"
 )
 
-// redactURLErr scrubs the query string from a *url.Error before the error is
-// wrapped, logged, or surfaced to a client. VK outbound calls carry the
-// service key / community token in the URL query (access_token=…); on a
-// transport failure net/http returns a *url.Error whose .Error() embeds the
-// FULL URL, which would otherwise leak the secret into log lines and JSON
-// error bodies. Non-*url.Error inputs are returned unchanged.
+// redactURLErr scrubs both the path and the query string from a *url.Error
+// before the error is wrapped, logged, or surfaced to a client. VK outbound
+// calls carry the service key / community token in the URL query
+// (access_token=…); Telegram-style URLs carry the bot token in the PATH
+// (/bot<TOKEN>/method). On a transport failure net/http returns a *url.Error
+// whose .Error() embeds the FULL URL, which would otherwise leak the secret
+// into log lines and JSON error bodies. Blanking both path and query is
+// harmless for VK (secret in query) and required for path-embedded secrets.
+// Non-*url.Error inputs are returned unchanged.
 func redactURLErr(err error) error {
 	var ue *url.Error
 	if !errors.As(err, &ue) {
 		return err
 	}
-	if u, parseErr := url.Parse(ue.URL); parseErr == nil && u.RawQuery != "" {
+	if u, parseErr := url.Parse(ue.URL); parseErr == nil {
+		u.Path = "/REDACTED"
 		u.RawQuery = "REDACTED"
 		ue.URL = u.String()
 	}

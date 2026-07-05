@@ -91,7 +91,7 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 	)
 	resp, err := h.httpClient.Get(tokenEndpoint)
 	if err != nil {
-		slog.Error("VK token exchange failed", "error", err)
+		slog.Error("VK token exchange failed", "error", redactURLErr(err))
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
@@ -160,7 +160,7 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 	)
 	resp, err := h.httpClient.Get(vkURL)
 	if err != nil {
-		slog.Error("VK groups.get failed", "error", err)
+		slog.Error("VK groups.get failed", "error", redactURLErr(err))
 		writeJSONError(w, http.StatusBadGateway, "failed to fetch communities")
 		return
 	}
@@ -279,7 +279,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	)
 	resp, err := h.httpClient.Get(tokenURL)
 	if err != nil {
-		slog.Error("VK community token exchange failed", "error", err)
+		slog.Error("VK community token exchange failed", "error", redactURLErr(err))
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
