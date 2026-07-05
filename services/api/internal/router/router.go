@@ -216,6 +216,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(writeLimit).Put("/logo", handlers.Business.UploadLogo)
 				r.Get("/tool-approvals", handlers.Business.GetBusinessToolApprovals)
 				r.Put("/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
+				r.Get("/description-template", handlers.Business.GetDescriptionTemplate)
+				r.With(writeLimit).Put("/description-template", handlers.Business.UpdateDescriptionTemplate)
 
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
 				r.Get("/integrations/drift", handlers.Integration.GetIntegrationsDrift)

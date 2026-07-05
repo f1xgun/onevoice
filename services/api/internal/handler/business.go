@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -16,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
+	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 )
@@ -360,6 +362,86 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 		slog.ErrorContext(r.Context(), "failed to update voice tone", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// GetDescriptionTemplate handles GET /business/{id}/description-template.
+// Returns the stored template override (empty string when unset) plus the
+// allowed placeholder names for the editor.
+// Requires PermBusinessRead.
+func (h *BusinessHandler) GetDescriptionTemplate(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "GetDescriptionTemplate", authz.PermBusinessRead)
+	if !ok {
+		return
+	}
+
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "get description template failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	tmpl := ""
+	if business.Settings != nil {
+		if v, ok := business.Settings[platform.DescriptionTemplateSettingsKey].(string); ok {
+			tmpl = v
+		}
+	}
+
+	writeJSON(w, http.StatusOK, openapi.DescriptionTemplateResponse{
+		DescriptionTemplate: tmpl,
+		Placeholders:        platform.AllowedDescriptionPlaceholders,
+	})
+}
+
+// UpdateDescriptionTemplate handles PUT /business/{id}/description-template.
+// A non-empty template is a full replacement of the platform description; an
+// empty string clears the override. Unknown placeholder tokens are rejected.
+// On success the change is fanned out to connected platforms.
+// Requires PermBusinessUpdate.
+func (h *BusinessHandler) UpdateDescriptionTemplate(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "UpdateDescriptionTemplate", authz.PermBusinessUpdate)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
+	req, ok := decodeAndValidate[openapi.UpdateDescriptionTemplateRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+
+	tmpl := strDeref(req.DescriptionTemplate)
+	if unknown := platform.UnknownDescriptionPlaceholders(tmpl); len(unknown) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "unknown placeholder(s): " + strings.Join(unknown, ", "),
+		})
+		return
+	}
+	if !settingsBlobWithinCap(w, tmpl, "description template too large") {
+		return
+	}
+
+	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, map[string]interface{}{platform.DescriptionTemplateSettingsKey: tmpl}, bc.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to update description template", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	if h.syncer != nil {
+		go h.syncer.SyncBusiness(updated)
 	}
 
 	writeJSON(w, http.StatusOK, updated)

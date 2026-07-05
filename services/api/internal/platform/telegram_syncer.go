@@ -77,10 +77,11 @@ func (t *TelegramSyncer) SyncTitle(ctx context.Context, b *domain.Business, inte
 }
 
 // SyncDescription updates the Telegram channel's description via
-// setChatDescription. The description is built (and truncated to 255 chars)
-// by formatTelegramDescription so all business contact fields ship together.
+// setChatDescription. The description is built (and truncated to 255 chars) by
+// renderBusinessDescription: a per-business template override when set, else the
+// default formatter that ships all business contact fields together.
 func (t *TelegramSyncer) SyncDescription(ctx context.Context, b *domain.Business, integ domain.Integration) error {
-	return t.syncTelegramDescription(ctx, b.ID, integ.ExternalID, formatTelegramDescription(b))
+	return t.syncTelegramDescription(ctx, b.ID, integ.ExternalID, renderBusinessDescription(b, maxTelegramDescription))
 }
 
 // SyncPhoto updates the Telegram channel's photo via setChatPhoto. Caller
