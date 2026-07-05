@@ -424,6 +424,16 @@ type ReviewRepository interface {
 	// left unchanged on the row when empty (no key to persist).
 	UpdateReplyDispatched(ctx context.Context, id, replyText, replyStatus, dispatchApprovalID string) error
 
+	// StampReplyDispatchApprovalID persists ONLY the HITL dedupe key
+	// ("<batch_id>-<call_id>") an approved chat reply dispatched under, keyed by
+	// the review's natural key (business_id, platform, external_id). It is a
+	// partial $set that never touches reply_status / reply_text, so a later
+	// error-status write (a lost NATS response records the reply as failed) cannot
+	// clobber it. Stamping at dispatch time — before the reply executes — is what
+	// lets a manual retry reuse the key and dedupe an already-landed reply even
+	// when reconciliation was skipped. A no-op miss on the natural key returns nil.
+	StampReplyDispatchApprovalID(ctx context.Context, businessID, platform, externalID, dispatchApprovalID string) error
+
 	Upsert(ctx context.Context, review *Review) error
 
 	// BulkUpsert upserts many reviews in a single round-trip (used by the sync

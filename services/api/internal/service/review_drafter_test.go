@@ -54,6 +54,9 @@ func (f *fakeReviewRepo) UpdateReply(context.Context, string, string, string) er
 func (f *fakeReviewRepo) UpdateReplyDispatched(context.Context, string, string, string, string) error {
 	panic("unused")
 }
+func (f *fakeReviewRepo) StampReplyDispatchApprovalID(context.Context, string, string, string, string) error {
+	panic("unused")
+}
 func (f *fakeReviewRepo) Upsert(context.Context, *domain.Review) error {
 	panic("unused")
 }

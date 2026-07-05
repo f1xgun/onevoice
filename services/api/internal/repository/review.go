@@ -302,6 +302,23 @@ func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, reply
 	return nil
 }
 
+// StampReplyDispatchApprovalID — see domain.ReviewRepository docstring.
+func (r *reviewRepository) StampReplyDispatchApprovalID(ctx context.Context, businessID, platform, externalID, dispatchApprovalID string) error {
+	if dispatchApprovalID == "" || externalID == "" {
+		return nil
+	}
+	filter := bson.M{
+		"business_id": businessID,
+		"platform":    platform,
+		"external_id": externalID,
+	}
+	update := bson.M{"$set": bson.M{"dispatch_approval_id": dispatchApprovalID}}
+	if _, err := r.collection.UpdateOne(ctx, filter, update); err != nil {
+		return fmt.Errorf("stamp review dispatch approval id: %w", err)
+	}
+	return nil
+}
+
 // ListPendingWithoutDraft — see domain.ReviewRepository docstring.
 func (r *reviewRepository) ListPendingWithoutDraft(ctx context.Context, businessID, platform string, limit int) ([]domain.Review, error) {
 	if limit <= 0 {

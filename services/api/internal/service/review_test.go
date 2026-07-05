@@ -35,6 +35,23 @@ func (s *stubReviewRepo) UpdateReply(_ context.Context, _, _, status string) err
 	return nil
 }
 
+// StampReplyDispatchApprovalID mirrors the production partial write: it stamps
+// only dispatch_approval_id on the served review and leaves reply_status /
+// reply_text untouched, so a test can produce the persisted key the exact way the
+// dispatch-time stamp does instead of hand-setting a struct field.
+func (s *stubReviewRepo) StampReplyDispatchApprovalID(_ context.Context, businessID, platform, externalID, dispatchApprovalID string) error {
+	if dispatchApprovalID == "" || externalID == "" {
+		return nil
+	}
+	if s.review != nil &&
+		s.review.BusinessID == businessID &&
+		s.review.Platform == platform &&
+		s.review.ExternalID == externalID {
+		s.review.DispatchApprovalID = dispatchApprovalID
+	}
+	return nil
+}
+
 // capturingRequester records the last A2A ToolRequest sent and replies with a
 // success ToolResponse so dispatchToPlatform sees the post as landed.
 type capturingRequester struct {
@@ -214,14 +231,17 @@ func TestReply_ReusesOriginalDispatchApprovalID(t *testing.T) {
 }
 
 // TestReply_RetryOfLandedReplyIsDeduped is the paramount idempotency property
-// for the LIVE review-reply retry: a reply that ALREADY LANDED at the platform
-// (the original chat dispatch executed under its "<batch_id>-<call_id>" key) is
-// re-dispatched by a manual retry under the SAME key and served from the agent's
-// (business_id, approval_id) dedupe cache, so the underlying platform execution
-// count stays at one — NO second public reply. The test drives the REAL
-// pkg/hitldedupe gate. Reverting the key persistence/reuse (so the retry keys on
-// the per-review fallback instead of the original dispatch key) bypasses the
-// dedupe and executes a second reply, failing this test.
+// for the LIVE review-reply retry, in the canonical lost-response case: the
+// original chat dispatch executes once at the platform under its
+// "<batch_id>-<call_id>" key, but the NATS response is LOST so the reply is
+// recorded as an error and reconciliation is SKIPPED — the success-only reconcile
+// write never runs. The review's dispatch key is persisted NOT by hand but by the
+// dispatch-time stamp (reproduced here via the same repository method onToolCall
+// calls, a partial write that leaves the row in "error"). A manual retry reuses
+// that key and is served from the REAL pkg/hitldedupe cache, so the platform
+// execution count stays at one — NO second public reply. Reverting the reuse in
+// manualReplyApprovalID keys the retry on the per-review fallback, which never
+// matches the original dispatch, bypasses the dedupe, and executes a second reply.
 func TestReply_RetryOfLandedReplyIsDeduped(t *testing.T) {
 	biz := uuid.New()
 	originalKey := "batch-live-call-3"
@@ -241,15 +261,21 @@ func TestReply_RetryOfLandedReplyIsDeduped(t *testing.T) {
 	require.Equal(t, 1, nc.execs, "the original chat dispatch executes once at the platform")
 
 	review := &domain.Review{
-		ID:                 "rev-live",
-		BusinessID:         biz.String(),
-		Platform:           a2a.AgentTelegram,
-		ExternalID:         "-100_7",
-		ReplyStatus:        domain.ReviewReplyStatusError,
-		DispatchApprovalID: originalKey,
-		PlatformMeta:       map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+		ID:           "rev-live",
+		BusinessID:   biz.String(),
+		Platform:     a2a.AgentTelegram,
+		ExternalID:   "-100_7",
+		ReplyStatus:  domain.ReviewReplyStatusError,
+		PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
 	}
 	repo := &stubReviewRepo{review: review}
+
+	require.NoError(t, repo.StampReplyDispatchApprovalID(context.Background(), biz.String(), a2a.AgentTelegram, "-100_7", originalKey))
+	require.Equal(t, originalKey, review.DispatchApprovalID,
+		"the dispatch-time stamp persists the key while the row stays in error (reconcile skipped)")
+	require.Equal(t, domain.ReviewReplyStatusError, review.ReplyStatus,
+		"the stamp is a partial write and must not flip the review out of the lost-response error state")
+
 	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
 
 	require.NoError(t, svc.Reply(context.Background(), biz, "rev-live", "спасибо"))

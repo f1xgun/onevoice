@@ -116,8 +116,35 @@ func (t *Turn) onToolCall(
 		return
 	}
 	idMap[toolCallID] = task.ID
+	t.stampReviewDispatch(ctx, businessID, toolName, toolArgs, approvalID)
 	if t.deps.TaskHub != nil {
 		t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
+	}
+}
+
+// stampReviewDispatch persists the approved dispatch key ("<batch_id>-<call_id>")
+// onto the stored review the moment an approved review-reply tool is dispatched —
+// BEFORE it executes. A lost NATS response records the reply as failed and skips
+// reconciliation, so stamping only on the success branch would leave the key
+// unset in exactly the lost-response case; stamping here (a partial $set that a
+// later error-status write never clobbers) is what lets a manual retry reuse the
+// key and dedupe an already-landed reply. No-op for non-reply tools, empty keys
+// (initial-stream auto floor), or when the review store is not wired.
+func (t *Turn) stampReviewDispatch(ctx context.Context, businessID, toolName string, toolArgs map[string]interface{}, approvalID string) {
+	if t.deps.Reviews == nil || approvalID == "" {
+		return
+	}
+	platform, isReply := replyReviewPlatform[toolName]
+	if !isReply {
+		return
+	}
+	externalID := replyReviewExternalID(toolName, toolArgs)
+	if externalID == "" {
+		return
+	}
+	if err := t.deps.Reviews.StampReplyDispatchApprovalID(ctx, businessID, platform, externalID, approvalID); err != nil {
+		slog.WarnContext(ctx, "chatturn: failed to stamp review dispatch key",
+			"tool", toolName, "platform", platform, "external_id", externalID, "error", err)
 	}
 }
 
