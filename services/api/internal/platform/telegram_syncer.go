@@ -41,6 +41,7 @@ type TelegramSyncer struct {
 var _ TitleSyncer = (*TelegramSyncer)(nil)
 var _ DescriptionSyncer = (*TelegramSyncer)(nil)
 var _ PhotoSyncer = (*TelegramSyncer)(nil)
+var _ RemoteFetcher = (*TelegramSyncer)(nil)
 
 // NewTelegramSyncer wires a TelegramSyncer. integrations is required;
 // httpClient defaults to a 10s client; telegramBase defaults to the public
@@ -242,4 +243,58 @@ func (t *TelegramSyncer) syncTelegramPhoto(ctx context.Context, businessID uuid.
 	}
 	slog.Info("platform sync: telegram photo updated", "channel_id", channelID)
 	return nil
+}
+
+// FetchRemote reads the channel's current title + description via getChat so the
+// reconciler can compare them against the stored profile. A transport failure is
+// returned as a Go error (retryable); a Telegram ok:false envelope is returned as
+// a non-empty RemoteSnapshot.Err (unknown, never drift). Photo is deliberately
+// excluded — getChat returns an opaque file_id, not the LogoURL we push, so
+// comparing them would always report drift.
+func (t *TelegramSyncer) FetchRemote(ctx context.Context, b *domain.Business, integ domain.Integration) (RemoteSnapshot, error) {
+	channelID := integ.ExternalID
+	botToken, err := t.integrations.GetDecryptedToken(ctx, b.ID, a2a.AgentTelegram, channelID, reasonTelegramReconcile)
+	if err != nil {
+		return RemoteSnapshot{}, fmt.Errorf("get token: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("%s/bot%s/getChat?chat_id=%s",
+		t.telegramBase,
+		botToken,
+		url.QueryEscape(channelID),
+	)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return RemoteSnapshot{}, fmt.Errorf("build request: %w", err)
+	}
+	resp, err := t.httpClient.Do(httpReq)
+	if err != nil {
+		slog.ErrorContext(ctx, "platform reconcile: telegram getChat request failed", "channel_id", channelID, "error", redactURLErr(err))
+		return RemoteSnapshot{}, fmt.Errorf("request failed: %w", redactURLErr(err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var result struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+		Result      struct {
+			Title       string `json:"title"`
+			Description string `json:"description"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return RemoteSnapshot{}, fmt.Errorf("parse response: %w", err)
+	}
+	if !result.OK {
+		desc := result.Description
+		if desc == "" {
+			desc = "getChat returned not ok"
+		}
+		return RemoteSnapshot{Err: desc}, nil
+	}
+	return RemoteSnapshot{Fields: map[string]string{
+		FieldTitle:       result.Result.Title,
+		FieldDescription: result.Result.Description,
+	}}, nil
 }

@@ -97,6 +97,31 @@ type Integration struct {
 	EncryptionKeyFingerprint string `json:"-" db:"encryption_key_fingerprint"`
 }
 
+// SyncState is the proactive platform-sync reconciliation record for one
+// (business, platform, external_id) tuple. It records when a connected channel
+// was last compared against the stored business profile, whether the platform
+// copy has drifted from what OneVoice pushed, the exponential-backoff schedule,
+// and the last fetched remote snapshot.
+//
+// LastRemoteSnapshot may transiently hold PII (e.g. a business phone read back
+// from Yandex). It is erased on business hard-delete via the sync_state →
+// businesses ON DELETE CASCADE and MUST be redacted out of any log line.
+type SyncState struct {
+	ID                  uuid.UUID         `json:"id" db:"id"`
+	BusinessID          uuid.UUID         `json:"businessId" db:"business_id"`
+	Platform            string            `json:"platform" db:"platform"`
+	ExternalID          string            `json:"externalId" db:"external_id"`
+	LastCheckedAt       *time.Time        `json:"lastCheckedAt,omitempty" db:"last_checked_at"`
+	LastRemoteSnapshot  map[string]string `json:"-" db:"last_remote_snapshot"`
+	DriftDetected       bool              `json:"driftDetected" db:"drift_detected"`
+	DriftFields         []string          `json:"driftFields" db:"drift_fields"`
+	ConsecutiveFailures int               `json:"-" db:"consecutive_failures"`
+	LastError           string            `json:"-" db:"last_error"`
+	NextCheckAt         time.Time         `json:"nextCheckAt" db:"next_check_at"`
+	CreatedAt           time.Time         `json:"createdAt" db:"created_at"`
+	UpdatedAt           time.Time         `json:"updatedAt" db:"updated_at"`
+}
+
 // Subscription is one business's billing plan. The v1.6 reshape moves the
 // tenant key from user_id (legacy, dead) to business_id — usage_logs and the
 // whole billing model are business-scoped. ParentBusinessID (agency seam),

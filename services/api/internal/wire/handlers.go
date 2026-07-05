@@ -103,6 +103,10 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create integration handler: %w", err)
 	}
+	// Wire the proactive-sync drift/verify collaborators. Both are nil-safe in
+	// the handler; the reconciler exists regardless of SYNC_RECONCILE_ENABLED so
+	// the drift endpoint reads the table and verify re-pushes on demand.
+	integrationHandler.SetReconciler(svcs.Reconciler, svcs.PlatformSync)
 	reviewHandler, err := handler.NewReviewHandler(svcs.Review)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create review handler: %w", err)

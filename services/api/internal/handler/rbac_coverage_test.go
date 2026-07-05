@@ -376,6 +376,10 @@ func readPathExempt(method, route string) bool {
 		"/api/v1/businesses/{id}/tool-approvals":                         true,
 		"/api/v1/businesses/{id}/":                                       true,
 		"/api/v1/businesses/{id}/integrations":                           true,
+		// GET /integrations/drift reads sync_state; the walker seeds no rows so a
+		// viewer 200 (empty list) is not asserted, but the 401 + 404 authz gates
+		// still are. PermIntegrationsRead — same gate as ListIntegrations.
+		"/api/v1/businesses/{id}/integrations/drift": true,
 	}
 	return exempt[route]
 }

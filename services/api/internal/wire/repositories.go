@@ -17,6 +17,7 @@ type Repos struct {
 	BusinessMembership domain.BusinessMembershipRepository
 	Role               domain.RoleRepository
 	Integration        domain.IntegrationRepository
+	SyncState          domain.SyncStateRepository
 	Conversation       domain.ConversationRepository
 	Message            domain.MessageRepository
 	Review             domain.ReviewRepository
@@ -91,6 +92,7 @@ func Repositories(h *DBHandles) *Repos {
 		BusinessMembership:     repository.NewBusinessMembershipRepository(h.PG),
 		Role:                   repository.NewRoleRepository(h.PG),
 		Integration:            repository.NewIntegrationRepository(h.PG),
+		SyncState:              repository.NewSyncStateRepository(h.PG),
 		Conversation:           repository.NewConversationRepository(h.Mongo),
 		Message:                repository.NewMessageRepository(h.Mongo),
 		Review:                 repository.NewReviewRepository(h.Mongo),

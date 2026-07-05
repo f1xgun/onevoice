@@ -218,6 +218,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Put("/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
 
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
+				r.Get("/integrations/drift", handlers.Integration.GetIntegrationsDrift)
 				r.With(writeLimit).Delete("/integrations/{integrationId}", handlers.Integration.DeleteIntegration)
 
 				r.Get("/integrations/vk/auth-url", handlers.OAuth.GetVKAuthURL)
@@ -248,6 +249,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(integWith).Post("/integrations/telegram/verify", handlers.Connect.VerifyTelegramLogin)
 				r.With(integWith).Post("/integrations/telegram/connect", handlers.Connect.ConnectTelegram)
 				r.With(integWith).Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
+				r.With(integWith).Post("/integrations/verify", handlers.Integration.VerifyIntegrations)
 
 				if users != nil {
 					r.With(

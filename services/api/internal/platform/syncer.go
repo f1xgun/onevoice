@@ -23,6 +23,8 @@ const (
 	reasonTelegramSyncChannelMeta = "telegram_sync_channel_meta"
 	reasonTelegramSyncUsers       = "telegram_sync_users"
 	reasonVKSyncGroups            = "vk_sync_groups"
+	reasonTelegramReconcile       = "telegram_reconcile_read"
+	reasonVKReconcile             = "vk_reconcile_read"
 )
 
 // Capability-segregated platform sync interfaces. Each platform implements
@@ -56,7 +58,72 @@ type (
 	InfoSyncer interface {
 		SyncInfo(ctx context.Context, b *domain.Business, integ domain.Integration) error
 	}
+
+	// RemoteFetcher reads the current live profile of a connected channel so the
+	// reconciler can compare it against what OneVoice pushed. It is the READ dual
+	// of the write-side sync capabilities — the direct-API platforms (Telegram,
+	// VK) implement it; Yandex.Business is fetched by the reconciler via a NATS
+	// tool dispatch instead because the RPA agent owns the browser session.
+	RemoteFetcher interface {
+		FetchRemote(ctx context.Context, b *domain.Business, integ domain.Integration) (RemoteSnapshot, error)
+	}
 )
+
+// Synced-field keys. The stored side (SyncedSnapshot) and every remote side
+// (RemoteFetcher / the Yandex dispatch) MUST use these exact keys so the diff
+// compares like-for-like. Only the fields OneVoice actually writes to a platform
+// appear here — the reconciler never flags a field it does not push.
+const (
+	FieldTitle       = "title"
+	FieldDescription = "description"
+	FieldWebsite     = "website"
+	FieldSchedule    = "schedule"
+)
+
+// RemoteSnapshot is one platform's live profile as read back for reconciliation.
+// Fields holds the synced-field values keyed by the Field* constants. Err is a
+// non-empty, already-redacted platform/API error string when the platform
+// returned an error envelope (as opposed to a transport error, which the fetch
+// method returns as a Go error). A snapshot with a non-empty Err is "unknown"
+// and MUST never be treated as drift.
+type RemoteSnapshot struct {
+	Fields map[string]string
+	Err    string
+}
+
+// SyncedSnapshot builds the STORED side of the reconciliation comparison for a
+// platform, using the SAME formatters the write path uses (formatTelegram
+// Description with its 255-rune truncation, scheduleToYandexJSON). Building the
+// stored side through the writer's formatter is the core false-positive guard:
+// a value OneVoice just pushed reads back identical, so it never surfaces as
+// drift. The returned map is keyed by the Field* constants and contains only the
+// fields the platform's writer actually pushes.
+func SyncedSnapshot(b *domain.Business, platformID string) map[string]string {
+	switch platformID {
+	case a2a.AgentTelegram:
+		return map[string]string{
+			FieldTitle:       b.Name,
+			FieldDescription: formatTelegramDescription(b),
+		}
+	case a2a.AgentVK:
+		out := map[string]string{
+			FieldTitle:       b.Name,
+			FieldDescription: b.Description,
+		}
+		if b.Website != nil {
+			out[FieldWebsite] = *b.Website
+		} else {
+			out[FieldWebsite] = ""
+		}
+		return out
+	case a2a.AgentYandexBusiness:
+		return map[string]string{
+			FieldSchedule: scheduleToYandexJSON(b.Settings),
+		}
+	default:
+		return map[string]string{}
+	}
+}
 
 // integrationProvider fetches integration data for a business.
 type integrationProvider interface {
