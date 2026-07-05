@@ -279,5 +279,6 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Consents:         consentsHandler,
 		Telemetry:        handler.NewTelemetryHandler(svcs.Telemetry),
 		Feedback:         handler.NewFeedbackHandler(svcs.Feedback),
+		ChannelRequest:   handler.NewChannelRequestHandler(svcs.ChannelRequest),
 	}, nil
 }

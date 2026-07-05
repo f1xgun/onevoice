@@ -67,6 +67,11 @@ type Repos struct {
 	// product_feedback repository — system of record for in-app feedback.
 	ProductFeedback *repository.ProductFeedbackRepository
 
+	// channel_demand_signals repository — durable store behind the
+	// not-yet-supported-channel fake-door. Concrete pointer like TelemetryEvent:
+	// only ChannelRequestService depends on it.
+	ChannelDemandSignal *repository.ChannelDemandSignalRepository
+
 	// MembershipLoader backs the authz cache (v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
 	// authz.MembershipLoader interface to keep the cache decoupled.
@@ -115,6 +120,7 @@ func Repositories(h *DBHandles) *Repos {
 		UserConsents:           repository.NewUserConsentsRepository(h.PG),
 		TelemetryEvent:         repository.NewTelemetryEventRepository(h.PG),
 		ProductFeedback:        repository.NewProductFeedbackRepository(h.PG),
+		ChannelDemandSignal:    repository.NewChannelDemandSignalRepository(h.PG),
 		MembershipLoader:       repository.NewMembershipLoader(h.PG),
 		Billing:                repository.NewBillingRepository(h.PG),
 		Subscription:           repository.NewSubscriptionRepository(h.PG),

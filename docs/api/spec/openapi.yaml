@@ -258,6 +258,8 @@ paths:
     $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1stream
   /businesses/{id}/search:
     $ref: paths/search.yaml#/~1businesses~1{id}~1search
+  /businesses/{id}/channel-requests:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1channel-requests
   /internal/draft-reply:
     $ref: paths/internal.yaml#/~1internal~1draft-reply
   /internal/tools:
@@ -3010,3 +3012,52 @@ components:
             type: string
         floor:
           $ref: '#/components/schemas/ToolFloor'
+    ChannelRequestChannel:
+      type: string
+      description: |
+        A not-yet-supported channel a business is expressing demand for.
+        Backs a fake-door affordance so pull is measured before the channel
+        is built.
+      enum:
+      - avito
+      - wildberries
+      - ozon
+      - 2gis
+      - other
+    CreateChannelRequestRequest:
+      type: object
+      required:
+      - channel
+      properties:
+        channel:
+          type: string
+          description: |
+            A not-yet-supported channel a business is expressing demand for.
+          enum:
+          - avito
+          - wildberries
+          - ozon
+          - 2gis
+          - other
+        note:
+          type: string
+          maxLength: 280
+    ChannelDemandCount:
+      type: object
+      required:
+      - channel
+      - count
+      properties:
+        channel:
+          $ref: '#/components/schemas/ChannelRequestChannel'
+        count:
+          type: integer
+    ChannelDemandSummary:
+      type: object
+      required:
+      - channels
+      properties:
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelDemandCount'
