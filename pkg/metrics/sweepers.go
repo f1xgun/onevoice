@@ -21,6 +21,7 @@ const (
 	SweeperBusinessHardDelete = "business_hard_delete"
 	SweeperDeletionWarning    = "deletion_warning"
 	SweeperSyncReconcile      = "sync_reconcile"
+	SweeperCreditGrant        = "credit_grant"
 )
 
 // Sweeper run outcomes — the bounded value set for the {result} label.
@@ -32,7 +33,7 @@ const (
 // sweeperRunsTotal counts sweeper passes by {sweeper} and {result}. result is
 // the closed set {ok, error}: ok = the pass completed without error (zero or
 // more items acted upon); error = the service call returned an error and the
-// pass is retried on the next tick. Cardinality = 3 sweepers x 2 results.
+// pass is retried on the next tick. Cardinality = (sweeper count) x 2 results.
 var sweeperRunsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "sweeper_runs_total",
 	Help: "Background sweeper passes, labeled by {sweeper} and {result=ok|error}.",

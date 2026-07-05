@@ -30,6 +30,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/creditgrant"
 	"github.com/f1xgun/onevoice/services/api/internal/service/planresolver"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
@@ -105,6 +106,12 @@ type Services struct {
 	// chat turn (tier forwarding) and the billing summary service.
 	PlanResolver *planresolver.Resolver
 
+	// CreditGrant grants each active business its plan's monthly credit
+	// allowance, idempotently per (business, period). Started as a background
+	// worker (StartCreditGrant) — the write side that makes the billing summary's
+	// credit block meaningful (without it every business reads a 0 balance).
+	CreditGrant *creditgrant.Service
+
 	// Lockout is non-nil whenever h.Redis is non-nil (Redis is the storage
 	// layer). SmartCaptcha is always non-nil — Noop impl when
 	// SMARTCAPTCHA_SECRET_KEY is empty so the handler has a stable
@@ -119,6 +126,10 @@ type Services struct {
 	// reconcilerCancel stops the proactive-sync reconciler loop. nil when the
 	// reconciler is not started (SYNC_RECONCILE_ENABLED=false).
 	reconcilerCancel context.CancelFunc
+
+	// creditGrantCancel stops the monthly credit-grant loop. nil when the grant
+	// worker is not started (CREDIT_GRANT_ENABLED=false).
+	creditGrantCancel context.CancelFunc
 }
 
 // Close stops background goroutines (review syncer ticker). Safe to call
@@ -132,6 +143,9 @@ func (s *Services) Close() {
 	}
 	if s.reconcilerCancel != nil {
 		s.reconcilerCancel()
+	}
+	if s.creditGrantCancel != nil {
+		s.creditGrantCancel()
 	}
 }
 
@@ -233,6 +247,8 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		planresolver.NewRepoStore(repos.Subscription, repos.PlanDefinition),
 		planresolver.DefaultTTL,
 	)
+
+	s.CreditGrant = creditgrant.New(repos.CreditGrant, repos.CreditGrant, s.PlanResolver, s.PlanResolver, log)
 
 	titlerModel := cfg.TitlerModel
 	llmRouter, err := buildTitlerRouter(cfg, log, h.Redis, repos.Billing)

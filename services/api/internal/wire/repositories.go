@@ -79,6 +79,12 @@ type Repos struct {
 	// Subscription / PlanDefinition back the BusinessPlanResolver (v1.6 billing).
 	Subscription   domain.SubscriptionRepository
 	PlanDefinition domain.PlanDefinitionRepository
+
+	// CreditGrant is the concrete monthly-credit-grant surface (enumerate active
+	// businesses + append idempotent grant/expire ledger rows). Concrete pointer
+	// like BusinessDeletionExt: it spans the businesses + credit_ledger tables and
+	// is consumed only by the background grant worker.
+	CreditGrant *repository.CreditGrantExtAdapter
 }
 
 // Repositories constructs every domain repository against the connections
@@ -113,5 +119,6 @@ func Repositories(h *DBHandles) *Repos {
 		Billing:                repository.NewBillingRepository(h.PG),
 		Subscription:           repository.NewSubscriptionRepository(h.PG),
 		PlanDefinition:         repository.NewPlanDefinitionRepository(h.PG),
+		CreditGrant:            repository.NewCreditGrantExtAdapter(h.PG),
 	}
 }

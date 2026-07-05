@@ -76,6 +76,22 @@ func TestBillingSummaryService_UsedClampedAtZero(t *testing.T) {
 	require.Equal(t, 150, got.Credits.Remaining)
 }
 
+// After the monthly grant lands (credit_ledger balance = monthly_credits), a
+// freshly granted business with no consumption reports remaining = the full
+// allowance and used = 0 — the visible fix for the "remaining=0 for everyone"
+// bug the grant job closes.
+func TestBillingSummaryService_GrantedBusinessShowsFullRemaining(t *testing.T) {
+	svc := NewBillingSummaryService(
+		fakeSummaryResolver{plan: planresolver.Plan{Code: "free", Name: "Free", MonthlyCredits: 100}},
+		fakeSummaryBilling{balance: 100},
+	)
+	got, err := svc.Summary(context.Background(), uuid.New())
+	require.NoError(t, err)
+	require.Equal(t, 100, got.Credits.Granted)
+	require.Equal(t, 100, got.Credits.Remaining, "a just-granted business must not read remaining=0")
+	require.Equal(t, 0, got.Credits.Used)
+}
+
 func TestBillingSummaryService_PropagatesBalanceError(t *testing.T) {
 	svc := NewBillingSummaryService(
 		fakeSummaryResolver{plan: planresolver.Plan{Code: "free"}},
