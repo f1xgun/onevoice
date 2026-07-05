@@ -452,3 +452,64 @@ func TestBuildSystemPrompt_RussianLocale_ByteCompatibleWithZeroTag(t *testing.T)
 	assert.Equal(t, zeroTagMsgs[0].Content, russianMsgs[0].Content,
 		"explicit language.Russian must produce byte-identical output to a zero Tag")
 }
+
+// TestBuildSplit_BroadcastDirective_RendersInBusinessBlock is the fail-on-revert
+// guard for the publish-to-every-channel feature. Block 2 (per-business) must
+// carry the directive that turns a channel-agnostic publish request into one
+// tailored publish call per active integration; Block 1 (cache-locked) must NOT,
+// so the directive rides the per-business block and never churns the cache prefix.
+func TestBuildSplit_BroadcastDirective_RendersInBusinessBlock(t *testing.T) {
+	t.Run("ru", func(t *testing.T) {
+		platform, business, _ := prompt.BuildSplit(prompt.BusinessContext{
+			Name:               "Кофейня Уют",
+			Locale:             language.Russian,
+			ActiveIntegrations: []string{"telegram", "vk", "yandex_business"},
+			Now:                time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+		}, nil, nil)
+
+		assert.Contains(t, business, "## Публикация во все каналы",
+			"Block 2 must carry the broadcast directive header")
+		assert.Contains(t, business, "для КАЖДОЙ активной интеграции",
+			"broadcast directive must instruct one publish call per active integration")
+		assert.Contains(t, business, "не отправляй один и тот же текст дословно",
+			"broadcast directive must require per-channel tailored text")
+		assert.NotContains(t, platform, "## Публикация во все каналы",
+			"broadcast directive must NOT leak into cache-locked Block 1")
+	})
+
+	t.Run("en", func(t *testing.T) {
+		platform, business, _ := prompt.BuildSplit(prompt.BusinessContext{
+			Name:               "Cozy Cafe",
+			Locale:             language.English,
+			ActiveIntegrations: []string{"telegram", "vk", "yandex_business"},
+			Now:                time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+		}, nil, nil)
+
+		assert.Contains(t, business, "## Publishing to every channel",
+			"Block 2 (EN) must carry the broadcast directive header")
+		assert.Contains(t, business, "for EVERY active integration",
+			"broadcast directive (EN) must instruct one publish call per active integration")
+		assert.Contains(t, business, "do not send the exact same text verbatim",
+			"broadcast directive (EN) must require per-channel tailored text")
+		assert.NotContains(t, platform, "Publishing to every channel",
+			"broadcast directive (EN) must NOT leak into cache-locked Block 1")
+	})
+
+	t.Run("omitted_without_integrations", func(t *testing.T) {
+		_, ru, _ := prompt.BuildSplit(prompt.BusinessContext{
+			Name:   "Без интеграций",
+			Locale: language.Russian,
+			Now:    time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+		}, nil, nil)
+		_, en, _ := prompt.BuildSplit(prompt.BusinessContext{
+			Name:   "No integrations",
+			Locale: language.English,
+			Now:    time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+		}, nil, nil)
+
+		assert.NotContains(t, ru, "## Публикация во все каналы",
+			"broadcast directive must be omitted when no integration is active")
+		assert.NotContains(t, en, "## Publishing to every channel",
+			"broadcast directive (EN) must be omitted when no integration is active")
+	})
+}
