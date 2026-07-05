@@ -234,11 +234,23 @@ func buildBusinessBlockRu(ctx BusinessContext) string {
 			fmt.Fprintf(&sb, "- %s\n", integration)
 		}
 		sb.WriteString("\nТы можешь управлять этими платформами через доступные инструменты.\n")
+		sb.WriteString(broadcastDirectiveRu)
 	} else {
 		sb.WriteString("\nНет активных интеграций с платформами.\n")
 	}
 	return sb.String()
 }
+
+// broadcastDirectiveRu tells the model to fan a channel-agnostic publish request
+// out to one publish call per active integration, each with its own tailored
+// text. It lives in Block 2 (per-business) because it references the active-
+// integrations list above it and must not churn the cache-locked Block 1 prefix.
+// See docs/orchestrator/prompt.md.
+const broadcastDirectiveRu = "\n## Публикация во все каналы\n" +
+	"- Если пользователь просит опубликовать что-то и НЕ называет конкретный канал (например «опубликуй анонс…», «расскажи везде», «во все каналы»), вызови инструмент публикации для КАЖДОЙ активной интеграции из списка выше в одном ответе — по одному вызову на канал.\n" +
+	"- Текст для каждого канала адаптируй под его формат и аудиторию: не отправляй один и тот же текст дословно во все каналы.\n" +
+	"- Это относится только к общим анонсам и новостям организации.\n" +
+	"- Если пользователь назвал конкретный канал, публикуй только в него.\n"
 
 // buildBusinessBlockEn emits the English per-business section.
 func buildBusinessBlockEn(ctx BusinessContext) string {
@@ -274,11 +286,20 @@ func buildBusinessBlockEn(ctx BusinessContext) string {
 			fmt.Fprintf(&sb, "- %s\n", integration)
 		}
 		sb.WriteString("\nYou can manage these platforms through the available tools.\n")
+		sb.WriteString(broadcastDirectiveEn)
 	} else {
 		sb.WriteString("\nNo active platform integrations.\n")
 	}
 	return sb.String()
 }
+
+// broadcastDirectiveEn is the English counterpart of broadcastDirectiveRu.
+// See that constant for placement rationale.
+const broadcastDirectiveEn = "\n## Publishing to every channel\n" +
+	"- If the user asks to publish something and does NOT name a specific channel (for example \"post the announcement…\", \"announce everywhere\", \"to all channels\"), call the publishing tool for EVERY active integration listed above in a single response — one call per channel.\n" +
+	"- Tailor the text of each channel to its format and audience: do not send the exact same text verbatim to every channel.\n" +
+	"- This applies only to general announcements and organization news.\n" +
+	"- If the user named a specific channel, publish only to that one.\n"
 
 // appendProjectBlock glues the project prompt layer onto the business-only
 // system text. The header is always emitted (even with empty SystemPrompt) so
