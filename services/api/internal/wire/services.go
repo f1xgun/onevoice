@@ -115,6 +115,11 @@ type Services struct {
 	// credit block meaningful (without it every business reads a 0 balance).
 	CreditGrant *creditgrant.Service
 
+	// OwnerBrief composes and dispatches the weekly proactive owner-brief DM.
+	// Started as a background worker (StartOwnerBrief). nil when NATS is
+	// unavailable (Mongo-only mode), which leaves the worker a no-op.
+	OwnerBrief *service.OwnerBriefService
+
 	// Lockout is non-nil whenever h.Redis is non-nil (Redis is the storage
 	// layer). SmartCaptcha is always non-nil — Noop impl when
 	// SMARTCAPTCHA_SECRET_KEY is empty so the handler has a stable
@@ -133,6 +138,10 @@ type Services struct {
 	// creditGrantCancel stops the monthly credit-grant loop. nil when the grant
 	// worker is not started (CREDIT_GRANT_ENABLED=false).
 	creditGrantCancel context.CancelFunc
+
+	// ownerBriefCancel stops the weekly owner-brief loop. nil when the worker is
+	// not started (OWNER_BRIEF_ENABLED=false or OwnerBrief nil).
+	ownerBriefCancel context.CancelFunc
 }
 
 // Close stops background goroutines (review syncer ticker). Safe to call
@@ -149,6 +158,9 @@ func (s *Services) Close() {
 	}
 	if s.creditGrantCancel != nil {
 		s.creditGrantCancel()
+	}
+	if s.ownerBriefCancel != nil {
+		s.ownerBriefCancel()
 	}
 }
 
@@ -457,6 +469,23 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.Telemetry = service.NewTelemetryService(repos.TelemetryEvent)
 	s.Feedback = service.NewFeedbackService(h.PG, repos.ProductFeedback, repos.EmailOutbox, repos.User, cfg.FeedbackNotifyEmail)
 	s.ChannelRequest = service.NewChannelRequestService(repos.ChannelDemandSignal)
+
+	if h.NATS != nil && h.Mongo != nil {
+		var briefRouter service.OwnerBriefRouter
+		if llmRouter != nil {
+			briefRouter = llmRouter
+		}
+		s.OwnerBrief = service.NewOwnerBriefService(
+			repos.Integration,
+			repos.Business,
+			service.NewOwnerBriefStatsRepo(h.Mongo),
+			briefRouter,
+			cfg.OwnerBriefModel,
+			h.NATS,
+			s.Telemetry,
+		)
+		log.Info("owner brief: service constructed", "model", cfg.OwnerBriefModel, "llm_composer", briefRouter != nil)
+	}
 
 	if registerSetter, ok := s.User.(interface {
 		SetRegisterCollaborators(

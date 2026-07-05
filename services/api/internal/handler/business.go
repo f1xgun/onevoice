@@ -581,6 +581,98 @@ func (h *BusinessHandler) UpdateReviewAutopilot(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, updated)
 }
 
+// GetOwnerBrief handles GET /businesses/{id}/owner-brief.
+// Returns the stored weekly-owner-brief preferences. Default-on: a business that
+// never set a preference reads back enabled=true, Monday 09:00.
+// Requires PermBusinessRead.
+func (h *BusinessHandler) GetOwnerBrief(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "GetOwnerBrief", authz.PermBusinessRead)
+	if !ok {
+		return
+	}
+
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "get owner brief failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	pref := platform.OwnerBriefFromSettings(business.Settings)
+	resp := openapi.OwnerBriefResponse{
+		Enabled: pref.Enabled,
+		Weekday: pref.Weekday,
+		Hour:    pref.Hour,
+	}
+	if lastSent := platform.OwnerBriefLastSentFromSettings(business.Settings); lastSent != "" {
+		resp.LastSent = &lastSent
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// UpdateOwnerBrief handles PUT /businesses/{id}/owner-brief.
+// Enables/disables the weekly owner-brief DM (enabled=false is the one-tap
+// opt-out) and optionally sets the weekday/hour window. Absent fields keep their
+// current stored value so a caller can toggle enabled without resupplying the
+// schedule. Written via the same jsonb_set sub-key path as voiceProfile (no
+// migration). Requires PermBusinessUpdate.
+func (h *BusinessHandler) UpdateOwnerBrief(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "UpdateOwnerBrief", authz.PermBusinessUpdate)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
+	req, ok := decodeAndValidate[openapi.UpdateOwnerBriefRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "update owner brief: load failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	pref := platform.OwnerBriefFromSettings(business.Settings)
+	if req.Enabled != nil {
+		pref.Enabled = *req.Enabled
+	}
+	if req.Weekday != nil {
+		pref.Weekday = *req.Weekday
+	}
+	if req.Hour != nil {
+		pref.Hour = *req.Hour
+	}
+
+	value := map[string]interface{}{
+		"enabled": pref.Enabled,
+		"weekday": pref.Weekday,
+		"hour":    pref.Hour,
+	}
+	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, map[string]interface{}{platform.OwnerBriefSettingsKey: value}, bc.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to update owner brief", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
 // GetBusinessToolApprovals handles GET /business/{id}/tool-approvals.
 // Response shape: `{"toolApprovals": {"tool_name": "auto"|"manual", ...}}`.
 // Absence from the map means the registry floor applies.

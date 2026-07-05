@@ -989,6 +989,23 @@ type MyPermissionsResponse struct {
 	Permissions []string `json:"permissions" validate:"required"`
 }
 
+// OwnerBriefResponse defines model for OwnerBriefResponse.
+type OwnerBriefResponse struct {
+	// Enabled Whether the proactive weekly owner-brief DM is enabled. Default-on:
+	// true when the business never set a preference.
+	Enabled bool `json:"enabled" validate:"required"`
+
+	// Hour Hour-of-day (0-23) the brief fires at.
+	Hour int `json:"hour" validate:"required,min=0,max=23"`
+
+	// LastSent ISO year-week ("<year>-W<week>") of the last successful send; absent
+	// when a brief has never been sent.
+	LastSent *string `json:"lastSent,omitempty"`
+
+	// Weekday Weekday the brief fires on (0=Sunday .. 6=Saturday).
+	Weekday int `json:"weekday" validate:"required,min=0,max=6"`
+}
+
 // PasswordResetErrorResponse Discriminated error envelope emitted by writePasswordResetError.
 // `code` is one of `reset_token_invalid` / `reset_token_expired` /
 // `password_too_weak`; `message` is a server-localized RU string the
@@ -1621,6 +1638,19 @@ type UpdateMemberRoleResponse struct {
 	UserId        openapi_types.UUID  `json:"user_id" validate:"required,uuid"`
 }
 
+// UpdateOwnerBriefRequest defines model for UpdateOwnerBriefRequest.
+type UpdateOwnerBriefRequest struct {
+	// Enabled Enable or disable the weekly owner-brief DM. Setting false is the
+	// one-tap opt-out. Absent leaves the enabled flag unchanged.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Hour Hour-of-day (0-23) the brief fires at.
+	Hour *int `json:"hour,omitempty" validate:"omitempty,min=0,max=23"`
+
+	// Weekday Weekday the brief fires on (0=Sunday .. 6=Saturday).
+	Weekday *int `json:"weekday,omitempty" validate:"omitempty,min=0,max=6"`
+}
+
 // UpdatePreferredLocaleRequest defines model for UpdatePreferredLocaleRequest.
 type UpdatePreferredLocaleRequest struct {
 	Locale UpdatePreferredLocaleRequestLocale `json:"locale" validate:"required,oneof=ru en"`
@@ -2036,6 +2066,9 @@ type UploadBusinessLogoMultipartRequestBody = UploadLogoRequest
 
 // UpdateMemberRoleJSONRequestBody defines body for UpdateMemberRole for application/json ContentType.
 type UpdateMemberRoleJSONRequestBody = UpdateMemberRoleRequest
+
+// UpdateBusinessOwnerBriefJSONRequestBody defines body for UpdateBusinessOwnerBrief for application/json ContentType.
+type UpdateBusinessOwnerBriefJSONRequestBody = UpdateOwnerBriefRequest
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectRequest
