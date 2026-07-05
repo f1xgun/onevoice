@@ -29,3 +29,16 @@ const tokenRedactionMarker = "***REDACTED_BOT_TOKEN***" //nolint:gosec // G101: 
 // pending reviews; customer comments arrive as plain "message" updates in
 // linked discussion groups instead.
 var allowedUpdateTypes = []string{"message", "edited_message"}
+
+// callbackUpdateTypes restricts the approval-callback long-poll to
+// callback_query updates only. It is deliberately DISJOINT from
+// allowedUpdateTypes so the review poll never pulls callback_query (which would
+// let an inline-button tap surface as a false-positive review) and this poll
+// never pulls plain messages (which belong to the review/comment plane).
+var callbackUpdateTypes = []string{"callback_query"}
+
+// callbackPollTimeout is the Telegram long-poll timeout (seconds) for the
+// approval-callback poller. A positive value makes GetUpdates block server-side
+// until an update arrives or the window elapses, so the loop does not busy-spin;
+// it stays under the botAPITimeout HTTP deadline so the round-trip cannot wedge.
+const callbackPollTimeout = 25

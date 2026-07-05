@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	natslib "github.com/nats-io/nats.go"
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/google/uuid"
@@ -39,24 +40,30 @@ import (
 
 // Services aggregates every business-logic service the API consumes.
 type Services struct {
-	User          service.UserService
-	Business      service.BusinessService
-	Integration   service.IntegrationService
-	OAuth         *service.OAuthService
-	Post          service.PostService
-	Review        service.ReviewService
-	AgentTask     service.AgentTaskService
-	Project       *service.ProjectService
-	Conversation  *service.ConversationService
-	HITL          *service.HITLService
-	Titler        *service.Titler // may be nil — graceful disable
-	Searcher      *service.Searcher
-	ToolsCache    *service.ToolsRegistryCache
-	PlatformSync  *platform.Syncer
-	ReviewSyncer  *service.ReviewSyncer
-	Reconciler    *service.ReconciliationService
-	TaskHub       *taskhub.Hub
-	ObjectStorage *storage.MinioClient
+	User         service.UserService
+	Business     service.BusinessService
+	Integration  service.IntegrationService
+	OAuth        *service.OAuthService
+	Post         service.PostService
+	Review       service.ReviewService
+	AgentTask    service.AgentTaskService
+	Project      *service.ProjectService
+	Conversation *service.ConversationService
+	HITL         *service.HITLService
+	Titler       *service.Titler // may be nil — graceful disable
+
+	// TelegramApproval consumes inline-button HITL approval callbacks published
+	// by the Telegram agent and resolves them server-side. Constructed in
+	// wire.Handlers (needs the shared chat-turn Turn as resumer); nil when the
+	// HMAC secret is unset (plane disabled fail-closed).
+	TelegramApproval *service.TelegramApprovalConsumer
+	Searcher         *service.Searcher
+	ToolsCache       *service.ToolsRegistryCache
+	PlatformSync     *platform.Syncer
+	ReviewSyncer     *service.ReviewSyncer
+	Reconciler       *service.ReconciliationService
+	TaskHub          *taskhub.Hub
+	ObjectStorage    *storage.MinioClient
 
 	// OrchClient is the shared orchestrator HTTP client (chat / resume /
 	// internal tool registry). Timeout=0 — per-call ctx bounds the budget so
@@ -156,6 +163,10 @@ type Services struct {
 	// presenceHealthSnapshotCancel stops the weekly presence-health snapshot loop.
 	// nil when the worker is not started (PRESENCE_HEALTH_SNAPSHOT_ENABLED=false).
 	presenceHealthSnapshotCancel context.CancelFunc
+
+	// telegramApprovalUnsub releases the inbound approval-callback subscription.
+	// nil when the plane is not started (no NATS or no HMAC secret).
+	telegramApprovalUnsub func()
 }
 
 // Close stops background goroutines (review syncer ticker). Safe to call
@@ -179,6 +190,27 @@ func (s *Services) Close() {
 	if s.presenceHealthSnapshotCancel != nil {
 		s.presenceHealthSnapshotCancel()
 	}
+	if s.telegramApprovalUnsub != nil {
+		s.telegramApprovalUnsub()
+	}
+}
+
+// StartTelegramApproval subscribes the inbound approval-callback consumer on nc.
+// Idempotent no-op when the consumer is nil (plane disabled) or nc is nil (no
+// NATS). Subscribe itself refuses to attach when the HMAC secret is unset, so an
+// unconfigured deployment never opens an unvalidated approval path. The
+// subscription is released on Services.Close.
+func (s *Services) StartTelegramApproval(log *slog.Logger, nc *natslib.Conn) {
+	if s == nil || s.TelegramApproval == nil || nc == nil {
+		return
+	}
+	unsub, err := s.TelegramApproval.Subscribe(nc)
+	if err != nil {
+		log.Warn("telegram approval plane not started", "error", err)
+		return
+	}
+	s.telegramApprovalUnsub = unsub
+	log.Info("telegram approval callback consumer started", "subject", a2a.TelegramApprovalCallbackSubject)
 }
 
 // StartReviewSyncer starts the background review-syncer ticker. Idempotent

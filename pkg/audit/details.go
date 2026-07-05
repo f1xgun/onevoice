@@ -358,3 +358,18 @@ type RPAMutationDetails struct {
 	Platform string `json:"platform"`
 	Target   string `json:"target,omitempty"`
 }
+
+// ---- hitl ---------------------------------------------------------------
+
+// HITLApprovalResolvedDetails records an off-app HITL approval resolution. It
+// carries only non-PII operational identifiers (batch + conversation ids, the
+// channel the approval came through, the batch-wide action, and how many calls
+// the batch held) — never tool arguments, message content, or author data. The
+// resolving owner is on the row's UserID; the business on BusinessID.
+type HITLApprovalResolvedDetails struct {
+	BatchID        string `json:"batch_id"`
+	ConversationID string `json:"conversation_id"`
+	Channel        string `json:"channel"`
+	Action         string `json:"action"`
+	CallCount      int    `json:"call_count"`
+}

@@ -660,3 +660,28 @@ func LogReviewAutoReplied(ctx context.Context, l Logger, businessID uuid.UUID, p
 		Details:    mustMarshal(RPAMutationDetails{Tool: tool, Platform: platform, Target: target}),
 	})
 }
+
+// ---- hitl builders ------------------------------------------------------
+
+// LogHITLApprovalResolved records an off-app HITL approval resolution (owner
+// tapped Approve/Reject in the Telegram DM). ownerUserID is the verified owner
+// who resolved it (goes on UserID so the row is attributable to a real actor);
+// channel is the inbound plane ("telegram"); action is the batch-wide verdict
+// ("approve" / "reject"); callCount is how many tool calls the batch held.
+// Fire-and-forget — the resolve already succeeded, so a lost audit write must
+// not roll it back; a terminal failure increments the audit failure metric.
+func LogHITLApprovalResolved(ctx context.Context, l Logger, businessID, ownerUserID uuid.UUID, batchID, conversationID, channel, action string, callCount int) {
+	l.Log(ctx, Entry{
+		Action:     ActionHITLApprovalResolved,
+		Resource:   "conversation",
+		BusinessID: &businessID,
+		UserID:     &ownerUserID,
+		Details: mustMarshal(HITLApprovalResolvedDetails{
+			BatchID:        batchID,
+			ConversationID: conversationID,
+			Channel:        channel,
+			Action:         action,
+			CallCount:      callCount,
+		}),
+	})
+}

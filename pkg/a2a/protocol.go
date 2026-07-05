@@ -18,6 +18,31 @@ func Subject(agentID AgentID) string {
 	return fmt.Sprintf("tasks.%s", agentID)
 }
 
+// TelegramApprovalCallbackSubject is the NATS subject the Telegram agent
+// PUBLISHES an inline-button HITL approval callback to, and the API CONSUMES.
+// It is a distinct inbound plane from the outbound tasks.{agentID} request/reply
+// dispatch: the agent has already ack'd the Telegram callback_query, so this is a
+// fire-and-forget publish, not a reply-expecting request. The api-side consumer
+// re-validates the binding (from_id == the batch business's verified owner
+// telegram_user_id, HMAC nonce valid, batch still pending) before resolving —
+// nothing published here is trusted without that server-side re-check.
+const TelegramApprovalCallbackSubject = "hitl.callbacks.telegram"
+
+// TelegramApprovalCallback is the payload the Telegram agent publishes on
+// TelegramApprovalCallbackSubject after a callback_query on an approval button.
+// FromID is Telegram's guaranteed-authentic callback_query.from.id (the real
+// tapper); Data is the opaque HMAC-signed callback_data built at send time; and
+// CallbackQueryID/ChatID scope the follow-up answerCallbackQuery toast. The api
+// consumer trusts NONE of these as authorization on their own: FromID is checked
+// against the batch business's verified owner id and Data's MAC is verified
+// server-side. Telegram caps callback_data at 64 bytes, so Data is bounded.
+type TelegramApprovalCallback struct {
+	FromID          int64  `json:"from_id"`
+	Data            string `json:"data"`
+	CallbackQueryID string `json:"callback_query_id"`
+	ChatID          int64  `json:"chat_id,omitempty"`
+}
+
 // ToolRequest is sent from the orchestrator to an agent over NATS.
 type ToolRequest struct {
 	TaskID     string                 `json:"task_id"`

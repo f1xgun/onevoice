@@ -354,3 +354,141 @@ func TestSendMessage_StalledServerTimesOut(t *testing.T) {
 		t.Fatal("SendMessage blocked far past the client timeout — no overall deadline is set on the Bot API client")
 	}
 }
+
+// TestReviewPoll_AllowedUpdatesUnchanged pins the review poll's allowed-updates
+// set: adding the callback plane must NOT leak callback_query into GetReviews
+// (which would surface a button tap as a false-positive review). The
+// callback-only set is disjoint from the review set.
+func TestReviewPoll_AllowedUpdatesUnchanged(t *testing.T) {
+	assert.Equal(t, []string{"message", "edited_message"}, allowedUpdateTypes,
+		"review poll allowed-updates must not include callback_query")
+	assert.Equal(t, []string{"callback_query"}, callbackUpdateTypes,
+		"callback poll must request only callback_query")
+	for _, u := range callbackUpdateTypes {
+		assert.NotContains(t, allowedUpdateTypes, u, "callback update type leaked into the review poll set")
+	}
+}
+
+// TestPollCallbacks_DeliversAndAdvancesOffset proves the callback poller: it
+// requests only callback_query updates, delivers each callback_query with the
+// authentic from.id + opaque data, advances the offset past processed updates
+// (so the same callback is not re-delivered), and returns when ctx is canceled.
+func TestPollCallbacks_DeliversAndAdvancesOffset(t *testing.T) {
+	var mu sync.Mutex
+	var offsets []int
+	var allowed []string
+	served := false
+
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		mu.Lock()
+		offsets = append(offsets, atoiSafe(r.FormValue("offset")))
+		if a := r.FormValue("allowed_updates"); a != "" {
+			allowed = append(allowed, a)
+		}
+		first := !served
+		served = true
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		if first {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"result": []map[string]interface{}{{
+					"update_id": 100,
+					"callback_query": map[string]interface{}{
+						"id":   "cbq-1",
+						"from": map[string]interface{}{"id": 987654321, "is_bot": false, "first_name": "Owner"},
+						"data": "v1:batch-xyz:a:deadbeef",
+						"message": map[string]interface{}{
+							"message_id": 1,
+							"chat":       map[string]interface{}{"id": 555},
+						},
+					},
+				}},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "result": []interface{}{}})
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	got := make(chan CallbackEvent, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- bot.PollCallbacks(ctx, func(cq CallbackEvent) {
+			select {
+			case got <- cq:
+			default:
+			}
+		})
+	}()
+
+	select {
+	case cq := <-got:
+		assert.Equal(t, "cbq-1", cq.QueryID)
+		assert.Equal(t, int64(987654321), cq.FromID)
+		assert.Equal(t, "v1:batch-xyz:a:deadbeef", cq.Data)
+		assert.Equal(t, int64(555), cq.ChatID)
+	case <-time.After(3 * time.Second):
+		t.Fatal("PollCallbacks did not deliver the callback within the deadline")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(3 * time.Second):
+		t.Fatal("PollCallbacks did not return after ctx cancel")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, allowed)
+	assert.Contains(t, allowed[0], "callback_query", "poller must request callback_query updates")
+	require.GreaterOrEqual(t, len(offsets), 2)
+	assert.Equal(t, 0, offsets[0], "first poll starts at offset 0")
+	assert.Equal(t, 101, offsets[1], "offset must advance past the delivered update_id 100")
+}
+
+// TestAnswerCallback_HitsAnswerCallbackQuery proves AnswerCallback issues the
+// answerCallbackQuery Bot API call with the callback_query id, so the tapper's
+// button spinner is acknowledged.
+func TestAnswerCallback_HitsAnswerCallbackQuery(t *testing.T) {
+	var capturedPath, capturedID, capturedText string
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		capturedPath = r.URL.Path
+		capturedID = r.FormValue("callback_query_id")
+		capturedText = r.FormValue("text")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "result": true})
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+	err := bot.AnswerCallback("cbq-42", "Одобрено", false)
+
+	require.NoError(t, err)
+	assert.Contains(t, capturedPath, "/answerCallbackQuery")
+	assert.Equal(t, "cbq-42", capturedID)
+	assert.Equal(t, "Одобрено", capturedText)
+}
+
+// atoiSafe parses a base-10 int, returning 0 on any error (test helper for
+// reading form values).
+func atoiSafe(s string) int {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
+}

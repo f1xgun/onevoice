@@ -27,6 +27,7 @@ const (
 	AuthUserRegistered           AuditAction = "auth.user_registered"
 	BusinessCreated              AuditAction = "business.created"
 	BusinessUpdated              AuditAction = "business.updated"
+	HitlApprovalResolved         AuditAction = "hitl.approval_resolved"
 	IntegrationConnected         AuditAction = "integration.connected"
 	IntegrationDisconnected      AuditAction = "integration.disconnected"
 	IntegrationExternalIdUpdated AuditAction = "integration.external_id_updated"

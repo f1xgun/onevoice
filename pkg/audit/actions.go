@@ -112,6 +112,15 @@ const (
 // name, or the reply body.
 const ActionReviewAutoReplied = "review.auto_replied"
 
+// hitl.* — human-in-the-loop approval resolution outside the app. The owner
+// approves or rejects a paused tool-call batch by tapping an inline button in the
+// Telegram DM; the api-side consumer records this event so an off-app approval is
+// attributable to the acting owner + channel for forensic review, exactly as an
+// in-app resolve would be.
+const (
+	ActionHITLApprovalResolved = "hitl.approval_resolved"
+)
+
 // ActionCategory returns the closed-set category for an action string.
 // Unknown prefixes return "other" to bound metric label cardinality.
 func ActionCategory(action string) string {
@@ -119,7 +128,7 @@ func ActionCategory(action string) string {
 		if action[i] == '.' {
 			cat := action[:i]
 			switch cat {
-			case "rbac", "auth", "integration", "business", "project", "account", "rpa", "review":
+			case "rbac", "auth", "integration", "business", "project", "account", "rpa", "review", "hitl":
 				return cat
 			default:
 				return "other"

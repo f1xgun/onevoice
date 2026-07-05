@@ -1653,6 +1653,7 @@ components:
       - project.updated
       - project.deleted
       - review.auto_replied
+      - hitl.approval_resolved
     AuditEvent:
       type: object
       required:

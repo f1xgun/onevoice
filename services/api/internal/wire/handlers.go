@@ -169,6 +169,17 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create hitl handler: %w", err)
 	}
+
+	if cfg.TelegramApprovalHMACSecret != "" {
+		svcs.TelegramApproval = service.NewTelegramApprovalConsumer(
+			svcs.HITL,
+			chatProxyHandler.Turn(),
+			repos.Integration,
+			svcs.AuditLogger,
+			nil,
+			cfg.TelegramApprovalHMACSecret,
+		)
+	}
 	if sseCounter != nil {
 		hitlHandler.SetSSECounter(sseCounter, cfg.LLMTier)
 		reviewHandler.SetSSECounter(sseCounter, cfg.LLMTier)

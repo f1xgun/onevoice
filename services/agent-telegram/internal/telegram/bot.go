@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -21,10 +22,10 @@ import (
 // but stalls before sending response headers wedges the call forever, leaking
 // the handler goroutine and socket and blocking graceful shutdown. tgbotapi v5
 // builds requests with http.NewRequest (no context), so the handler ctx never
-// reaches the transport — the client must carry the deadline itself. GetUpdates
-// is called with Timeout:0 (short-poll), so a fixed client timeout is safe; a
-// dedicated longer-timeout client would be needed only if true long-polling is
-// enabled later.
+// reaches the transport — the client must carry the deadline itself. The review
+// poll calls GetUpdates with Timeout:0 (short-poll); the approval-callback poll
+// uses a bounded long-poll (callbackPollTimeout) held strictly BELOW this client
+// timeout so the round-trip still cannot wedge past botAPITimeout.
 const botAPITimeout = 30 * time.Second
 
 // telegramAPIClient is the HTTP client backing the Bot API calls. It pins
@@ -145,6 +146,33 @@ func (b *Bot) SendMessage(chat, text string) error {
 	msg := newTextMessage(chat, text)
 	_, err := b.api.Send(msg)
 	return sanitizeTokenError(err, b.token)
+}
+
+// SendMessageWithMarkup sends a text message with an optional inline keyboard.
+// A nil markup makes it behave exactly like SendMessage — the additive path so
+// callers that want [Approve][Reject] buttons opt in without changing the plain
+// send. A non-nil pointer attaches the keyboard; nil leaves it off.
+func (b *Bot) SendMessageWithMarkup(chat, text string, markup *tgbotapi.InlineKeyboardMarkup) error {
+	msg := newTextMessage(chat, text)
+	if markup != nil {
+		msg.ReplyMarkup = *markup
+	}
+	_, err := b.api.Send(msg)
+	return sanitizeTokenError(err, b.token)
+}
+
+// ApprovalKeyboard builds a two-button inline keyboard whose buttons carry the
+// pre-signed opaque callback_data for the approve and reject actions. The
+// caller (the send path) computes the callback_data via pkg/telegramcallback so
+// bot.go stays free of the HMAC secret. Labels are the localized owner-facing
+// button captions.
+func ApprovalKeyboard(approveLabel, approveData, rejectLabel, rejectData string) tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(approveLabel, approveData),
+			tgbotapi.NewInlineKeyboardButtonData(rejectLabel, rejectData),
+		),
+	)
 }
 
 // newTextMessage builds a MessageConfig addressed to a numeric chat ID or a
@@ -305,6 +333,99 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 		reviews = append(reviews, review)
 	}
 	return reviews, nil
+}
+
+// CallbackEvent is the subset of a Telegram callback_query the approval plane
+// needs. FromID is callback_query.from.id — the tapper's user id, which Telegram
+// guarantees is authentic (the api-side consumer binds it to the batch business's
+// verified owner id). Data is the opaque callback_data set on the button.
+// QueryID and ChatID scope the answerCallbackQuery ack + the follow-up toast.
+type CallbackEvent struct {
+	QueryID string
+	FromID  int64
+	Data    string
+	ChatID  int64
+}
+
+// PollCallbacks long-polls GetUpdates for callback_query updates only and
+// invokes onCallback for each. It runs until ctx is canceled, then returns
+// ctx.Err(). The offset is advanced past each processed update so a callback is
+// delivered at most once across restarts of the loop within a process. Poll
+// errors are logged and retried after a short backoff rather than terminating
+// the loop, so a transient Bot API blip does not disable the approval plane. The
+// allowed-updates set is callbackUpdateTypes ONLY, so this poll never competes
+// with the review poll for plain messages.
+func (b *Bot) PollCallbacks(ctx context.Context, onCallback func(cq CallbackEvent)) error {
+	offset := 0
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		var batch []tgbotapi.Update
+		err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
+			var e error
+			batch, e = b.api.GetUpdates(tgbotapi.UpdateConfig{
+				Offset:         offset,
+				Timeout:        callbackPollTimeout,
+				AllowedUpdates: callbackUpdateTypes,
+			})
+			return e
+		})
+		if err != nil {
+			slog.Warn("telegram agent: callback poll failed, retrying", "error", sanitizeTokenError(err, b.token))
+			if !sleepCtx(ctx, defaultBotRetryDelay) {
+				return ctx.Err()
+			}
+			continue
+		}
+		for i := range batch {
+			u := batch[i]
+			offset = u.UpdateID + 1
+			cq := u.CallbackQuery
+			if cq == nil || cq.From == nil {
+				continue
+			}
+			onCallback(CallbackEvent{
+				QueryID: cq.ID,
+				FromID:  cq.From.ID,
+				Data:    cq.Data,
+				ChatID:  callbackChatID(cq),
+			})
+		}
+	}
+}
+
+// callbackChatID returns the chat id the callback originated from, or 0 when the
+// originating message is absent (inline-mode callbacks). It is used only to scope
+// the answerCallbackQuery toast, never for authorization.
+func callbackChatID(cq *tgbotapi.CallbackQuery) int64 {
+	if cq.Message != nil && cq.Message.Chat != nil {
+		return cq.Message.Chat.ID
+	}
+	return 0
+}
+
+// AnswerCallback acknowledges a callback_query so Telegram stops the button
+// spinner. text is the optional toast shown to the tapper; alert=true renders it
+// as a modal alert instead of a transient toast. An empty text sends a bare ack.
+func (b *Bot) AnswerCallback(callbackQueryID, text string, alert bool) error {
+	cb := tgbotapi.NewCallback(callbackQueryID, text)
+	cb.ShowAlert = alert
+	_, err := b.api.Request(cb)
+	return sanitizeTokenError(err, b.token)
+}
+
+// sleepCtx sleeps for d unless ctx is canceled first. It reports true if the
+// full delay elapsed and false if ctx was canceled.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 // mediaSummary returns a short placeholder describing a non-text message so
