@@ -92,6 +92,11 @@ export const BIZ_API_PATHS = {
   INTEGRATIONS: {
     ROOT: '/integrations',
     BY_ID: (id: string) => `/integrations/${id}`,
+    // Proactive platform-sync surface (handler.GetIntegrationsDrift /
+    // VerifyIntegrations). DRIFT is read-gated like ROOT; VERIFY re-pushes
+    // the stored organization profile to the connected platforms.
+    DRIFT: '/integrations/drift',
+    VERIFY: '/integrations/verify',
   },
   REVIEWS: {
     ROOT: '/reviews',
