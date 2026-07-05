@@ -45,18 +45,21 @@ const (
 	yandexMimeType = "image/jpeg"
 )
 
-// PLACEHOLDER per-image price. Yandex's pricing page is CAPTCHA-gated, so the
-// real per-image tariff and the RUB→USD rate MUST be re-verified at enablement
-// and this constant updated. It is deliberately non-zero so an image billing
-// row is never $0 (which would make the daily-spend gate undercount).
+// Per-image price, confirmed from the official Yandex AI Studio pricing page
+// (2026-07-05): 2.23 ₽ incl. VAT per image-generation request. Requests are not
+// idempotent — every generation is billed — so this is charged once per call.
+// Kept non-zero so an image billing row is never $0 (which would make the
+// daily-spend gate undercount).
 const (
-	// priceYandexARTImageRUB is a PLACEHOLDER per-image price in RUB.
-	priceYandexARTImageRUB = 8.0
-	// rubToUSDPlaceholder is a PLACEHOLDER RUB→USD conversion factor.
-	rubToUSDPlaceholder = 0.011
+	// priceYandexARTImageRUB is the per-image price in RUB (official tariff).
+	priceYandexARTImageRUB = 2.23
+	// rubToUSD converts the RUB tariff to the USD unit the billing ledger
+	// stores. Approximate fixed factor (the ledger is USD-denominated), not a
+	// live FX rate; revisit if RUB/USD drifts materially.
+	rubToUSD = 0.011
 	// priceYandexARTImageUSD is the derived per-image list price stamped for
-	// billing. PLACEHOLDER — see the two constants above.
-	priceYandexARTImageUSD = priceYandexARTImageRUB * rubToUSDPlaceholder
+	// billing (≈$0.025 at the current factor).
+	priceYandexARTImageUSD = priceYandexARTImageRUB * rubToUSD
 )
 
 // Poll cadence. The submit call returns an operation id; the image is fetched
