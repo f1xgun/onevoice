@@ -37,6 +37,12 @@ type ReviewService interface {
 	// shortcut the 30-min review-syncer ticker after replying directly
 	// on a platform or connecting a new integration.
 	Refresh(ctx context.Context, userID uuid.UUID) error
+	// BatchDraft drafts replies for a bounded set of unanswered reviews and
+	// returns a per-item result. See review_batch.go.
+	BatchDraft(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]BatchItemResult, error)
+	// BulkApprove publishes stored drafts for positive reviews only and returns
+	// a per-item result. See review_batch.go.
+	BulkApprove(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]BatchItemResult, error)
 }
 
 // ReviewRefresher is the slice of ReviewSyncer that ReviewService needs
@@ -59,6 +65,7 @@ type reviewService struct {
 	nc              natsRequester // nil = no platform dispatch (Mongo-only mode)
 	dispatchTimeout time.Duration
 	refresher       ReviewRefresher // nil = manual refresh disabled
+	drafter         SingleDrafter   // nil = batch-draft disabled (returns configured error)
 }
 
 // Compile-time check that reviewService implements ReviewService
@@ -68,8 +75,11 @@ var _ ReviewService = (*reviewService)(nil)
 // that mode Reply only updates Mongo and never reaches out to platform agents
 // (preserves the historical behavior for environments without NATS).
 // refresher may be nil — in that mode Refresh returns an error so the
-// frontend can degrade gracefully.
-func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn, refresher ReviewRefresher) ReviewService {
+// frontend can degrade gracefully. drafter may be nil — in that mode BatchDraft
+// returns a configured error while the rest of the surface is unaffected (the
+// on-demand batch-draft is an explicit user action, so it works even when the
+// passive REVIEW_DRAFT_ENABLED auto-drafter is off, provided a drafter is wired).
+func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn, refresher ReviewRefresher, drafter SingleDrafter) ReviewService {
 	var requester natsRequester
 	if nc != nil {
 		requester = nc
@@ -80,6 +90,7 @@ func NewReviewService(repo domain.ReviewRepository, businessService BusinessServ
 		nc:              requester,
 		dispatchTimeout: reviewDispatchTimeout,
 		refresher:       refresher,
+		drafter:         drafter,
 	}
 }
 

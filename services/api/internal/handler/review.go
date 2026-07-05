@@ -15,6 +15,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/ssecounter"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // Constants for review pagination
@@ -32,6 +33,18 @@ const maxReviewReplyBytes = 16 * 1024
 // unbounded required field.
 const maxReviewReplyRunes = 4000
 
+// maxBatchRequestBytes caps the batch-draft / bulk-approve request body. A
+// review id is a UUID string; maxBatchReviewIds of them plus JSON framing sit
+// well under this ceiling, which still bounds the decoder against an unbounded
+// body of ids.
+const maxBatchRequestBytes = 64 * 1024
+
+// maxBatchReviewIDs is the handler-side cap on the number of ids one batch
+// request may carry. It mirrors the service-layer cap so an oversized request is
+// rejected at the edge rather than silently truncated. Kept as a named const so
+// the bound is visible and testable.
+const maxBatchReviewIDs = 50
+
 // ReviewService defines the interface for review operations used by handler.
 // List/GetByID/Reply receive businessID (extracted from /businesses/{id} URL by
 // RequireBusinessAccess middleware); Refresh resolves the same single business
@@ -41,6 +54,8 @@ type ReviewService interface {
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
 	Reply(ctx context.Context, businessID uuid.UUID, id string, replyText string) error
 	Refresh(ctx context.Context, userID uuid.UUID) error
+	BatchDraft(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
+	BulkApprove(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 }
 
 // ReviewHandler handles review-related HTTP requests
@@ -267,4 +282,120 @@ func (h *ReviewHandler) RefreshReviews(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// batchReviewRequest is the body of the batch-draft and bulk-approve endpoints.
+// ReviewIds is optional for batch-draft (empty → the endpoint auto-selects the
+// bounded pending backlog) and required for bulk-approve (the operator's click
+// approves a set they explicitly saw).
+type batchReviewRequest struct {
+	ReviewIds []string `json:"reviewIds"`
+}
+
+// batchItemResponse is the per-review outcome the batch endpoints return.
+type batchItemResponse struct {
+	ReviewId string `json:"reviewId"`
+	Status   string `json:"status"`
+	Error    string `json:"error,omitempty"`
+}
+
+// batchReviewResponse is the batch endpoints' body: a per-item result array plus
+// a count of the items in a terminal success state (drafted / published). The
+// count lets the frontend show cost without re-tallying the array.
+type batchReviewResponse struct {
+	Results   []batchItemResponse `json:"results"`
+	Succeeded int                 `json:"succeeded"`
+}
+
+// toBatchResponse projects service results into the wire shape and counts the
+// terminal-success items (drafted for batch-draft, published for bulk-approve).
+func toBatchResponse(results []service.BatchItemResult) batchReviewResponse {
+	out := batchReviewResponse{Results: make([]batchItemResponse, 0, len(results))}
+	for _, res := range results {
+		out.Results = append(out.Results, batchItemResponse{
+			ReviewId: res.ReviewID,
+			Status:   res.Status,
+			Error:    res.Error,
+		})
+		if res.Status == service.BatchItemStatusDrafted || res.Status == service.BatchItemStatusPublished {
+			out.Succeeded++
+		}
+	}
+	return out
+}
+
+// BatchDraftReviews handles POST /businesses/{id}/reviews/batch-draft. It drafts
+// AI replies for a bounded set of unanswered reviews (explicit ids, or the
+// auto-selected pending backlog when none are supplied) and returns a per-item
+// result. Each draft is one metered LLM call through the existing single-draft
+// path, so the request is bounded to keep the credit cost predictable. Authz
+// mirrors the manual reply path: RequireBusinessAccess + PermContentUpdate +
+// writeLimit (router) + the service soft-delete gate.
+func (h *ReviewHandler) BatchDraftReviews(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "BatchDraftReviews", authz.PermContentUpdate)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBatchRequestBytes)
+	req, ok := decodeAndValidate[batchReviewRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+	if len(req.ReviewIds) > maxBatchReviewIDs {
+		writeJSONError(w, http.StatusBadRequest, "too_many_reviews")
+		return
+	}
+
+	results, err := h.reviewService.BatchDraft(r.Context(), bc.BusinessID, req.ReviewIds)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to batch-draft reviews", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toBatchResponse(results))
+}
+
+// BulkApproveReviews handles POST /businesses/{id}/reviews/bulk-approve. It
+// publishes the stored draft for every POSITIVE review in the request
+// (needs_review and negatives are excluded and never published) via the same
+// dispatch path a manual reply uses, and returns a per-item result. reviewIds is
+// required. Authz mirrors the manual reply path.
+func (h *ReviewHandler) BulkApproveReviews(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "BulkApproveReviews", authz.PermContentUpdate)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBatchRequestBytes)
+	req, ok := decodeAndValidate[batchReviewRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+	if len(req.ReviewIds) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed")
+		return
+	}
+	if len(req.ReviewIds) > maxBatchReviewIDs {
+		writeJSONError(w, http.StatusBadRequest, "too_many_reviews")
+		return
+	}
+
+	results, err := h.reviewService.BulkApprove(r.Context(), bc.BusinessID, req.ReviewIds)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to bulk-approve reviews", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toBatchResponse(results))
 }

@@ -312,16 +312,18 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.ObjectStorage = objectStorage
 	log.Info("connected to object storage", "endpoint", cfg.S3Endpoint, "bucket", cfg.S3Bucket)
 
+	reviewDrafter := service.NewReviewDrafter(
+		repos.Review,
+		repos.Business,
+		orchClient,
+		cfg.ReviewDraftMaxExamples,
+		cfg.ReviewDraftBatchLimit,
+	)
+
 	if h.NATS != nil {
-		var drafter service.DraftPassRunner
+		var passiveDrafter service.DraftPassRunner
 		if cfg.ReviewDraftEnabled {
-			drafter = service.NewReviewDrafter(
-				repos.Review,
-				repos.Business,
-				orchClient,
-				cfg.ReviewDraftMaxExamples,
-				cfg.ReviewDraftBatchLimit,
-			)
+			passiveDrafter = reviewDrafter
 			log.Info("review AI-drafter enabled",
 				"orchestrator_url", cfg.OrchestratorURL,
 				"max_examples", cfg.ReviewDraftMaxExamples,
@@ -329,14 +331,14 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			)
 		}
 		syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
-		s.ReviewSyncer = service.NewReviewSyncer(h.NATS, repos.Integration, repos.Review, drafter, syncInterval)
+		s.ReviewSyncer = service.NewReviewSyncer(h.NATS, repos.Integration, repos.Review, passiveDrafter, syncInterval)
 	}
 
 	var reviewRefresher service.ReviewRefresher
 	if s.ReviewSyncer != nil {
 		reviewRefresher = s.ReviewSyncer
 	}
-	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher)
+	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher, reviewDrafter)
 
 	adapter := IntegrationSyncAdapter(s.Integration)
 	platformHTTPClient := &http.Client{Timeout: 10 * time.Second}

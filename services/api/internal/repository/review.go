@@ -408,13 +408,14 @@ func (r *reviewRepository) ClaimDraftForGenerating(ctx context.Context, id strin
 }
 
 // UpdateDraft — see domain.ReviewRepository docstring.
-func (r *reviewRepository) UpdateDraft(ctx context.Context, id, draft, status, errMsg string) error {
+func (r *reviewRepository) UpdateDraft(ctx context.Context, id, draft, status, errMsg string, needsReview bool) error {
 	set := bson.M{"draft_status": status}
 	switch status {
 	case domain.ReviewDraftStatusReady:
 		set["draft_reply"] = draft
 		set["draft_generated_at"] = time.Now().UTC()
 		set["draft_error"] = ""
+		set["needs_review"] = needsReview
 	case domain.ReviewDraftStatusFailed:
 		set["draft_error"] = errMsg
 	}

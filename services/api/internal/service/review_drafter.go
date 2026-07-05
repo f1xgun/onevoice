@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
@@ -19,6 +21,14 @@ const (
 	// config.
 	defaultDraftMaxExamples  = 5
 	defaultDraftPerPassLimit = 10
+
+	// yandexReplyMaxRunes caps a stored draft targeting Yandex.Business. The RPA
+	// reply form accepts at most this many runes, so a draft is clamped before it
+	// is persisted rather than failing at publish time. The single-draft path
+	// (and the on-demand batch path, which reuses generateOne) share this bound
+	// because the orchestrator's max-token budget is a soft byte-ish limit, not a
+	// hard rune count.
+	yandexReplyMaxRunes = 2500
 )
 
 // DraftReplyClient is the narrow surface of *orchestratorclient.Client that
@@ -118,6 +128,22 @@ func (d *ReviewDrafter) GenerateForBusiness(ctx context.Context, businessID uuid
 	return nil
 }
 
+// DraftReviewByID drafts a reply for a single review the caller has already
+// resolved and authorized (the batch-draft endpoint passes a review it loaded
+// under RequireBusinessAccess + soft-delete gate). It funnels through the exact
+// single-draft path generateOne uses — the same orchestrator call, so it
+// inherits transborder-PDn redaction and per-draft metering — plus the Yandex
+// clamp and needs_review flag applied on the shared store path. business and
+// examples are fetched once by the caller and passed in so a batch does not
+// re-load them per review.
+//
+// It returns generateOne's outcome directly: the claim compare-and-swap means a
+// review another pass is already drafting returns nil without a second LLM
+// call, so a batch never double-meters a review the sync ticker is mid-drafting.
+func (d *ReviewDrafter) DraftReviewByID(ctx context.Context, business *domain.Business, review *domain.Review, examples []domain.Review) error {
+	return d.generateOne(ctx, business, review, examples)
+}
+
 // generateOne claims a single review row, calls the orchestrator, and
 // persists the outcome. Returns the orchestrator/HTTP error so callers can
 // log it; the draft_status update is best-effort and not part of the error.
@@ -150,7 +176,7 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 
 	draft, err := d.callOrchestrator(ctx, reqBody)
 	if err != nil {
-		if updErr := d.reviewRepo.UpdateDraft(ctx, review.ID, "", domain.ReviewDraftStatusFailed, err.Error()); updErr != nil {
+		if updErr := d.reviewRepo.UpdateDraft(ctx, review.ID, "", domain.ReviewDraftStatusFailed, err.Error(), false); updErr != nil {
 			slog.Warn("review draft: failed to persist failure status",
 				"review_id", review.ID,
 				"original_error", err,
@@ -160,10 +186,24 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 		return err
 	}
 
-	if err := d.reviewRepo.UpdateDraft(ctx, review.ID, draft, domain.ReviewDraftStatusReady, ""); err != nil {
+	draft = clampDraftForPlatform(review.Platform, draft)
+	needsReview := review.Rating <= domain.ReviewNeedsReviewMaxRating
+	if err := d.reviewRepo.UpdateDraft(ctx, review.ID, draft, domain.ReviewDraftStatusReady, "", needsReview); err != nil {
 		return fmt.Errorf("persist draft: %w", err)
 	}
 	return nil
+}
+
+// clampDraftForPlatform trims a generated draft to the target platform's reply
+// length ceiling before it is persisted. Only Yandex.Business enforces a hard
+// rune cap today; other platforms pass through unchanged. Sharing this on the
+// single-draft store path means every draft (sync-triggered or batch-triggered,
+// which reuses generateOne) is stored within the platform's limit.
+func clampDraftForPlatform(platform, draft string) string {
+	if platform == a2a.AgentYandexBusiness && utf8.RuneCountInString(draft) > yandexReplyMaxRunes {
+		return string([]rune(draft)[:yandexReplyMaxRunes])
+	}
+	return draft
 }
 
 // callOrchestrator POSTs to /internal/draft-reply via the shared

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -21,14 +22,17 @@ import (
 	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/pkg/ssecounter"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // mockReviewService implements ReviewService for tests.
 type mockReviewService struct {
-	listFn    func(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
-	getByIDFn func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
-	replyFn   func(ctx context.Context, businessID uuid.UUID, id, replyText string) error
-	refreshFn func(ctx context.Context, userID uuid.UUID) error
+	listFn        func(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
+	getByIDFn     func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
+	replyFn       func(ctx context.Context, businessID uuid.UUID, id, replyText string) error
+	refreshFn     func(ctx context.Context, userID uuid.UUID) error
+	batchDraftFn  func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
+	bulkApproveFn func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 }
 
 func (m *mockReviewService) List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -68,6 +72,20 @@ func (m *mockReviewService) Refresh(ctx context.Context, userID uuid.UUID) error
 		return nil
 	}
 	return m.refreshFn(ctx, userID)
+}
+
+func (m *mockReviewService) BatchDraft(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error) {
+	if m.batchDraftFn == nil {
+		return nil, nil
+	}
+	return m.batchDraftFn(ctx, businessID, reviewIDs)
+}
+
+func (m *mockReviewService) BulkApprove(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error) {
+	if m.bulkApproveFn == nil {
+		return nil, nil
+	}
+	return m.bulkApproveFn(ctx, businessID, reviewIDs)
 }
 
 func TestNewReviewHandler_NilService(t *testing.T) {
@@ -414,4 +432,165 @@ func TestReplyToReview_ServiceError(t *testing.T) {
 	r.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+// TestBatchDraftReviews_Success asserts the handler returns the per-item results
+// and the succeeded count, and forwards the id list to the service.
+func TestBatchDraftReviews_Success(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		batchDraftFn: func(_ context.Context, bid uuid.UUID, ids []string) ([]service.BatchItemResult, error) {
+			assert.Equal(t, businessID, bid)
+			assert.Equal(t, []string{"r1", "r2"}, ids)
+			return []service.BatchItemResult{
+				{ReviewID: "r1", Status: service.BatchItemStatusDrafted},
+				{ReviewID: "r2", Status: service.BatchItemStatusFailed, Error: "boom"},
+			}, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	body := `{"reviewIds":["r1","r2"]}`
+	req := httptest.NewRequest(http.MethodPost, "/reviews/batch-draft", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.BatchDraftReviews(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var out batchReviewResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
+	assert.Len(t, out.Results, 2)
+	assert.Equal(t, 1, out.Succeeded, "only the drafted item counts toward succeeded")
+	assert.Equal(t, "r2", out.Results[1].ReviewId)
+	assert.Equal(t, service.BatchItemStatusFailed, out.Results[1].Status)
+}
+
+// TestBatchDraftReviews_OversizedRejected asserts an id list longer than the
+// handler cap is rejected with 400 and the service is never called. Revert the
+// len>maxBatchReviewIDs guard and this flips to 200 (an unbounded request reaches
+// the service).
+func TestBatchDraftReviews_OversizedRejected(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockReviewService{
+		batchDraftFn: func(_ context.Context, _ uuid.UUID, _ []string) ([]service.BatchItemResult, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	ids := make([]string, maxBatchReviewIDs+1)
+	for i := range ids {
+		ids[i] = "r" + strconv.Itoa(i)
+	}
+	payload, _ := json.Marshal(batchReviewRequest{ReviewIds: ids})
+	req := httptest.NewRequest(http.MethodPost, "/reviews/batch-draft", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.BatchDraftReviews(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.False(t, called, "an oversized batch must be rejected before reaching the service")
+}
+
+// TestBatchDraftReviews_ViewerForbidden asserts a read-only viewer cannot draft.
+func TestBatchDraftReviews_ViewerForbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		batchDraftFn: func(_ context.Context, _ uuid.UUID, _ []string) ([]service.BatchItemResult, error) {
+			t.Fatal("batch-draft must not run for a read-only viewer")
+			return nil, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/reviews/batch-draft", strings.NewReader(`{"reviewIds":["r1"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewReadCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.BatchDraftReviews(rr, req)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestBulkApproveReviews_Success asserts publish results are returned with the
+// succeeded count.
+func TestBulkApproveReviews_Success(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		bulkApproveFn: func(_ context.Context, bid uuid.UUID, ids []string) ([]service.BatchItemResult, error) {
+			assert.Equal(t, businessID, bid)
+			assert.Equal(t, []string{"r1", "r2"}, ids)
+			return []service.BatchItemResult{
+				{ReviewID: "r1", Status: service.BatchItemStatusPublished},
+				{ReviewID: "r2", Status: service.BatchItemStatusSkipped, Error: "not_positive_or_no_draft"},
+			}, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/reviews/bulk-approve", strings.NewReader(`{"reviewIds":["r1","r2"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.BulkApproveReviews(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var out batchReviewResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
+	assert.Equal(t, 1, out.Succeeded, "only the published item counts toward succeeded")
+	assert.Equal(t, service.BatchItemStatusSkipped, out.Results[1].Status)
+}
+
+// TestBulkApproveReviews_EmptyRejected asserts an empty id list is rejected with
+// 400 (bulk-approve requires an explicit set).
+func TestBulkApproveReviews_EmptyRejected(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockReviewService{
+		bulkApproveFn: func(_ context.Context, _ uuid.UUID, _ []string) ([]service.BatchItemResult, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/reviews/bulk-approve", strings.NewReader(`{"reviewIds":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.BulkApproveReviews(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.False(t, called, "an empty bulk-approve must not reach the service")
+}
+
+// TestBulkApproveReviews_ViewerForbidden asserts a read-only viewer cannot
+// bulk-approve.
+func TestBulkApproveReviews_ViewerForbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		bulkApproveFn: func(_ context.Context, _ uuid.UUID, _ []string) ([]service.BatchItemResult, error) {
+			t.Fatal("bulk-approve must not run for a read-only viewer")
+			return nil, nil
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/reviews/bulk-approve", strings.NewReader(`{"reviewIds":["r1"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewReadCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.BulkApproveReviews(rr, req)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
 }

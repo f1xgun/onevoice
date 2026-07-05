@@ -454,8 +454,12 @@ type ReviewRepository interface {
 	// is what stops two overlapping sync passes from drafting one review twice.
 	ClaimDraftForGenerating(ctx context.Context, id string) (claimed bool, err error)
 
-	// UpdateDraft writes draft_* atomically; the ready/failed transitions persist the outcome after the LLM call.
-	UpdateDraft(ctx context.Context, id, draft, status, errMsg string) error
+	// UpdateDraft writes draft_* atomically; the ready/failed transitions persist
+	// the outcome after the LLM call. needsReview is persisted alongside a "ready"
+	// draft so a negative-review draft is flagged for individual approval and
+	// excluded from any one-tap bulk publish; it is ignored on the "failed"
+	// transition (no draft to hold back).
+	UpdateDraft(ctx context.Context, id, draft, status, errMsg string, needsReview bool) error
 }
 
 // PostRepository persists platform posts.
