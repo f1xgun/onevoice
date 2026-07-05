@@ -66,12 +66,12 @@ func NewBillingSummaryService(resolver PlanResolver, billing BillingReader) *Bil
 
 // Summary builds the billing summary for a business.
 //
-// Track-A note on the credits block: without the Track-B grant/expire job the
-// credit_ledger carries no `grant` rows, so GetCreditBalance reads 0 and
-// Used = Granted-Remaining is not yet a meaningful "consumed vs allocation"
-// figure. The truthful Track-A activity signal is UsageThisMonth (sourced from
-// usage_logs). Overage is reported as 0 until grant rows exist. The credits
-// block becomes fully meaningful once the grant job lands.
+// Note on the credits block: the monthly grant worker (creditgrant.Service)
+// lands a `grant` row per (business, period), so GetCreditBalance reflects the
+// remaining allowance and Used = Granted-Remaining is a meaningful "consumed vs
+// allocation" figure. Overage is still reported as 0 here — surfacing metered
+// overage credits is a Track-B concern. UsageThisMonth (sourced from
+// usage_logs) remains the raw activity signal alongside the credit block.
 func (s *BillingSummaryService) Summary(ctx context.Context, businessID uuid.UUID) (BillingSummary, error) {
 	plan := s.resolver.Resolve(ctx, businessID)
 

@@ -226,6 +226,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 
 	svcs.StartReviewSyncer(ctx, workers, log, cfg.ReviewSyncInterval)
 	svcs.StartReconciler(ctx, workers, log, cfg.SyncReconcileEnabled, cfg.SyncReconcilePollInterval)
+	svcs.StartCreditGrant(ctx, workers, log, cfg.CreditGrantEnabled, cfg.CreditGrantPollInterval)
 
 	select {
 	case <-ctx.Done():

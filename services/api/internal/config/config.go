@@ -141,6 +141,20 @@ type Config struct {
 	// frequency.
 	SyncReconcilePollInterval time.Duration
 
+	// CreditGrantEnabled gates the monthly credit-grant worker that lands each
+	// business's plan allowance into credit_ledger. Defaults ON: without a grant
+	// the ledger has no `grant` rows, so every business reads a 0 balance and the
+	// billing UI shows remaining=0 for everyone. The grant is idempotent per
+	// (business, period) and changes no gating (nothing charges credits yet — the
+	// meter only records overage and never blocks a turn), so enabling it is a
+	// pure balance-visibility fix with no downside.
+	CreditGrantEnabled bool
+	// CreditGrantPollInterval is how often the grant worker re-checks the fleet.
+	// The grant is idempotent per period, so a poll is cheap (an EXISTS pre-check
+	// per business); the interval only bounds how quickly a brand-new business or
+	// a new month's reset lands its allowance. Default 1h.
+	CreditGrantPollInterval time.Duration
+
 	S3Endpoint        string
 	S3AccessKey       string
 	S3SecretKey       string
@@ -297,6 +311,9 @@ func Load() (*Config, error) {
 		SyncReconcileEnabled:      getEnv("SYNC_RECONCILE_ENABLED", "false") == envBoolTrue,
 		SyncReconcilePollInterval: getEnvDuration("SYNC_RECONCILE_POLL_INTERVAL", 30*time.Minute), //nolint:mnd // env-driven default
 
+		CreditGrantEnabled:      getEnv("CREDIT_GRANT_ENABLED", envBoolTrue) == envBoolTrue,
+		CreditGrantPollInterval: getEnvDuration("CREDIT_GRANT_POLL_INTERVAL", time.Hour),
+
 		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),
 		S3SecretKey:       getEnv("S3_SECRET_KEY", "minioadmin"),
@@ -331,6 +348,10 @@ func Load() (*Config, error) {
 
 	if cfg.HealthCheckTimeout <= 0 {
 		cfg.HealthCheckTimeout = 2 * time.Second
+	}
+
+	if cfg.CreditGrantPollInterval <= 0 {
+		cfg.CreditGrantPollInterval = time.Hour
 	}
 
 	if cfg.OutboxPollInterval <= 0 {

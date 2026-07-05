@@ -145,6 +145,103 @@ func (r *creditLedgerRepository) MeterUsage(ctx context.Context, tx pgx.Tx, busi
 	return r.Append(ctx, tx, entry)
 }
 
+// grantIdempotencyKey / expireIdempotencyKey are the per-(business, period)
+// idempotency keys the monthly grant writes. Encoding them into the
+// idempotency_key column (partial-unique) is what makes a re-run in the same
+// period a no-op via ON CONFLICT DO NOTHING — the grant is safe to run on every
+// poll tick and across replicas.
+func grantIdempotencyKey(businessID uuid.UUID, period string) string {
+	return "grant:" + businessID.String() + ":" + period
+}
+
+func expireIdempotencyKey(businessID uuid.UUID, period string) string {
+	return "expire:" + businessID.String() + ":" + period
+}
+
+// GrantMonthly grants a business its plan's monthly credit allowance for a
+// billing period, idempotently, inside the caller's transaction. It implements
+// the monthly-RESET model: any leftover balance from a prior period is first
+// zeroed with an `expire` row, then a `grant` row lands the fresh allowance, so
+// a period always opens at exactly monthlyCredits — leftover credits do NOT roll
+// over. Emitting both rows keeps the ledger self-consistent
+// (SUM(delta_credits) == latest balance_after): expire contributes -prevBalance,
+// grant contributes +monthlyCredits.
+//
+// Idempotency: both rows carry a per-(business, period) idempotency key, and a
+// pre-check short-circuits once the period is granted, so a second pass in the
+// same period inserts nothing. It returns true only when it actually inserted
+// the grant (false when the period was already granted or monthlyCredits <= 0),
+// so the caller can count grants and invalidate the plan cache.
+//
+// Concurrency: it serializes against concurrent meters for the same business
+// with the same per-business transaction-scoped advisory lock MeterUsage uses,
+// so the balance read is not racy and the pre-check is authoritative.
+func (r *creditLedgerRepository) GrantMonthly(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, monthlyCredits int, period string) (bool, error) {
+	if businessID == uuid.Nil {
+		return false, fmt.Errorf("GrantMonthly: business_id is required")
+	}
+	if period == "" {
+		return false, fmt.Errorf("GrantMonthly: period is required")
+	}
+	if monthlyCredits <= 0 {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", advisoryLockKey(businessID)); err != nil {
+		return false, fmt.Errorf("GrantMonthly: advisory lock: %w", err)
+	}
+
+	grantIdem := grantIdempotencyKey(businessID, period)
+	var alreadyGranted bool
+	if err := tx.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM credit_ledger WHERE idempotency_key = $1)", grantIdem,
+	).Scan(&alreadyGranted); err != nil {
+		return false, fmt.Errorf("GrantMonthly: idempotency check: %w", err)
+	}
+	if alreadyGranted {
+		return false, nil
+	}
+
+	var prevBalance int
+	err := tx.QueryRow(ctx,
+		"SELECT balance_after FROM credit_ledger WHERE business_id = $1 ORDER BY seq DESC LIMIT 1",
+		businessID,
+	).Scan(&prevBalance)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return false, fmt.Errorf("GrantMonthly: read balance: %w", err)
+		}
+		prevBalance = 0
+	}
+
+	if prevBalance > 0 {
+		expireIdem := expireIdempotencyKey(businessID, period)
+		expire := &domain.CreditLedgerEntry{
+			BusinessID:         businessID,
+			DeltaCredits:       -prevBalance,
+			BalanceAfter:       0,
+			Reason:             domain.CreditReasonExpire,
+			SubscriptionPeriod: &period,
+			IdempotencyKey:     &expireIdem,
+		}
+		if err := r.Append(ctx, tx, expire); err != nil {
+			return false, fmt.Errorf("GrantMonthly: expire leftover: %w", err)
+		}
+	}
+
+	grant := &domain.CreditLedgerEntry{
+		BusinessID:         businessID,
+		DeltaCredits:       monthlyCredits,
+		BalanceAfter:       monthlyCredits,
+		Reason:             domain.CreditReasonGrant,
+		SubscriptionPeriod: &period,
+		IdempotencyKey:     &grantIdem,
+	}
+	if err := r.Append(ctx, tx, grant); err != nil {
+		return false, fmt.Errorf("GrantMonthly: grant: %w", err)
+	}
+	return true, nil
+}
+
 // advisoryLockKey derives a deterministic int8 lock key from a business UUID so
 // pg_advisory_xact_lock can serialize per-business metering. The uint64→int64
 // reinterpretation is intentional: the value is only a lock identifier, so
