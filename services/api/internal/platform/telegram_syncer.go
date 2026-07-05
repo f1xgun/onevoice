@@ -109,7 +109,7 @@ func (t *TelegramSyncer) syncTelegramTitle(ctx context.Context, businessID uuid.
 	}
 	resp, err := t.httpClient.Do(httpReq)
 	if err != nil {
-		slog.ErrorContext(ctx, "platform sync: telegram setChatTitle request failed", "channel_id", channelID, "error", err)
+		slog.ErrorContext(ctx, "platform sync: telegram setChatTitle request failed", "channel_id", channelID, "error", redactURLErr(err))
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -150,7 +150,7 @@ func (t *TelegramSyncer) syncTelegramDescription(ctx context.Context, businessID
 	}
 	resp, err := t.httpClient.Do(httpReq)
 	if err != nil {
-		slog.ErrorContext(ctx, "platform sync: telegram setChatDescription request failed", "channel_id", channelID, "error", err)
+		slog.ErrorContext(ctx, "platform sync: telegram setChatDescription request failed", "channel_id", channelID, "error", redactURLErr(err))
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -224,7 +224,7 @@ func (t *TelegramSyncer) syncTelegramPhoto(ctx context.Context, businessID uuid.
 
 	resp, err := t.httpClient.Do(photoReq)
 	if err != nil {
-		slog.ErrorContext(ctx, "platform sync: telegram setChatPhoto request failed", "channel_id", channelID, "error", err)
+		slog.ErrorContext(ctx, "platform sync: telegram setChatPhoto request failed", "channel_id", channelID, "error", redactURLErr(err))
 		return fmt.Errorf("setChatPhoto request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()

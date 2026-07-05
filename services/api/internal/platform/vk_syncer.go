@@ -112,7 +112,7 @@ func (v *VKSyncer) callVKAPI(ctx context.Context, method string, params url.Valu
 	}
 	resp, err := v.httpClient.Do(httpReq)
 	if err != nil {
-		slog.Error("platform sync: vk "+method+" request failed", "group_id", groupID, "error", err)
+		slog.Error("platform sync: vk "+method+" request failed", "group_id", groupID, "error", redactURLErr(err))
 		return err.Error()
 	}
 	defer func() { _ = resp.Body.Close() }()
