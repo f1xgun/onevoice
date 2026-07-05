@@ -117,14 +117,27 @@ func newGenerateImageExecutor(
 		}
 
 		businessID := a2a.BusinessIDFromContext(ctx)
-		if businessID == "" {
-			return nil, fmt.Errorf("generate_image: missing business context")
+		bizUUID, idErr := uuid.Parse(businessID)
+		if idErr != nil || bizUUID == uuid.Nil {
+			return nil, fmt.Errorf("generate_image: missing or invalid business context")
+		}
+
+		size := stringArg(args, "size")
+		style := stringArg(args, "style")
+		if vErr := imagegen.ValidateParams(size, style); vErr != nil {
+			return nil, mapGenError(vErr)
+		}
+
+		if !imagegen.ReserveTurnSlot(ctx, cfg.ImageGenMaxPerTurn) {
+			return nil, fmt.Errorf(
+				"generate_image: image limit for this message reached (max %d); do not generate more images in this turn",
+				cfg.ImageGenMaxPerTurn)
 		}
 
 		res, err := gen.Generate(ctx, imagegen.Request{
 			Prompt: prompt,
-			Size:   stringArg(args, "size"),
-			Style:  stringArg(args, "style"),
+			Size:   size,
+			Style:  style,
 			N:      1,
 		})
 		if err != nil {
@@ -137,7 +150,7 @@ func newGenerateImageExecutor(
 			return nil, fmt.Errorf("generate_image: could not store the generated image, try again")
 		}
 
-		recordImageUsage(ctx, billing, cfg, gen.Name(), businessID, res)
+		recordImageUsage(ctx, billing, cfg, gen.Name(), bizUUID, res)
 
 		return map[string]any{
 			"photo_url": store.PublicURL(key),
@@ -152,6 +165,8 @@ func newGenerateImageExecutor(
 // errors say "try again"; the raw provider detail stays in logs.
 func mapGenError(err error) error {
 	switch {
+	case errors.Is(err, imagegen.ErrInvalidParam):
+		return fmt.Errorf("generate_image: unsupported parameter — size must be one of 1024x1024, 1792x1024, 1024x1792 and style one of vivid, natural")
 	case errors.Is(err, imagegen.ErrUnsafePrompt):
 		return fmt.Errorf("generate_image: the prompt was rejected by the image content policy — rephrase it and do not retry the same wording")
 	case errors.Is(err, imagegen.ErrResultTooLarge):
@@ -164,21 +179,20 @@ func mapGenError(err error) error {
 }
 
 // recordImageUsage writes one usage_logs row for the image so its cost feeds the
-// per-business daily-spend gate. Best-effort and bounded: a billing failure is
-// logged, never surfaced to the user (the image already succeeded).
+// per-business daily-spend gate. bizUUID is the already-validated business id (the
+// executor rejects a malformed one before any paid call). The conversation id is
+// read from ctx and stamped for attribution, matching how the LLM usage row is
+// populated. Best-effort and bounded: a billing failure is logged, never
+// surfaced to the user (the image already succeeded).
 func recordImageUsage(
 	ctx context.Context,
 	billing llm.Writer,
 	cfg *config.Config,
-	provider, businessID string,
+	provider string,
+	bizUUID uuid.UUID,
 	res *imagegen.Result,
 ) {
 	if billing == nil {
-		return
-	}
-	bizUUID, err := uuid.Parse(businessID)
-	if err != nil || bizUUID == uuid.Nil {
-		slog.WarnContext(ctx, "generate_image: skipping billing, invalid business id", "business_id", businessID)
 		return
 	}
 	tier := cfg.LLMTier
@@ -189,6 +203,7 @@ func recordImageUsage(
 	if logErr := billing.LogUsage(bctx, &llm.UsageLog{
 		ID:              uuid.New(),
 		BusinessID:      bizUUID,
+		ConversationID:  a2a.ConversationIDFromContext(ctx),
 		Model:           res.Model,
 		Provider:        provider,
 		ProviderCostUSD: res.CostUSD,
@@ -197,7 +212,7 @@ func recordImageUsage(
 		UserTier:        tier,
 		CreatedAt:       time.Now(),
 	}); logErr != nil {
-		slog.WarnContext(ctx, "generate_image: billing write failed", "error", logErr, "business_id", businessID)
+		slog.WarnContext(ctx, "generate_image: billing write failed", "error", logErr, "business_id", bizUUID)
 	}
 }
 
@@ -227,11 +242,12 @@ func ImageGen(cfg *config.Config) imagegen.Generator {
 // to unregistered rather than boot with a half-wired feature.
 func ImageStore(ctx context.Context, cfg *config.Config) (objectstore.ObjectStore, error) {
 	return objectstore.NewMinioStore(ctx, objectstore.Config{
-		Endpoint:  cfg.S3Endpoint,
-		AccessKey: cfg.S3AccessKey,
-		SecretKey: cfg.S3SecretKey,
-		Bucket:    cfg.S3Bucket,
-		UseSSL:    cfg.S3UseSSL,
-		PublicURL: cfg.PublicURL,
+		Endpoint:      cfg.S3Endpoint,
+		AccessKey:     cfg.S3AccessKey,
+		SecretKey:     cfg.S3SecretKey,
+		Bucket:        cfg.S3Bucket,
+		UseSSL:        cfg.S3UseSSL,
+		PublicURL:     cfg.PublicURL,
+		BucketTimeout: cfg.ImageGenBucketTimeout,
 	})
 }

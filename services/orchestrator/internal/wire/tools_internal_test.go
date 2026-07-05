@@ -162,3 +162,95 @@ func TestGenerateImageExecutor_UnsafePrompt(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "rephrase")
 }
+
+// okResult is a canned successful generation used by the guardrail tests below.
+func okResult() *imagegen.Result {
+	return &imagegen.Result{
+		Data: []byte("\x89PNG bytes"), ContentType: "image/png",
+		Width: 1024, Height: 1024, Model: "dall-e-3", CostUSD: 0.04,
+	}
+}
+
+// TestGenerateImageExecutor_MalformedBusinessID rejects a non-UUID business id
+// BEFORE any paid call — no generation, no upload, no billing write.
+func TestGenerateImageExecutor_MalformedBusinessID(t *testing.T) {
+	gen := &stubGenerator{res: okResult()}
+	store := &stubStore{}
+	billing := &stubWriter{}
+	exec := newGenerateImageExecutor(gen, store, billing, testCfg())
+
+	ctx := a2a.WithBusinessID(context.Background(), "not-a-uuid")
+	_, err := exec(ctx, map[string]interface{}{"prompt": "a cat"})
+	require.Error(t, err)
+	assert.Equal(t, 0, gen.calls, "malformed business id must not reach the paid provider call")
+	assert.Equal(t, 0, store.uploads)
+	assert.Empty(t, billing.logs)
+}
+
+// TestGenerateImageExecutor_InvalidSize rejects an off-enum size BEFORE the paid
+// call and returns a clean, allow-set-listing error.
+func TestGenerateImageExecutor_InvalidSize(t *testing.T) {
+	gen := &stubGenerator{res: okResult()}
+	store := &stubStore{}
+	exec := newGenerateImageExecutor(gen, store, &stubWriter{}, testCfg())
+
+	ctx := a2a.WithBusinessID(context.Background(), uuid.New().String())
+	_, err := exec(ctx, map[string]interface{}{"prompt": "a cat", "size": "512x512"})
+	require.Error(t, err)
+	assert.Equal(t, 0, gen.calls, "invalid size must not reach the paid provider call")
+	assert.Equal(t, 0, store.uploads)
+	assert.Contains(t, err.Error(), "1024x1024")
+}
+
+// TestGenerateImageExecutor_InvalidStyle rejects an off-enum style before the
+// paid call.
+func TestGenerateImageExecutor_InvalidStyle(t *testing.T) {
+	gen := &stubGenerator{res: okResult()}
+	exec := newGenerateImageExecutor(gen, &stubStore{}, &stubWriter{}, testCfg())
+
+	ctx := a2a.WithBusinessID(context.Background(), uuid.New().String())
+	_, err := exec(ctx, map[string]interface{}{"prompt": "a cat", "style": "photographic"})
+	require.Error(t, err)
+	assert.Equal(t, 0, gen.calls, "invalid style must not reach the paid provider call")
+}
+
+// TestGenerateImageExecutor_PerTurnCap proves a single turn cannot generate more
+// than IMAGE_GEN_MAX_PER_TURN images: the over-cap call errors without a paid
+// provider call or upload.
+func TestGenerateImageExecutor_PerTurnCap(t *testing.T) {
+	gen := &stubGenerator{res: okResult()}
+	store := &stubStore{url: "https://cdn.example/media/x.png"}
+	cfg := &config.Config{LLMTier: "free", ImageGenMaxPerTurn: 2}
+	exec := newGenerateImageExecutor(gen, store, &stubWriter{}, cfg)
+
+	ctx := imagegen.WithTurnBudget(a2a.WithBusinessID(context.Background(), uuid.New().String()))
+	args := map[string]interface{}{"prompt": "a cat"}
+
+	_, err1 := exec(ctx, args)
+	require.NoError(t, err1)
+	_, err2 := exec(ctx, args)
+	require.NoError(t, err2)
+
+	_, err3 := exec(ctx, args)
+	require.Error(t, err3, "3rd image in one turn must be capped")
+	assert.Contains(t, err3.Error(), "image limit")
+
+	assert.Equal(t, 2, gen.calls, "over-cap call must not reach the paid provider call")
+	assert.Equal(t, 2, store.uploads, "over-cap call must not upload")
+}
+
+// TestGenerateImageExecutor_StampsConversationID proves the image usage row
+// carries the conversation id from context, matching the LLM usage row.
+func TestGenerateImageExecutor_StampsConversationID(t *testing.T) {
+	gen := &stubGenerator{res: okResult()}
+	billing := &stubWriter{}
+	exec := newGenerateImageExecutor(gen, &stubStore{url: "https://cdn.example/x.png"}, billing, testCfg())
+
+	const convID = "67f4a8b27a9ad15d4f8a1c00"
+	ctx := a2a.WithConversationID(a2a.WithBusinessID(context.Background(), uuid.New().String()), convID)
+	_, err := exec(ctx, map[string]interface{}{"prompt": "a cat"})
+	require.NoError(t, err)
+
+	require.Len(t, billing.logs, 1)
+	assert.Equal(t, convID, billing.logs[0].ConversationID)
+}

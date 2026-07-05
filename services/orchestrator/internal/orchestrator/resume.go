@@ -12,6 +12,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitl"
+	"github.com/f1xgun/onevoice/pkg/imagegen"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -173,6 +174,8 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 	}
 
 	ctx = a2a.WithBusinessID(ctx, batch.BusinessID)
+	ctx = a2a.WithConversationID(ctx, batch.ConversationID)
+	ctx = imagegen.WithTurnBudget(ctx)
 
 	o.dispatchApprovedCalls(ctx, batch, req, state, out)
 
