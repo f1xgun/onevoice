@@ -7,6 +7,7 @@ const TABS = [
   { href: '/settings/tools', labelKey: 'tools' },
   { href: '/settings/team', labelKey: 'team' },
   { href: '/settings/roles', labelKey: 'roles' },
+  { href: '/settings/billing', labelKey: 'billing', perm: 'billing.read' },
   { href: '/settings/audit', labelKey: 'audit' },
   { href: '/settings/privacy', labelKey: 'privacy' },
 ] as const;
@@ -23,7 +24,12 @@ export default async function SettingsLayout({ children }: { children: ReactNode
         className="flex w-full flex-row gap-1 overflow-x-auto px-4 pt-4 sm:px-12 md:w-48 md:flex-col md:overflow-visible md:px-4 md:pt-6"
       >
         {TABS.map((tab) => (
-          <SettingsNavLink key={tab.href} href={tab.href} label={tNav(tab.labelKey)} />
+          <SettingsNavLink
+            key={tab.href}
+            href={tab.href}
+            label={tNav(tab.labelKey)}
+            perm={'perm' in tab ? tab.perm : undefined}
+          />
         ))}
       </nav>
       <div className="min-w-0 flex-1">{children}</div>
