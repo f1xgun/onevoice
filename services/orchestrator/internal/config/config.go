@@ -35,6 +35,19 @@ const defaultAPIInternalURL = "https://api:8443"
 // the platform agents enforce when they later download it to re-upload.
 const defaultImageGenMaxBytes = 10 * 1024 * 1024
 
+// defaultImageGenMaxPerTurn caps how many images one chat turn may generate.
+// Kept deliberately small: a single post rarely needs more than one or two
+// images, and each generation is a paid provider call, so this bounds the
+// worst-case per-turn image spend even if the model emits a burst of
+// generate_image calls. Set IMAGE_GEN_MAX_PER_TURN to 0 to disable the cap.
+const defaultImageGenMaxPerTurn = 2
+
+// defaultImageGenBucketTimeout bounds the boot-time MinIO bucket
+// existence/creation round trip so an unreachable or hung object store cannot
+// stall orchestrator startup indefinitely. Only consulted when image
+// generation is enabled — a disabled feature never touches the object store.
+const defaultImageGenBucketTimeout = 10 * time.Second
+
 // Cost-guard defaults; see docs/orchestrator/config.md and docs/llm-cost-guards.md.
 const (
 	// defaultConversationInputCap stops the agent loop once the running input
@@ -134,6 +147,15 @@ type Config struct {
 	ImageGenModel    string
 	ImageGenSize     string
 	ImageGenMaxBytes int64
+
+	// ImageGenMaxPerTurn caps images generated within a single agent turn.
+	// <= 0 disables the cap. Defaults to defaultImageGenMaxPerTurn.
+	ImageGenMaxPerTurn int
+
+	// ImageGenBucketTimeout bounds the boot-time bucket existence/creation call
+	// so a hung object store cannot block startup. Defaults to
+	// defaultImageGenBucketTimeout. Only used when image generation is enabled.
+	ImageGenBucketTimeout time.Duration
 
 	// PublicURL is the absolute public origin (e.g. https://app.example.com)
 	// that generated-media URLs are rooted at. MUST be absolute so a generated
@@ -290,6 +312,24 @@ func Load() (*Config, error) {
 		imageGenMaxBytes = n
 	}
 
+	imageGenMaxPerTurn := defaultImageGenMaxPerTurn
+	if v := os.Getenv("IMAGE_GEN_MAX_PER_TURN"); v != "" {
+		n, perr := strconv.Atoi(v)
+		if perr != nil || n < 0 {
+			return nil, fmt.Errorf("IMAGE_GEN_MAX_PER_TURN must be a non-negative integer (0 disables the cap), got %q", v)
+		}
+		imageGenMaxPerTurn = n
+	}
+
+	imageGenBucketTimeout := defaultImageGenBucketTimeout
+	if v := os.Getenv("IMAGE_GEN_BUCKET_TIMEOUT"); v != "" {
+		d, perr := time.ParseDuration(v)
+		if perr != nil || d <= 0 {
+			return nil, fmt.Errorf("IMAGE_GEN_BUCKET_TIMEOUT must be a positive duration (e.g. 10s), got %q", v)
+		}
+		imageGenBucketTimeout = d
+	}
+
 	s3UseSSL := false
 	if v := os.Getenv("S3_USE_SSL"); v != "" {
 		b, perr := strconv.ParseBool(v)
@@ -333,11 +373,13 @@ func Load() (*Config, error) {
 		AllowTransborderLLM:          allowTransborderLLM,
 		EnableGoogleBusiness:         enableGoogleBusiness,
 
-		ImageGenEnabled:  imageGenEnabled,
-		ImageGenProvider: getEnv("IMAGE_GEN_PROVIDER", "openai"),
-		ImageGenModel:    getEnv("IMAGE_GEN_MODEL", "dall-e-3"),
-		ImageGenSize:     getEnv("IMAGE_GEN_SIZE", "1024x1024"),
-		ImageGenMaxBytes: imageGenMaxBytes,
+		ImageGenEnabled:       imageGenEnabled,
+		ImageGenProvider:      getEnv("IMAGE_GEN_PROVIDER", "openai"),
+		ImageGenModel:         getEnv("IMAGE_GEN_MODEL", "dall-e-3"),
+		ImageGenSize:          getEnv("IMAGE_GEN_SIZE", "1024x1024"),
+		ImageGenMaxBytes:      imageGenMaxBytes,
+		ImageGenMaxPerTurn:    imageGenMaxPerTurn,
+		ImageGenBucketTimeout: imageGenBucketTimeout,
 
 		PublicURL:   os.Getenv("PUBLIC_URL"),
 		S3Endpoint:  os.Getenv("S3_ENDPOINT"),

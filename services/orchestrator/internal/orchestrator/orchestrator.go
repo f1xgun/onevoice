@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/imagegen"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/sse"
@@ -235,6 +236,9 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 		UserUUID:                 req.UserID,
 		Iter:                     0,
 	}
+
+	ctx = a2a.WithConversationID(ctx, req.ConversationID)
+	ctx = imagegen.WithTurnBudget(ctx)
 
 	go func() {
 		defer close(ch)
