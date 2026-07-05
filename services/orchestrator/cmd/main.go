@@ -133,7 +133,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		_ = mongoDB.Client().Disconnect(shutCtx)
 	}()
 
-	registry, nc, err := wire.Tools(ctx, log, cfg, billingHTTP)
+	registry, nc, err := wire.Tools(ctx, log, cfg, billingHTTP, mongoDB)
 	if err != nil {
 		return err
 	}

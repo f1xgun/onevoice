@@ -11,7 +11,8 @@ package tools
 // as always-available and the Auto floor exempts them from the project
 // whitelist.
 const (
-	GenerateImage = "generate_image"
+	GenerateImage  = "generate_image"
+	GetReviewStats = "get_review_stats"
 )
 
 // Telegram tools.

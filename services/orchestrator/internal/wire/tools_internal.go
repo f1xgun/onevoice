@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/objectstore"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/reviewstats"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
@@ -97,6 +98,120 @@ func RegisterInternalTools(
 		return
 	}
 	reg.Register(generateImageSpec(), newGenerateImageExecutor(gen, store, billing, cfg))
+}
+
+const (
+	// reviewStatsRuDescription / reviewStatsEnDescription are the LLM-facing tool
+	// descriptions. The tool answers the owner's reputation questions from their
+	// OWN records and returns AGGREGATES ONLY — counts, averages, rates — never
+	// review text or author names. It is scoped to the current organization; the
+	// model does not (and cannot) choose whose stats to read.
+	reviewStatsRuDescription = "Возвращает сводную статистику по отзывам текущей организации: сколько всего отзывов, сколько без ответа, доля отвеченных, средний рейтинг, распределение по звёздам и активность за последнюю неделю. Используй этот инструмент, когда пользователь спрашивает о своей репутации в цифрах (например «сколько отзывов без ответа?», «какой средний рейтинг?», «сколько отзывов я закрыл за неделю?»). Инструмент возвращает только числа, без текста отзывов и имён авторов."
+	reviewStatsEnDescription = "Returns aggregate statistics about the current organization's reviews: total count, unanswered count, reply rate, average rating, per-star distribution, and recent-week activity. Call this when the user asks about their reputation in numbers (for example \"how many reviews are unanswered?\", \"what is my average rating?\", \"how many reviews did I close this week?\"). It returns numbers only — never review text or author names."
+
+	// reviewStatsMinDays / reviewStatsMaxDays bound the recent-period window the
+	// model may request, so a nonsensical value cannot silently widen the query.
+	// reviewStatsDefaultDays is the advertised default ("за неделю").
+	reviewStatsMinDays     = 1
+	reviewStatsMaxDays     = 365
+	reviewStatsDefaultDays = 7
+)
+
+// reviewStatsSpec is the declarative tool definition for get_review_stats. Bare
+// name (no "{platform}__" prefix) → always offered; Auto floor → no HITL gate
+// (a read that returns only aggregates has no side effect to approve).
+func reviewStatsSpec() toolregistry.ToolSpec {
+	return toolregistry.ToolSpec{
+		DisplayName:    "Статистика по отзывам",
+		DisplayNameKey: "tools.get_review_stats.name",
+		UserDescription: "Считает сводные показатели по отзывам организации: всего, без ответа, доля ответов, " +
+			"средний рейтинг, распределение по звёздам и активность за неделю.",
+		DescriptionEn: reviewStatsEnDescription,
+		ParameterDescriptionsEn: map[string]string{
+			"recent_days": "Length in days of the recent-period window (default 7)",
+		},
+		Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Name:        tools.GetReviewStats,
+			Description: reviewStatsRuDescription,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"recent_days": map[string]interface{}{
+						"type":        "integer",
+						"minimum":     reviewStatsMinDays,
+						"maximum":     reviewStatsMaxDays,
+						"default":     reviewStatsDefaultDays,
+						"description": "Длина окна недавнего периода в днях (по умолчанию 7)",
+					},
+				},
+			},
+		}},
+		Floor:          domain.ToolFloorAuto,
+		EditableFields: nil,
+	}
+}
+
+// RegisterReviewStatsTool registers the read-only get_review_stats tool. A nil
+// fetcher is a no-op, so an orchestrator without a review data source (e.g. no
+// Mongo) simply does not offer the tool rather than registering a handler that
+// would fail every call.
+func RegisterReviewStatsTool(reg *toolregistry.Registry, fetcher reviewstats.Fetcher) {
+	if fetcher == nil {
+		return
+	}
+	reg.Register(reviewStatsSpec(), newReviewStatsExecutor(fetcher))
+}
+
+// newReviewStatsExecutor builds the in-process executor. The business id is read
+// from trusted turn context (the same seam the image executor uses), NEVER from
+// an LLM argument, so the model cannot spoof another organization's id to read
+// its stats. The executor fetches the current business's reviews and returns
+// aggregates only.
+func newReviewStatsExecutor(fetcher reviewstats.Fetcher) toolregistry.ExecutorFunc {
+	return func(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+		businessID := a2a.BusinessIDFromContext(ctx)
+		if businessID == "" {
+			return nil, fmt.Errorf("get_review_stats: missing business context")
+		}
+
+		recentDays := clampRecentDays(intArg(args, "recent_days"))
+
+		reviews, err := fetcher.FetchForBusiness(ctx, businessID)
+		if err != nil {
+			slog.ErrorContext(ctx, "get_review_stats: fetch failed", "error", err, "business_id", businessID)
+			return nil, fmt.Errorf("get_review_stats: could not load review statistics, try again")
+		}
+
+		return reviewstats.Aggregate(reviews, time.Now(), recentDays), nil
+	}
+}
+
+// clampRecentDays keeps the recent-period window within the advertised bounds.
+// A zero (unset) value returns 0 so Aggregate applies its own default.
+func clampRecentDays(days int) int {
+	switch {
+	case days == 0:
+		return 0
+	case days < reviewStatsMinDays:
+		return reviewStatsMinDays
+	case days > reviewStatsMaxDays:
+		return reviewStatsMaxDays
+	default:
+		return days
+	}
+}
+
+// intArg reads an integer tool argument, tolerating the JSON float64 the LLM
+// transport delivers and a missing/non-numeric value.
+func intArg(args map[string]interface{}, key string) int {
+	switch v := args[key].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	default:
+		return 0
+	}
 }
 
 // newGenerateImageExecutor builds the in-process executor. Flow: read the

@@ -6,11 +6,13 @@ import (
 	"time"
 
 	natslib "github.com/nats-io/nats.go"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/reviewstats"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
@@ -30,9 +32,13 @@ const natsReconnectWait = 2 * time.Second
 // ctx is used only to build the generated-media object store (a MinIO
 // BucketExists/MakeBucket round trip) when image generation is enabled; the v1
 // nats.go dial takes no context. billing is threaded into the in-process
-// generate_image executor so image spend lands in usage_logs.
-func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing llm.Writer) (*toolregistry.Registry, *natslib.Conn, error) {
+// generate_image executor so image spend lands in usage_logs. mongoDB backs the
+// read-only get_review_stats tool, which queries the shared reviews collection
+// in-process (no NATS) — so it is registered regardless of NATS reachability.
+func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing llm.Writer, mongoDB *mongo.Database) (*toolregistry.Registry, *natslib.Conn, error) {
 	reg := toolregistry.NewRegistry()
+
+	registerReviewStatsTool(log, reg, mongoDB)
 
 	nc, err := natslib.Connect(cfg.NATSUrl,
 		natslib.RetryOnFailedConnect(true),
@@ -60,6 +66,18 @@ func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing ll
 
 	registerImageGenTool(ctx, log, reg, cfg, billing)
 	return reg, nc, nil
+}
+
+// registerReviewStatsTool wires the read-only get_review_stats tool against the
+// shared reviews collection. A nil mongoDB (orchestrator booted without Mongo)
+// leaves the tool unregistered rather than offering a handler that would fail
+// every call.
+func registerReviewStatsTool(log *slog.Logger, reg *toolregistry.Registry, mongoDB *mongo.Database) {
+	if mongoDB == nil {
+		return
+	}
+	RegisterReviewStatsTool(reg, reviewstats.NewMongoRepo(mongoDB))
+	log.Info("registered internal tools", "get_review_stats", true)
 }
 
 // registerImageGenTool wires the in-process generate_image tool when image
