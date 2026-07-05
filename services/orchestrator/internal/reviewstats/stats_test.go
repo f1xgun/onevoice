@@ -23,6 +23,14 @@ func review(rating int, status string, createdAt time.Time) domain.Review {
 	}
 }
 
+// repliedReview is review with a replied_at, so the response-time metrics have
+// a measurable latency (created_at -> replied_at).
+func repliedReview(rating int, createdAt, repliedAt time.Time) domain.Review {
+	r := review(rating, domain.ReviewReplyStatusReplied, createdAt)
+	r.RepliedAt = &repliedAt
+	return r
+}
+
 // TestAggregate_EmptyCollection proves a business with zero reviews returns
 // honest zeros: no division-by-zero, no panic, an all-zero distribution.
 func TestAggregate_EmptyCollection(t *testing.T) {
@@ -112,6 +120,45 @@ func TestAggregate_IgnoresOutOfRangeRatings(t *testing.T) {
 		total += got.RatingDistribution[itoa(star)]
 	}
 	assert.Equal(t, 1, total, "only the valid 5-star review lands in the distribution")
+}
+
+// TestAggregate_MedianResponseTime proves the median reply latency is computed
+// created_at -> replied_at over reviews carrying a replied_at only: an answered
+// review without a replied_at (legacy) and an unanswered review are excluded
+// from the math rather than treated as instant. Reverting the median block
+// (or the replied_at projection feeding it) fails these assertions.
+func TestAggregate_MedianResponseTime(t *testing.T) {
+	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
+	base := now.Add(-1000 * time.Hour)
+	reviews := []domain.Review{
+		repliedReview(5, base, base.Add(2*time.Hour)),
+		repliedReview(5, base, base.Add(4*time.Hour)),
+		repliedReview(4, base, base.Add(6*time.Hour)),
+		review(3, domain.ReviewReplyStatusReplied, base), // replied pre-field: no replied_at, excluded
+		review(2, domain.ReviewReplyStatusPending, base), // unanswered: excluded
+	}
+
+	got := Aggregate(reviews, now, 7)
+
+	assert.Equal(t, 3, got.MeasuredResponses,
+		"only replied reviews carrying a replied_at feed the median")
+	assert.InDelta(t, 4.0, got.MedianResponseHours, 1e-9,
+		"median of [2,4,6]h is the middle value, 4h")
+}
+
+// TestAggregate_MedianResponseTime_EmptyIsZero proves that with no measurable
+// responses the median is an honest zero and the denominator is zero.
+func TestAggregate_MedianResponseTime_EmptyIsZero(t *testing.T) {
+	now := time.Now()
+	reviews := []domain.Review{
+		review(5, domain.ReviewReplyStatusPending, now.Add(-2*time.Hour)),
+		review(4, domain.ReviewReplyStatusReplied, now.Add(-2*time.Hour)), // no replied_at
+	}
+
+	got := Aggregate(reviews, now, 7)
+
+	assert.Equal(t, 0, got.MeasuredResponses)
+	assert.Equal(t, 0.0, got.MedianResponseHours)
 }
 
 // TestStats_AggregateOnly_NoPDn proves the serialized Stats never carries raw

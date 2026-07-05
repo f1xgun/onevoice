@@ -31,14 +31,16 @@ func NewMongoRepo(db *mongo.Database) *MongoRepo {
 	return &MongoRepo{collection: db.Collection("reviews")}
 }
 
-// statsProjection restricts the read to the three fields aggregation needs.
+// statsProjection restricts the read to the four fields aggregation needs.
 // author_name, text, reply_text and draft_* are never fetched, so no personal
 // data leaves the collection on this path — the query is aggregate-safe by
-// construction, not merely by what the executor chooses to emit.
+// construction, not merely by what the executor chooses to emit. replied_at is
+// carried so response-time metrics can be computed created_at -> replied_at.
 var statsProjection = bson.D{
 	{Key: "rating", Value: 1},
 	{Key: "reply_status", Value: 1},
 	{Key: "created_at", Value: 1},
+	{Key: "replied_at", Value: 1},
 	{Key: "_id", Value: 0},
 }
 

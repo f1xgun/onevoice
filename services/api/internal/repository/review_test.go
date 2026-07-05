@@ -314,6 +314,131 @@ func TestReviewRepository_ListByBusinessID_OffsetPagination_StableTiebreak(t *te
 			"a single-key created_at sort skips or repeats boundary documents when created_at ties")
 }
 
+// UpdateReply must stamp replied_at in the SAME write that transitions
+// reply_status to "replied", so response-time math (created_at -> replied_at)
+// has an end point. A dispatch that fails leaves the row "error" with NO
+// replied_at (nil == unknown, excluded from the math), and a later successful
+// retry stamps it. Reverting the replied_at stamp in updateReply leaves the
+// field absent on a replied row and fails the first assertion.
+func TestReviewRepository_UpdateReply_StampsRepliedAtOnRepliedOnly(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	biz := uuid.NewString()
+
+	insert := func(id string) {
+		_, err := db.Collection("reviews").InsertOne(ctx, bson.M{
+			"_id":          id,
+			"business_id":  biz,
+			"platform":     "telegram",
+			"external_id":  id,
+			"text":         "review text",
+			"reply_status": domain.ReviewReplyStatusPending,
+			"created_at":   time.Now().UTC().Add(-48 * time.Hour),
+		})
+		require.NoError(t, err)
+	}
+
+	read := func(id string) domain.Review {
+		var got domain.Review
+		require.NoError(t, db.Collection("reviews").FindOne(ctx, bson.M{"_id": id}).Decode(&got))
+		return got
+	}
+
+	t.Run("replied transition stamps replied_at", func(t *testing.T) {
+		const id = "rev-replied"
+		insert(id)
+		before := time.Now().UTC()
+
+		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusReplied))
+
+		got := read(id)
+		require.Equal(t, domain.ReviewReplyStatusReplied, got.ReplyStatus)
+		require.NotNil(t, got.RepliedAt, "a replied transition must stamp replied_at so response time is measurable")
+		require.False(t, got.RepliedAt.Before(before.Add(-time.Second)),
+			"replied_at must be stamped at write time, not a stale value")
+	})
+
+	t.Run("error transition does not stamp replied_at", func(t *testing.T) {
+		const id = "rev-error"
+		insert(id)
+
+		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusError))
+
+		got := read(id)
+		require.Equal(t, domain.ReviewReplyStatusError, got.ReplyStatus)
+		require.Nil(t, got.RepliedAt,
+			"a failed dispatch leaves the row without a replied_at so it is excluded from response-time math")
+	})
+
+	t.Run("a later successful retry stamps replied_at", func(t *testing.T) {
+		const id = "rev-error"
+		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusReplied))
+
+		got := read(id)
+		require.Equal(t, domain.ReviewReplyStatusReplied, got.ReplyStatus)
+		require.NotNil(t, got.RepliedAt, "a retry that finally lands must stamp replied_at")
+	})
+}
+
+// ListForSLA is the read behind the aggregate SLA endpoint. It must be scoped to
+// the business_id (tenant boundary) and must project OUT every personal field —
+// author_name, text, reply_text — so no PDn leaves the collection on this path.
+// Reverting the business_id filter surfaces another tenant's rows here; reverting
+// the projection surfaces the author name / review text.
+func TestReviewRepository_ListForSLA_TenantScopedAndPDnFree(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	bizA := uuid.NewString()
+	bizB := uuid.NewString()
+
+	insert := func(biz, ext, status string, repliedAt interface{}) {
+		doc := bson.M{
+			"_id":          uuid.NewString(),
+			"business_id":  biz,
+			"platform":     "telegram",
+			"external_id":  ext,
+			"author_name":  "Иван Петров",
+			"text":         "Отличное место, мой телефон +7 900 000 00 00",
+			"reply_text":   "Спасибо за отзыв!",
+			"reply_status": status,
+			"created_at":   time.Now().UTC().Add(-10 * time.Hour),
+		}
+		if repliedAt != nil {
+			doc["replied_at"] = repliedAt
+		}
+		_, err := db.Collection("reviews").InsertOne(ctx, doc)
+		require.NoError(t, err)
+	}
+
+	insert(bizA, "a-1", domain.ReviewReplyStatusReplied, time.Now().UTC().Add(-8*time.Hour))
+	insert(bizA, "a-2", domain.ReviewReplyStatusPending, nil)
+	insert(bizB, "b-1", domain.ReviewReplyStatusPending, nil)
+
+	got, err := repo.ListForSLA(ctx, bizA)
+	require.NoError(t, err)
+	require.Len(t, got, 2, "ListForSLA must return only the caller's business reviews, never another tenant's")
+
+	var sawReplied bool
+	for _, r := range got {
+		require.Empty(t, r.AuthorName, "author_name must be projected out of the SLA read")
+		require.Empty(t, r.Text, "text must be projected out of the SLA read")
+		require.Empty(t, r.ReplyText, "reply_text must be projected out of the SLA read")
+		require.False(t, r.CreatedAt.IsZero(), "created_at must be projected in for age bucketing")
+		if r.RepliedAt != nil {
+			sawReplied = true
+		}
+	}
+	require.True(t, sawReplied, "replied_at must be projected in for response-time math")
+
+	require.Empty(t, func() []domain.Review {
+		out, err := repo.ListForSLA(ctx, "")
+		require.Error(t, err, "an empty business id must be rejected, not fan out to a full-collection scan")
+		return out
+	}(), "an empty business id returns no rows")
+}
+
 func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()

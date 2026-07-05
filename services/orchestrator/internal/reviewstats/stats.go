@@ -11,6 +11,7 @@ package reviewstats
 
 import (
 	"math"
+	"sort"
 	"strconv"
 	"time"
 
@@ -41,6 +42,15 @@ type Stats struct {
 	RecentDays         int            `json:"recent_days"`
 	RecentTotal        int            `json:"recent_total"`
 	RecentAnswered     int            `json:"recent_answered"`
+
+	// MedianResponseHours is the median reply latency in hours
+	// (created_at -> replied_at) over reviews that carry a replied_at only.
+	// Reviews answered before the timestamp existed (replied_at nil) and
+	// unanswered reviews are excluded rather than counted as instant, so the
+	// number describes only measurable responses. MeasuredResponses is that
+	// denominator, so the LLM can tell a genuine zero from "nothing to measure".
+	MedianResponseHours float64 `json:"median_response_hours"`
+	MeasuredResponses   int     `json:"measured_responses"`
 }
 
 // Aggregate reduces reviews to the aggregate metric set as of now, using a
@@ -66,6 +76,7 @@ func Aggregate(reviews []domain.Review, now time.Time, recentDays int) Stats {
 	stats := Stats{RecentDays: recentDays, RatingDistribution: dist}
 
 	var ratingSum, ratedCount int
+	latencies := make([]time.Duration, 0, len(reviews))
 	for i := range reviews {
 		r := reviews[i]
 		stats.Total++
@@ -89,6 +100,10 @@ func Aggregate(reviews []domain.Review, now time.Time, recentDays int) Stats {
 				stats.RecentAnswered++
 			}
 		}
+
+		if r.RepliedAt != nil && !r.RepliedAt.Before(r.CreatedAt) {
+			latencies = append(latencies, r.RepliedAt.Sub(r.CreatedAt))
+		}
 	}
 
 	if stats.Total > 0 {
@@ -97,7 +112,25 @@ func Aggregate(reviews []domain.Review, now time.Time, recentDays int) Stats {
 	if ratedCount > 0 {
 		stats.AverageRating = round2(float64(ratingSum) / float64(ratedCount))
 	}
+	stats.MeasuredResponses = len(latencies)
+	if stats.MeasuredResponses > 0 {
+		stats.MedianResponseHours = round2(medianDuration(latencies).Hours())
+	}
 	return stats
+}
+
+// medianDuration returns the median of a non-empty slice. It sorts a copy so
+// the caller's order is preserved; an even count averages the two middle values.
+func medianDuration(ds []time.Duration) time.Duration {
+	sorted := make([]time.Duration, len(ds))
+	copy(sorted, ds)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	mid := len(sorted) / 2
+	if len(sorted)%2 == 1 {
+		return sorted[mid]
+	}
+	return (sorted[mid-1] + sorted[mid]) / 2
 }
 
 // centiScale is the factor used to round rates and averages to two decimals.

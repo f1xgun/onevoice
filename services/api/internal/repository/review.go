@@ -280,6 +280,13 @@ func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, reply
 	if dispatchApprovalID != "" {
 		set["dispatch_approval_id"] = dispatchApprovalID
 	}
+	// Stamp replied_at only on the transition to "replied" so response-time math
+	// has an end point. A dispatch error leaves the row "error" with no timestamp;
+	// a later successful retry stamps it. This is the single write both the manual
+	// reply and the chat-reply reconciliation funnel through.
+	if replyStatus == domain.ReviewReplyStatusReplied {
+		set["replied_at"] = time.Now().UTC()
+	}
 	update := bson.M{
 		"$set": set,
 		"$unset": bson.M{
@@ -317,6 +324,39 @@ func (r *reviewRepository) StampReplyDispatchApprovalID(ctx context.Context, bus
 		return fmt.Errorf("stamp review dispatch approval id: %w", err)
 	}
 	return nil
+}
+
+// slaProjection restricts the SLA read to the three fields the aggregate needs.
+// author_name, text, reply_text and draft_* are never fetched, so no personal
+// data leaves the collection on this path — the query is aggregate-safe by
+// construction, mirroring the orchestrator's reviewstats statsProjection.
+var slaProjection = bson.D{
+	{Key: "created_at", Value: 1},
+	{Key: "reply_status", Value: 1},
+	{Key: "replied_at", Value: 1},
+	{Key: "_id", Value: 0},
+}
+
+// ListForSLA — see domain.ReviewRepository docstring.
+func (r *reviewRepository) ListForSLA(ctx context.Context, businessID string) ([]domain.Review, error) {
+	if businessID == "" {
+		return nil, fmt.Errorf("list reviews for sla: business id is required")
+	}
+
+	cursor, err := r.collection.Find(ctx,
+		bson.M{"business_id": businessID},
+		options.Find().SetProjection(slaProjection),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find reviews for sla: %w", err)
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+
+	out := make([]domain.Review, 0)
+	if err := cursor.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("decode reviews for sla: %w", err)
+	}
+	return out, nil
 }
 
 // ListPendingWithoutDraft — see domain.ReviewRepository docstring.

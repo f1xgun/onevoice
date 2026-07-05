@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -56,6 +57,7 @@ type ReviewService interface {
 	Refresh(ctx context.Context, userID uuid.UUID) error
 	BatchDraft(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	BulkApprove(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
+	SLA(ctx context.Context, businessID uuid.UUID, targetHours int) (service.SLAStats, error)
 }
 
 // ReviewHandler handles review-related HTTP requests
@@ -205,6 +207,57 @@ func (h *ReviewHandler) GetReview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, domainReviewToOpenAPI(*review))
+}
+
+// GetReviewSLA handles GET /businesses/{id}/reviews/sla. It returns
+// aggregate-only response-SLA metrics (counts, unanswered-age buckets, median /
+// average response time, and percent answered within a target window). No
+// author name, review text, or reply text is fetched or returned. Authz mirrors
+// the other GET review endpoints: RequireBusinessAccess + content:read.
+func (h *ReviewHandler) GetReviewSLA(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "GetReviewSLA", authz.PermContentRead)
+	if !ok {
+		return
+	}
+
+	targetHours := 0
+	if v := r.URL.Query().Get("target_hours"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			targetHours = parsed
+		}
+	}
+
+	stats, err := h.reviewService.SLA(r.Context(), bc.BusinessID, targetHours)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to compute review SLA", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, slaStatsToOpenAPI(stats))
+}
+
+// slaStatsToOpenAPI maps the service SLAStats to the spec-owned wire shape.
+func slaStatsToOpenAPI(s service.SLAStats) openapi.ReviewSLAResponse {
+	return openapi.ReviewSLAResponse{
+		Total:      s.Total,
+		Unanswered: s.Unanswered,
+		Answered:   s.Answered,
+		Buckets: openapi.ReviewUnansweredBuckets{
+			Lt24h:   s.Buckets.Lt24h,
+			H24to72: s.Buckets.H24to72,
+			Gt72h:   s.Buckets.Gt72h,
+		},
+		TargetHours:                 s.TargetHours,
+		MedianResponseHours:         float32(s.MedianResponseHours),
+		AverageResponseHours:        float32(s.AverageResponseHours),
+		MeasuredResponses:           s.MeasuredResponses,
+		PercentAnsweredWithinTarget: float32(s.PercentAnsweredWithinTarget),
+	}
 }
 
 // ReplyToReview handles PUT /api/v1/reviews/{id}/reply

@@ -43,6 +43,9 @@ type ReviewService interface {
 	// BulkApprove publishes stored drafts for positive reviews only and returns
 	// a per-item result. See review_batch.go.
 	BulkApprove(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]BatchItemResult, error)
+	// SLA returns aggregate-only response-SLA metrics for the business. See
+	// reviewsla.go. targetHours <= 0 falls back to SLADefaultTargetHours.
+	SLA(ctx context.Context, businessID uuid.UUID, targetHours int) (SLAStats, error)
 }
 
 // ReviewRefresher is the slice of ReviewSyncer that ReviewService needs
