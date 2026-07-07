@@ -22,6 +22,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
 // telegramChatInfo holds the fields we care about from Telegram's getChat
@@ -298,6 +299,16 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	health := h.EvaluateTelegramHealth(r.Context(), h.cfg.TelegramBotToken, req.ChannelId)
+	switch {
+	case health.Status == connhealth.StatusBroken && health.ReasonCode == connhealth.ReasonTelegramNotAdmin:
+		writeJSONErrorKey(w, r, http.StatusConflict, "connect.telegram.not_admin")
+		return
+	case health.Status == connhealth.StatusBroken && health.ReasonCode == connhealth.ReasonTelegramNoPostRight:
+		writeJSONErrorKey(w, r, http.StatusConflict, "connect.telegram.no_post_rights")
+		return
+	}
+
 	linkedStatus := h.probeTelegramLinkedGroup(r.Context(), h.cfg.TelegramBotToken, channelInfo.LinkedChatID)
 
 	metadata := map[string]interface{}{
@@ -310,6 +321,7 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 	if req.TelegramUserId != nil && *req.TelegramUserId != "" {
 		metadata["telegram_user_id"] = *req.TelegramUserId
 	}
+	metadata = connhealth.MergeIntoMetadata(metadata, health)
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:   bc.BusinessID,
