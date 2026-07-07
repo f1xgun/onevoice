@@ -363,7 +363,11 @@ function ChannelList({
               <Badge tone={tone}>{statusLabel}</Badge>
 
               {alarmingHealth && healthTone && (
-                <Badge tone={healthTone} title={healthReason} aria-label={healthReason || healthLabel}>
+                <Badge
+                  tone={healthTone}
+                  title={healthReason}
+                  aria-label={healthReason || healthLabel}
+                >
                   {healthLabel}
                 </Badge>
               )}
