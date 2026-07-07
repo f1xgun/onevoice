@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 
 interface VKCommunity {
@@ -49,11 +50,14 @@ export function VKCommunityPickerModal({ open, onClose }: VKCommunityPickerModal
     isLoading,
     isError,
   } = useQuery<VKCommunity[]>({
-    queryKey: ['businesses', activeBusinessId, 'vk-communities'],
-    queryFn: () =>
-      bizApi(activeBusinessId!)
-        .get(INTEGRATION_ENDPOINTS.vk?.communities ?? '')
-        .then((r) => (Array.isArray(r.data) ? r.data : []) as VKCommunity[]),
+    queryKey: QUERY_KEYS.BUSINESS_VK_COMMUNITIES(activeBusinessId),
+    queryFn: () => {
+      const path = INTEGRATION_ENDPOINTS.vk?.communities;
+      if (!path || !activeBusinessId) return [] as VKCommunity[];
+      return bizApi(activeBusinessId)
+        .get(path)
+        .then((r) => (Array.isArray(r.data) ? r.data : []) as VKCommunity[]);
+    },
     enabled: open && !!activeBusinessId,
     retry: false,
   });

@@ -10,7 +10,13 @@ import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { extractApiErrorCode, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
 
@@ -106,10 +112,10 @@ export function VKCommunityModal({ open, onClose }: Props) {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{tVk('title')}</DialogTitle>
+          <DialogDescription>{tVk('authorizeIntro')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <p className="text-sm text-ink-mid">{tVk('authorizeIntro')}</p>
           <Button type="button" onClick={handleAuthorize} disabled={authorizing} className="w-full">
             {authorizing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
             {authorizing ? tVk('authorizing') : tVk('authorize')}
