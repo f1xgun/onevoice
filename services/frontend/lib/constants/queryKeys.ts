@@ -23,6 +23,8 @@ export const QUERY_KEYS = {
   BUSINESS_INTEGRATIONS: (bizId: string | null) => ['businesses', bizId, 'integrations'] as const,
   BUSINESS_INTEGRATIONS_DRIFT: (bizId: string | null) =>
     ['businesses', bizId, 'integrations', 'drift'] as const,
+  BUSINESS_VK_COMMUNITIES: (bizId: string | null) =>
+    ['businesses', bizId, 'vk-communities'] as const,
   BUSINESS_PROFILE: (bizId: string | null) => ['businesses', bizId, 'business'] as const,
   BUSINESS_VOICE_PROFILE: (bizId: string | null) => ['businesses', bizId, 'voice-profile'] as const,
   BUSINESS_REVIEWS: (bizId: string | null) => ['businesses', bizId, 'reviews'] as const,

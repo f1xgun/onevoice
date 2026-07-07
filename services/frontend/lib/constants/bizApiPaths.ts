@@ -31,6 +31,8 @@ export interface IntegrationPlatformEndpoints {
   selectLocation?: string;
   probe?: string;
   companies?: string;
+  communities?: string;
+  communityAuthUrl?: (groupId: string) => string;
 }
 
 export const INTEGRATION_ENDPOINTS: Partial<Record<PlatformId, IntegrationPlatformEndpoints>> = {
@@ -40,6 +42,10 @@ export const INTEGRATION_ENDPOINTS: Partial<Record<PlatformId, IntegrationPlatfo
   },
   vk: {
     connect: '/integrations/vk/connect',
+    authUrl: '/integrations/vk/auth-url',
+    communities: '/integrations/vk/communities',
+    communityAuthUrl: (groupId: string) =>
+      `/integrations/vk/community-auth-url?group_id=${encodeURIComponent(groupId)}`,
   },
   google_business: {
     authUrl: '/integrations/google_business/auth-url',

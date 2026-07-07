@@ -978,7 +978,8 @@
       "subscribe": "Subscribe",
       "channelDisconnected": "Channel disconnected",
       "disconnectFailed": "Couldn't disconnect",
-      "googleAuthFailed": "Couldn't open Google sign-in"
+      "googleAuthFailed": "Couldn't open Google sign-in",
+      "vkAuthFailed": "Couldn't open VK sign-in. Try pasting a token manually instead."
     },
     "platformCard": {
       "connected": "Connected",
@@ -1048,6 +1049,10 @@
     },
     "vkCommunity": {
       "title": "Connect VK community",
+      "authorizeIntro": "Sign in with VK and pick a community — we'll set up the rest for you.",
+      "authorize": "Sign in with VK",
+      "authorizing": "Opening VK…",
+      "pasteFallback": "or paste a token manually",
       "tokenIntro": "Where to get the key",
       "step1": "Open your VK community → \"Manage\" → \"API usage\".",
       "step2Prefix": "On the \"Access tokens\" tab, click ",
@@ -1070,6 +1075,17 @@
       "connecting": "Connecting…",
       "connected": "VK community connected",
       "connectFailed": "Couldn't connect the community"
+    },
+    "vkCommunityPicker": {
+      "title": "Pick a community",
+      "description": "You administer several VK communities. Pick one to connect.",
+      "loading": "Loading communities…",
+      "sessionExpired": "Your session has expired. Please reconnect VK.",
+      "empty": "No communities found. Make sure you're an admin of at least one community.",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "cancel": "Cancel",
+      "continue": "Continue",
+      "continuing": "Opening VK…"
     },
     "yandexBusiness": {
       "title": "Connect Yandex.Business",
