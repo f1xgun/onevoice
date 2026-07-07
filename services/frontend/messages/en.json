@@ -1007,6 +1007,17 @@
         "pending_cookies": "Awaiting input",
         "token_expired": "Token expired"
       },
+      "health": {
+        "brokenLabel": "Needs attention",
+        "degradedLabel": "Limited",
+        "reason": {
+          "tg_not_admin": "The bot is no longer a channel admin — posting is paused. Make the bot an admin again and reconnect.",
+          "tg_no_post_rights": "The bot can't post messages — grant that permission in the channel settings.",
+          "vk_wall_scope_missing": "The community key lost the \"Wall\" permission — recreate the key with that checkbox enabled.",
+          "vk_token_invalid": "The community key is no longer valid — reconnect VK.",
+          "yandex_session_expired": "Access to Yandex.Business expired — reconnect the organization, it takes about two minutes."
+        }
+      },
       "linkedGroupOk": "The bot is in the discussion group — comments will be collected.",
       "linkedGroupMissing": "The bot still isn't in the discussion group.",
       "linkedGroupCheckFailed": "Couldn't check the status"
