@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -18,10 +18,11 @@ vi.mock('@/lib/stores/business', () => ({
     selector({ activeBusinessId: BUSINESS_ID }),
 }));
 
+const apiGet = vi.fn();
 const apiPost = vi.fn();
 vi.mock('@/lib/api/business-api', () => ({
   bizApi: () => ({
-    get: vi.fn(),
+    get: (...args: unknown[]) => apiGet(...args),
     post: (...args: unknown[]) => apiPost(...args),
     put: vi.fn(),
     delete: vi.fn(),
@@ -42,16 +43,80 @@ function renderModal(onClose = vi.fn()) {
   return { ...utils, onClose };
 }
 
-describe('VKCommunityModal — paste flow', () => {
+// The paste UI now lives inside a collapsed <details> "or paste a token
+// manually" affordance. Expand it before interacting with the textarea.
+async function expandPaste(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByText('или вставить ключ вручную'));
+}
+
+describe('VKCommunityModal — Authorize with VK (primary path)', () => {
+  const originalLocation = window.location;
+
   beforeEach(() => {
+    apiGet.mockReset();
+    apiPost.mockReset();
+    vi.mocked(toast.success).mockReset();
+    vi.mocked(toast.error).mockReset();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, href: '' },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+  });
+
+  it('GETs vk.authUrl and redirects window.location.href to the returned url', async () => {
+    apiGet.mockResolvedValueOnce({
+      data: { url: 'https://oauth.vk.com/authorize?client_id=1&state=abc' },
+    });
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: 'Войти через ВКонтакте' }));
+
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/integrations/vk/auth-url'));
+    await waitFor(() =>
+      expect(window.location.href).toBe('https://oauth.vk.com/authorize?client_id=1&state=abc')
+    );
+  });
+
+  it('on auth-url failure toasts vkAuthFailed and keeps the paste fallback reachable', async () => {
+    apiGet.mockRejectedValueOnce(new Error('vk oauth unconfigured'));
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: 'Войти через ВКонтакте' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Не получилось открыть авторизацию ВКонтакте. Попробуйте вставить ключ вручную.'
+      )
+    );
+    expect(window.location.href).toBe('');
+    expect(screen.getByLabelText('Ключ доступа сообщества')).toBeInTheDocument();
+  });
+});
+
+describe('VKCommunityModal — paste flow (fallback)', () => {
+  beforeEach(() => {
+    apiGet.mockReset();
     apiPost.mockReset();
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
   });
 
-  it('renders the title and the inline instructions', () => {
+  it('renders the title and the inline instructions', async () => {
+    const user = userEvent.setup();
     renderModal();
     expect(screen.getByText('Подключить сообщество ВКонтакте')).toBeInTheDocument();
+    await expandPaste(user);
     expect(screen.getByText(/Где взять ключ/)).toBeInTheDocument();
     expect(screen.getByText(/Не выбирайте приложение/)).toBeInTheDocument();
   });
@@ -59,6 +124,7 @@ describe('VKCommunityModal — paste flow', () => {
   it('disables Submit when the textarea is empty or whitespace-only', async () => {
     const user = userEvent.setup();
     renderModal();
+    await expandPaste(user);
     const submit = screen.getByRole('button', { name: /^Подключить$/ });
     expect(submit).toBeDisabled();
 
@@ -74,6 +140,7 @@ describe('VKCommunityModal — paste flow', () => {
     apiPost.mockResolvedValueOnce({ data: { id: 'int-1', externalId: '236912172' } });
     const user = userEvent.setup();
     const { onClose } = renderModal();
+    await expandPaste(user);
 
     const textarea = screen.getByLabelText('Ключ доступа сообщества');
     await user.type(textarea, '   vk1.a.SOME_TOKEN   ');
@@ -98,6 +165,7 @@ describe('VKCommunityModal — paste flow', () => {
     });
     const user = userEvent.setup();
     const { onClose } = renderModal();
+    await expandPaste(user);
 
     await user.type(screen.getByLabelText('Ключ доступа сообщества'), 'vk1.a.SOME');
     await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
@@ -112,6 +180,7 @@ describe('VKCommunityModal — paste flow', () => {
     apiPost.mockRejectedValueOnce(new Error('network'));
     const user = userEvent.setup();
     renderModal();
+    await expandPaste(user);
 
     await user.type(screen.getByLabelText('Ключ доступа сообщества'), 'vk1.a.X');
     await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
