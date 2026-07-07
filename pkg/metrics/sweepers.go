@@ -24,6 +24,7 @@ const (
 	SweeperCreditGrant        = "credit_grant"
 	SweeperOwnerBrief         = "owner_brief"
 	SweeperPresenceHealth     = "presence_health_snapshot"
+	SweeperConnectionHealth   = "connection_health"
 )
 
 // Sweeper run outcomes — the bounded value set for the {result} label.
