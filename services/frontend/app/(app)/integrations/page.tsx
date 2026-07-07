@@ -20,6 +20,7 @@ import { ListLoadError } from '@/components/lists/ListLoadError';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
+import { VKCommunityPickerModal } from '@/components/integrations/VKCommunityPickerModal';
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
@@ -79,6 +80,7 @@ export default function IntegrationsPage() {
   const canConnect = usePermission('integrations.connect').allowed;
   const canDisconnect = usePermission('integrations.disconnect').allowed;
   const [activeModalPlatform, setActiveModalPlatform] = useState<ModalPlatform | null>(null);
+  const [vkPickerOpen, setVkPickerOpen] = useState(false);
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
@@ -115,6 +117,12 @@ export default function IntegrationsPage() {
     const googleStep = searchParams.get('google_step');
     if (googleStep === 'select_location') {
       setActiveModalPlatform('google_business');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
+    }
+
+    const vkStep = searchParams.get('vk_step');
+    if (vkStep === 'select_community') {
+      setVkPickerOpen(true);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
@@ -344,6 +352,8 @@ export default function IntegrationsPage() {
       </div>
 
       {ActiveModal && <ActiveModal open={true} onClose={closeActiveModal} />}
+
+      <VKCommunityPickerModal open={vkPickerOpen} onClose={() => setVkPickerOpen(false)} />
 
       <FirstActionWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </>
