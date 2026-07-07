@@ -14,6 +14,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
 // IntegrationService defines the interface for integration operations
@@ -40,6 +42,14 @@ type businessSyncTrigger interface {
 	SyncBusiness(business *domain.Business)
 }
 
+// connHealthChecker computes and persists the per-integration connection-health
+// verdict for a business synchronously. *connhealth.Checker satisfies it.
+// Optional (nil-safe): when unwired the verify endpoint returns its original
+// repair-started response with no health array.
+type connHealthChecker interface {
+	CheckAll(ctx context.Context, businessID uuid.UUID) ([]connhealth.IntegrationHealth, error)
+}
+
 // IntegrationHandler handles integration endpoints
 type IntegrationHandler struct {
 	integrationService IntegrationService
@@ -50,6 +60,11 @@ type IntegrationHandler struct {
 	// (nil-safe) so the handler works with reconciliation unwired.
 	reconciler  driftLister
 	syncTrigger businessSyncTrigger
+
+	// healthChecker computes the synchronous connection-health array the verify
+	// endpoint returns. Optional (nil-safe) — nil preserves the original
+	// repair-started behavior.
+	healthChecker connHealthChecker
 }
 
 // NewIntegrationHandler creates a new integration handler instance.
@@ -86,6 +101,14 @@ func NewIntegrationHandler(integrationService IntegrationService, businessServic
 func (h *IntegrationHandler) SetReconciler(reconciler driftLister, syncTrigger businessSyncTrigger) {
 	h.reconciler = reconciler
 	h.syncTrigger = syncTrigger
+}
+
+// SetHealthChecker injects the connection-health checker the verify endpoint
+// uses to compute the synchronous per-integration health array. Nil-safe;
+// mirrors SetReconciler so the constructor and its test call sites are
+// unchanged. When unwired the verify endpoint behaves exactly as before.
+func (h *IntegrationHandler) SetHealthChecker(checker connHealthChecker) {
+	h.healthChecker = checker
 }
 
 // ListIntegrations returns all integrations for the business from the request context.
@@ -241,5 +264,34 @@ func (h *IntegrationHandler) VerifyIntegrations(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "repair_started"})
+	health := []openapi.IntegrationHealth{}
+	if h.healthChecker != nil {
+		results, err := h.healthChecker.CheckAll(r.Context(), bc.BusinessID)
+		if err != nil {
+			slog.WarnContext(r.Context(), "verify integrations: health check failed", "error", err)
+		} else {
+			health = toIntegrationHealthDTO(results)
+		}
+	}
+
+	writeJSON(w, http.StatusAccepted, openapi.VerifyIntegrationsResponse{
+		Started: true,
+		Health:  health,
+	})
+}
+
+// toIntegrationHealthDTO maps the connhealth results to the spec-owned response
+// shape (stable machine reason codes; the client localizes).
+func toIntegrationHealthDTO(results []connhealth.IntegrationHealth) []openapi.IntegrationHealth {
+	out := make([]openapi.IntegrationHealth, 0, len(results))
+	for _, res := range results {
+		out = append(out, openapi.IntegrationHealth{
+			Platform:   res.Platform,
+			ExternalId: res.ExternalID,
+			Status:     openapi.IntegrationHealthStatus(res.Status),
+			ReasonCode: res.ReasonCode,
+			CheckedAt:  res.CheckedAt,
+		})
+	}
+	return out
 }

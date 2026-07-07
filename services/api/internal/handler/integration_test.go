@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -16,7 +17,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
 // MockIntegrationService is a mock implementation of IntegrationService for testing
@@ -512,4 +515,105 @@ func TestDeleteIntegration_SoftDeletedBusiness(t *testing.T) {
 
 	mockIntegrationService.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything, mock.Anything)
 	mockIntegrationService.AssertNotCalled(t, "ListByBusinessID", mock.Anything, mock.Anything)
+}
+
+// stubHealthChecker returns a fixed per-integration health slice and records
+// that CheckAll was invoked, so the verify tests can assert the array surfaces.
+type stubHealthChecker struct {
+	results []connhealth.IntegrationHealth
+	called  bool
+	err     error
+}
+
+func (s *stubHealthChecker) CheckAll(context.Context, uuid.UUID) ([]connhealth.IntegrationHealth, error) {
+	s.called = true
+	return s.results, s.err
+}
+
+// TestVerifyIntegrations_ReturnsHealthArray proves the verify endpoint runs the
+// wired checker and surfaces a typed 202 body carrying the per-integration
+// health (status + reasonCode + checkedAt).
+func TestVerifyIntegrations_ReturnsHealthArray(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+
+	checkedAt := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+	stub := &stubHealthChecker{results: []connhealth.IntegrationHealth{
+		{Platform: "telegram", ExternalID: "-100", Status: connhealth.StatusActive, ReasonCode: connhealth.ReasonOK, CheckedAt: checkedAt},
+		{Platform: "yandex_business", ExternalID: "org-1", Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonYandexSessionExpiry, CheckedAt: checkedAt},
+	}}
+
+	h, err := NewIntegrationHandler(new(MockIntegrationService), &fakeIntegrationBusinessService{}, audit.Nop())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	h.SetHealthChecker(stub)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/verify", http.NoBody)
+	req = req.WithContext(integrationBizCtx(businessID, userID, authz.PermBusinessUpdate))
+	rr := httptest.NewRecorder()
+
+	h.VerifyIntegrations(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !stub.called {
+		t.Fatalf("expected CheckAll to be invoked")
+	}
+	var resp openapi.VerifyIntegrationsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Started {
+		t.Fatalf("expected started=true")
+	}
+	if len(resp.Health) != 2 {
+		t.Fatalf("expected 2 health rows, got %d", len(resp.Health))
+	}
+	var broken *openapi.IntegrationHealth
+	for i := range resp.Health {
+		if resp.Health[i].Platform == "yandex_business" {
+			broken = &resp.Health[i]
+		}
+	}
+	if broken == nil || broken.Status != openapi.IntegrationHealthStatusBroken || broken.ReasonCode != connhealth.ReasonYandexSessionExpiry {
+		t.Fatalf("expected yandex broken/session-expired, got %+v", broken)
+	}
+	if broken.CheckedAt.IsZero() {
+		t.Fatalf("expected checkedAt populated")
+	}
+}
+
+// TestVerifyIntegrations_NilChecker_BackwardCompatible proves the nil-safety
+// guard: with no checker wired the endpoint still returns 202 started=true with
+// an empty health array (never a nil-deref).
+func TestVerifyIntegrations_NilChecker_BackwardCompatible(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+
+	h, err := NewIntegrationHandler(new(MockIntegrationService), &fakeIntegrationBusinessService{}, audit.Nop())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/verify", http.NoBody)
+	req = req.WithContext(integrationBizCtx(businessID, userID, authz.PermBusinessUpdate))
+	rr := httptest.NewRecorder()
+
+	h.VerifyIntegrations(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp openapi.VerifyIntegrationsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Started {
+		t.Fatalf("expected started=true even without a checker")
+	}
+	if len(resp.Health) != 0 {
+		t.Fatalf("expected empty health array without a checker, got %d", len(resp.Health))
+	}
 }
