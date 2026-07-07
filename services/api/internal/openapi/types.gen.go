@@ -155,6 +155,14 @@ const (
 	ShapeMismatch HITLShapeMismatchErrorError = "shape mismatch"
 )
 
+// Defines values for IntegrationHealthStatus.
+const (
+	IntegrationHealthStatusActive   IntegrationHealthStatus = "active"
+	IntegrationHealthStatusBroken   IntegrationHealthStatus = "broken"
+	IntegrationHealthStatusDegraded IntegrationHealthStatus = "degraded"
+	IntegrationHealthStatusUnknown  IntegrationHealthStatus = "unknown"
+)
+
 // Defines values for MeResponsePreferredLocale.
 const (
 	MeResponsePreferredLocaleEn MeResponsePreferredLocale = "en"
@@ -176,9 +184,9 @@ const (
 
 // Defines values for PlatformStatus.
 const (
-	Active             PlatformStatus = "active"
-	ComingSoon         PlatformStatus = "coming_soon"
-	OauthNotConfigured PlatformStatus = "oauth_not_configured"
+	PlatformStatusActive             PlatformStatus = "active"
+	PlatformStatusComingSoon         PlatformStatus = "coming_soon"
+	PlatformStatusOauthNotConfigured PlatformStatus = "oauth_not_configured"
 )
 
 // Defines values for PresenceRecommendationArea.
@@ -861,6 +869,20 @@ type Integration struct {
 	TokenExpiresAt *time.Time             `json:"tokenExpiresAt"`
 	UpdatedAt      time.Time              `json:"updatedAt" validate:"required"`
 }
+
+// IntegrationHealth Per-integration connection-liveness verdict computed synchronously by the verify endpoint. Distinct from the composite presence-health score.
+type IntegrationHealth struct {
+	CheckedAt  time.Time `json:"checkedAt" validate:"required"`
+	ExternalId string    `json:"externalId" validate:"required"`
+	Platform   string    `json:"platform" validate:"required"`
+
+	// ReasonCode Stable machine code resolved to human copy on the client (e.g. tg_not_admin, vk_wall_scope_missing, yandex_session_expired, ok, inconclusive).
+	ReasonCode string                  `json:"reasonCode" validate:"required"`
+	Status     IntegrationHealthStatus `json:"status" validate:"required,oneof=active degraded broken unknown"`
+}
+
+// IntegrationHealthStatus defines model for IntegrationHealth.Status.
+type IntegrationHealthStatus string
 
 // InternalTokenResponse defines model for InternalTokenResponse.
 type InternalTokenResponse struct {
@@ -1851,6 +1873,14 @@ type ValidationErrorResponse struct {
 // VerifyConfirmRequest defines model for VerifyConfirmRequest.
 type VerifyConfirmRequest struct {
 	Token string `json:"token" validate:"required,min=20"`
+}
+
+// VerifyIntegrationsResponse Result of a manual verify/repair pass: the async profile re-push has been started, and the synchronously-computed per-integration health array.
+type VerifyIntegrationsResponse struct {
+	Health []IntegrationHealth `json:"health" validate:"required"`
+
+	// Started The async re-push + drift reschedule was triggered.
+	Started bool `json:"started" validate:"required"`
 }
 
 // VersionMismatchResponse defines model for VersionMismatchResponse.

@@ -32,8 +32,10 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import {
+  CONNECTION_HEALTH_TONES,
   STATUS_LABEL_KEYS,
   STATUS_TONES,
+  readConnectionHealth,
   type IntegrationStatus,
 } from '@/lib/constants/integrationStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
@@ -290,6 +292,17 @@ function ChannelList({
           platform === 'telegram' &&
           (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member';
 
+        const health = readConnectionHealth(i.metadata as Record<string, unknown> | undefined);
+        const alarmingHealth =
+          health?.status === 'broken' || health?.status === 'degraded' ? health.status : null;
+        const healthTone = alarmingHealth ? CONNECTION_HEALTH_TONES[alarmingHealth] : null;
+        const healthLabel = alarmingHealth
+          ? tCard(alarmingHealth === 'broken' ? 'health.brokenLabel' : 'health.degradedLabel')
+          : '';
+        const reasonKey = health?.reason_code ? `health.reason.${health.reason_code}` : '';
+        const healthReason = reasonKey && tCard.has(reasonKey) ? tCard(reasonKey) : '';
+        const showHealthReconnect = alarmingHealth === 'broken' && i.status !== 'token_expired';
+
         return (
           <div
             key={i.id}
@@ -349,7 +362,17 @@ function ChannelList({
 
               <Badge tone={tone}>{statusLabel}</Badge>
 
-              {i.status === 'token_expired' && (
+              {alarmingHealth && healthTone && (
+                <Badge
+                  tone={healthTone}
+                  title={healthReason}
+                  aria-label={healthReason || healthLabel}
+                >
+                  {healthLabel}
+                </Badge>
+              )}
+
+              {(i.status === 'token_expired' || showHealthReconnect) && (
                 <Button variant="secondary" size="sm" className="h-7 px-2" asChild>
                   <Link href={`/integrations?reconnect=${platform}`}>{tCard('reconnect')}</Link>
                 </Button>

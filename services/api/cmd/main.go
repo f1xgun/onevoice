@@ -232,6 +232,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	svcs.StartCreditGrant(ctx, workers, log, cfg.CreditGrantEnabled, cfg.CreditGrantPollInterval)
 	svcs.StartOwnerBrief(ctx, workers, log, cfg.OwnerBriefEnabled, cfg.OwnerBriefPollInterval)
 	svcs.StartPresenceHealthSnapshot(ctx, workers, log, cfg.PresenceHealthSnapshotEnabled, cfg.PresenceHealthSnapshotPollInterval)
+	svcs.StartConnectionHealth(ctx, workers, log, cfg.ConnectionHealthEnabled, cfg.ConnectionHealthPollInterval)
 
 	select {
 	case <-ctx.Done():

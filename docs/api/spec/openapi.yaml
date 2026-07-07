@@ -120,6 +120,8 @@ paths:
     $ref: paths/integrations.yaml#/~1platforms
   /businesses/{id}/integrations:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations
+  /businesses/{id}/integrations/verify:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1verify
   /businesses/{id}/integrations/{integrationId}:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1{integrationId}
   /businesses/{id}/integrations/vk/connect:
@@ -1326,6 +1328,54 @@ components:
           - no_linked_group
         channel_title:
           type: string
+    IntegrationHealth:
+      type: object
+      description: >-
+        Per-integration connection-liveness verdict computed synchronously by the
+        verify endpoint. Distinct from the composite presence-health score.
+      required:
+      - platform
+      - externalId
+      - status
+      - reasonCode
+      - checkedAt
+      properties:
+        platform:
+          type: string
+        externalId:
+          type: string
+        status:
+          type: string
+          enum:
+          - active
+          - degraded
+          - broken
+          - unknown
+        reasonCode:
+          type: string
+          description: >-
+            Stable machine code resolved to human copy on the client
+            (e.g. tg_not_admin, vk_wall_scope_missing, yandex_session_expired,
+            ok, inconclusive).
+        checkedAt:
+          type: string
+          format: date-time
+    VerifyIntegrationsResponse:
+      type: object
+      description: >-
+        Result of a manual verify/repair pass: the async profile re-push has been
+        started, and the synchronously-computed per-integration health array.
+      required:
+      - started
+      - health
+      properties:
+        started:
+          type: boolean
+          description: The async re-push + drift reschedule was triggered.
+        health:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationHealth'
     TelegramLoginRequest:
       type: object
       additionalProperties: true

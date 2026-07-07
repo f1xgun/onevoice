@@ -19,6 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
 // sseKeyTTLSlack is added to the chat stream budget when sizing the SSE
@@ -115,6 +116,22 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	// the handler; the reconciler exists regardless of SYNC_RECONCILE_ENABLED so
 	// the drift endpoint reads the table and verify re-pushes on demand.
 	integrationHandler.SetReconciler(svcs.Reconciler, svcs.PlatformSync)
+
+	// Wire the connection-health checker: the verify endpoint returns its
+	// synchronous per-integration array, and the proactive worker reuses the
+	// same checker for its Yandex-focused pass. connectHandler holds the
+	// Telegram/VK tokens + HTTP client (PlatformProbe); AgentTaskPublisher is
+	// the Yandex NATS dispatcher (nil in Mongo-only mode, then Yandex probes
+	// fail soft to unknown). repos.Integration is the enumerate/write store.
+	var connHealthDispatcher connhealth.Dispatcher
+	if svcs.AgentTaskPublisher != nil {
+		connHealthDispatcher = svcs.AgentTaskPublisher
+	}
+	connHealthChecker := connhealth.NewChecker(connectHandler, connHealthDispatcher, repos.Integration, svcs.AuditLogger)
+	integrationHandler.SetHealthChecker(connHealthChecker)
+	if svcs.AgentTaskPublisher != nil {
+		svcs.ConnectionHealth = connhealth.NewWorker(repos.Integration, connHealthChecker, h.NATS)
+	}
 	reviewHandler, err := handler.NewReviewHandler(svcs.Review)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create review handler: %w", err)

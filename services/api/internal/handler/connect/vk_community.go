@@ -17,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
 // ConnectVK validates a pasted community access token and stores it as a VK
@@ -88,20 +89,23 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	health := h.EvaluateVKHealth(r.Context(), req.AccessToken)
+
 	groupIDStr := strconv.FormatInt(group.ID, 10)
+	metadata := connhealth.MergeIntoMetadata(map[string]interface{}{
+		"group_id":       groupIDStr,
+		"community_name": group.Name,
+		"screen_name":    group.ScreenName,
+		"photo_url":      group.Photo50,
+		"input_method":   "paste",
+	}, health)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:  bc.BusinessID,
-		ActorID:     bc.UserID,
-		Platform:    a2a.AgentVK,
-		ExternalID:  groupIDStr,
-		AccessToken: req.AccessToken,
-		Metadata: map[string]interface{}{
-			"group_id":       groupIDStr,
-			"community_name": group.Name,
-			"screen_name":    group.ScreenName,
-			"photo_url":      group.Photo50,
-			"input_method":   "paste",
-		},
+		BusinessID:   bc.BusinessID,
+		ActorID:      bc.UserID,
+		Platform:     a2a.AgentVK,
+		ExternalID:   groupIDStr,
+		AccessToken:  req.AccessToken,
+		Metadata:     metadata,
 		ActorIP:      middleware.ClientIP(r),
 		UserAgent:    r.Header.Get("User-Agent"),
 		ParsedFormat: service.ParsedFormatAccessToken,

@@ -31,6 +31,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 	"github.com/f1xgun/onevoice/services/api/internal/service/creditgrant"
 	"github.com/f1xgun/onevoice/services/api/internal/service/planresolver"
 	"github.com/f1xgun/onevoice/services/api/internal/service/presencehealth"
@@ -148,6 +149,12 @@ type Services struct {
 	// (StartPresenceHealthSnapshot).
 	PresenceHealthSnapshot *presencehealth.Service
 
+	// ConnectionHealth re-probes active Yandex sessions and DMs the owner on a
+	// fresh break. Started as a background worker (StartConnectionHealth).
+	// Constructed in wire.Handlers (needs the connect-package probe); nil when
+	// NATS is unavailable (Mongo-only mode), which leaves the worker a no-op.
+	ConnectionHealth *connhealth.Worker
+
 	// Lockout is non-nil whenever h.Redis is non-nil (Redis is the storage
 	// layer). SmartCaptcha is always non-nil — Noop impl when
 	// SMARTCAPTCHA_SECRET_KEY is empty so the handler has a stable
@@ -174,6 +181,11 @@ type Services struct {
 	// presenceHealthSnapshotCancel stops the weekly presence-health snapshot loop.
 	// nil when the worker is not started (PRESENCE_HEALTH_SNAPSHOT_ENABLED=false).
 	presenceHealthSnapshotCancel context.CancelFunc
+
+	// connectionHealthCancel stops the connection-health loop. nil when the
+	// worker is not started (CONNECTION_HEALTH_ENABLED=false or ConnectionHealth
+	// nil).
+	connectionHealthCancel context.CancelFunc
 
 	// telegramApprovalUnsub releases the inbound approval-callback subscription.
 	// nil when the plane is not started (no NATS or no HMAC secret).
@@ -204,6 +216,9 @@ func (s *Services) Close() {
 	}
 	if s.presenceHealthSnapshotCancel != nil {
 		s.presenceHealthSnapshotCancel()
+	}
+	if s.connectionHealthCancel != nil {
+		s.connectionHealthCancel()
 	}
 	if s.telegramApprovalUnsub != nil {
 		s.telegramApprovalUnsub()

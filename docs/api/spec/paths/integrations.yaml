@@ -47,6 +47,43 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/verify:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: verifyIntegrations
+    summary: Re-verify and repair the business's connected integrations.
+    description: |
+      Triggers an async profile re-push + drift reschedule (repair) and returns
+      the synchronously-computed per-integration connection-health array. Health
+      is fail-soft: an inconclusive probe never demotes a working channel.
+    tags:
+    - integrations
+    responses:
+      '202':
+        description: Repair started; per-integration health computed.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/VerifyIntegrationsResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 /businesses/{id}/integrations/{integrationId}:
   parameters:
   - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath

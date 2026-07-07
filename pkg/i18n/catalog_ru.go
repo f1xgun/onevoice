@@ -94,4 +94,13 @@ var ru = map[string]string{
 	"validation.too_short":     "Слишком короткое значение",
 	"validation.too_long":      "Слишком длинное значение",
 	"validation.generic":       "Проверка не пройдена",
+
+	// Telegram connect admin-rights guard
+	// (services/api/internal/handler/connect/telegram.go).
+	"connect.telegram.not_admin":      "Добавьте бота администратором с правом публиковать сообщения и подключите снова — это займёт около минуты",
+	"connect.telegram.no_post_rights": "У бота нет права публиковать сообщения — выдайте его в настройках канала и подключите снова, это займёт около минуты",
+
+	// Proactive connection-health owner nudge
+	// (services/api/internal/service/connhealth/worker.go).
+	"notify.connection.reconnect_yandex": "Пропал доступ к Яндекс.Бизнесу — ответы на отзывы и обновление профиля приостановлены. Переподключите организацию в настройках, это займёт около двух минут.",
 }

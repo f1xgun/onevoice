@@ -1,6 +1,7 @@
 package connect
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
 // --- VK paste-flow ConnectVK tests ---
@@ -27,8 +29,12 @@ func newVKAPIMock(t *testing.T, opts vkMockOpts) *httptest.Server {
 	mux.HandleFunc("/method/groups.getById", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if opts.getByIDErrorMsg != "" {
+			code := opts.getByIDErrorCode
+			if code == 0 {
+				code = 100
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error": map[string]interface{}{"error_code": 100, "error_msg": opts.getByIDErrorMsg},
+				"error": map[string]interface{}{"error_code": code, "error_msg": opts.getByIDErrorMsg},
 			})
 			return
 		}
@@ -73,6 +79,10 @@ type vkMockOpts struct {
 	communityName       string
 	communityScreenName string
 	getByIDErrorMsg     string
+	// getByIDErrorCode overrides the error_code returned alongside
+	// getByIDErrorMsg (defaults to 100). Set to a VK auth code (5/15/113) or a
+	// transient code (6/9/14) to exercise the health classifier.
+	getByIDErrorCode int
 
 	// groups.getTokenPermissions scope list (e.g. {"wall", "manage"}).
 	scopes []string
@@ -320,5 +330,52 @@ func TestConnectVK_Paste_Forbidden(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+}
+
+// TestConnectVK_WallScopeConclusiveMissing_HealthBroken proves the post-connect
+// health fold: a token that has wall (so the connect scope guard passes) but a
+// token-permissions probe that conclusively lacks wall folds a broken/
+// wall-scope-missing verdict into the stored metadata. The connect still
+// succeeds (health is additive, never a second scope gate).
+//
+// The connect-time checkVKWallScope and the health checkVKWallScopeDetailed hit
+// the SAME groups.getTokenPermissions endpoint, so to keep the connect gate open
+// while the health probe reads "no wall" this test would need two different
+// responses. Instead we assert the health-only path via EvaluateVKHealth to keep
+// the two guards independent and unambiguous.
+func TestConnectVK_WallScopeConclusiveMissing_HealthBroken(t *testing.T) {
+	vkServer := newVKAPIMock(t, vkMockOpts{
+		communityID:   1,
+		communityName: "Comm",
+		scopes:        []string{"manage"}, // no wall
+	})
+	defer vkServer.Close()
+	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, vkServer.Client())
+
+	res := h.EvaluateVKHealth(context.Background(), "tok")
+	if res.Status != connhealth.StatusBroken || res.ReasonCode != connhealth.ReasonVKWallScopeMissing {
+		t.Fatalf("expected broken/vk_wall_scope_missing, got %+v", res)
+	}
+}
+
+// TestConnectVK_TokenPermissionsRateLimited_HealthUnknown proves fail-soft: a VK
+// error_code 6 (rate limit) on the token-permissions probe maps to unknown, not
+// broken, so a flaky VK check never reports a false break.
+func TestConnectVK_TokenPermissionsRateLimited_HealthUnknown(t *testing.T) {
+	vkServer := newVKAPIMock(t, vkMockOpts{
+		communityID:         1,
+		communityName:       "Comm",
+		tokenPermsErrorCode: 6,
+		tokenPermsErrorMsg:  "Too many requests per second",
+	})
+	defer vkServer.Close()
+	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, vkServer.Client())
+
+	res := h.EvaluateVKHealth(context.Background(), "tok")
+	if res.Status != connhealth.StatusUnknown {
+		t.Fatalf("expected fail-soft unknown on rate-limit, got %+v", res)
 	}
 }

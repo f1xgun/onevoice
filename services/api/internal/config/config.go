@@ -267,6 +267,17 @@ type Config struct {
 	// Default 24h.
 	PresenceHealthSnapshotPollInterval time.Duration
 
+	// ConnectionHealthEnabled gates the proactive connection-health worker that
+	// re-probes each active Yandex session and DMs the owner on a fresh break.
+	// Defaults ON: a silently-expired session pauses review replies and profile
+	// sync, so surfacing it early is the point of the feature; the transition-only
+	// nudge gate + nudged_at throttle keep it from spamming.
+	ConnectionHealthEnabled bool
+	// ConnectionHealthPollInterval is how often the worker re-probes the fleet.
+	// The fail-soft verdict + nudge throttle make each poll cheap; the interval
+	// only bounds how promptly a break is detected. Default 6h.
+	ConnectionHealthPollInterval time.Duration
+
 	OpenRouterAPIKey    string
 	OpenAIAPIKey        string
 	AnthropicAPIKey     string
@@ -364,6 +375,9 @@ func Load() (*Config, error) {
 		PresenceHealthSnapshotEnabled:      getEnv("PRESENCE_HEALTH_SNAPSHOT_ENABLED", envBoolTrue) == envBoolTrue,
 		PresenceHealthSnapshotPollInterval: getEnvDuration("PRESENCE_HEALTH_SNAPSHOT_POLL_INTERVAL", 24*time.Hour), //nolint:mnd // env-driven default
 
+		ConnectionHealthEnabled:      getEnv("CONNECTION_HEALTH_ENABLED", envBoolTrue) == envBoolTrue,
+		ConnectionHealthPollInterval: getEnvDuration("CONNECTION_HEALTH_POLL_INTERVAL", 6*time.Hour), //nolint:mnd // env-driven default
+
 		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),
 		S3SecretKey:       getEnv("S3_SECRET_KEY", "minioadmin"),
@@ -402,6 +416,10 @@ func Load() (*Config, error) {
 
 	if cfg.CreditGrantPollInterval <= 0 {
 		cfg.CreditGrantPollInterval = time.Hour
+	}
+
+	if cfg.ConnectionHealthPollInterval <= 0 {
+		cfg.ConnectionHealthPollInterval = 6 * time.Hour //nolint:mnd // documented default
 	}
 
 	if cfg.OutboxPollInterval <= 0 {

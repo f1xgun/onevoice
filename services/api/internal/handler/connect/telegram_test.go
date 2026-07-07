@@ -17,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
 // --- Telegram Tests ---
@@ -162,6 +163,9 @@ func TestVerifyTelegramLogin_ExpiredAuthDate(t *testing.T) {
 func newTelegramAPIMock(t *testing.T, title string, fail bool) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveTelegramHealthProbe(w, r, true, true) {
+			return
+		}
 		if fail {
 			_, _ = fmt.Fprintf(w, `{"ok":false,"description":"Bad Request: chat not found"}`)
 			return
@@ -176,6 +180,9 @@ func newTelegramAPIMock(t *testing.T, title string, fail bool) *httptest.Server 
 func newTelegramAPIMockWithLinkedGroup(t *testing.T, channelTitle string, linkedChatID int64, botInGroup bool) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveTelegramHealthProbe(w, r, true, true) {
+			return
+		}
 		chatID := r.URL.Query().Get("chat_id")
 		if chatID == strconv.FormatInt(linkedChatID, 10) {
 			if !botInGroup {
@@ -190,6 +197,28 @@ func newTelegramAPIMockWithLinkedGroup(t *testing.T, channelTitle string, linked
 			channelTitle, linkedChatID,
 		)
 	}))
+}
+
+// serveTelegramHealthProbe answers the getMe + getChatMember calls the
+// connection-health check issues, so connect tests that expect a successful
+// connect keep passing. isAdmin/canPost control the membership verdict: the
+// default (true, true) is an administrator with post rights. Returns true when
+// it handled the request (getMe or getChatMember), false for getChat.
+func serveTelegramHealthProbe(w http.ResponseWriter, r *http.Request, isAdmin, canPost bool) bool {
+	switch {
+	case strings.Contains(r.URL.Path, "/getMe"):
+		_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":777}}`)
+		return true
+	case strings.Contains(r.URL.Path, "/getChatMember"):
+		status := "member"
+		if isAdmin {
+			status = "administrator"
+		}
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"status":%q,"can_post_messages":%t}}`, status, canPost)
+		return true
+	default:
+		return false
+	}
 }
 
 func TestConnectTelegram_LinkedGroupOK(t *testing.T) {
@@ -497,6 +526,97 @@ func TestConnectTelegram_BotForbidden(t *testing.T) {
 	}
 }
 
+// TestConnectTelegram_HealthRateLimited_DoesNotBlock proves a rate-limited
+// membership probe (429 on getChatMember) does NOT block a legitimate connect:
+// the shared system bot token can trip Telegram's global limit under a verify
+// storm, so an inconclusive probe must fall through to a normal connect (201)
+// rather than a false 409 not_admin.
+func TestConnectTelegram_HealthRateLimited_DoesNotBlock(t *testing.T) {
+	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/getMe"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":777}}`)
+		case strings.Contains(r.URL.Path, "/getChatMember"):
+			_, _ = fmt.Fprint(w, `{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 5"}`)
+		default:
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":-1001234567890,"title":"My Channel","type":"channel"}}`)
+		}
+	}))
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockIntegration.On("Connect", mock.Anything, mock.Anything).
+		Return(&domain.Integration{ID: integrationID, Platform: "telegram"}, nil)
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewConnectHandler(mockIntegration, new(MockBusinessService), nil, cfg, tgServer.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@mychannel"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code == http.StatusConflict {
+		t.Fatalf("a rate-limited health probe must NOT 409-block a connect, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 connect despite inconclusive health, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
+}
+
+// TestConnectTelegram_SupergroupAdmin_DoesNotBlock proves a supergroup where the
+// bot is an administrator (can_post_messages absent → false) connects (201)
+// rather than being wrongly rejected 409 no_post_rights — can_post_messages is
+// a channel-only signal.
+func TestConnectTelegram_SupergroupAdmin_DoesNotBlock(t *testing.T) {
+	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/getMe"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":777}}`)
+		case strings.Contains(r.URL.Path, "/getChatMember"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"status":"administrator","can_post_messages":false}}`)
+		default:
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":-1001234567890,"title":"My Group","type":"supergroup"}}`)
+		}
+	}))
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockIntegration.On("Connect", mock.Anything, mock.Anything).
+		Return(&domain.Integration{ID: integrationID, Platform: "telegram"}, nil)
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewConnectHandler(mockIntegration, new(MockBusinessService), nil, cfg, tgServer.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"-1001234567890"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code == http.StatusConflict {
+		t.Fatalf("a supergroup admin must NOT be 409 no_post_rights, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 connect for supergroup admin, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
+}
+
 // TestConnectTelegram_Unreachable: HTTP client times out before Telegram
 // answers. We must NOT silently translate this to "bot has no access" —
 // that masks an upstream outage as a user-data problem. Expected: 502.
@@ -583,4 +703,99 @@ func TestConnectTelegram_Forbidden(t *testing.T) {
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", rr.Code)
 	}
+}
+
+// telegramConnectMemberMock serves getChat OK (bot can read the channel) plus a
+// getMe and a getChatMember returning the given membership status/post-right, so
+// the connect-time admin guard can be exercised end-to-end.
+func telegramConnectMemberMock(t *testing.T, memberStatus string, canPost bool) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/getMe"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":777}}`)
+		case strings.Contains(r.URL.Path, "/getChatMember"):
+			_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"status":%q,"can_post_messages":%t}}`, memberStatus, canPost)
+		default:
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":-100,"title":"Ch","type":"channel"}}`)
+		}
+	}))
+}
+
+// TestConnectTelegram_MemberNotAdmin_FailsWithLocalizedFixableError proves the
+// connect-time admin guard: a bot that can read the channel but is only a
+// member (not an admin) is refused with 409 and the fixable localized message,
+// and the integration is never created.
+func TestConnectTelegram_MemberNotAdmin_FailsWithLocalizedFixableError(t *testing.T) {
+	srv := telegramConnectMemberMock(t, "member", false)
+	defer srv.Close()
+
+	businessID, userID := uuid.New(), uuid.New()
+	mockIntegration := new(MockConnectIntegrationService)
+	mockBusiness := new(MockBusinessService)
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: srv.URL}
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, srv.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@mychannel"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "администратор") {
+		t.Fatalf("expected localized not_admin message, got %s", rr.Body.String())
+	}
+	mockIntegration.AssertNotCalled(t, "Connect", mock.Anything, mock.Anything)
+}
+
+// TestConnectTelegram_InconclusiveProbe_StillConnects proves the never-hard-fail
+// rule: a getChatMember that is unreachable (probe inconclusive) does NOT block
+// the connect — the integration is created (201) with connection_health.status
+// = unknown.
+func TestConnectTelegram_InconclusiveProbe_StillConnects(t *testing.T) {
+	businessID, userID := uuid.New(), uuid.New()
+
+	// getChat succeeds; getMe/getChatMember hang up (unreachable) => unknown.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/getMe") || strings.Contains(r.URL.Path, "/getChatMember") {
+			hj, ok := w.(http.Hijacker)
+			if ok {
+				conn, _, _ := hj.Hijack()
+				_ = conn.Close()
+				return
+			}
+		}
+		_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":-100,"title":"Ch","type":"channel"}}`)
+	}))
+	defer srv.Close()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockBusiness := new(MockBusinessService)
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
+		sub, _ := p.Metadata[connhealth.MetadataKey].(map[string]interface{})
+		status, _ := sub["status"].(string)
+		return status == string(connhealth.StatusUnknown)
+	})).Return(&domain.Integration{ID: uuid.New(), Platform: "telegram"}, nil)
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: srv.URL}
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, srv.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@mychannel"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 (never hard-fail on inconclusive), got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
 }

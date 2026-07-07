@@ -81,4 +81,11 @@ var en = map[string]string{
 	"validation.too_short":     "value is too short",
 	"validation.too_long":      "value is too long",
 	"validation.generic":       "validation failed",
+
+	// Telegram connect admin-rights guard.
+	"connect.telegram.not_admin":      "Add the bot as an administrator with permission to post messages, then reconnect — it takes about a minute",
+	"connect.telegram.no_post_rights": "The bot can't post messages — grant that permission in the channel settings and reconnect, it takes about a minute",
+
+	// Proactive connection-health owner nudge.
+	"notify.connection.reconnect_yandex": "OneVoice lost access to Yandex.Business — review replies and profile updates are paused. Reconnect the organization in settings, it takes about two minutes.",
 }
