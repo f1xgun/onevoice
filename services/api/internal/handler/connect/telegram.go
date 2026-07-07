@@ -26,12 +26,15 @@ import (
 )
 
 // telegramChatInfo holds the fields we care about from Telegram's getChat
-// response: title, and — for channels — the linked discussion group's chat
-// id. A non-zero LinkedChatID means subscribers' comments on channel posts
-// are routed into that group, and the bot needs to be a member of that
-// group (admin, ideally) to see them via getUpdates.
+// response: title, chat type, and — for channels — the linked discussion
+// group's chat id. A non-zero LinkedChatID means subscribers' comments on
+// channel posts are routed into that group, and the bot needs to be a member
+// of that group (admin, ideally) to see them via getUpdates. Type is one of
+// "channel" | "supergroup" | "group" | "private" and disambiguates the
+// post-rights semantics (can_post_messages is meaningful for channels only).
 type telegramChatInfo struct {
 	Title        string
+	Type         string
 	LinkedChatID int64
 }
 
@@ -43,9 +46,11 @@ type telegramGetChatResponse struct {
 	OK     bool `json:"ok"`
 	Result struct {
 		Title        string `json:"title"`
+		Type         string `json:"type"`
 		LinkedChatID int64  `json:"linked_chat_id"`
 	} `json:"result"`
 	Description string `json:"description"`
+	ErrorCode   int    `json:"error_code"`
 }
 
 // telegramLoginFields is Telegram's documented Login Widget field set. Only
@@ -135,7 +140,17 @@ const (
 	// description (chat not found, bad chat_id, etc.). Map to 400 and
 	// surface the description to the user.
 	telegramErrAPIRejected
+	// telegramErrRateLimited: Telegram returned a rate-limit / anti-bot
+	// envelope (HTTP 429 "Too Many Requests: retry after N"). The single
+	// shared system bot token means a fleet-wide verify storm can trip
+	// Telegram's global limit, so this is transient and inconclusive — never
+	// a signal that a channel is broken. Health fails soft to unknown.
+	telegramErrRateLimited
 )
+
+// telegramTooManyRequests is the HTTP/error_code Telegram returns on a global
+// rate-limit; the description is prefixed "Too Many Requests".
+const telegramTooManyRequests = 429
 
 type telegramAPIError struct {
 	Kind        telegramErrKind
@@ -163,8 +178,26 @@ func telegramErrKindName(k telegramErrKind) string {
 		return "forbidden"
 	case telegramErrAPIRejected:
 		return "api_rejected"
+	case telegramErrRateLimited:
+		return "rate_limited"
 	default:
 		return "unknown"
+	}
+}
+
+// classifyTelegramFalseOK maps a Bot API ok:false envelope (error_code,
+// description) to a telegramErrKind. A Forbidden-style rejection is a
+// conclusive access failure; a 429 / "Too Many Requests" is a transient
+// rate-limit; everything else is a generic API rejection. Shared by getMe /
+// getChat / getChatMember so all three classify the same envelope identically.
+func classifyTelegramFalseOK(errorCode int, description string) telegramErrKind {
+	switch {
+	case hasForbiddenPrefix(description):
+		return telegramErrForbidden
+	case errorCode == telegramTooManyRequests || strings.HasPrefix(description, "Too Many Requests"):
+		return telegramErrRateLimited
+	default:
+		return telegramErrAPIRejected
 	}
 }
 
@@ -198,15 +231,13 @@ func (h *ConnectHandler) telegramGetChat(ctx context.Context, botToken, chatID s
 	}
 
 	if !chatResp.OK {
-		kind := telegramErrAPIRejected
-		if strings.HasPrefix(chatResp.Description, "Forbidden") {
-			kind = telegramErrForbidden
-		}
+		kind := classifyTelegramFalseOK(chatResp.ErrorCode, chatResp.Description)
 		return telegramChatInfo{}, &telegramAPIError{Kind: kind, Description: chatResp.Description}
 	}
 
 	return telegramChatInfo{
 		Title:        chatResp.Result.Title,
+		Type:         chatResp.Result.Type,
 		LinkedChatID: chatResp.Result.LinkedChatID,
 	}, nil
 }
@@ -242,6 +273,8 @@ func writeTelegramAPIError(w http.ResponseWriter, err error, fallback string) {
 	switch apiErr.Kind {
 	case telegramErrUnreachable:
 		writeJSONError(w, http.StatusBadGateway, "telegram api unreachable, please retry")
+	case telegramErrRateLimited:
+		writeJSONError(w, http.StatusTooManyRequests, "telegram api rate limited, please retry")
 	case telegramErrForbidden:
 		msg := apiErr.Description
 		if msg == "" {

@@ -53,6 +53,7 @@ type telegramGetMeResponse struct {
 		ID int64 `json:"id"`
 	} `json:"result"`
 	Description string `json:"description"`
+	ErrorCode   int    `json:"error_code"`
 }
 
 // telegramChatMemberResponse mirrors the Bot API getChatMember envelope. status
@@ -65,6 +66,7 @@ type telegramChatMemberResponse struct {
 		CanPostMessages bool   `json:"can_post_messages"`
 	} `json:"result"`
 	Description string `json:"description"`
+	ErrorCode   int    `json:"error_code"`
 }
 
 // telegramGetMe fetches the bot's own numeric id (needed to key getChatMember).
@@ -81,7 +83,8 @@ func (h *ConnectHandler) telegramGetMe(ctx context.Context, botToken string) (in
 		return 0, &telegramAPIError{Kind: telegramErrUnreachable, Err: jsonErr}
 	}
 	if !meResp.OK {
-		return 0, &telegramAPIError{Kind: telegramErrAPIRejected, Description: meResp.Description}
+		kind := classifyTelegramFalseOK(meResp.ErrorCode, meResp.Description)
+		return 0, &telegramAPIError{Kind: kind, Description: meResp.Description}
 	}
 	return meResp.Result.ID, nil
 }
@@ -102,10 +105,7 @@ func (h *ConnectHandler) telegramGetChatMember(ctx context.Context, botToken, ch
 		return telegramChatMemberResponse{}, &telegramAPIError{Kind: telegramErrUnreachable, Err: jsonErr}
 	}
 	if !memberResp.OK {
-		kind := telegramErrAPIRejected
-		if hasForbiddenPrefix(memberResp.Description) {
-			kind = telegramErrForbidden
-		}
+		kind := classifyTelegramFalseOK(memberResp.ErrorCode, memberResp.Description)
 		return telegramChatMemberResponse{}, &telegramAPIError{Kind: kind, Description: memberResp.Description}
 	}
 	return memberResp, nil
@@ -141,13 +141,16 @@ func hasForbiddenPrefix(desc string) bool {
 // to a connection-health verdict. It is the SINGLE implementation shared by the
 // connect-time admin check (ConnectTelegram) and the verify/worker paths.
 //
-// Fail-soft: any transport-level failure (telegramErrUnreachable) yields
-// StatusUnknown so a flaky probe never demotes a working channel or blocks a
-// real connect. Forbidden-style rejections and member/left/kicked statuses are
-// conclusive => broken. A creator, or an administrator with can_post_messages,
-// is active.
+// Fail-soft: any transport-level, rate-limit, or other non-Forbidden failure
+// yields StatusUnknown so a flaky or throttled probe never demotes a working
+// channel or blocks a real connect. Forbidden-style rejections and
+// member/left/kicked statuses are conclusive => broken. A creator is always
+// active; an administrator is active on any non-channel chat (supergroup/group,
+// where can_post_messages does not apply) and on a channel only when it retains
+// can_post_messages.
 func (h *ConnectHandler) EvaluateTelegramHealth(ctx context.Context, botToken, chatID string) connhealth.Result {
 	now := time.Now().UTC()
+	chatType := h.telegramChatType(ctx, botToken, chatID)
 	botID, err := h.telegramGetMe(ctx, botToken)
 	if err != nil {
 		return inconclusiveOrBroken(err, now)
@@ -156,34 +159,55 @@ func (h *ConnectHandler) EvaluateTelegramHealth(ctx context.Context, botToken, c
 	if err != nil {
 		return inconclusiveOrBroken(err, now)
 	}
-	return evaluateTelegramMember(member.Result.Status, member.Result.CanPostMessages, now)
+	return evaluateTelegramMember(member.Result.Status, member.Result.CanPostMessages, chatType, now)
 }
 
-// evaluateTelegramMember maps a getChatMember (status, can_post_messages) pair
-// to a health Result. Kept pure so the mapping is unit-testable without HTTP.
-func evaluateTelegramMember(status string, canPost bool, now time.Time) connhealth.Result {
+// telegramChatType resolves a chat's type ("channel" | "supergroup" | "group" |
+// "private") via getChat, returning "" when the call fails. An empty type is
+// treated permissively by evaluateTelegramMember (an administrator is active),
+// so a flaky getChat never manufactures a false no_post_rights verdict.
+func (h *ConnectHandler) telegramChatType(ctx context.Context, botToken, chatID string) string {
+	info, err := h.telegramGetChat(ctx, botToken, chatID)
+	if err != nil {
+		return ""
+	}
+	return info.Type
+}
+
+// evaluateTelegramMember maps a getChatMember (status, can_post_messages) plus
+// the chat type to a health Result. can_post_messages is meaningful for
+// channels only — a supergroup/group administrator has it absent (unmarshalled
+// to false) yet can still post — so the no_post_rights demotion applies to
+// type=="channel" only. An unknown ("") type is treated as non-channel
+// (permissive) to avoid a false demotion when the type could not be resolved.
+// Kept pure so the mapping is unit-testable without HTTP.
+func evaluateTelegramMember(status string, canPost bool, chatType string, now time.Time) connhealth.Result {
 	switch status {
 	case "creator":
 		return connhealth.Result{Status: connhealth.StatusActive, ReasonCode: connhealth.ReasonOK, CheckedAt: now}
 	case "administrator":
-		if canPost {
-			return connhealth.Result{Status: connhealth.StatusActive, ReasonCode: connhealth.ReasonOK, CheckedAt: now}
+		if chatType == "channel" && !canPost {
+			return connhealth.Result{Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonTelegramNoPostRight, CheckedAt: now}
 		}
-		return connhealth.Result{Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonTelegramNoPostRight, CheckedAt: now}
+		return connhealth.Result{Status: connhealth.StatusActive, ReasonCode: connhealth.ReasonOK, CheckedAt: now}
 	default:
 		return connhealth.Result{Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonTelegramNotAdmin, CheckedAt: now}
 	}
 }
 
-// inconclusiveOrBroken maps a *telegramAPIError to a fail-soft verdict:
-// transport failures are inconclusive (unknown), forbidden/API rejections are
-// conclusive (broken/not-admin).
+// inconclusiveOrBroken maps a *telegramAPIError to a fail-soft verdict. Only a
+// Forbidden-style rejection (bot kicked / not a member / blocked) is a
+// conclusive access failure => broken/not-admin. A transport failure, a
+// rate-limit / anti-bot 429, or any other non-Forbidden API rejection is
+// inconclusive => unknown, so a throttled or flaky probe never demotes a
+// working channel and never blocks a legitimate connect. A non-typed error
+// falls through to unknown (fail soft) rather than a false broken.
 func inconclusiveOrBroken(err error, now time.Time) connhealth.Result {
 	var apiErr *telegramAPIError
-	if errors.As(err, &apiErr) && apiErr.Kind == telegramErrUnreachable {
-		return connhealth.Result{Status: connhealth.StatusUnknown, ReasonCode: connhealth.ReasonInconclusive, CheckedAt: now}
+	if errors.As(err, &apiErr) && apiErr.Kind == telegramErrForbidden {
+		return connhealth.Result{Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonTelegramNotAdmin, CheckedAt: now}
 	}
-	return connhealth.Result{Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonTelegramNotAdmin, CheckedAt: now}
+	return connhealth.Result{Status: connhealth.StatusUnknown, ReasonCode: connhealth.ReasonInconclusive, CheckedAt: now}
 }
 
 // EvaluateVKHealth probes a VK community token: first that it still resolves a
@@ -191,15 +215,24 @@ func inconclusiveOrBroken(err error, now time.Time) connhealth.Result {
 // rate-limit / transport (unknown); conclusive on a genuine auth failure
 // (broken/token-invalid) or a definitively-missing wall scope
 // (broken/wall-scope-missing).
+//
+// The first probe (groups.getById) is classified by VK error code: only a
+// conclusive auth failure (5/15/113) demotes to broken. A rate-limit / flood /
+// captcha envelope (6/9/14) — or any other unrecognized error envelope — is
+// inconclusive and fails soft to unknown, so a throttled or anti-bot probe
+// never flips a working community to broken.
 func (h *ConnectHandler) EvaluateVKHealth(ctx context.Context, accessToken string) connhealth.Result {
 	now := time.Now().UTC()
 
-	_, vkErr, transportErr := h.probeVKCommunityToken(ctx, accessToken, "")
+	_, vkErr, vkErrCode, transportErr := h.probeVKCommunityTokenDetailed(ctx, accessToken, "")
 	if transportErr != nil {
 		return connhealth.Result{Status: connhealth.StatusUnknown, ReasonCode: connhealth.ReasonInconclusive, CheckedAt: now}
 	}
 	if vkErr != "" {
-		return connhealth.Result{Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonVKTokenInvalid, CheckedAt: now}
+		if vkapi.IsAuthErrorCode(vkErrCode) {
+			return connhealth.Result{Status: connhealth.StatusBroken, ReasonCode: connhealth.ReasonVKTokenInvalid, CheckedAt: now}
+		}
+		return connhealth.Result{Status: connhealth.StatusUnknown, ReasonCode: connhealth.ReasonInconclusive, CheckedAt: now}
 	}
 
 	hasWall, conclusive, err := h.checkVKWallScopeDetailed(ctx, accessToken)

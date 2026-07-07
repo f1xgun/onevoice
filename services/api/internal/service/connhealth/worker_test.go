@@ -139,6 +139,58 @@ func TestWorker_TransitionToBroken_NudgesOnce(t *testing.T) {
 	}
 }
 
+func TestWorker_TransitionToBroken_PersistsBrokenAfterNudgeStamp(t *testing.T) {
+	bizID, yID := uuid.New(), uuid.New()
+	priorActive := MergeIntoMetadata(nil, Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now().Add(-time.Hour)})
+	rows := []domain.Integration{
+		yandexRow(bizID, yID, priorActive),
+		telegramOwnerRow(bizID, "555"),
+	}
+	nc := &fakeNATS{}
+	dispatch := &fakeDispatcher{err: a2a.NewCodedError(codeIntegrationTokenInvalid, errors.New("passport.yandex"))}
+	w, store := newYandexWorker(t, dispatch, nc, rows)
+
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if nc.count() != 1 {
+		t.Fatalf("expected one nudge on transition to broken, got %d", nc.count())
+	}
+	persisted := ReadFromMetadata(store.get(yID))
+	if persisted.Status != StatusBroken {
+		t.Fatalf("the nudge stamp must layer on the fresh broken verdict, got persisted status %q (dashboard would show healthy while the owner got a reconnect DM)", persisted.Status)
+	}
+	if ReadNudgedAt(store.get(yID)).IsZero() {
+		t.Fatalf("expected nudged_at stamped alongside the broken verdict")
+	}
+}
+
+func TestWorker_Recovery_PersistsActiveAfterNudgeClear(t *testing.T) {
+	bizID, yID := uuid.New(), uuid.New()
+	brokenNudged := MergeNudgedAt(
+		MergeIntoMetadata(nil, Result{Status: StatusBroken, ReasonCode: ReasonYandexSessionExpiry, CheckedAt: time.Now().Add(-time.Hour)}),
+		time.Now().Add(-2*time.Hour),
+	)
+	rows := []domain.Integration{
+		yandexRow(bizID, yID, brokenNudged),
+		telegramOwnerRow(bizID, "555"),
+	}
+	nc := &fakeNATS{}
+	dispatch := &fakeDispatcher{resp: &a2a.ToolResponse{Success: true}}
+	w, store := newYandexWorker(t, dispatch, nc, rows)
+
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	persisted := ReadFromMetadata(store.get(yID))
+	if persisted.Status != StatusActive {
+		t.Fatalf("clearing nudged_at must layer on the fresh active verdict, got persisted status %q (a recovered channel stuck broken forever)", persisted.Status)
+	}
+	if !ReadNudgedAt(store.get(yID)).IsZero() {
+		t.Fatalf("expected nudged_at cleared on recovery")
+	}
+}
+
 func TestWorker_RecoveryClearsNudgedAt(t *testing.T) {
 	bizID, yID := uuid.New(), uuid.New()
 	brokenNudged := MergeNudgedAt(

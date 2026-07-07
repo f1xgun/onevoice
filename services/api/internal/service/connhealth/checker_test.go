@@ -95,7 +95,7 @@ func TestCheckIntegration_FailSoftKeepsPriorActive(t *testing.T) {
 	probe := &fakeProbe{tg: Result{Status: StatusUnknown, ReasonCode: ReasonInconclusive, CheckedAt: time.Now()}}
 	c := NewChecker(probe, nil, store, nil)
 
-	res, err := c.CheckIntegration(context.Background(), domain.Integration{
+	res, _, err := c.CheckIntegration(context.Background(), domain.Integration{
 		ID: id, BusinessID: bizID, Platform: a2a.AgentTelegram, ExternalID: "-100", Metadata: prior,
 	})
 	if err != nil {

@@ -64,16 +64,31 @@ type vkGroup struct {
 // (group, vkErrMsg, transportErr): exactly one of the three is non-zero. The
 // rawGroupInput is normalised through resolveVKGroupID when non-empty (lets
 // callers pass a URL/screen_name); empty rawGroupInput means "let VK decide
-// from the token's scope" (community tokens self-identify).
+// from the token's scope" (community tokens self-identify). The VK error code
+// is discarded here — callers that need to distinguish an auth failure from a
+// rate-limit envelope must use probeVKCommunityTokenDetailed instead.
 func (h *ConnectHandler) probeVKCommunityToken(
 	ctx context.Context,
 	accessToken, rawGroupInput string,
 ) (*vkGroup, string, error) {
+	group, vkErr, _, transportErr := h.probeVKCommunityTokenDetailed(ctx, accessToken, rawGroupInput)
+	return group, vkErr, transportErr
+}
+
+// probeVKCommunityTokenDetailed is the code-aware variant of
+// probeVKCommunityToken. It additionally returns the numeric VK error_code so
+// the health path can tell a conclusive auth failure (5/15/113) apart from a
+// transient rate-limit / flood / captcha envelope (6/9/14) that must fail soft.
+// The returned vkErrCode is meaningful only when vkErrMsg is non-empty.
+func (h *ConnectHandler) probeVKCommunityTokenDetailed(
+	ctx context.Context,
+	accessToken, rawGroupInput string,
+) (group *vkGroup, vkErrMsg string, vkErrCode int, transportErr error) {
 	groupParam := ""
 	if strings.TrimSpace(rawGroupInput) != "" {
 		resolved, err := h.resolveVKGroupID(ctx, rawGroupInput)
 		if err != nil {
-			return nil, "", fmt.Errorf("%w: %w", ErrVKCommunityResolveFailed, err)
+			return nil, "", 0, fmt.Errorf("%w: %w", ErrVKCommunityResolveFailed, err)
 		}
 		groupParam = resolved
 	}
@@ -88,11 +103,11 @@ func (h *ConnectHandler) probeVKCommunityToken(
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
-		return nil, "", err
+		return nil, "", 0, err
 	}
 	resp, err := h.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, "", fmt.Errorf("vk request: %w", redactURLErr(err))
+		return nil, "", 0, fmt.Errorf("vk request: %w", redactURLErr(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -107,18 +122,18 @@ func (h *ConnectHandler) probeVKCommunityToken(
 		} `json:"error"`
 	}
 	if jsonErr := json.Unmarshal(body, &vkResp); jsonErr != nil {
-		return nil, "", fmt.Errorf("decode vk response: %w", jsonErr)
+		return nil, "", 0, fmt.Errorf("decode vk response: %w", jsonErr)
 	}
 	if vkResp.Error != nil {
 		slog.Warn("VK token validation error",
 			"code", vkResp.Error.ErrorCode, "msg", vkResp.Error.ErrorMsg)
-		return nil, vkResp.Error.ErrorMsg, nil
+		return nil, vkResp.Error.ErrorMsg, vkResp.Error.ErrorCode, nil
 	}
 	if len(vkResp.Response.Groups) == 0 {
-		return nil, "", nil
+		return nil, "", 0, nil
 	}
 	g := vkResp.Response.Groups[0]
-	return &g, "", nil
+	return &g, "", 0, nil
 }
 
 // checkVKWallScope verifies the supplied token grants `wall` permission. The

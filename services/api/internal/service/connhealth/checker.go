@@ -90,7 +90,7 @@ func (c *Checker) CheckAll(ctx context.Context, businessID uuid.UUID) ([]Integra
 	out := make([]IntegrationHealth, 0, len(integrations))
 	for i := range integrations {
 		integ := integrations[i]
-		res, persistErr := c.CheckIntegration(ctx, integ)
+		res, _, persistErr := c.CheckIntegration(ctx, integ)
 		if persistErr != nil {
 			slog.WarnContext(ctx, "connhealth: integration check failed",
 				"business_id", businessID, "platform", integ.Platform, "error", persistErr)
@@ -109,19 +109,24 @@ func (c *Checker) CheckAll(ctx context.Context, businessID uuid.UUID) ([]Integra
 
 // CheckIntegration probes one integration, applies the fail-soft demotion rule
 // against its prior stored verdict, persists the merged metadata, audits the
-// write, and returns the effective (post-demotion) Result. Shared by CheckAll
+// write, and returns the effective (post-demotion) Result together with the
+// exact metadata map it wrote. Callers that layer a further metadata write on
+// top (the worker's nudge stamp / clear) MUST base that write on the returned
+// map, not on the pre-check integ.Metadata: the repository UpdateMetadata does a
+// whole-column replace, so a second write built from the stale pre-check copy
+// would clobber the fresh verdict this call just persisted. Shared by CheckAll
 // and the worker.
-func (c *Checker) CheckIntegration(ctx context.Context, integ domain.Integration) (Result, error) {
+func (c *Checker) CheckIntegration(ctx context.Context, integ domain.Integration) (Result, map[string]interface{}, error) {
 	prev := ReadFromMetadata(integ.Metadata)
 	probed := c.probePlatform(ctx, integ)
 	effective := DemoteOnlyIfConclusive(prev, probed)
 
 	merged := MergeIntoMetadata(integ.Metadata, effective)
 	if err := c.store.UpdateMetadata(ctx, integ.ID, merged); err != nil {
-		return Result{}, fmt.Errorf("update metadata: %w", err)
+		return Result{}, nil, fmt.Errorf("update metadata: %w", err)
 	}
 	audit.LogIntegrationMetadataUpdated(ctx, c.auditLog, integ.BusinessID, integ.ID, integ.Platform, []string{MetadataKey})
-	return effective, nil
+	return effective, merged, nil
 }
 
 // probePlatform routes an integration to its platform checker. An unrecognized

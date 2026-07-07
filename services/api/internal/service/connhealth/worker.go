@@ -114,19 +114,26 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 // gate, and stamps or clears the throttle key. The prior status is read BEFORE
 // the check so a transition into broken is detectable. ownerChat is the owner's
 // private Telegram chat id ("" when the business has no bound owner).
+//
+// The nudge/clear write layers on top of the metadata CheckIntegration just
+// persisted (the returned fresh map), never the stale pre-check integ.Metadata:
+// the repository UpdateMetadata replaces the whole metadata column, so basing
+// the second write on the pre-check copy would overwrite the fresh verdict and
+// leave the dashboard badge disagreeing with the DM (broken lost) or a
+// recovered channel stuck broken forever.
 func (w *Worker) processIntegration(ctx context.Context, integ domain.Integration, ownerChat string) error {
 	prev := ReadFromMetadata(integ.Metadata)
 
-	effective, err := w.checker.CheckIntegration(ctx, integ)
+	effective, fresh, err := w.checker.CheckIntegration(ctx, integ)
 	if err != nil {
 		return fmt.Errorf("check integration: %w", err)
 	}
 
 	switch {
 	case w.crossedIntoBroken(prev.Status, effective.Status) && w.nudgeDue(integ):
-		w.nudgeAndStamp(ctx, integ, ownerChat)
-	case effective.Status == StatusActive && !ReadNudgedAt(integ.Metadata).IsZero():
-		w.clearNudge(ctx, integ)
+		w.nudgeAndStamp(ctx, integ, fresh, ownerChat)
+	case effective.Status == StatusActive && !ReadNudgedAt(fresh).IsZero():
+		w.clearNudge(ctx, integ, fresh)
 	}
 	return nil
 }
@@ -152,8 +159,10 @@ func (w *Worker) nudgeDue(integ domain.Integration) bool {
 // nudgeAndStamp DMs the bound owner a localized reconnect nudge and, on
 // dispatch success, stamps nudged_at so a retry or the next tick does not
 // re-nudge. A business without a bound owner chat records health but is never
-// nudged (no side channel to reach the owner).
-func (w *Worker) nudgeAndStamp(ctx context.Context, integ domain.Integration, chatID string) {
+// nudged (no side channel to reach the owner). fresh is the metadata
+// CheckIntegration just persisted (carrying the new broken verdict); the stamp
+// layers on top of it so the whole-column write does not revert the verdict.
+func (w *Worker) nudgeAndStamp(ctx context.Context, integ domain.Integration, fresh map[string]interface{}, chatID string) {
 	if chatID == "" {
 		return
 	}
@@ -165,7 +174,7 @@ func (w *Worker) nudgeAndStamp(ctx context.Context, integ domain.Integration, ch
 		return
 	}
 
-	stamped := MergeNudgedAt(integ.Metadata, now)
+	stamped := MergeNudgedAt(fresh, now)
 	if err := w.integRepo.UpdateMetadata(ctx, integ.ID, stamped); err != nil {
 		slog.WarnContext(ctx, "connhealth worker: nudge stamp failed",
 			"business_id", integ.BusinessID, "error", err)
@@ -206,9 +215,12 @@ func (w *Worker) dispatchNudge(ctx context.Context, integ domain.Integration, ch
 }
 
 // clearNudge wipes the throttle key once a broken channel recovers to active, so
-// a future break re-nudges the owner.
-func (w *Worker) clearNudge(ctx context.Context, integ domain.Integration) {
-	cleared := MergeNudgedAt(integ.Metadata, time.Time{})
+// a future break re-nudges the owner. fresh is the metadata CheckIntegration
+// just persisted (carrying the new active verdict); clearing nudged_at layers on
+// top of it so the whole-column write does not revert the recovered status back
+// to the stale broken sub-object.
+func (w *Worker) clearNudge(ctx context.Context, integ domain.Integration, fresh map[string]interface{}) {
+	cleared := MergeNudgedAt(fresh, time.Time{})
 	if err := w.integRepo.UpdateMetadata(ctx, integ.ID, cleared); err != nil {
 		slog.WarnContext(ctx, "connhealth worker: nudge clear failed",
 			"business_id", integ.BusinessID, "error", err)

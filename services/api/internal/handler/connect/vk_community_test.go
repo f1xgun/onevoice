@@ -29,8 +29,12 @@ func newVKAPIMock(t *testing.T, opts vkMockOpts) *httptest.Server {
 	mux.HandleFunc("/method/groups.getById", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if opts.getByIDErrorMsg != "" {
+			code := opts.getByIDErrorCode
+			if code == 0 {
+				code = 100
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error": map[string]interface{}{"error_code": 100, "error_msg": opts.getByIDErrorMsg},
+				"error": map[string]interface{}{"error_code": code, "error_msg": opts.getByIDErrorMsg},
 			})
 			return
 		}
@@ -75,6 +79,10 @@ type vkMockOpts struct {
 	communityName       string
 	communityScreenName string
 	getByIDErrorMsg     string
+	// getByIDErrorCode overrides the error_code returned alongside
+	// getByIDErrorMsg (defaults to 100). Set to a VK auth code (5/15/113) or a
+	// transient code (6/9/14) to exercise the health classifier.
+	getByIDErrorCode int
 
 	// groups.getTokenPermissions scope list (e.g. {"wall", "manage"}).
 	scopes []string

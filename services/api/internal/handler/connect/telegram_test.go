@@ -526,6 +526,97 @@ func TestConnectTelegram_BotForbidden(t *testing.T) {
 	}
 }
 
+// TestConnectTelegram_HealthRateLimited_DoesNotBlock proves a rate-limited
+// membership probe (429 on getChatMember) does NOT block a legitimate connect:
+// the shared system bot token can trip Telegram's global limit under a verify
+// storm, so an inconclusive probe must fall through to a normal connect (201)
+// rather than a false 409 not_admin.
+func TestConnectTelegram_HealthRateLimited_DoesNotBlock(t *testing.T) {
+	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/getMe"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":777}}`)
+		case strings.Contains(r.URL.Path, "/getChatMember"):
+			_, _ = fmt.Fprint(w, `{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 5"}`)
+		default:
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":-1001234567890,"title":"My Channel","type":"channel"}}`)
+		}
+	}))
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockIntegration.On("Connect", mock.Anything, mock.Anything).
+		Return(&domain.Integration{ID: integrationID, Platform: "telegram"}, nil)
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewConnectHandler(mockIntegration, new(MockBusinessService), nil, cfg, tgServer.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@mychannel"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code == http.StatusConflict {
+		t.Fatalf("a rate-limited health probe must NOT 409-block a connect, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 connect despite inconclusive health, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
+}
+
+// TestConnectTelegram_SupergroupAdmin_DoesNotBlock proves a supergroup where the
+// bot is an administrator (can_post_messages absent → false) connects (201)
+// rather than being wrongly rejected 409 no_post_rights — can_post_messages is
+// a channel-only signal.
+func TestConnectTelegram_SupergroupAdmin_DoesNotBlock(t *testing.T) {
+	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/getMe"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":777}}`)
+		case strings.Contains(r.URL.Path, "/getChatMember"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"status":"administrator","can_post_messages":false}}`)
+		default:
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":-1001234567890,"title":"My Group","type":"supergroup"}}`)
+		}
+	}))
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockIntegration.On("Connect", mock.Anything, mock.Anything).
+		Return(&domain.Integration{ID: integrationID, Platform: "telegram"}, nil)
+
+	cfg := ConnectConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewConnectHandler(mockIntegration, new(MockBusinessService), nil, cfg, tgServer.Client())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"-1001234567890"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code == http.StatusConflict {
+		t.Fatalf("a supergroup admin must NOT be 409 no_post_rights, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 connect for supergroup admin, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
+}
+
 // TestConnectTelegram_Unreachable: HTTP client times out before Telegram
 // answers. We must NOT silently translate this to "bot has no access" —
 // that masks an upstream outage as a user-data problem. Expected: 502.
