@@ -178,6 +178,10 @@ paths:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1companies
   /businesses/{id}/integrations/yandex_business/connect:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1connect
+  /businesses/{id}/integrations/yandex_business/connect-delegated:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1connect-delegated
+  /businesses/{id}/integrations/yandex_business/verify-access:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1verify-access
   /businesses/{id}/integrations/yandex_business/{integrationId}/refresh-name:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1{integrationId}~1refresh-name
   /oauth/vk/callback:
@@ -1261,6 +1265,38 @@ components:
           type: string
         business_name:
           type: string
+    ConnectDelegatedYandexRequest:
+      type: object
+      description: >-
+        Connect a Yandex organization via delegated-representative access. The
+        owner supplies only their organization permalink (or a Maps/Sprav URL);
+        no customer credential is captured. Exactly one of permalink or maps_url
+        must be provided.
+      properties:
+        permalink:
+          type: string
+          description: Numeric Yandex organization permalink.
+        maps_url:
+          type: string
+          description: A pasted Yandex Maps/Sprav URL to extract the permalink from.
+        business_name:
+          type: string
+    VerifyYandexAccessRequest:
+      type: object
+      required:
+      - permalink
+      properties:
+        permalink:
+          type: string
+          description: Numeric Yandex organization permalink to verify shared access against.
+    VerifyYandexAccessResponse:
+      type: object
+      required:
+      - access_verified
+      properties:
+        access_verified:
+          type: boolean
+          description: True when the shared representative session can reach and edit the org.
     RefreshStartedResponse:
       type: object
       required:

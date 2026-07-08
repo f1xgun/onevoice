@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/oauthlock"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
@@ -144,6 +145,24 @@ type IntegrationService interface {
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
 	MarkTokenExpired(ctx context.Context, businessID uuid.UUID, platform, externalID string) error
+	SetSharedSession(ctx context.Context, params SharedSessionParams) (*domain.Integration, error)
+}
+
+// SharedSessionParams sets/rotates the single KMS-wrapped shared representative
+// session credential stored under the reserved sentinel row (sharedBusinessID +
+// platform + external_id "__shared_rep__"). It is the ops-bootstrap path for
+// the delegated-representative access plane and deliberately bypasses the
+// per-actor connect gates: it is admin-gated at the handler, operates only on
+// the reserved sentinel coordinates, and the sentinel business is not a
+// customer organization.
+type SharedSessionParams struct {
+	SharedBusinessID uuid.UUID
+	Platform         string
+	// Credential is the session cookie JSON (or OAuth token) for the shared
+	// representative account.
+	Credential string
+	ActorIP    string
+	UserAgent  string
 }
 
 type integrationService struct {
@@ -524,6 +543,73 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	}
 
 	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID, params.ActorIP, params.UserAgent, params.ParsedFormat)
+
+	return integration, nil
+}
+
+// SetSharedSession sets or rotates the shared representative session credential
+// stored under the reserved sentinel row. It retires any existing sentinel row
+// (soft delete) and creates a fresh envelope-encrypted one, exactly like a
+// Connect against the sentinel coordinates but WITHOUT the per-actor / business
+// gates (the sentinel is not a customer org and the caller is admin-gated
+// upstream). The credential is stored as the row's access token; the row is the
+// single source the agent's GetSharedSession decrypts.
+func (s *integrationService) SetSharedSession(ctx context.Context, params SharedSessionParams) (*domain.Integration, error) {
+	if params.SharedBusinessID == uuid.Nil {
+		return nil, fmt.Errorf("shared business id is required")
+	}
+	if params.Platform == "" {
+		return nil, fmt.Errorf("platform is required")
+	}
+	if params.Credential == "" {
+		return nil, fmt.Errorf("shared session credential is required")
+	}
+
+	externalID := tools.YandexSharedRepExternalID
+
+	existing, lookupErr := s.repo.GetByBusinessPlatformExternal(ctx, params.SharedBusinessID, params.Platform, externalID)
+	switch {
+	case lookupErr == nil:
+		if delErr := s.repo.SoftDelete(ctx, existing.ID); delErr != nil && !errors.Is(delErr, domain.ErrIntegrationNotFound) {
+			return nil, fmt.Errorf("retire existing shared session: %w", delErr)
+		}
+	case errors.Is(lookupErr, domain.ErrIntegrationNotFound):
+	default:
+		return nil, fmt.Errorf("lookup existing shared session: %w", lookupErr)
+	}
+
+	integrationID := uuid.New()
+	plaintexts := [][]byte{
+		[]byte(params.Credential),
+		nil,
+		nil,
+	}
+	ciphertexts, wrappedDEK, keyVersion, fingerprint, err := s.envelope.EncryptForRow(ctx, integrationID, params.Platform, plaintexts)
+	if err != nil {
+		return nil, fmt.Errorf("envelope encrypt shared session: %w", err)
+	}
+
+	integration := &domain.Integration{
+		ID:                       integrationID,
+		BusinessID:               params.SharedBusinessID,
+		Platform:                 params.Platform,
+		Status:                   domain.IntegrationStatusActive,
+		ExternalID:               externalID,
+		EncryptedAccessToken:     ciphertexts[0],
+		WrappedDEK:               wrappedDEK,
+		KeyVersion:               keyVersion,
+		EncryptionKeyFingerprint: fingerprint,
+		Metadata: map[string]interface{}{
+			"shared_representative": true,
+			"connected_at":          time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	if err := s.repo.Create(ctx, integration); err != nil {
+		return nil, err
+	}
+
+	audit.LogIntegrationConnected(ctx, s.audit, params.SharedBusinessID, uuid.Nil, integration.ID, params.Platform, externalID, params.ActorIP, params.UserAgent, ParsedFormatAccessToken)
 
 	return integration, nil
 }

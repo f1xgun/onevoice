@@ -56,36 +56,37 @@ type RateLimits struct {
 
 // Handlers encapsulates all HTTP handlers consumed by Setup / SetupInternal.
 type Handlers struct {
-	Auth             *handler.AuthHandler
-	Business         *handler.BusinessHandler
-	Integration      *handler.IntegrationHandler
-	Conversation     *handler.ConversationHandler
-	OAuth            *oauth.OAuthHandler
-	Connect          *connect.ConnectHandler
-	InternalToken    *handler.InternalTokenHandler
-	InternalBilling  *handler.InternalBillingHandler // mTLS internal only
-	ChatProxy        *handler.ChatProxyHandler
-	Review           *handler.ReviewHandler
-	PresenceHealth   *handler.PresenceHealthHandler
-	Post             *handler.PostHandler
-	AgentTask        *handler.AgentTaskHandler
-	Telemetry        *handler.TelemetryHandler
-	Project          *handler.ProjectHandler
-	HITL             *handler.HITLHandler
-	Titler           *handler.TitlerHandler
-	Search           *handler.SearchHandler
-	Platforms        *handler.PlatformsHandler
-	Permissions      *handler.PermissionsHandler
-	Members          *handler.MembersHandler
-	Roles            *handler.RolesHandler
-	Invitations      *handler.InvitationsHandler
-	AuditLog         *handler.AuditLogHandler
-	Billing          *handler.BillingHandler
-	UserDeletion     *handler.UserDeletionHandler
-	BusinessDeletion *handler.BusinessDeletionHandler
-	Consents         *handler.ConsentsHandler
-	Feedback         *handler.FeedbackHandler
-	ChannelRequest   *handler.ChannelRequestHandler
+	Auth                 *handler.AuthHandler
+	Business             *handler.BusinessHandler
+	Integration          *handler.IntegrationHandler
+	Conversation         *handler.ConversationHandler
+	OAuth                *oauth.OAuthHandler
+	Connect              *connect.ConnectHandler
+	InternalToken        *handler.InternalTokenHandler
+	InternalBilling      *handler.InternalBillingHandler      // mTLS internal only
+	InternalYandexShared *handler.InternalYandexSharedHandler // mTLS internal only
+	ChatProxy            *handler.ChatProxyHandler
+	Review               *handler.ReviewHandler
+	PresenceHealth       *handler.PresenceHealthHandler
+	Post                 *handler.PostHandler
+	AgentTask            *handler.AgentTaskHandler
+	Telemetry            *handler.TelemetryHandler
+	Project              *handler.ProjectHandler
+	HITL                 *handler.HITLHandler
+	Titler               *handler.TitlerHandler
+	Search               *handler.SearchHandler
+	Platforms            *handler.PlatformsHandler
+	Permissions          *handler.PermissionsHandler
+	Members              *handler.MembersHandler
+	Roles                *handler.RolesHandler
+	Invitations          *handler.InvitationsHandler
+	AuditLog             *handler.AuditLogHandler
+	Billing              *handler.BillingHandler
+	UserDeletion         *handler.UserDeletionHandler
+	BusinessDeletion     *handler.BusinessDeletionHandler
+	Consents             *handler.ConsentsHandler
+	Feedback             *handler.FeedbackHandler
+	ChannelRequest       *handler.ChannelRequestHandler
 }
 
 // Setup creates and configures the public Chi router. See
@@ -254,6 +255,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(integWith).Post("/integrations/yandex_business/probe", handlers.OAuth.ProbeYandexBusiness)
 				r.With(integWith).Post("/integrations/yandex_business/companies", handlers.OAuth.ListYandexCompanies)
 				r.With(integWith).Post("/integrations/yandex_business/connect", handlers.OAuth.ConnectYandexBusiness)
+				r.With(integWith).Post("/integrations/yandex_business/connect-delegated", handlers.OAuth.ConnectDelegatedYandexBusiness)
+				r.With(integWith).Post("/integrations/yandex_business/verify-access", handlers.OAuth.VerifyYandexBusinessAccess)
 				r.With(integWith).Post("/integrations/yandex_business/{id}/refresh-name", handlers.OAuth.RefreshYandexBusinessName)
 				r.With(integWith).Post("/integrations/google_business/select-location", handlers.OAuth.GoogleSelectLocation)
 				r.With(integWith).Post("/integrations/telegram/verify", handlers.Connect.VerifyTelegramLogin)
@@ -402,6 +405,13 @@ func SetupInternal(handlers *Handlers, hc *health.Checker, cfg *config.Config) *
 			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))
 			r.Post("/internal/v1/billing/usage_logs", handlers.InternalBilling.LogUsage)
 			r.Get("/internal/v1/billing/daily_spend", handlers.InternalBilling.GetDailySpend)
+		})
+	}
+
+	if handlers.InternalYandexShared != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))
+			r.Post("/internal/v1/yandex/shared-session", handlers.InternalYandexShared.SetSharedSession)
 		})
 	}
 
