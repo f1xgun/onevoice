@@ -89,6 +89,24 @@ func (h *ConnectHandler) telegramGetMe(ctx context.Context, botToken string) (in
 	return meResp.Result.ID, nil
 }
 
+// cachedTelegramBotID returns the bot's numeric id for a token, memoized for the
+// process lifetime. Because the id is invariant for a fixed bot token, the
+// health probe — which runs for every active Telegram channel on each ticker
+// pass — resolves it once instead of calling getMe per channel against the
+// single shared bot token. Only successful lookups are cached; a transient getMe
+// failure is returned to the caller (which fails soft) and retried next time.
+func (h *ConnectHandler) cachedTelegramBotID(ctx context.Context, botToken string) (int64, error) {
+	if v, ok := h.botIDCache.Load(botToken); ok {
+		return v.(int64), nil
+	}
+	id, err := h.telegramGetMe(ctx, botToken)
+	if err != nil {
+		return 0, err
+	}
+	h.botIDCache.Store(botToken, id)
+	return id, nil
+}
+
 // telegramGetChatMember reads the bot's membership record in a chat so the
 // health evaluator can decide whether the bot still has post rights. botID is
 // the bot's own numeric id (from telegramGetMe). Errors are classified as
@@ -151,7 +169,7 @@ func hasForbiddenPrefix(desc string) bool {
 func (h *ConnectHandler) EvaluateTelegramHealth(ctx context.Context, botToken, chatID string) connhealth.Result {
 	now := time.Now().UTC()
 	chatType := h.telegramChatType(ctx, botToken, chatID)
-	botID, err := h.telegramGetMe(ctx, botToken)
+	botID, err := h.cachedTelegramBotID(ctx, botToken)
 	if err != nil {
 		return inconclusiveOrBroken(err, now)
 	}
