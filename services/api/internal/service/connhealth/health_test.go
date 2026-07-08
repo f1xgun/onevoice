@@ -5,6 +5,51 @@ import (
 	"time"
 )
 
+// TestHealthPatch_TouchesOnlyHealthKey is the clobber-safety guard: the health
+// write patch must contain ONLY the connection_health key, so the targeted
+// jsonb_set that persists it can never rewrite a sibling metadata key
+// (telegram_user_id, channel_title, access_verified) on the same row.
+func TestHealthPatch_TouchesOnlyHealthKey(t *testing.T) {
+	existing := map[string]interface{}{
+		"telegram_user_id": "555",
+		"channel_title":    "Кафе",
+		"access_verified":  true,
+	}
+	patch := HealthPatch(existing, Result{Status: StatusBroken, ReasonCode: ReasonTelegramNotAdmin, CheckedAt: time.Now()})
+
+	if len(patch) != 1 {
+		t.Fatalf("health patch must touch exactly one metadata key, got %d: %v", len(patch), patch)
+	}
+	sub, ok := patch[MetadataKey].(map[string]interface{})
+	if !ok {
+		t.Fatalf("health patch must set only the %q sub-object", MetadataKey)
+	}
+	if sub["status"] != string(StatusBroken) {
+		t.Fatalf("expected the broken verdict in the patch, got %v", sub["status"])
+	}
+	for _, sibling := range []string{"telegram_user_id", "channel_title", "access_verified"} {
+		if _, present := patch[sibling]; present {
+			t.Fatalf("health patch must NOT include sibling key %q (would clobber it)", sibling)
+		}
+	}
+}
+
+// TestHealthPatch_PreservesPriorNudgedAt: a routine health write must carry the
+// existing owner-nudge throttle stamp forward so the jsonb_set (which replaces
+// the whole connection_health object) does not drop it.
+func TestHealthPatch_PreservesPriorNudgedAt(t *testing.T) {
+	nudgedAt := time.Date(2026, 7, 7, 9, 0, 0, 0, time.UTC)
+	existing := MergeNudgedAt(
+		MergeIntoMetadata(nil, Result{Status: StatusBroken, ReasonCode: ReasonYandexSessionExpiry, CheckedAt: nudgedAt.Add(-time.Hour)}),
+		nudgedAt,
+	)
+	patch := HealthPatch(existing, Result{Status: StatusBroken, ReasonCode: ReasonYandexSessionExpiry, CheckedAt: time.Now()})
+	sub := patch[MetadataKey].(map[string]interface{})
+	if sub["nudged_at"] != nudgedAt.UTC().Format(time.RFC3339) {
+		t.Fatalf("health patch dropped the prior nudged_at throttle stamp, got %v", sub["nudged_at"])
+	}
+}
+
 func TestDemoteOnlyIfConclusive_UnknownNeverOverwritesActive(t *testing.T) {
 	checkedAt := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
 	prev := Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: checkedAt.Add(-time.Hour)}

@@ -102,6 +102,9 @@ func (f *fakeRepo) MarkTokenExpired(_ context.Context, _ uuid.UUID, _, _ string)
 func (f *fakeRepo) UpdateMetadata(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
 	return nil
 }
+func (f *fakeRepo) SetMetadataKeys(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
+	return nil
+}
 func (f *fakeRepo) UpdateExternalID(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }

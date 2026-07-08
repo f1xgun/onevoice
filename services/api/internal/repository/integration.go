@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -244,6 +245,49 @@ func (r *integrationRepository) UpdateMetadata(ctx context.Context, id uuid.UUID
 		return domain.ErrIntegrationNotFound
 	}
 
+	return nil
+}
+
+// SetMetadataKeys writes only the supplied metadata sub-keys via a chained
+// server-side jsonb_set, leaving every other key in the metadata JSONB
+// untouched. Each value is marshaled to its own JSONB bind and the jsonb_set
+// calls are chained, so two writers of DIFFERENT sub-keys cannot clobber each
+// other: there is no whole-map read-modify-write window. This is the write path
+// for the connection-health verdict (sub-key connection_health), which the
+// proactive health worker now stamps on every active Telegram/VK/Yandex row —
+// rows that also carry connect-critical keys (telegram_user_id, channel_title,
+// access_verified) written by concurrent connect/owner-bind flows. A whole-map
+// UpdateMetadata built from a stale snapshot could silently revert those; this
+// targeted write cannot. RowsAffected==0 (missing or soft-deleted row) maps to
+// ErrIntegrationNotFound.
+func (r *integrationRepository) SetMetadataKeys(ctx context.Context, id uuid.UUID, keys map[string]interface{}) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	expr := "coalesce(metadata, '{}'::jsonb)"
+	args := []any{id}
+	for key, val := range keys {
+		blob, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Errorf("marshal metadata key %q: %w", key, err)
+		}
+		args = append(args, string(blob))
+		expr = fmt.Sprintf("jsonb_set(%s, '{%s}', $%d::jsonb)", expr, quoteJSONBPathKey(key), len(args))
+	}
+
+	sql := fmt.Sprintf(
+		"UPDATE integrations SET metadata = %s, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+		expr,
+	)
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("set integration metadata keys: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrIntegrationNotFound
+	}
 	return nil
 }
 

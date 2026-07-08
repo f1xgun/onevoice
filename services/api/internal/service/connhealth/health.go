@@ -129,6 +129,25 @@ func MergeIntoMetadata(existing map[string]interface{}, res Result) map[string]i
 	return out
 }
 
+// HealthPatch returns the targeted metadata patch that sets ONLY the
+// connection_health sub-object (status/reason_code/checked_at, preserving any
+// prior nudged_at). It is persisted via a server-side jsonb_set that touches
+// just this key, so sibling keys (telegram_user_id, channel_title,
+// access_verified, …) written by a concurrent connect/owner-bind flow can never
+// be reverted by a routine health write — the whole-map write path could. The
+// returned map is the { connection_health: {...} } patch, not the full metadata.
+func HealthPatch(existing map[string]interface{}, res Result) map[string]interface{} {
+	sub := map[string]interface{}{
+		"status":      string(res.Status),
+		"reason_code": res.ReasonCode,
+		"checked_at":  res.CheckedAt.UTC().Format(time.RFC3339),
+	}
+	if nudged := ReadNudgedAt(existing); !nudged.IsZero() {
+		sub["nudged_at"] = nudged.UTC().Format(time.RFC3339)
+	}
+	return map[string]interface{}{MetadataKey: sub}
+}
+
 // MergeNudgedAt returns a NEW metadata map identical to existing but with the
 // connection_health.nudged_at stamp set to at (or cleared when at is zero),
 // preserving the current status/reason_code/checked_at. Used by the worker to
