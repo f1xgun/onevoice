@@ -76,6 +76,43 @@ func TestAssertPermalinkSegment_EmptyPermalink(t *testing.T) {
 	}
 }
 
+// TestAssertPermalinkSegment_SegmentAnchored proves the assertion matches whole
+// path SEGMENTS, not a raw substring: a permalink smuggled into a query
+// parameter or fragment must NOT satisfy the check even though the literal
+// "/sprav/<permalink>/" appears in the URL. Fail-on-revert: a substring Contains
+// match passes the query/fragment cases and this test fails.
+//
+// The foreign-host case documents the composition boundary: this assertion
+// scopes the PATH only; host anchoring is the canary's HasPrefix(baseURL) check
+// that runs before it, so a same-path foreign host passes here by design and is
+// rejected upstream.
+func TestAssertPermalinkSegment_SegmentAnchored(t *testing.T) {
+	const permA = "114697172504"
+
+	cases := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"real sprav edit page", "https://yandex.ru/sprav/114697172504/p/edit", false},
+		{"permalink smuggled in query", "https://yandex.ru/sprav/999/redirect?to=/sprav/114697172504/", true},
+		{"permalink smuggled in fragment", "https://yandex.ru/sprav/999/p/edit#/sprav/114697172504/", true},
+		{"same-path foreign host (canary rejects)", "https://evil.com/sprav/114697172504/p/edit", false},
+		{"wrong org on the real host", "https://yandex.ru/sprav/999/p/edit", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := assertPermalinkSegment(tc.url, permA)
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected isolation rejection for %q, got nil", tc.url)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("expected %q to pass the segment assertion, got: %v", tc.url, err)
+			}
+		})
+	}
+}
+
 // TestDelegatedBrowser_NavigateRejectsMismatchedOrg is the end-to-end isolation
 // invariant: a delegated BusinessBrowser for business A (permalink A) whose page
 // somehow lands on business B's org URL must abort BEFORE any DOM read/write.

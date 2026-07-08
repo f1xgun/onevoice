@@ -22,13 +22,10 @@ var ErrNoPermalink = errors.New("yandexorg: no numeric permalink found in input"
 // embedded in a Maps/Sprav path segment.
 var numericPermalink = regexp.MustCompile(`^\d+$`)
 
-// orgIDInPath extracts the numeric id from the known Yandex URL shapes:
-//   - /sprav/<id>/...            (Sprav business console)
-//   - /maps/org/<slug>/<id>/...  (Maps org card, slug then id)
-//   - /maps/org/<id>/...         (Maps org card, id only)
-//
-// The last all-numeric path segment is the org id in every observed shape.
-var orgIDInPath = regexp.MustCompile(`(?:/sprav/|/maps/org/[^/]*?/?)(\d{4,})`)
+// numericSegment matches one fully-numeric path segment of at least 4 digits (a
+// whole /<digits>/ segment, not a digit run inside a slug). Real Yandex org ids
+// are long; a shorter fully-numeric segment (e.g. a page number) is never the id.
+var numericSegment = regexp.MustCompile(`^\d{4,}$`)
 
 // ParsePermalink extracts the numeric Yandex organization permalink from a
 // pasted value. It accepts either a bare numeric permalink or a full
@@ -53,11 +50,49 @@ func ParsePermalink(input string) (string, error) {
 	if u, err := url.Parse(trimmed); err == nil && u.Path != "" {
 		candidate = u.Path
 	}
-	if m := orgIDInPath.FindStringSubmatch(candidate); m != nil {
-		return m[1], nil
+	if id := orgIDFromPath(candidate); id != "" {
+		return id, nil
 	}
-	if m := orgIDInPath.FindStringSubmatch(trimmed); m != nil {
-		return m[1], nil
+	if id := orgIDFromPath(trimmed); id != "" {
+		return id, nil
 	}
 	return "", ErrNoPermalink
+}
+
+// orgIDFromPath extracts the org id from a recognized Sprav/Maps org path,
+// anchoring to the marker so a digit-bearing slug can never be mistaken for the
+// id and an unrelated URL with a stray numeric segment is rejected.
+//
+//   - /sprav/<id>/...           → the id is the FIRST segment after /sprav/.
+//   - /maps/org/<id>/...        → the id is the FIRST numeric segment after
+//   - /maps/org/<slug>/<id>/...    /maps/org/ (the slug, which may itself
+//     contain digits like "name-1234", is skipped because it is not a
+//     fully-numeric segment).
+//
+// Returns "" when no marker is present or no ≥4-digit segment follows it.
+func orgIDFromPath(path string) string {
+	segments := strings.Split(path, "/")
+	for i := 0; i < len(segments); i++ {
+		switch {
+		case segments[i] == "sprav" && i+1 < len(segments) && numericSegment.MatchString(segments[i+1]):
+			return segments[i+1]
+		case segments[i] == "maps" && i+1 < len(segments) && segments[i+1] == "org":
+			if id := firstNumericSegment(segments[i+2:]); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+// firstNumericSegment returns the first fully-numeric (≥4-digit) segment in
+// segments, or "". Used for the Maps org shape, where the id follows an optional
+// slug and precedes any tab (/reviews, /gallery, ...).
+func firstNumericSegment(segments []string) string {
+	for _, seg := range segments {
+		if numericSegment.MatchString(seg) {
+			return seg
+		}
+	}
+	return ""
 }

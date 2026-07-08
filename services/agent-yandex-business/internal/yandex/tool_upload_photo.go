@@ -44,7 +44,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			return fmt.Errorf("navigate to photos page: %w", err)
 		}
 		closePopups(page)
-		if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+		if err := bb.guardSession(page); err != nil {
 			return err
 		}
 		humanDelay()

@@ -42,6 +42,21 @@ var explicitDenyHosts = map[string]struct{}{
 	"yandex.ru":        {},
 }
 
+// pathScopedAllowHosts maps a denied bare host to the path prefixes on that host
+// that ARE in scope. yandex.ru is denied at the host level (its root and
+// siblings like mail. leak Session_id), but the entire delegated and legacy RPA
+// runs against yandex.ru/sprav/<permalink>/... — so /sprav/ must be allowed by
+// path or enforce mode would abort the primary navigation of every action. Only
+// the Sprav console tree is opened here; anything else on yandex.ru stays out of
+// scope.
+var pathScopedAllowHosts = map[string][]string{
+	"yandex.ru": {"/sprav/"},
+}
+
+// scopeAllowed reports whether a host is in scope by host alone. It is the
+// host-level allow/deny used by tests and by scopeAllowedURL as the first gate;
+// path-scoped hosts (see pathScopedAllowHosts) return false here and are
+// admitted only via scopeAllowedURL with a matching path.
 func scopeAllowed(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {
@@ -55,6 +70,28 @@ func scopeAllowed(host string) bool {
 	}
 	for _, suffix := range allowedHostSuffixes {
 		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// scopeAllowedURL reports whether a request to host+path is in scope. It admits
+// anything scopeAllowed admits by host, plus a host-denied-but-path-scoped host
+// (yandex.ru) when the request path falls under an allowed prefix. This is what
+// makes enforce mode usable for the delegated pool: yandex.ru/sprav/... is
+// allowed while yandex.ru root and mail/disk/etc. remain blocked.
+func scopeAllowedURL(host, path string) bool {
+	if scopeAllowed(host) {
+		return true
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	prefixes, ok := pathScopedAllowHosts[host]
+	if !ok {
+		return false
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(path, prefix) {
 			return true
 		}
 	}
@@ -85,7 +122,7 @@ func installScopeGateMode(ctx context.Context, bCtx routeRegistrar, businessID u
 			return
 		}
 		host := strings.ToLower(u.Hostname())
-		if scopeAllowed(host) {
+		if scopeAllowedURL(host, u.Path) {
 			_ = route.Continue()
 			return
 		}

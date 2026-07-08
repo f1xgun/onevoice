@@ -21,6 +21,9 @@ func TestParsePermalink_Valid(t *testing.T) {
 		{"maps org url id only", "https://yandex.ru/maps/org/114697172504/", "114697172504"},
 		{"maps org url with reviews tab", "https://yandex.ru/maps/org/coffee/114697172504/reviews/", "114697172504"},
 		{"path fragment without scheme", "/sprav/114697172504/p/edit", "114697172504"},
+		{"maps org digit-bearing slug then id", "https://yandex.ru/maps/org/name-1234/98765432/", "98765432"},
+		{"maps org digit-slug id and tab", "https://yandex.ru/maps/org/coffee-2024/114697172504/reviews/", "114697172504"},
+		{"maps org multi-digit-slug then id", "https://yandex.ru/maps/org/cafe-1-2-3/555555/reviews", "555555"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

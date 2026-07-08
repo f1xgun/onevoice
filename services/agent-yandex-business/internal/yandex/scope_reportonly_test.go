@@ -64,3 +64,69 @@ func TestScopeGate_Enforce_AbortsUnchanged(t *testing.T) {
 	assert.True(t, route.aborted.Load(), "enforcing mode must abort an out-of-scope host")
 	assert.False(t, route.continued.Load())
 }
+
+// TestScopeGate_Enforce_AllowsSpravNavigation is the enforceability invariant:
+// under enforce=true the primary delegated navigation (yandex.ru/sprav/...) must
+// be CONTINUED, not aborted, while yandex.ru root and mail.yandex.ru still
+// abort. Without the path-scoped allow, yandex.ru is a bare-host deny and enforce
+// mode would kill every real Sprav action — making the hardening unusable.
+// Fail-on-revert: dropping the /sprav/ path allow makes the sprav navigation
+// abort and this test fails.
+func TestScopeGate_Enforce_AllowsSpravNavigation(t *testing.T) {
+	cases := []struct {
+		name       string
+		reqURL     string
+		wantAbort  bool
+		wantResult string
+	}{
+		{"sprav edit page continues", "https://yandex.ru/sprav/114697172504/p/edit", false, "continue"},
+		{"sprav reviews continues", "https://yandex.ru/sprav/114697172504/reviews", false, "continue"},
+		{"sprav companies continues", "https://yandex.ru/sprav/companies/?no_redirect=1", false, "continue"},
+		{"yandex.ru root aborts", "https://yandex.ru/", true, "abort"},
+		{"yandex.ru non-sprav aborts", "https://yandex.ru/maps/org/114697172504/", true, "abort"},
+		{"mail.yandex.ru aborts", "https://mail.yandex.ru/inbox", true, "abort"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bCtx := &fakeBrowserContext{}
+			err := installScopeGateMode(context.Background(), bCtx, uuid.New(), audit.Nop(), slog.Default(), true)
+			require.NoError(t, err)
+			require.NotNil(t, bCtx.handler)
+
+			route := &fakeRoute{reqURL: tc.reqURL}
+			bCtx.handler(route)
+
+			if tc.wantAbort {
+				assert.True(t, route.aborted.Load(), "enforce mode must abort %s", tc.reqURL)
+				assert.False(t, route.continued.Load())
+				return
+			}
+			assert.True(t, route.continued.Load(), "enforce mode must CONTINUE the primary sprav navigation %s", tc.reqURL)
+			assert.False(t, route.aborted.Load(), "enforce mode must not abort in-scope sprav navigation %s", tc.reqURL)
+		})
+	}
+}
+
+// TestScopeAllowedURL_PathScoping directly exercises the path-scoped predicate:
+// yandex.ru is admitted only under /sprav/, denied at root/other paths, while
+// host-level allows (business.yandex.ru) and denies (mail.yandex.ru) are
+// unchanged regardless of path.
+func TestScopeAllowedURL_PathScoping(t *testing.T) {
+	cases := []struct {
+		host string
+		path string
+		want bool
+	}{
+		{"yandex.ru", "/sprav/114697172504/p/edit", true},
+		{"yandex.ru", "/sprav/companies/", true},
+		{"yandex.ru", "/", false},
+		{"yandex.ru", "/maps/org/114697172504/", false},
+		{"mail.yandex.ru", "/sprav/whatever", false},
+		{"business.yandex.ru", "/anything", true},
+	}
+	for _, tc := range cases {
+		if got := scopeAllowedURL(tc.host, tc.path); got != tc.want {
+			t.Fatalf("scopeAllowedURL(%q, %q) = %v, want %v", tc.host, tc.path, got, tc.want)
+		}
+	}
+}

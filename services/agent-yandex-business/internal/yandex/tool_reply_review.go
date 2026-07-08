@@ -56,8 +56,9 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 		}); err != nil {
 			return fmt.Errorf("navigate to reviews: %w", err)
 		}
+		closePopups(page)
 
-		if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+		if err := bb.guardSession(page); err != nil {
 			return err
 		}
 		humanDelay()

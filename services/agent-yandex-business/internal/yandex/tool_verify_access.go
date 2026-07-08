@@ -40,10 +40,7 @@ func (bb *BusinessBrowser) VerifyAccess(ctx context.Context) (bool, error) {
 		}
 		closePopups(page)
 
-		if err := bb.checkSession(page); err != nil {
-			return err
-		}
-		if err := bb.assertTenant(page); err != nil {
+		if err := bb.guardSession(page); err != nil {
 			return err
 		}
 

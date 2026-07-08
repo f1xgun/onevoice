@@ -109,6 +109,20 @@ func (bb *BusinessBrowser) checkSession(page playwright.Page) error {
 	return checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID)
 }
 
+// guardSession is the single isolation checkpoint every tool runs immediately
+// after a page.Goto (and its popup dismissal), before any DOM read or write.
+// It runs the canary first (evict-all for delegated browsers, per-business
+// evict otherwise) and then the permalink-segment tenant assertion, so both the
+// shared evict-all self-heal and the /sprav/<permalink>/ isolation invariant
+// apply on EVERY delegated navigation — read and write alike — not just the
+// edit-page path. assertTenant is a no-op for per-business browsers.
+func (bb *BusinessBrowser) guardSession(page playwright.Page) error {
+	if err := bb.checkSession(page); err != nil {
+		return err
+	}
+	return bb.assertTenant(page)
+}
+
 // navigateToEditPage loads the main edit page and dismisses popups.
 // Shared by GetInfo, UpdateInfo, and UpdateHours — these all start from the
 // /p/edit/ page and dismiss the same set of overlays before reading or
@@ -123,10 +137,7 @@ func (bb *BusinessBrowser) navigateToEditPage(page playwright.Page) error {
 		return fmt.Errorf("navigate to edit page: %w", err)
 	}
 	closePopups(page)
-	if err := bb.checkSession(page); err != nil {
-		return err
-	}
-	if err := bb.assertTenant(page); err != nil {
+	if err := bb.guardSession(page); err != nil {
 		return err
 	}
 	humanDelay()
