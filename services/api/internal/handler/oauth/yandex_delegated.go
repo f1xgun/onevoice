@@ -33,6 +33,33 @@ func (h *OAuthHandler) delegatedConfigured() bool {
 	return strings.TrimSpace(h.cfg.YandexRepLogin) != "" && strings.TrimSpace(h.cfg.YandexSharedBusinessID) != ""
 }
 
+// GetYandexDelegatedConfig reports whether the delegated-representative access
+// plane is provisioned on this deployment and, when it is, the shared
+// representative login the owner must add to their organization. The frontend
+// uses this to decide whether to lead with the delegated connect flow or fall
+// back to cookie paste. RepLogin is a deployment identity meant to be shared
+// with owners, so it is safe to return to any member who can connect.
+func (h *OAuthHandler) GetYandexDelegatedConfig(w http.ResponseWriter, r *http.Request) {
+	if _, ok := authz.BusinessContextFromCtx(r.Context()); !ok {
+		slog.ErrorContext(r.Context(), "GetYandexDelegatedConfig: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	available := h.delegatedConfigured()
+	repLogin := ""
+	if available {
+		repLogin = strings.TrimSpace(h.cfg.YandexRepLogin)
+	}
+	writeJSON(w, http.StatusOK, openapi.YandexDelegatedConfigResponse{
+		Available: available,
+		RepLogin:  repLogin,
+	})
+}
+
 // ConnectDelegatedYandexBusiness stores a permalink-only delegated integration.
 // The owner provides only their org permalink (or a Maps/Sprav URL); no customer
 // credential is captured. The integration carries an empty access token,

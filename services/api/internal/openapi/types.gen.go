@@ -1937,6 +1937,15 @@ type YandexCookiesRequest struct {
 	Cookies string `json:"cookies" validate:"required"`
 }
 
+// YandexDelegatedConfigResponse defines model for YandexDelegatedConfigResponse.
+type YandexDelegatedConfigResponse struct {
+	// Available True when delegated-representative access is provisioned on this deployment (both the shared representative login and the shared session are configured). When false, the delegated connect flow is unavailable and clients should fall back to cookie paste.
+	Available bool `json:"available" validate:"required"`
+
+	// RepLogin The shared representative Yandex login owners must add as a representative to their organization. Empty when not configured.
+	RepLogin string `json:"rep_login" validate:"required"`
+}
+
 // YandexProbeResponse defines model for YandexProbeResponse.
 type YandexProbeResponse struct {
 	Error        *string   `json:"error,omitempty"`

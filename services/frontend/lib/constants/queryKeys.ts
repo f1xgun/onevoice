@@ -25,6 +25,8 @@ export const QUERY_KEYS = {
     ['businesses', bizId, 'integrations', 'drift'] as const,
   BUSINESS_VK_COMMUNITIES: (bizId: string | null) =>
     ['businesses', bizId, 'vk-communities'] as const,
+  BUSINESS_YANDEX_DELEGATED_CONFIG: (bizId: string | null) =>
+    ['businesses', bizId, 'yandex-delegated-config'] as const,
   BUSINESS_PROFILE: (bizId: string | null) => ['businesses', bizId, 'business'] as const,
   BUSINESS_VOICE_PROFILE: (bizId: string | null) => ['businesses', bizId, 'voice-profile'] as const,
   BUSINESS_REVIEWS: (bizId: string | null) => ['businesses', bizId, 'reviews'] as const,

@@ -33,6 +33,9 @@ export interface IntegrationPlatformEndpoints {
   companies?: string;
   communities?: string;
   communityAuthUrl?: (groupId: string) => string;
+  delegatedConfig?: string;
+  connectDelegated?: string;
+  verifyAccess?: string;
 }
 
 export const INTEGRATION_ENDPOINTS: Partial<Record<PlatformId, IntegrationPlatformEndpoints>> = {
@@ -56,6 +59,9 @@ export const INTEGRATION_ENDPOINTS: Partial<Record<PlatformId, IntegrationPlatfo
     connect: '/integrations/yandex_business/connect',
     probe: '/integrations/yandex_business/probe',
     companies: '/integrations/yandex_business/companies',
+    delegatedConfig: '/integrations/yandex_business/delegated-config',
+    connectDelegated: '/integrations/yandex_business/connect-delegated',
+    verifyAccess: '/integrations/yandex_business/verify-access',
   },
 };
 
