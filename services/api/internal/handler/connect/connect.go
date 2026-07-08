@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,6 +84,11 @@ type ConnectHandler struct {
 	ownerLink          TelegramOwnerLinkMinter
 	cfg                ConnectConfig
 	httpClient         *http.Client
+	// botIDCache memoizes the bot's numeric id per bot token. The id is invariant
+	// for a fixed token, so the connection-health probe — run for every active
+	// Telegram channel on each ticker pass — resolves it once instead of calling
+	// getMe per channel against the single shared bot token. Zero value is ready.
+	botIDCache sync.Map
 }
 
 // NewConnectHandler constructs a ConnectHandler. nil integration/business deps

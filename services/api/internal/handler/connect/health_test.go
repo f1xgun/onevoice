@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
@@ -56,6 +57,36 @@ func telegramHealthHandler(t *testing.T, srv *httptest.Server) *ConnectHandler {
 	t.Helper()
 	cfg := ConnectConfig{TelegramBotToken: "bot_token", telegramAPIBaseURL: srv.URL}
 	return NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), nil, cfg, srv.Client())
+}
+
+// TestEvaluateTelegramHealth_CachesBotID proves the bot id is resolved once and
+// reused across probes, so a fleet-wide health pass does not re-call getMe per
+// channel against the single shared bot token.
+func TestEvaluateTelegramHealth_CachesBotID(t *testing.T) {
+	var getMeHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/getMe"):
+			atomic.AddInt32(&getMeHits, 1)
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":777}}`)
+		case strings.Contains(r.URL.Path, "/getChatMember"):
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"status":"administrator","can_post_messages":true}}`)
+		default:
+			_, _ = fmt.Fprint(w, `{"ok":true,"result":{"id":-100,"title":"Ch","type":"channel"}}`)
+		}
+	}))
+	defer srv.Close()
+	h := telegramHealthHandler(t, srv)
+
+	const probes = 5
+	for i := 0; i < probes; i++ {
+		if res := h.EvaluateTelegramHealth(context.Background(), "bot_token", "@ch"); res.Status != connhealth.StatusActive {
+			t.Fatalf("probe %d: expected active, got %+v", i, res)
+		}
+	}
+	if got := atomic.LoadInt32(&getMeHits); got != 1 {
+		t.Fatalf("expected getMe called once across %d probes (bot id cached), got %d", probes, got)
+	}
 }
 
 func TestTelegramGetChatMember_MemberNotAdmin_Broken(t *testing.T) {
