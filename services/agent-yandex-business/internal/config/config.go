@@ -26,6 +26,21 @@ type Config struct {
 	// BrowserPoolMaxContexts bounds the live Playwright BrowserContexts.
 	// 0 disables the cap (dev/test only — production must keep > 0).
 	BrowserPoolMaxContexts int
+
+	// YandexSharedBusinessID is the config-pinned sentinel business under which
+	// the single KMS-wrapped shared representative session cookie JSON is stored
+	// (external_id "__shared_rep__"). Empty disables the delegated-representative
+	// access path fail-closed: any integration resolving with no per-business
+	// credential returns a clear "delegated access not configured" error, and
+	// nothing else changes. Must match the API's YANDEX_SHARED_BUSINESS_ID.
+	YandexSharedBusinessID string
+
+	// ScopeGateEnforce controls the RPA request scope gate. When false (the
+	// default) the gate runs REPORT-ONLY: out-of-scope requests are metered,
+	// audited, and logged but NOT aborted, adding observability without risking
+	// the live RPA on a too-tight allowlist. Set SCOPE_GATE_ENFORCE=true to
+	// hard-block. The gate is always installed (report-only or enforcing).
+	ScopeGateEnforce bool
 }
 
 // Load reads configuration from environment variables with defaults. Returns
@@ -45,6 +60,8 @@ func Load() (*Config, error) {
 		HealthPort:             getEnv("HEALTH_PORT", "8083"),
 		RedisURL:               getEnv("REDIS_URL", "redis://redis:6379"),
 		BrowserPoolMaxContexts: maxContexts,
+		YandexSharedBusinessID: os.Getenv("YANDEX_SHARED_BUSINESS_ID"),
+		ScopeGateEnforce:       os.Getenv("SCOPE_GATE_ENFORCE") == "true",
 	}, nil
 }
 

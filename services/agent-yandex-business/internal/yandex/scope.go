@@ -62,11 +62,26 @@ func scopeAllowed(host string) bool {
 }
 
 func installScopeGate(ctx context.Context, bCtx routeRegistrar, businessID uuid.UUID, auditLog audit.Logger, slogger *slog.Logger) error {
+	return installScopeGateMode(ctx, bCtx, businessID, auditLog, slogger, true)
+}
+
+// installScopeGateMode installs the request gate. When enforce is true a
+// disallowed host is aborted (the original hard-enforcement behavior). When
+// enforce is false the gate runs REPORT-ONLY: it still increments the metric,
+// emits the audit entry, and logs, but Continues the request instead of
+// aborting it — observability without the risk that a too-tight allowlist
+// breaks the live RPA. Report-only is the safe default for the shared
+// delegated pool.
+func installScopeGateMode(ctx context.Context, bCtx routeRegistrar, businessID uuid.UUID, auditLog audit.Logger, slogger *slog.Logger, enforce bool) error {
 	return bCtx.Route("**/*", func(route playwright.Route) {
 		rawURL := route.Request().URL()
 		u, err := url.Parse(rawURL)
 		if err != nil {
-			_ = route.Abort("failed")
+			if enforce {
+				_ = route.Abort("failed")
+				return
+			}
+			_ = route.Continue()
 			return
 		}
 		host := strings.ToLower(u.Hostname())
@@ -76,7 +91,12 @@ func installScopeGate(ctx context.Context, bCtx routeRegistrar, businessID uuid.
 		}
 		metrics.RPAScopeViolationsTotal.WithLabelValues(host).Inc()
 		audit.LogRPAScopeViolation(ctx, auditLog, businessID, host, rawURL)
-		slogger.WarnContext(ctx, "rpa: scope violation blocked", "host", host)
-		_ = route.Abort("blockedbyclient")
+		if enforce {
+			slogger.WarnContext(ctx, "rpa: scope violation blocked", "host", host)
+			_ = route.Abort("blockedbyclient")
+			return
+		}
+		slogger.WarnContext(ctx, "rpa: scope violation (report-only, allowed)", "host", host)
+		_ = route.Continue()
 	})
 }

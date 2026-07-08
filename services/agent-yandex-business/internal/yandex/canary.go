@@ -47,3 +47,45 @@ func checkSessionAndEvict(page playwright.Page, expectedURLPrefix string, pool C
 	}
 	return err
 }
+
+// SharedContextEvictor tears down ALL shared-session browser contexts.
+// Satisfied by BrowserPool.
+type SharedContextEvictor interface {
+	EvictAllShared()
+}
+
+// checkSharedSessionAndEvictAll runs the canary against a shared-session page.
+// Because every delegated org shares ONE representative session, a detected
+// expiry (passport/captcha redirect) means the shared account is dead for
+// everyone — so ALL shared contexts are evicted, not just one. The next
+// WithSharedPage rebuilds from a freshly provisioned shared credential.
+func checkSharedSessionAndEvictAll(page playwright.Page, expectedURLPrefix string, pool SharedContextEvictor) error {
+	err := checkSession(page, expectedURLPrefix)
+	if err != nil && errors.Is(err, ErrSessionExpired) && pool != nil {
+		pool.EvictAllShared()
+	}
+	return err
+}
+
+// assertPermalinkSegment is the multi-tenant isolation invariant for the shared
+// delegated plane. Because all delegated tasks share one browser session, the
+// ONLY thing scoping a page to a tenant is the org permalink. This asserts the
+// live page URL actually contains the /sprav/<permalink>/ segment expected for
+// THIS business before any read or write is allowed. A mismatch — a task for
+// business A somehow pointed at business B's org, or a redirect to a different
+// org — returns a NonRetryableError and MUST abort the operation. permalink is
+// resolved exclusively from the business's own integration row (never from LLM
+// or task args), so this check makes a cross-tenant action impossible even if a
+// wrong permalink reached the RPA layer.
+func assertPermalinkSegment(currentURL, permalink string) error {
+	if permalink == "" {
+		return a2a.NewNonRetryableError(fmt.Errorf("permalink isolation: empty permalink — refusing to act on shared session"))
+	}
+	segment := "/sprav/" + permalink + "/"
+	if !strings.Contains(currentURL, segment) {
+		return a2a.NewNonRetryableError(fmt.Errorf(
+			"permalink isolation: page URL %q does not contain expected segment %q — refusing cross-tenant action",
+			currentURL, segment))
+	}
+	return nil
+}

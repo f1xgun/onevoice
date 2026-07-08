@@ -38,10 +38,13 @@ func run() error {
 	}
 	tokens := agentbase.NewTokenResolver(tc)
 	pool := yandex.NewBrowserPoolWithCap(cfg.BrowserPoolMaxContexts)
+	pool.WithScopeGate(cfg.ScopeGateEnforce, nil, slog.Default())
 	defer pool.Close()
 	dedupe := agentbase.NewDedupeClient(cfg.RedisURL)
 	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyYandexError))
-	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher)
+	shared := agentbase.NewSharedSessionResolver(tokens, cfg.YandexSharedBusinessID)
+	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher).
+		WithSharedSession(shared)
 
 	sweeperCtx, stopSweeper := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSweeper()
@@ -77,4 +80,8 @@ type poolAdapter struct {
 
 func (pa *poolAdapter) ForBusiness(businessID, cookiesJSON, permalink string) agentpkg.YandexBrowser {
 	return pa.pool.ForBusiness(businessID, cookiesJSON, permalink)
+}
+
+func (pa *poolAdapter) ForSharedBusiness(businessID, sharedCookies, permalink string) agentpkg.YandexBrowser {
+	return pa.pool.ForSharedBusiness(businessID, sharedCookies, permalink)
 }
