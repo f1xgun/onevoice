@@ -139,7 +139,7 @@ func TestGetDelegatedConfig_NotConfigured(t *testing.T) {
 	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/delegated-config", nil)
+	req := httptest.NewRequest(http.MethodGet, "/delegated-config", http.NoBody)
 	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.GetYandexDelegatedConfig(rr, req)
@@ -158,7 +158,7 @@ func TestGetDelegatedConfig_Configured(t *testing.T) {
 	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), delegatedCfg, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/delegated-config", nil)
+	req := httptest.NewRequest(http.MethodGet, "/delegated-config", http.NoBody)
 	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.GetYandexDelegatedConfig(rr, req)
@@ -177,7 +177,7 @@ func TestGetDelegatedConfig_NoPermission_Forbidden(t *testing.T) {
 	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), delegatedCfg, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/delegated-config", nil)
+	req := httptest.NewRequest(http.MethodGet, "/delegated-config", http.NoBody)
 	req = req.WithContext(oauthBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.GetYandexDelegatedConfig(rr, req)
