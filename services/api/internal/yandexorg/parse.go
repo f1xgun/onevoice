@@ -32,20 +32,20 @@ var numericSegment = regexp.MustCompile(`^\d{4,}$`)
 // Maps/Sprav URL and returns the numeric id. Non-numeric input, or a URL with
 // no recognizable numeric org id, is rejected — there is no best-effort
 // fallback, because a wrong permalink is a cross-tenant hazard.
+//
+// A bare numeric value is returned as-is; otherwise the org id is pulled from
+// the URL path, with a raw-path scan fallback for a pasted path fragment that
+// has no scheme.
 func ParsePermalink(input string) (string, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
 		return "", ErrEmpty
 	}
 
-	// Bare numeric permalink.
 	if numericPermalink.MatchString(trimmed) {
 		return trimmed, nil
 	}
 
-	// Otherwise treat it as a URL and pull the org id from the path (falling
-	// back to a raw scan when it does not parse as a URL, e.g. a pasted path
-	// fragment without a scheme).
 	candidate := trimmed
 	if u, err := url.Parse(trimmed); err == nil && u.Path != "" {
 		candidate = u.Path
