@@ -26,15 +26,27 @@ COPY services/agent-yandex-business/ ./services/agent-yandex-business/
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    cd services/agent-yandex-business && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/agent ./cmd/main.go && \
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/pw-install ./cmd/install/main.go
+    cd services/agent-yandex-business && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/agent ./cmd/main.go
 
-# Runtime stage — Playwright v1.50.0 has browsers pre-installed
+# Runtime stage — the Playwright v1.50.0 image ships node + browsers (chromium-1155)
+# but NOT the Playwright driver package. playwright-go v0.5001.0 requires driver
+# 1.50.1 laid out as $PLAYWRIGHT_DRIVER_PATH/{node, package/cli.js}. We fetch the
+# driver from the npm registry (unaffected by the Playwright CDN outage) instead
+# of letting playwright-go download it from the decommissioned azureedge/prss CDN.
+# The 1.50.1 driver pins chromium revision 1155, already present in the base image,
+# so no browser download is needed and the build is fully CDN-independent.
 FROM mcr.microsoft.com/playwright:v1.50.0-jammy
 
-# Pre-install playwright-go driver (small ~50MB binary, not browsers)
-COPY --from=builder /app/bin/pw-install /tmp/pw-install
-RUN /tmp/pw-install && rm /tmp/pw-install
+ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
+
+RUN set -eux; \
+    mkdir -p "$PLAYWRIGHT_DRIVER_PATH"; \
+    npm install --prefix /tmp/pw-driver playwright-core@1.50.1 \
+        --no-audit --no-fund --no-package-lock --loglevel=error; \
+    cp -r /tmp/pw-driver/node_modules/playwright-core "$PLAYWRIGHT_DRIVER_PATH/package"; \
+    ln -sf "$(command -v node)" "$PLAYWRIGHT_DRIVER_PATH/node"; \
+    rm -rf /tmp/pw-driver; \
+    "$PLAYWRIGHT_DRIVER_PATH/node" "$PLAYWRIGHT_DRIVER_PATH/package/cli.js" --version
 
 COPY --from=builder /app/bin/agent /agent
 COPY scripts/entrypoint-ulimit.sh /entrypoint.sh
