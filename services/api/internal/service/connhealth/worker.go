@@ -38,17 +38,21 @@ type natsRequester interface {
 }
 
 // integrationLister is the enumeration slice the worker needs.
-// *repository.IntegrationRepository satisfies it.
+// *repository.IntegrationRepository satisfies it. The nudge stamp / clear is
+// written via SetMetadataKeys (targeted jsonb_set on connection_health) so it
+// never clobbers a sibling metadata key.
 type integrationLister interface {
 	ListAllActiveByPlatforms(ctx context.Context, platforms []string) ([]domain.Integration, error)
-	UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error
+	SetMetadataKeys(ctx context.Context, id uuid.UUID, keys map[string]interface{}) error
 }
 
-// Worker is the proactive connection-health ticker. It enumerates active Yandex
-// integrations, re-probes each session, persists the fail-soft verdict, and DMs
-// the bound owner exactly once on a transition into broken. It is a no-op
-// (RunOnce returns nil) when nc is nil, so a Mongo-only deploy simply never
-// nudges.
+// Worker is the proactive connection-health ticker. It enumerates every active
+// Telegram, VK, and Yandex integration, re-probes each, and persists the
+// fail-soft verdict so the dashboard health badge stays live between connects.
+// On a transition into broken it DMs the bound owner exactly once — currently
+// for Yandex only (Telegram/VK record health without a nudge; see
+// nudgeEligible). It is a no-op (RunOnce returns nil) when nc is nil, so a
+// Mongo-only deploy simply never runs a pass.
 type Worker struct {
 	integRepo integrationLister
 	checker   *Checker
@@ -56,8 +60,9 @@ type Worker struct {
 	now       func() time.Time
 }
 
-// NewWorker constructs a Worker. A nil nc leaves the worker recording health
-// without ever dispatching a nudge. The clock defaults to time.Now.
+// NewWorker constructs a Worker. A nil nc makes RunOnce a no-op (Mongo-only
+// mode: no pass runs, so nothing is probed or nudged). The clock defaults to
+// time.Now.
 func NewWorker(integRepo integrationLister, checker *Checker, nc natsRequester) *Worker {
 	return &Worker{
 		integRepo: integRepo,
@@ -67,10 +72,11 @@ func NewWorker(integRepo integrationLister, checker *Checker, nc natsRequester) 
 	}
 }
 
-// RunOnce runs one Yandex-focused pass: enumerate active Yandex integrations,
-// probe+persist each in bounded parallel, and nudge the owner on a fresh break.
-// The owner's private Telegram chat is resolved from the business's active
-// Telegram integration (Yandex rows never carry a telegram_user_id), so a
+// RunOnce runs one pass: enumerate active Telegram, VK, and Yandex
+// integrations, probe+persist each in bounded parallel so the dashboard health
+// badge stays live, and DM the bound owner on a fresh break for nudge-eligible
+// platforms (Yandex today; see nudgeEligible). The owner's private Telegram
+// chat is resolved from the business's active Telegram integration, so a
 // business with no bound Telegram owner records health without ever nudging.
 // Per-integration errors are logged and never abort the pass. Returns nil in
 // Mongo-only mode (nil nc) without touching the fleet.
@@ -80,7 +86,7 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 	}
 
 	integrations, err := w.integRepo.ListAllActiveByPlatforms(ctx,
-		[]string{a2a.AgentYandexBusiness, a2a.AgentTelegram})
+		[]string{a2a.AgentYandexBusiness, a2a.AgentTelegram, a2a.AgentVK})
 	if err != nil {
 		return fmt.Errorf("connhealth worker: list integrations: %w", err)
 	}
@@ -91,9 +97,6 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
 	for i := range integrations {
 		integ := integrations[i]
-		if integ.Platform != a2a.AgentYandexBusiness {
-			continue
-		}
 		ownerChat := ownerChats[integ.BusinessID]
 		wg.Add(1)
 		sem <- struct{}{}
@@ -115,18 +118,23 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 // the check so a transition into broken is detectable. ownerChat is the owner's
 // private Telegram chat id ("" when the business has no bound owner).
 //
-// The nudge/clear write layers on top of the metadata CheckIntegration just
-// persisted (the returned fresh map), never the stale pre-check integ.Metadata:
-// the repository UpdateMetadata replaces the whole metadata column, so basing
-// the second write on the pre-check copy would overwrite the fresh verdict and
-// leave the dashboard badge disagreeing with the DM (broken lost) or a
-// recovered channel stuck broken forever.
+// Telegram and VK rows are probed+persisted for a live dashboard badge but are
+// not nudge-eligible, so they return right after the health write; only Yandex
+// reaches the nudge/clear switch. The nudge/clear write layers its nudged_at
+// onto the { connection_health: {...} } patch CheckIntegration returned and
+// re-persists it through the same targeted jsonb_set, so it touches only the
+// connection_health key — never a sibling like telegram_user_id — and never
+// re-persists the stale pre-check integ.Metadata.
 func (w *Worker) processIntegration(ctx context.Context, integ domain.Integration, ownerChat string) error {
 	prev := ReadFromMetadata(integ.Metadata)
 
 	effective, fresh, err := w.checker.CheckIntegration(ctx, integ)
 	if err != nil {
 		return fmt.Errorf("check integration: %w", err)
+	}
+
+	if !nudgeEligible(integ.Platform) {
+		return nil
 	}
 
 	switch {
@@ -136,6 +144,16 @@ func (w *Worker) processIntegration(ctx context.Context, integ domain.Integratio
 		w.clearNudge(ctx, integ, fresh)
 	}
 	return nil
+}
+
+// nudgeEligible reports whether a fresh break on this platform triggers a
+// proactive owner reconnect-DM. Telegram and VK health is probed and persisted
+// every pass (so the dashboard badge stays live), but only Yandex currently
+// DMs the owner — extending the reconnect DM to Telegram/VK is a separate
+// owner-communication decision. A non-eligible platform still gets its verdict
+// persisted by CheckIntegration above; only the DM is withheld.
+func nudgeEligible(platform string) bool {
+	return platform == a2a.AgentYandexBusiness
 }
 
 // crossedIntoBroken reports whether the status transitioned INTO broken this
@@ -159,9 +177,10 @@ func (w *Worker) nudgeDue(integ domain.Integration) bool {
 // nudgeAndStamp DMs the bound owner a localized reconnect nudge and, on
 // dispatch success, stamps nudged_at so a retry or the next tick does not
 // re-nudge. A business without a bound owner chat records health but is never
-// nudged (no side channel to reach the owner). fresh is the metadata
-// CheckIntegration just persisted (carrying the new broken verdict); the stamp
-// layers on top of it so the whole-column write does not revert the verdict.
+// nudged (no side channel to reach the owner). fresh is the
+// { connection_health: {...} } patch CheckIntegration returned; the stamp layers
+// nudged_at onto it and re-persists through the same targeted jsonb_set, so it
+// keeps the fresh verdict and touches no sibling key.
 func (w *Worker) nudgeAndStamp(ctx context.Context, integ domain.Integration, fresh map[string]interface{}, chatID string) {
 	if chatID == "" {
 		return
@@ -175,7 +194,7 @@ func (w *Worker) nudgeAndStamp(ctx context.Context, integ domain.Integration, fr
 	}
 
 	stamped := MergeNudgedAt(fresh, now)
-	if err := w.integRepo.UpdateMetadata(ctx, integ.ID, stamped); err != nil {
+	if err := w.integRepo.SetMetadataKeys(ctx, integ.ID, stamped); err != nil {
 		slog.WarnContext(ctx, "connhealth worker: nudge stamp failed",
 			"business_id", integ.BusinessID, "error", err)
 	}
@@ -215,13 +234,13 @@ func (w *Worker) dispatchNudge(ctx context.Context, integ domain.Integration, ch
 }
 
 // clearNudge wipes the throttle key once a broken channel recovers to active, so
-// a future break re-nudges the owner. fresh is the metadata CheckIntegration
-// just persisted (carrying the new active verdict); clearing nudged_at layers on
-// top of it so the whole-column write does not revert the recovered status back
-// to the stale broken sub-object.
+// a future break re-nudges the owner. fresh is the { connection_health: {...} }
+// patch CheckIntegration returned (carrying the new active verdict); clearing
+// nudged_at layers onto it and re-persists via the same targeted jsonb_set, so
+// the recovered status is kept and no sibling key is touched.
 func (w *Worker) clearNudge(ctx context.Context, integ domain.Integration, fresh map[string]interface{}) {
 	cleared := MergeNudgedAt(fresh, time.Time{})
-	if err := w.integRepo.UpdateMetadata(ctx, integ.ID, cleared); err != nil {
+	if err := w.integRepo.SetMetadataKeys(ctx, integ.ID, cleared); err != nil {
 		slog.WarnContext(ctx, "connhealth worker: nudge clear failed",
 			"business_id", integ.BusinessID, "error", err)
 	}

@@ -41,10 +41,13 @@ type Dispatcher interface {
 }
 
 // IntegrationStore is the repository slice the checker enumerates and writes
-// through. *repository.IntegrationRepository satisfies it.
+// through. *repository.IntegrationRepository satisfies it. The health verdict is
+// persisted via SetMetadataKeys (targeted jsonb_set on the connection_health
+// sub-key) so a routine health write never clobbers a sibling metadata key
+// written by a concurrent connect/owner-bind flow.
 type IntegrationStore interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
-	UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error
+	SetMetadataKeys(ctx context.Context, id uuid.UUID, keys map[string]interface{}) error
 }
 
 // Checker computes and persists per-integration connection health. It is the
@@ -108,25 +111,25 @@ func (c *Checker) CheckAll(ctx context.Context, businessID uuid.UUID) ([]Integra
 }
 
 // CheckIntegration probes one integration, applies the fail-soft demotion rule
-// against its prior stored verdict, persists the merged metadata, audits the
-// write, and returns the effective (post-demotion) Result together with the
-// exact metadata map it wrote. Callers that layer a further metadata write on
-// top (the worker's nudge stamp / clear) MUST base that write on the returned
-// map, not on the pre-check integ.Metadata: the repository UpdateMetadata does a
-// whole-column replace, so a second write built from the stale pre-check copy
-// would clobber the fresh verdict this call just persisted. Shared by CheckAll
-// and the worker.
+// against its prior stored verdict, persists the verdict via a targeted
+// jsonb_set on the connection_health sub-key, audits the write, and returns the
+// effective (post-demotion) Result together with the exact patch it wrote. The
+// second return is the { connection_health: {...} } patch (carrying any
+// preserved nudged_at), which the worker layers its nudge stamp / clear onto and
+// re-persists through the same targeted write — so neither write ever touches a
+// sibling key and the stale pre-check integ.Metadata is never re-persisted
+// wholesale. Shared by CheckAll and the worker.
 func (c *Checker) CheckIntegration(ctx context.Context, integ domain.Integration) (Result, map[string]interface{}, error) {
 	prev := ReadFromMetadata(integ.Metadata)
 	probed := c.probePlatform(ctx, integ)
 	effective := DemoteOnlyIfConclusive(prev, probed)
 
-	merged := MergeIntoMetadata(integ.Metadata, effective)
-	if err := c.store.UpdateMetadata(ctx, integ.ID, merged); err != nil {
-		return Result{}, nil, fmt.Errorf("update metadata: %w", err)
+	patch := HealthPatch(integ.Metadata, effective)
+	if err := c.store.SetMetadataKeys(ctx, integ.ID, patch); err != nil {
+		return Result{}, nil, fmt.Errorf("set metadata: %w", err)
 	}
 	audit.LogIntegrationMetadataUpdated(ctx, c.auditLog, integ.BusinessID, integ.ID, integ.Platform, []string{MetadataKey})
-	return effective, merged, nil
+	return effective, patch, nil
 }
 
 // probePlatform routes an integration to its platform checker. An unrecognized

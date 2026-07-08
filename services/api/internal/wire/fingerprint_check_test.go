@@ -56,6 +56,9 @@ func (s *stubIntegrationRepo) MarkTokenExpired(_ context.Context, _ uuid.UUID, _
 func (s *stubIntegrationRepo) UpdateMetadata(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
 	return nil
 }
+func (s *stubIntegrationRepo) SetMetadataKeys(_ context.Context, _ uuid.UUID, _ map[string]interface{}) error {
+	return nil
+}
 func (s *stubIntegrationRepo) UpdateExternalID(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }

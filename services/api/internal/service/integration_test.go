@@ -40,6 +40,7 @@ type mockIntegrationRepository struct {
 	deleteOlderThanFunc               func(ctx context.Context, cutoff time.Time) (int64, error)
 	markTokenExpiredFunc              func(ctx context.Context, businessID uuid.UUID, platform, externalID string) (int64, error)
 	updateMetadataFunc                func(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error
+	setMetadataKeysFunc               func(ctx context.Context, id uuid.UUID, keys map[string]interface{}) error
 	updateExternalIDFunc              func(ctx context.Context, id uuid.UUID, externalID string) error
 }
 
@@ -134,6 +135,13 @@ func (m *mockIntegrationRepository) MarkTokenExpired(ctx context.Context, busine
 func (m *mockIntegrationRepository) UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error {
 	if m.updateMetadataFunc != nil {
 		return m.updateMetadataFunc(ctx, id, metadata)
+	}
+	return nil
+}
+
+func (m *mockIntegrationRepository) SetMetadataKeys(ctx context.Context, id uuid.UUID, keys map[string]interface{}) error {
+	if m.setMetadataKeysFunc != nil {
+		return m.setMetadataKeysFunc(ctx, id, keys)
 	}
 	return nil
 }

@@ -95,6 +95,16 @@ type IntegrationRepository interface {
 	// ErrIntegrationNotFound when no active row matches.
 	UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error
 
+	// SetMetadataKeys writes only the supplied metadata sub-keys via a chained
+	// server-side jsonb_set, preserving every other key in the metadata jsonb.
+	// Unlike UpdateMetadata (whole-column replace), two writers of different
+	// sub-keys cannot clobber each other — there is no whole-map read-modify-write
+	// window — so the proactive connection-health verdict never reverts a sibling
+	// key (telegram_user_id, channel_title, access_verified) written by a
+	// concurrent connect/owner-bind flow. Returns ErrIntegrationNotFound when no
+	// active row matches.
+	SetMetadataKeys(ctx context.Context, id uuid.UUID, keys map[string]interface{}) error
+
 	// UpdateExternalID writes only the external_id of a non-deleted integration
 	// via a targeted single-column UPDATE, leaving status, token, and envelope
 	// columns untouched so a concurrent status flip (e.g. MarkTokenExpired) is

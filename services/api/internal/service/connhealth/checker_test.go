@@ -44,8 +44,30 @@ func newFakeStore(list ...domain.Integration) *fakeStore {
 func (f *fakeStore) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]domain.Integration, error) {
 	return f.list, f.listErr
 }
-func (f *fakeStore) UpdateMetadata(_ context.Context, id uuid.UUID, m map[string]interface{}) error {
-	f.updated[id] = m
+
+// SetMetadataKeys mirrors the repository's targeted jsonb_set: it merges the
+// given top-level keys into the row's CURRENT metadata (a prior write if any,
+// else the seeded list row), replacing each supplied key wholesale and
+// preserving every sibling key.
+func (f *fakeStore) SetMetadataKeys(_ context.Context, id uuid.UUID, keys map[string]interface{}) error {
+	merged := map[string]interface{}{}
+	if cur, ok := f.updated[id]; ok {
+		for k, v := range cur {
+			merged[k] = v
+		}
+	} else {
+		for i := range f.list {
+			if f.list[i].ID == id {
+				for k, v := range f.list[i].Metadata {
+					merged[k] = v
+				}
+			}
+		}
+	}
+	for k, v := range keys {
+		merged[k] = v
+	}
+	f.updated[id] = merged
 	return nil
 }
 

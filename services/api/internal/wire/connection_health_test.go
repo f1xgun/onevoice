@@ -40,6 +40,9 @@ func (b *blockingLister) ListAllActiveByPlatforms(ctx context.Context, _ []strin
 func (b *blockingLister) UpdateMetadata(context.Context, uuid.UUID, map[string]interface{}) error {
 	return nil
 }
+func (b *blockingLister) SetMetadataKeys(context.Context, uuid.UUID, map[string]interface{}) error {
+	return nil
+}
 
 // blockingStore satisfies the checker's store; unused in the lifecycle tests.
 type blockingStore struct{}
@@ -48,6 +51,9 @@ func (blockingStore) ListByBusinessID(context.Context, uuid.UUID) ([]domain.Inte
 	return nil, nil
 }
 func (blockingStore) UpdateMetadata(context.Context, uuid.UUID, map[string]interface{}) error {
+	return nil
+}
+func (blockingStore) SetMetadataKeys(context.Context, uuid.UUID, map[string]interface{}) error {
 	return nil
 }
 
