@@ -236,6 +236,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/integrations/vk/communities", handlers.OAuth.VKCommunities)
 				r.Get("/integrations/vk/community-auth-url", handlers.OAuth.VKCommunityAuthURL)
 				r.Get("/integrations/yandex_business/auth-url", handlers.OAuth.GetYandexAuthURL)
+				r.Get("/integrations/yandex_business/delegated-config", handlers.OAuth.GetYandexDelegatedConfig)
 				r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
 				r.Get("/integrations/google_business/locations", handlers.OAuth.GoogleLocations)
 

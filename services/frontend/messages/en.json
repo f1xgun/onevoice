@@ -1135,7 +1135,32 @@
       "unnamedOrg": "Unnamed",
       "fetchOrgsFailed": "Couldn't fetch the list of organizations. Please try again.",
       "connectFailed": "Couldn't connect",
-      "connectedToast": "Connected: {name}"
+      "connectedToast": "Connected: {name}",
+      "delegated": {
+        "intro": "Give OneVoice access to your organization on Yandex — no passwords or cookies. You add our representative to the «Access» section, and we handle the connection.",
+        "step1": "Open Yandex.Business and go to the «Access» section of your organization.",
+        "step2": "Add an employee with the login shown below and the «Administrator» or «Manager» role.",
+        "repLoginLabel": "OneVoice representative login",
+        "copy": "Copy",
+        "copied": "Copied",
+        "copiedToast": "Login copied",
+        "copyFailed": "Couldn't copy — select and copy it manually",
+        "linkLabel": "Link to your organization on Yandex Maps",
+        "linkPlaceholder": "https://yandex.ru/maps/org/…/ or the organization number",
+        "linkHint": "Open your organization card on Yandex Maps and copy the link from the address bar.",
+        "cancel": "Cancel",
+        "connect": "Connect",
+        "pasteFallback": "Connect via cookies (advanced)",
+        "backToDelegated": "← Back to the simple method",
+        "working": "Connecting and checking access…",
+        "workingBody": "We're opening your organization as the representative. This can take up to a minute.",
+        "verifiedToast": "Yandex.Business connected",
+        "unverifiedTitle": "We don't see access yet",
+        "unverifiedBody": "Make sure you added the representative in the «Access» section and that the link points to your organization. Then check again.",
+        "retry": "Check again",
+        "done": "Done",
+        "connectFailed": "Couldn't connect the organization"
+      }
     },
     "googleLocation": {
       "title": "Pick a location",

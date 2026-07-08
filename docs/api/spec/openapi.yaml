@@ -182,6 +182,8 @@ paths:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1connect-delegated
   /businesses/{id}/integrations/yandex_business/verify-access:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1verify-access
+  /businesses/{id}/integrations/yandex_business/delegated-config:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1delegated-config
   /businesses/{id}/integrations/yandex_business/{integrationId}/refresh-name:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1{integrationId}~1refresh-name
   /oauth/vk/callback:
@@ -1297,6 +1299,24 @@ components:
         access_verified:
           type: boolean
           description: True when the shared representative session can reach and edit the org.
+    YandexDelegatedConfigResponse:
+      type: object
+      required:
+      - available
+      - rep_login
+      properties:
+        available:
+          type: boolean
+          description: >-
+            True when delegated-representative access is provisioned on this
+            deployment (both the shared representative login and the shared
+            session are configured). When false, the delegated connect flow is
+            unavailable and clients should fall back to cookie paste.
+        rep_login:
+          type: string
+          description: >-
+            The shared representative Yandex login owners must add as a
+            representative to their organization. Empty when not configured.
     RefreshStartedResponse:
       type: object
       required:

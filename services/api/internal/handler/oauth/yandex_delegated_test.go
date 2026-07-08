@@ -131,6 +131,60 @@ func TestConnectDelegated_CrossTenantClaim(t *testing.T) {
 	}
 }
 
+// TestGetDelegatedConfig_NotConfigured reports available=false and an empty rep
+// login when the delegated plane is unprovisioned, so the frontend leads with
+// the cookie-paste fallback and never advertises a login that isn't wired.
+func TestGetDelegatedConfig_NotConfigured(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/delegated-config", nil)
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+	h.GetYandexDelegatedConfig(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp openapi.YandexDelegatedConfigResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.False(t, resp.Available, "unprovisioned deployment must report available=false")
+	require.Equal(t, "", resp.RepLogin, "must not leak a rep login when not fully provisioned")
+}
+
+// TestGetDelegatedConfig_Configured returns the rep login when the delegated
+// plane is fully provisioned.
+func TestGetDelegatedConfig_Configured(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), delegatedCfg, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/delegated-config", nil)
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+	h.GetYandexDelegatedConfig(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp openapi.YandexDelegatedConfigResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.True(t, resp.Available)
+	require.Equal(t, "onevoice-rep", resp.RepLogin)
+}
+
+// TestGetDelegatedConfig_NoPermission_Forbidden: a member without the connect
+// permission cannot read the rep login.
+func TestGetDelegatedConfig_NoPermission_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), delegatedCfg, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/delegated-config", nil)
+	req = req.WithContext(oauthBizCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.GetYandexDelegatedConfig(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+}
+
 // TestVerifyAccess_NotConfigured_FailsClosed: verify endpoint fails closed when
 // the delegated plane is unprovisioned.
 func TestVerifyAccess_NotConfigured_FailsClosed(t *testing.T) {

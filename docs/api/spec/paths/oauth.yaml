@@ -446,6 +446,27 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/delegated-config:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getYandexDelegatedConfig
+    summary: Report whether delegated-representative access is provisioned and the shared representative login to add.
+    tags:
+    - oauth
+    responses:
+      '200':
+        description: Delegated access availability and the representative login.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/YandexDelegatedConfigResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 /businesses/{id}/integrations/yandex_business/{integrationId}/refresh-name:
   parameters:
   - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
