@@ -80,13 +80,31 @@ func (s *stubBrowser) UploadPhoto(_ context.Context, _, _ string) error { return
 func (s *stubBrowser) ListCompanies(_ context.Context) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{{"permalink": "114697172504", "name": "Test Business"}}, nil
 }
+func (s *stubBrowser) VerifyAccess(_ context.Context) (bool, error) { return true, nil }
 
-// stubPool implements agent.BrowserPool for testing.
+// stubPool implements agent.BrowserPool for testing. It records which factory
+// method was invoked and with what permalink/credential so the delegated-branch
+// tests can assert the shared path is taken with the row's permalink.
 type stubPool struct {
 	browser agent.YandexBrowser
+
+	forBusinessCalled bool
+	forSharedCalled   bool
+	lastPermalink     string
+	lastCredential    string
 }
 
-func (p *stubPool) ForBusiness(_, _, _ string) agent.YandexBrowser {
+func (p *stubPool) ForBusiness(_, cookiesJSON, permalink string) agent.YandexBrowser {
+	p.forBusinessCalled = true
+	p.lastPermalink = permalink
+	p.lastCredential = cookiesJSON
+	return p.browser
+}
+
+func (p *stubPool) ForSharedBusiness(_, sharedCookies, permalink string) agent.YandexBrowser {
+	p.forSharedCalled = true
+	p.lastPermalink = permalink
+	p.lastCredential = sharedCookies
 	return p.browser
 }
 
@@ -248,6 +266,7 @@ func (e *errBrowser) UploadPhoto(_ context.Context, _, _ string) error { return 
 func (e *errBrowser) ListCompanies(_ context.Context) ([]map[string]interface{}, error) {
 	return nil, e.err
 }
+func (e *errBrowser) VerifyAccess(_ context.Context) (bool, error) { return false, e.err }
 
 func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler {
 	return agent.NewHandler(fetcher, &stubPool{browser: &errBrowser{err: browserErr}}, nil)

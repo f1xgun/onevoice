@@ -105,7 +105,17 @@ type Config struct {
 	YandexClientID     string
 	YandexClientSecret string
 	YandexRedirectURI  string
-	TelegramBotToken   string
+	// YandexRepLogin is the shared representative Yandex ID shown to owners so
+	// they know which account to add as a представитель in Yandex Business →
+	// Доступы. Empty disables the delegated-representative access endpoints
+	// fail-closed (they return "delegated access not configured").
+	YandexRepLogin string
+	// YandexSharedBusinessID is the config-pinned sentinel business UUID under
+	// which the single KMS-wrapped shared representative session cookie JSON is
+	// stored (external_id "__shared_rep__"). Empty disables the delegated
+	// endpoints fail-closed. Must match the agent's YANDEX_SHARED_BUSINESS_ID.
+	YandexSharedBusinessID string
+	TelegramBotToken       string
 	// TelegramApprovalHMACSecret signs/verifies the opaque callback_data on the
 	// inline [Approve]/[Reject] buttons of an owner HITL approval notification.
 	// It MUST match the telegram agent's TELEGRAM_APPROVAL_HMAC_SECRET. Empty
@@ -348,6 +358,8 @@ func Load() (*Config, error) {
 		YandexClientID:             os.Getenv("YANDEX_CLIENT_ID"),
 		YandexClientSecret:         os.Getenv("YANDEX_CLIENT_SECRET"),
 		YandexRedirectURI:          getEnv("YANDEX_REDIRECT_URI", defaultYandexRedirectURI),
+		YandexRepLogin:             os.Getenv("YANDEX_REP_LOGIN"),
+		YandexSharedBusinessID:     os.Getenv("YANDEX_SHARED_BUSINESS_ID"),
 		TelegramBotToken:           os.Getenv("TELEGRAM_BOT_TOKEN"),
 		TelegramApprovalHMACSecret: os.Getenv("TELEGRAM_APPROVAL_HMAC_SECRET"),
 		TelegramBotUsername:        os.Getenv("TELEGRAM_BOT_USERNAME"),

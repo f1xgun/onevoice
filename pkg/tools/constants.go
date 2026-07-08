@@ -49,7 +49,25 @@ const (
 	// YandexBusinessListCompanies is dispatched directly by the API
 	// (yandex_connect handler) and is not exposed in the LLM tool registry.
 	YandexBusinessListCompanies = "yandex_business__list_companies"
+	// YandexBusinessVerifyAccess is dispatched directly by the API
+	// (yandex delegated handler) to confirm the shared representative account
+	// can reach a given org's edit page. Not exposed in the LLM tool registry.
+	YandexBusinessVerifyAccess = "yandex_business__verify_access"
 )
+
+// YandexSharedRepExternalID is the reserved external_id sentinel under which the
+// single KMS-wrapped shared representative session cookie JSON is stored. The
+// row lives under the config-pinned YANDEX_SHARED_BUSINESS_ID for the
+// yandex_business platform; agents resolve it via GetSharedSession. Delegated
+// per-org integrations store their permalink as external_id and never carry a
+// credential, so this sentinel is the only Yandex row holding a session.
+const YandexSharedRepExternalID = "__shared_rep__"
+
+// ConnectModeDelegated is the metadata.connect_mode value that marks a Yandex
+// org integration as driven by the shared representative session (no
+// per-business credential). Absence of this key means the legacy cookie-paste
+// path (a per-business credential is present).
+const ConnectModeDelegated = "delegated"
 
 // Google Business tools.
 const (

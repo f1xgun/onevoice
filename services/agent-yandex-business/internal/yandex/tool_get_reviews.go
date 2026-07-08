@@ -49,7 +49,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 
 		closePopups(page)
 
-		if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+		if err := bb.guardSession(page); err != nil {
 			debugScreenshot(page, "reviews_session_expired")
 			return err
 		}

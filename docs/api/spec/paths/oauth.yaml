@@ -344,6 +344,108 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/connect-delegated:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: connectDelegatedYandexBusiness
+    summary: Connect a Yandex organization via delegated-representative access (permalink only).
+    tags:
+    - oauth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ConnectDelegatedYandexRequest
+    responses:
+      '201':
+        description: Delegated integration created (access unverified).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Integration
+      '400':
+        description: Invalid or missing permalink.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: Permalink already claimed by another organization.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: Delegated access not configured.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/verify-access:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: verifyYandexBusinessAccess
+    summary: Verify the shared representative session can reach a delegated org.
+    tags:
+    - oauth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/VerifyYandexAccessRequest
+    responses:
+      '200':
+        description: Access verdict.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/VerifyYandexAccessResponse
+      '400':
+        description: Invalid or missing permalink.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: No delegated integration for this permalink in this organization.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '502':
+        description: Upstream agent error.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: Delegated access not configured or agent task publisher unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 /businesses/{id}/integrations/yandex_business/{integrationId}/refresh-name:
   parameters:
   - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath

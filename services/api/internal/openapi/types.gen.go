@@ -581,6 +581,17 @@ type ConfirmPasswordResetRequest struct {
 	Token       string `json:"token" validate:"required,min=1"`
 }
 
+// ConnectDelegatedYandexRequest Connect a Yandex organization via delegated-representative access. The owner supplies only their organization permalink (or a Maps/Sprav URL); no customer credential is captured. Exactly one of permalink or maps_url must be provided.
+type ConnectDelegatedYandexRequest struct {
+	BusinessName *string `json:"business_name,omitempty"`
+
+	// MapsUrl A pasted Yandex Maps/Sprav URL to extract the permalink from.
+	MapsUrl *string `json:"maps_url,omitempty"`
+
+	// Permalink Numeric Yandex organization permalink.
+	Permalink *string `json:"permalink,omitempty"`
+}
+
 // ConnectTelegramRequest defines model for ConnectTelegramRequest.
 type ConnectTelegramRequest struct {
 	ChannelId      string  `json:"channel_id" validate:"required"`
@@ -1883,6 +1894,18 @@ type VerifyIntegrationsResponse struct {
 	Started bool `json:"started" validate:"required"`
 }
 
+// VerifyYandexAccessRequest defines model for VerifyYandexAccessRequest.
+type VerifyYandexAccessRequest struct {
+	// Permalink Numeric Yandex organization permalink to verify shared access against.
+	Permalink string `json:"permalink" validate:"required"`
+}
+
+// VerifyYandexAccessResponse defines model for VerifyYandexAccessResponse.
+type VerifyYandexAccessResponse struct {
+	// AccessVerified True when the shared representative session can reach and edit the org.
+	AccessVerified bool `json:"access_verified" validate:"required"`
+}
+
 // VersionMismatchResponse defines model for VersionMismatchResponse.
 type VersionMismatchResponse struct {
 	Code           VersionMismatchResponseCode `json:"code" validate:"required,oneof=version_mismatch"`
@@ -2175,8 +2198,14 @@ type ListYandexCompaniesJSONRequestBody = YandexCookiesRequest
 // ConnectYandexBusinessJSONRequestBody defines body for ConnectYandexBusiness for application/json ContentType.
 type ConnectYandexBusinessJSONRequestBody = ConnectYandexRequest
 
+// ConnectDelegatedYandexBusinessJSONRequestBody defines body for ConnectDelegatedYandexBusiness for application/json ContentType.
+type ConnectDelegatedYandexBusinessJSONRequestBody = ConnectDelegatedYandexRequest
+
 // ProbeYandexBusinessJSONRequestBody defines body for ProbeYandexBusiness for application/json ContentType.
 type ProbeYandexBusinessJSONRequestBody = YandexCookiesRequest
+
+// VerifyYandexBusinessAccessJSONRequestBody defines body for VerifyYandexBusinessAccess for application/json ContentType.
+type VerifyYandexBusinessAccessJSONRequestBody = VerifyYandexAccessRequest
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest

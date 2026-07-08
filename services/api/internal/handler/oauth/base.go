@@ -73,6 +73,7 @@ type OAuthIntegrationService interface {
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
 	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID, reason string) (*service.TokenResponse, error)
+	SetSharedSession(ctx context.Context, params service.SharedSessionParams) (*domain.Integration, error)
 }
 
 // BusinessService is intentionally empty — OAuth handlers do not invoke any
@@ -91,9 +92,16 @@ type OAuthConfig struct {
 	YandexClientID     string
 	YandexClientSecret string
 	YandexRedirectURI  string
-	GoogleClientID     string
-	GoogleClientSecret string
-	GoogleRedirectURI  string
+	// YandexRepLogin is the shared representative Yandex ID shown to owners.
+	// Empty disables the delegated-representative access endpoints fail-closed.
+	YandexRepLogin string
+	// YandexSharedBusinessID is the sentinel business UUID under which the
+	// shared representative session singleton is stored. Empty disables the
+	// delegated endpoints fail-closed.
+	YandexSharedBusinessID string
+	GoogleClientID         string
+	GoogleClientSecret     string
+	GoogleRedirectURI      string
 	// Note: a FrontendURL field used to live here ("for redirects, defaults
 	// to '/'") but was never read — every redirect uses a relative path
 	// (/integrations?...). Removed in cleanup.

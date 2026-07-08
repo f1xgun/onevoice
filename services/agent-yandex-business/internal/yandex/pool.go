@@ -11,8 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/playwright-community/playwright-go"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
@@ -134,6 +136,29 @@ type BrowserPool struct {
 	// Tests inject a stub that returns a mockBrowserContext with a recording
 	// Close so async-close behavior is observable without real Chromium.
 	newContextFn func() (playwright.BrowserContext, error)
+
+	// Shared-session plane (delegated-representative access). Independent of the
+	// per-business contexts map above: a small fixed set of contexts all injected
+	// with the ONE shared representative session, acquired by WithSharedPage. See
+	// pool_shared.go. sharedMu guards sharedPool + sharedCredHash.
+	sharedMu       sync.Mutex
+	sharedPool     []*sharedSlot
+	sharedCredHash string
+	sharedMaxSlots int
+
+	// withSharedPageFn, when non-nil, replaces the real WithSharedPage execution
+	// path. Test-only seam mirroring withPageFn; production callers MUST NOT set
+	// it.
+	withSharedPageFn func(ctx context.Context, sharedCookies string, fn func(page playwright.Page) error) error
+
+	// Scope-gate wiring (report-only by default). When scopeGateEnabled is true,
+	// newContext installs installScopeGateMode on every freshly built context.
+	// scopeGateEnforce=false runs it report-only (observe, never abort) so a
+	// too-tight allowlist cannot break the live RPA.
+	scopeGateEnabled bool
+	scopeGateEnforce bool
+	scopeAuditLog    audit.Logger
+	scopeLogger      *slog.Logger
 }
 
 // NewBrowserPool creates a pool. Chromium is not launched until the first WithPage call.
@@ -195,14 +220,55 @@ func (p *BrowserPool) ensureBrowser() error {
 }
 
 // newContext constructs a fresh Playwright BrowserContext. The hook is swapped
-// in tests via newContextFn to avoid launching real Chromium.
+// in tests via newContextFn to avoid launching real Chromium. When the scope
+// gate is enabled it is installed (report-only by default) on the fresh
+// context so out-of-scope requests are observed for every pooled context.
 func (p *BrowserPool) newContext() (playwright.BrowserContext, error) {
 	if p.newContextFn != nil {
 		return p.newContextFn()
 	}
-	return p.browser.NewContext(playwright.BrowserNewContextOptions{
+	bCtx, err := p.browser.NewContext(playwright.BrowserNewContextOptions{
 		UserAgent: playwright.String(defaultUserAgent),
 	})
+	if err != nil {
+		return nil, err
+	}
+	p.maybeInstallScopeGate(bCtx)
+	return bCtx, nil
+}
+
+// maybeInstallScopeGate installs the request scope gate on bCtx when the pool
+// was constructed with scope-gate wiring. It is a no-op otherwise so existing
+// (unwired) pools behave exactly as before. Failures to install are logged and
+// swallowed — the gate is observability, not a hard dependency of page work.
+func (p *BrowserPool) maybeInstallScopeGate(bCtx playwright.BrowserContext) {
+	if !p.scopeGateEnabled {
+		return
+	}
+	logger := p.scopeLogger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	auditLog := p.scopeAuditLog
+	if auditLog == nil {
+		auditLog = audit.Nop()
+	}
+	if err := installScopeGateMode(context.Background(), bCtx, uuid.Nil, auditLog, logger, p.scopeGateEnforce); err != nil {
+		logger.Warn("rpa: failed to install scope gate", "error", err)
+	}
+}
+
+// WithScopeGate enables the request scope gate on every context this pool
+// builds. enforce=false (the safe default caller should use) runs it
+// report-only: out-of-scope requests are metered, audited, and logged but NOT
+// aborted. auditLog and logger may be nil (a no-op audit / slog.Default() are
+// used). Returns the pool for chaining.
+func (p *BrowserPool) WithScopeGate(enforce bool, auditLog audit.Logger, logger *slog.Logger) *BrowserPool {
+	p.scopeGateEnabled = true
+	p.scopeGateEnforce = enforce
+	p.scopeAuditLog = auditLog
+	p.scopeLogger = logger
+	return p
 }
 
 func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookiesJSON string) (*pooledContext, error) {
@@ -566,6 +632,11 @@ func (p *BrowserPool) Close() {
 	for _, pc := range victims {
 		closePooledContext(pc)
 	}
+	p.sharedMu.Lock()
+	sharedVictims := p.drainSharedLocked()
+	p.sharedCredHash = ""
+	p.sharedMu.Unlock()
+	closeSharedContexts(sharedVictims)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.browser != nil {

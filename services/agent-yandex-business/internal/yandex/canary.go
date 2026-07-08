@@ -3,6 +3,7 @@ package yandex
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
@@ -46,4 +47,63 @@ func checkSessionAndEvict(page playwright.Page, expectedURLPrefix string, pool C
 		pool.EvictContext(businessID)
 	}
 	return err
+}
+
+// SharedContextEvictor tears down ALL shared-session browser contexts.
+// Satisfied by BrowserPool.
+type SharedContextEvictor interface {
+	EvictAllShared()
+}
+
+// checkSharedSessionAndEvictAll runs the canary against a shared-session page.
+// Because every delegated org shares ONE representative session, a detected
+// expiry (passport/captcha redirect) means the shared account is dead for
+// everyone — so ALL shared contexts are evicted, not just one. The next
+// WithSharedPage rebuilds from a freshly provisioned shared credential.
+func checkSharedSessionAndEvictAll(page playwright.Page, expectedURLPrefix string, pool SharedContextEvictor) error {
+	err := checkSession(page, expectedURLPrefix)
+	if err != nil && errors.Is(err, ErrSessionExpired) && pool != nil {
+		pool.EvictAllShared()
+	}
+	return err
+}
+
+// assertPermalinkSegment is the multi-tenant isolation invariant for the shared
+// delegated plane. Because all delegated tasks share one browser session, the
+// ONLY thing scoping a page to a tenant is the org permalink. This asserts the
+// live page URL's Sprav path is /sprav/<permalink>/... for THIS business before
+// any read or write is allowed. A mismatch — a task for business A somehow
+// pointed at business B's org, or a redirect to a different org — returns a
+// NonRetryableError and MUST abort the operation. permalink is resolved
+// exclusively from the business's own integration row (never from LLM or task
+// args), so this check makes a cross-tenant action impossible even if a wrong
+// permalink reached the RPA layer.
+//
+// The URL is parsed and the FIRST two path segments are matched exactly
+// (sprav / <permalink>) rather than a raw substring search, so a smuggled
+// segment in a query/fragment (e.g. ?to=/sprav/<permalink>/) or a foreign host
+// carrying the segment in its path cannot satisfy the assertion.
+func assertPermalinkSegment(currentURL, permalink string) error {
+	if permalink == "" {
+		return a2a.NewNonRetryableError(fmt.Errorf("permalink isolation: empty permalink — refusing to act on shared session"))
+	}
+	if !spravPathMatchesPermalink(currentURL, permalink) {
+		return a2a.NewNonRetryableError(fmt.Errorf(
+			"permalink isolation: page URL %q is not on this org's /sprav/%s/ path — refusing cross-tenant action",
+			currentURL, permalink))
+	}
+	return nil
+}
+
+// spravPathMatchesPermalink reports whether currentURL's path begins with the
+// /sprav/<permalink>/ segments, matching whole segments (not a substring) and
+// ignoring the query/fragment so a permalink smuggled into a query parameter
+// cannot pass. A URL that fails to parse fails the check.
+func spravPathMatchesPermalink(currentURL, permalink string) bool {
+	u, err := url.Parse(currentURL)
+	if err != nil {
+		return false
+	}
+	segments := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	return len(segments) >= 2 && segments[0] == "sprav" && segments[1] == permalink
 }

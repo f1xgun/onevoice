@@ -50,16 +50,18 @@ func init() {
 // docs/api/wire-handlers.md for the construction order + setter rationale.
 func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*router.Handlers, error) {
 	oauthHandler := oauth.NewOAuthHandler(svcs.OAuth, svcs.Integration, svcs.Business, oauth.OAuthConfig{
-		VKClientID:         cfg.VKClientID,
-		VKClientSecret:     cfg.VKClientSecret,
-		VKRedirectURI:      cfg.VKRedirectURI,
-		VKServiceKey:       cfg.VKServiceKey,
-		YandexClientID:     cfg.YandexClientID,
-		YandexClientSecret: cfg.YandexClientSecret,
-		YandexRedirectURI:  cfg.YandexRedirectURI,
-		GoogleClientID:     cfg.GoogleClientID,
-		GoogleClientSecret: cfg.GoogleClientSecret,
-		GoogleRedirectURI:  cfg.GoogleRedirectURI,
+		VKClientID:             cfg.VKClientID,
+		VKClientSecret:         cfg.VKClientSecret,
+		VKRedirectURI:          cfg.VKRedirectURI,
+		VKServiceKey:           cfg.VKServiceKey,
+		YandexClientID:         cfg.YandexClientID,
+		YandexClientSecret:     cfg.YandexClientSecret,
+		YandexRedirectURI:      cfg.YandexRedirectURI,
+		YandexRepLogin:         cfg.YandexRepLogin,
+		YandexSharedBusinessID: cfg.YandexSharedBusinessID,
+		GoogleClientID:         cfg.GoogleClientID,
+		GoogleClientSecret:     cfg.GoogleClientSecret,
+		GoogleRedirectURI:      cfg.GoogleRedirectURI,
 	}, nil, h.Redis)
 	oauthHandler.WithSecureCookies(cfg.SecureCookies)
 	if svcs.AgentTaskPublisher != nil {
@@ -87,6 +89,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	internalTokenHandler := handler.NewInternalTokenHandler(svcs.Integration)
 
 	internalBillingHandler := handler.NewInternalBillingHandler(repos.Billing, nil)
+
+	internalYandexSharedHandler := handler.NewInternalYandexSharedHandler(svcs.Integration, cfg.YandexSharedBusinessID)
 
 	authHandler, err := handler.NewAuthHandler(svcs.User, cfg.SecureCookies, svcs.AuditLogger, []byte(cfg.JWTSecret))
 	if err != nil {
@@ -291,35 +295,36 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}
 
 	return &router.Handlers{
-		Auth:             authHandler,
-		Business:         businessHandler,
-		Integration:      integrationHandler,
-		Conversation:     conversationHandler,
-		OAuth:            oauthHandler,
-		Connect:          connectHandler,
-		InternalToken:    internalTokenHandler,
-		InternalBilling:  internalBillingHandler,
-		ChatProxy:        chatProxyHandler,
-		Review:           reviewHandler,
-		PresenceHealth:   presenceHealthHandler,
-		Post:             postHandler,
-		AgentTask:        agentTaskHandler,
-		Project:          projectHandler,
-		HITL:             hitlHandler,
-		Titler:           titlerHandler,
-		Search:           searchHandler,
-		Platforms:        platformsHandler,
-		Permissions:      handler.NewPermissionsHandler(),
-		Members:          membersHandler,
-		Roles:            rolesHandler,
-		Invitations:      invitationsHandler,
-		AuditLog:         auditLogHandler,
-		Billing:          billingHandler,
-		UserDeletion:     userDeletionHandler,
-		BusinessDeletion: businessDeletionHandler,
-		Consents:         consentsHandler,
-		Telemetry:        handler.NewTelemetryHandler(svcs.Telemetry),
-		Feedback:         handler.NewFeedbackHandler(svcs.Feedback),
-		ChannelRequest:   handler.NewChannelRequestHandler(svcs.ChannelRequest),
+		Auth:                 authHandler,
+		Business:             businessHandler,
+		Integration:          integrationHandler,
+		Conversation:         conversationHandler,
+		OAuth:                oauthHandler,
+		Connect:              connectHandler,
+		InternalToken:        internalTokenHandler,
+		InternalBilling:      internalBillingHandler,
+		InternalYandexShared: internalYandexSharedHandler,
+		ChatProxy:            chatProxyHandler,
+		Review:               reviewHandler,
+		PresenceHealth:       presenceHealthHandler,
+		Post:                 postHandler,
+		AgentTask:            agentTaskHandler,
+		Project:              projectHandler,
+		HITL:                 hitlHandler,
+		Titler:               titlerHandler,
+		Search:               searchHandler,
+		Platforms:            platformsHandler,
+		Permissions:          handler.NewPermissionsHandler(),
+		Members:              membersHandler,
+		Roles:                rolesHandler,
+		Invitations:          invitationsHandler,
+		AuditLog:             auditLogHandler,
+		Billing:              billingHandler,
+		UserDeletion:         userDeletionHandler,
+		BusinessDeletion:     businessDeletionHandler,
+		Consents:             consentsHandler,
+		Telemetry:            handler.NewTelemetryHandler(svcs.Telemetry),
+		Feedback:             handler.NewFeedbackHandler(svcs.Feedback),
+		ChannelRequest:       handler.NewChannelRequestHandler(svcs.ChannelRequest),
 	}, nil
 }

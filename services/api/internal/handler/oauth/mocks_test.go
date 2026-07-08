@@ -68,6 +68,14 @@ func (m *MockOAuthIntegrationService) GetDecryptedToken(ctx context.Context, bus
 	return args.Get(0).(*service.TokenResponse), args.Error(1)
 }
 
+func (m *MockOAuthIntegrationService) SetSharedSession(ctx context.Context, params service.SharedSessionParams) (*domain.Integration, error) {
+	args := m.Called(ctx, params)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Integration), args.Error(1)
+}
+
 // MockBusinessService is a mock implementation of the BusinessService
 // interface (handler/oauth.BusinessService — narrower than
 // handler.BusinessService).

@@ -27,7 +27,7 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 			return fmt.Errorf("navigate to posts page: %w", err)
 		}
 		closePopups(page)
-		if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+		if err := bb.guardSession(page); err != nil {
 			return err
 		}
 		humanDelay()
