@@ -50,7 +50,7 @@ func (f *fakeReviewRepo) GetByID(context.Context, string) (*domain.Review, error
 func (f *fakeReviewRepo) GetByExternalID(context.Context, string, string, string) (*domain.Review, error) {
 	panic("unused")
 }
-func (f *fakeReviewRepo) UpdateReply(context.Context, string, string, string) error {
+func (f *fakeReviewRepo) UpdateReply(context.Context, string, string, string, *domain.ReviewDraftFeedback) error {
 	panic("unused")
 }
 func (f *fakeReviewRepo) UpdateReplyDispatched(context.Context, string, string, string, string) error {

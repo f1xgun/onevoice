@@ -231,9 +231,16 @@ const reviewBusinessExternalIndexName = "reviews_business_platform_external"
 //     this key; the sync path dedupes its batch and the BulkWrite collapses
 //     same-key models, and the one-shot migration relocates any pre-existing
 //     collisions before this runs at boot.
-//   - {business_id, reply_status, created_at} serves ListPendingWithoutDraft and
-//     ListRepliedExamples (filter business_id+reply_status, sort created_at desc).
-//     created_at is set at sync time and never mutated, so indexing it is safe.
+//   - {business_id, reply_status, created_at} serves ListPendingWithoutDraft
+//     (filter business_id+reply_status, sort created_at desc). created_at is set
+//     at sync time and never mutated, so indexing it is safe.
+//   - {business_id, reply_status, draft_accepted_unedited, created_at} serves
+//     ListRepliedExamples, which sorts accepted-first then recent so the drafter
+//     prefers drafts the owner accepted as few-shot exemplars. The signal key
+//     leads the sort suffix, so without this index the sort would be an
+//     in-memory blocking sort of the whole replied set (risking the 32MB limit as
+//     a business accumulates replies). draft_accepted_unedited is written once at
+//     reply time and never mutated after, so indexing it is safe.
 func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("reviews")
 	models := []mongo.IndexModel{
@@ -253,6 +260,15 @@ func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 			},
 			Options: options.Index().SetName("reviews_business_reply_status_created_desc"),
 		},
+		{
+			Keys: bson.D{
+				{Key: "business_id", Value: 1},
+				{Key: "reply_status", Value: 1},
+				{Key: "draft_accepted_unedited", Value: -1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("reviews_business_reply_status_accepted_created_desc"),
+		},
 	}
 	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
@@ -263,16 +279,18 @@ func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 	return nil
 }
 
-func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, replyStatus string) error {
-	return r.updateReply(ctx, id, replyText, replyStatus, "")
+func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, replyStatus string, feedback *domain.ReviewDraftFeedback) error {
+	return r.updateReply(ctx, id, replyText, replyStatus, "", feedback)
 }
 
-// UpdateReplyDispatched — see domain.ReviewRepository docstring.
+// UpdateReplyDispatched — see domain.ReviewRepository docstring. The chat-reply
+// path carries no draft-vs-final signal (the reply came from the LLM turn, not a
+// stored draft), so it records no feedback.
 func (r *reviewRepository) UpdateReplyDispatched(ctx context.Context, id, replyText, replyStatus, dispatchApprovalID string) error {
-	return r.updateReply(ctx, id, replyText, replyStatus, dispatchApprovalID)
+	return r.updateReply(ctx, id, replyText, replyStatus, dispatchApprovalID, nil)
 }
 
-func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, replyStatus, dispatchApprovalID string) error {
+func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, replyStatus, dispatchApprovalID string, feedback *domain.ReviewDraftFeedback) error {
 	set := bson.M{
 		"reply_text":   replyText,
 		"reply_status": replyStatus,
@@ -283,9 +301,15 @@ func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, reply
 	// Stamp replied_at only on the transition to "replied" so response-time math
 	// has an end point. A dispatch error leaves the row "error" with no timestamp;
 	// a later successful retry stamps it. This is the single write both the manual
-	// reply and the chat-reply reconciliation funnel through.
+	// reply and the chat-reply reconciliation funnel through. The owner-edit
+	// feedback rides the same transition and is $set (never $unset below), so it
+	// survives the clear of the transient draft_* fields.
 	if replyStatus == domain.ReviewReplyStatusReplied {
 		set["replied_at"] = time.Now().UTC()
+		if feedback != nil {
+			set["draft_accepted_unedited"] = feedback.AcceptedUnedited
+			set["draft_edit_distance"] = feedback.EditDistance
+		}
 	}
 	update := bson.M{
 		"$set": set,
@@ -445,9 +469,18 @@ func (r *reviewRepository) ListRepliedExamples(ctx context.Context, businessID, 
 		f["platform"] = platform
 	}
 
+	// Prefer drafts the owner accepted with little editing as few-shot exemplars,
+	// then fall back to recency. draft_accepted_unedited sorts true → false →
+	// missing (legacy rows) descending, so accepted replies lead and older rows
+	// without the signal still fill the tail. This is the self-improving bias:
+	// styles the owner sends as-is get shown to the model more, so future drafts
+	// drift toward what gets accepted.
 	opts := options.Find().
 		SetLimit(int64(limit)).
-		SetSort(bson.M{"created_at": -1})
+		SetSort(bson.D{
+			{Key: "draft_accepted_unedited", Value: -1},
+			{Key: "created_at", Value: -1},
+		})
 
 	cursor, err := r.collection.Find(ctx, f, opts)
 	if err != nil {

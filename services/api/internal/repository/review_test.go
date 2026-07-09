@@ -350,7 +350,7 @@ func TestReviewRepository_UpdateReply_StampsRepliedAtOnRepliedOnly(t *testing.T)
 		insert(id)
 		before := time.Now().UTC()
 
-		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusReplied))
+		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusReplied, nil))
 
 		got := read(id)
 		require.Equal(t, domain.ReviewReplyStatusReplied, got.ReplyStatus)
@@ -363,7 +363,7 @@ func TestReviewRepository_UpdateReply_StampsRepliedAtOnRepliedOnly(t *testing.T)
 		const id = "rev-error"
 		insert(id)
 
-		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusError))
+		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusError, nil))
 
 		got := read(id)
 		require.Equal(t, domain.ReviewReplyStatusError, got.ReplyStatus)
@@ -373,11 +373,49 @@ func TestReviewRepository_UpdateReply_StampsRepliedAtOnRepliedOnly(t *testing.T)
 
 	t.Run("a later successful retry stamps replied_at", func(t *testing.T) {
 		const id = "rev-error"
-		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusReplied))
+		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusReplied, nil))
 
 		got := read(id)
 		require.Equal(t, domain.ReviewReplyStatusReplied, got.ReplyStatus)
 		require.NotNil(t, got.RepliedAt, "a retry that finally lands must stamp replied_at")
+	})
+
+	t.Run("feedback persists and survives the draft clear", func(t *testing.T) {
+		const id = "rev-feedback"
+		_, err := db.Collection("reviews").InsertOne(ctx, bson.M{
+			"_id":                id,
+			"business_id":        biz,
+			"platform":           "telegram",
+			"external_id":        id,
+			"text":               "review text",
+			"reply_status":       domain.ReviewReplyStatusPending,
+			"draft_reply":        "AI draft text",
+			"draft_status":       domain.ReviewDraftStatusReady,
+			"draft_generated_at": time.Now().UTC(),
+			"created_at":         time.Now().UTC(),
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, repo.UpdateReply(ctx, id, "AI draft text edited a bit",
+			domain.ReviewReplyStatusReplied, &domain.ReviewDraftFeedback{AcceptedUnedited: true, EditDistance: 11}))
+
+		got := read(id)
+		require.NotNil(t, got.DraftAcceptedUnedited, "the owner-edit signal must persist for the drafter")
+		require.True(t, *got.DraftAcceptedUnedited)
+		require.NotNil(t, got.DraftEditDistance)
+		require.Equal(t, 11, *got.DraftEditDistance)
+		require.Empty(t, got.DraftReply, "the transient draft must still be cleared")
+		require.Empty(t, got.DraftStatus, "the transient draft status must still be cleared")
+	})
+
+	t.Run("nil feedback records no signal", func(t *testing.T) {
+		const id = "rev-nofeedback"
+		insert(id)
+		require.NoError(t, repo.UpdateReply(ctx, id, "thanks!", domain.ReviewReplyStatusReplied, nil))
+
+		got := read(id)
+		require.Nil(t, got.DraftAcceptedUnedited, "a reply with no draft must leave the signal unset")
+		require.Nil(t, got.DraftEditDistance)
 	})
 }
 
@@ -527,6 +565,10 @@ func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 	require.NotNil(t, sort, "named compound index reviews_business_reply_status_created_desc must exist")
 	require.False(t, sort.Unique != nil && *sort.Unique,
 		"the reply-status sort index must NOT be unique")
+
+	accepted := byName["reviews_business_reply_status_accepted_created_desc"]
+	require.NotNil(t, accepted,
+		"the accepted-first examples index must exist so ListRepliedExamples' draft_accepted_unedited sort is index-backed, not an in-memory sort")
 }
 
 // Two overlapping sync passes (the periodic ticker and a manual

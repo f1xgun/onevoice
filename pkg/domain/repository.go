@@ -425,7 +425,14 @@ type ReviewRepository interface {
 	// stored review matches — the chat-reply reconciliation uses it to find the
 	// review an LLM-dispatched reply tool just answered on the platform.
 	GetByExternalID(ctx context.Context, businessID, platform, externalID string) (*Review, error)
-	UpdateReply(ctx context.Context, id, replyText, replyStatus string) error
+
+	// UpdateReply persists a manually-sent (or auto-published) reply and clears
+	// the transient draft_* fields. When feedback is non-nil and the reply
+	// succeeded, it also stamps the owner-edit signal (draft_accepted_unedited,
+	// draft_edit_distance) — kept across the clear so the drafter can bias future
+	// few-shot toward accepted drafts. feedback is nil for replies with no prior
+	// draft (nothing to compare).
+	UpdateReply(ctx context.Context, id, replyText, replyStatus string, feedback *ReviewDraftFeedback) error
 
 	// UpdateReplyDispatched is UpdateReply that also stamps the HITL dedupe key
 	// ("<batch_id>-<call_id>") the LLM-dispatched reply landed under, so an

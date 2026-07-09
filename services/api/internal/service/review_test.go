@@ -23,15 +23,17 @@ type stubReviewRepo struct {
 	domain.ReviewRepository
 	review        *domain.Review
 	updateReplies int
+	lastFeedback  *domain.ReviewDraftFeedback
 }
 
 func (s *stubReviewRepo) GetByID(_ context.Context, _ string) (*domain.Review, error) {
 	return s.review, nil
 }
 
-func (s *stubReviewRepo) UpdateReply(_ context.Context, _, _, status string) error {
+func (s *stubReviewRepo) UpdateReply(_ context.Context, _, _, status string, feedback *domain.ReviewDraftFeedback) error {
 	s.updateReplies++
 	s.review.ReplyStatus = status
+	s.lastFeedback = feedback
 	return nil
 }
 
@@ -182,6 +184,48 @@ func TestReply_ShortCircuitsWhenReplyTextPresent(t *testing.T) {
 	require.NoError(t, svc.Reply(context.Background(), biz, "rev-9", "повторный ответ"))
 	require.Zero(t, nc.calls, "a review that already carries a reply must not re-dispatch a second public reply")
 	require.Zero(t, repo.updateReplies, "an already-answered review must not re-write status")
+}
+
+// TestReply_CapturesDraftFeedback proves the owner-edit signal is computed from
+// the stored draft vs the sent reply and handed to UpdateReply — the data spine
+// the self-improving few-shot loop learns from.
+func TestReply_CapturesDraftFeedback(t *testing.T) {
+	reply := func(t *testing.T, draft, sent string) *domain.ReviewDraftFeedback {
+		t.Helper()
+		biz := uuid.New()
+		review := &domain.Review{
+			ID:           "rev-fb",
+			BusinessID:   biz.String(),
+			Platform:     a2a.AgentTelegram,
+			ExternalID:   "-100_7",
+			ReplyStatus:  domain.ReviewReplyStatusPending,
+			DraftReply:   draft,
+			PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+		}
+		repo := &stubReviewRepo{review: review}
+		svc := &reviewService{repo: repo, nc: &capturingRequester{}, dispatchTimeout: time.Second}
+		require.NoError(t, svc.Reply(context.Background(), biz, "rev-fb", sent))
+		return repo.lastFeedback
+	}
+
+	t.Run("verbatim send records accepted, distance 0", func(t *testing.T) {
+		fb := reply(t, "Спасибо за отзыв!", "Спасибо за отзыв!")
+		require.NotNil(t, fb)
+		require.True(t, fb.AcceptedUnedited)
+		require.Equal(t, 0, fb.EditDistance)
+	})
+
+	t.Run("substantial rewrite records not-accepted", func(t *testing.T) {
+		fb := reply(t, "Спасибо за отзыв!", "Нам очень жаль, разберёмся и всё исправим в ближайшее время, приносим извинения.")
+		require.NotNil(t, fb)
+		require.False(t, fb.AcceptedUnedited)
+		require.Greater(t, fb.EditDistance, 0)
+	})
+
+	t.Run("reply to a never-drafted review carries no signal", func(t *testing.T) {
+		fb := reply(t, "", "спасибо, вручную")
+		require.Nil(t, fb)
+	})
 }
 
 func TestReply_ManualDispatchCarriesStableApprovalID(t *testing.T) {
