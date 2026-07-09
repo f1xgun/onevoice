@@ -164,6 +164,36 @@ func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
 	return s.refresher.SyncForBusiness(ctx, bc.BusinessID)
 }
 
+// acceptedEditRatio is the fraction of the draft the owner may change while the
+// reply still counts as "accepted": a light copy-edit (a typo, a swapped word)
+// keeps the draft as a positive few-shot exemplar, whereas a substantial rewrite
+// does not. Compared against the rune edit distance over the longer of the two
+// texts.
+const acceptedEditRatio = 0.1
+
+// draftReplyFeedback derives the owner-edit signal by comparing the AI draft to
+// the final reply. It returns nil when there was no draft (a manual reply to a
+// never-drafted review carries no signal to learn from). Auto-published and
+// bulk-approved replies send the draft verbatim, so they record as accepted with
+// zero edit distance.
+func draftReplyFeedback(draft, final string) *domain.ReviewDraftFeedback {
+	d := strings.TrimSpace(draft)
+	if d == "" {
+		return nil
+	}
+	f := strings.TrimSpace(final)
+	if f == "" {
+		return nil
+	}
+	dist := runeLevenshtein(d, f)
+	longest := len([]rune(d))
+	if l := len([]rune(f)); l > longest {
+		longest = l
+	}
+	accepted := dist == 0 || (longest > 0 && float64(dist)/float64(longest) <= acceptedEditRatio)
+	return &domain.ReviewDraftFeedback{AcceptedUnedited: accepted, EditDistance: dist}
+}
+
 func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, replyText string) error {
 	if replyText == "" {
 		return fmt.Errorf("reply text cannot be empty")
@@ -197,7 +227,8 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 		finalStatus = domain.ReviewReplyStatusError
 	}
 
-	if err := s.repo.UpdateReply(ctx, id, replyText, finalStatus); err != nil {
+	feedback := draftReplyFeedback(review.DraftReply, replyText)
+	if err := s.repo.UpdateReply(ctx, id, replyText, finalStatus, feedback); err != nil {
 		slog.Error("review reply: dispatch ok but persist failed",
 			"review_id", id, "platform", review.Platform, "error", err,
 		)

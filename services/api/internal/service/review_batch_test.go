@@ -48,7 +48,7 @@ func (m *multiReviewRepo) ListRepliedExamples(_ context.Context, _, _ string, _ 
 	return nil, nil
 }
 
-func (m *multiReviewRepo) UpdateReply(_ context.Context, id, replyText, status string) error {
+func (m *multiReviewRepo) UpdateReply(_ context.Context, id, replyText, status string, _ *domain.ReviewDraftFeedback) error {
 	m.updateReplies++
 	if rv, ok := m.byID[id]; ok {
 		rv.ReplyText = replyText
