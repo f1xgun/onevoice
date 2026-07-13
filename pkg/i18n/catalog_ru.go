@@ -97,8 +97,13 @@ var ru = map[string]string{
 
 	// Telegram connect admin-rights guard
 	// (services/api/internal/handler/connect/telegram.go).
-	"connect.telegram.not_admin":      "Добавьте бота администратором с правом публиковать сообщения и подключите снова — это займёт около минуты",
-	"connect.telegram.no_post_rights": "У бота нет права публиковать сообщения — выдайте его в настройках канала и подключите снова, это займёт около минуты",
+	"connect.telegram.not_admin":         "Добавьте бота администратором с правом публиковать сообщения и подключите снова — это займёт около минуты",
+	"connect.telegram.no_post_rights":    "У бота нет права публиковать сообщения — выдайте его в настройках канала и подключите снова, это займёт около минуты",
+	"connect.telegram.unreachable":       "Telegram временно недоступен — попробуйте ещё раз через минуту",
+	"connect.telegram.rate_limited":      "Слишком много запросов к Telegram — подождите немного и попробуйте снова",
+	"connect.telegram.no_access":         "У бота нет доступа к этому каналу — добавьте его в канал и подключите снова",
+	"connect.telegram.already_connected": "Этот канал уже подключён к другой организации",
+	"connect.telegram.connect_failed":    "Не удалось подключить канал — попробуйте ещё раз",
 
 	// Proactive connection-health owner nudge
 	// (services/api/internal/service/connhealth/worker.go).

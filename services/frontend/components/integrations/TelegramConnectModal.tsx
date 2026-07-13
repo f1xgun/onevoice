@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { useBusinessStore } from '@/lib/stores/business';
-import { useMapEmailVerificationError } from '@/lib/resolveErrorMap';
+import { extractApiErrorCode, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -37,7 +37,9 @@ export function TelegramConnectModal({ open, onClose }: Props) {
       toast.success(tIntegrations('telegramConnected'));
       handleClose();
     } catch (err: unknown) {
-      toast.error(mapVerifyError(err) ?? tIntegrations('telegramConnectFail'));
+      toast.error(
+        mapVerifyError(err) ?? extractApiErrorCode(err) ?? tIntegrations('telegramConnectFail')
+      );
     } finally {
       setLoading(false);
     }

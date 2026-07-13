@@ -86,7 +86,7 @@ export function VoiceProfileSection() {
         onChange={(e) => handleChange(e.target.value)}
         rows={5}
         maxLength={VOICE_PROFILE_MAX_LENGTH}
-        disabled={isLoading || !canEdit}
+        disabled={isLoading || (isError && !dirty) || !canEdit}
         placeholder={t('placeholder')}
         aria-label={t('label')}
         aria-invalid={overCap}

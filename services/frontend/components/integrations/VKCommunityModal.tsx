@@ -75,8 +75,12 @@ export function VKCommunityModal({ open, onClose }: Props) {
     try {
       const { data } = await bizApi(activeBusinessId).get<{ url: string }>(authUrlPath);
       window.location.href = data.url;
-    } catch {
-      toast.error(tIntegrations('page.vkAuthFailed'));
+    } catch (err: unknown) {
+      if (extractApiErrorCode(err) === 'oauth_not_configured') {
+        toast.info(tVk('oauthUnavailablePaste'));
+      } else {
+        toast.error(tIntegrations('page.vkAuthFailed'));
+      }
       setAuthorizing(false);
       setPasteOpen(true);
     }

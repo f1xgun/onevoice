@@ -300,6 +300,12 @@
         "auto-with-review": "Сам, но покажет результат",
         "auto": "Полностью сам"
       }
+    },
+    "appError": {
+      "errorLabel": "ERROR",
+      "title": "Что-то пошло не так",
+      "body": "Произошла непредвиденная ошибка. Попробуйте ещё раз — если не поможет, обновите страницу.",
+      "retry": "Попробовать снова"
     }
   },
   "validation": {
@@ -341,7 +347,8 @@
       "moveError": "Не удалось переместить чат",
       "messagePlaceholder": "Напишите сообщение…",
       "sendAria": "Отправить",
-      "typingAria": "OneVoice печатает"
+      "typingAria": "OneVoice печатает",
+      "stopAria": "Остановить"
     },
     "header": {
       "menuAria": "Меню чата",
@@ -381,7 +388,8 @@
     "toolCalls": {
       "showActions": "Показать действия ({count})",
       "hideActions": "Скрыть действия ({count})",
-      "doneCount": "✓ {done}/{total}"
+      "doneCount": "✓ {done}/{total}",
+      "failCount": "{failed} не удалось"
     },
     "toolCard": {
       "running": "Выполняется",
@@ -1074,7 +1082,8 @@
       "connect": "Подключить",
       "connecting": "Подключаем…",
       "connected": "Сообщество VK подключено",
-      "connectFailed": "Не удалось подключить сообщество"
+      "connectFailed": "Не удалось подключить сообщество",
+      "oauthUnavailablePaste": "Вход через ВКонтакте недоступен — вставьте ключ сообщества вручную"
     },
     "vkCommunityPicker": {
       "title": "Выберите сообщество",

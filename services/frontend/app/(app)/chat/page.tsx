@@ -55,6 +55,7 @@ export default function ChatListPage() {
       });
       router.push(`/chat/${conv.id}`);
     },
+    onError: () => toast.error(tCommon('connectionError')),
   });
 
   const { mutate: renameConversation } = useMutation({
@@ -66,6 +67,7 @@ export default function ChatListPage() {
       queryClient.invalidateQueries({
         queryKey: conversationsQueryKey(activeBusinessId),
       }),
+    onError: () => toast.error(tCommon('connectionError')),
   });
 
   const { mutate: regenerateTitle } = useMutation({
@@ -94,6 +96,7 @@ export default function ChatListPage() {
         queryKey: conversationsQueryKey(activeBusinessId),
       });
     },
+    onError: () => toast.error(tCommon('connectionError')),
   });
 
   return (

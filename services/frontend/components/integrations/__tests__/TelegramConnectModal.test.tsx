@@ -81,8 +81,20 @@ describe('TelegramConnectModal — connect flow', () => {
     expect(toast.error).not.toHaveBeenCalledWith(ADMIN_FAIL);
   });
 
-  it('shows the bot-admin failure for non-verification errors', async () => {
-    apiPost.mockRejectedValueOnce({ response: { status: 400, data: { error: 'bad request' } } });
+  it('surfaces the backend error message for non-verification errors', async () => {
+    const serverMsg = 'Добавьте бота администратором с правом публикации, затем переподключите.';
+    apiPost.mockRejectedValueOnce({ response: { status: 409, data: { error: serverMsg } } });
+    const user = userEvent.setup();
+    renderModal();
+
+    await submitChannel(user, '@mychannel');
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(serverMsg));
+    expect(toast.error).not.toHaveBeenCalledWith(ADMIN_FAIL);
+  });
+
+  it('falls back to the generic failure when the error carries no message', async () => {
+    apiPost.mockRejectedValueOnce(new Error('network down'));
     const user = userEvent.setup();
     renderModal();
 

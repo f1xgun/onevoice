@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { ToolCard } from './ToolCard';
@@ -23,10 +23,16 @@ function PlatformBadge({ name }: { name: string }) {
 export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
   const tCalls = useTranslations('chat.toolCalls');
   const [expanded, setExpanded] = useState(false);
-  if (toolCalls.length === 0) return null;
 
   const doneCount = toolCalls.filter((t) => t.status === 'done').length;
+  const failCount = toolCalls.filter((t) => t.status === 'error').length;
   const platforms = Array.from(new Set(toolCalls.map((t) => t.name.split('__')[0])));
+
+  useEffect(() => {
+    if (failCount > 0) setExpanded(true);
+  }, [failCount]);
+
+  if (toolCalls.length === 0) return null;
 
   return (
     <div className="mt-2 overflow-hidden rounded-md border border-line bg-paper-raised">
@@ -44,6 +50,11 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
         <span className="ml-1 font-mono text-[11px] text-[var(--ov-success)]">
           {tCalls('doneCount', { done: doneCount, total: toolCalls.length })}
         </span>
+        {failCount > 0 && (
+          <span className="ml-1 font-mono text-[11px] text-[var(--ov-danger)]">
+            {tCalls('failCount', { failed: failCount })}
+          </span>
+        )}
         <div className="ml-auto flex gap-1">
           {platforms.map((p) => (
             <PlatformBadge key={p} name={p + '__x'} />

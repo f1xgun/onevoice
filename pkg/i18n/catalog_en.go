@@ -83,8 +83,13 @@ var en = map[string]string{
 	"validation.generic":       "validation failed",
 
 	// Telegram connect admin-rights guard.
-	"connect.telegram.not_admin":      "Add the bot as an administrator with permission to post messages, then reconnect — it takes about a minute",
-	"connect.telegram.no_post_rights": "The bot can't post messages — grant that permission in the channel settings and reconnect, it takes about a minute",
+	"connect.telegram.not_admin":         "Add the bot as an administrator with permission to post messages, then reconnect — it takes about a minute",
+	"connect.telegram.no_post_rights":    "The bot can't post messages — grant that permission in the channel settings and reconnect, it takes about a minute",
+	"connect.telegram.unreachable":       "Telegram is temporarily unavailable — try again in a minute",
+	"connect.telegram.rate_limited":      "Too many requests to Telegram — wait a moment and try again",
+	"connect.telegram.no_access":         "The bot has no access to this channel — add it to the channel and reconnect",
+	"connect.telegram.already_connected": "This channel is already connected to another organization",
+	"connect.telegram.connect_failed":    "Couldn't connect the channel — please try again",
 
 	// Proactive connection-health owner nudge.
 	"notify.connection.reconnect_yandex": "OneVoice lost access to Yandex.Business — review replies and profile updates are paused. Reconnect the organization in settings, it takes about two minutes.",
