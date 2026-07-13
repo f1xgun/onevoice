@@ -300,6 +300,12 @@
         "auto-with-review": "On its own, but shows the result",
         "auto": "Fully automatic"
       }
+    },
+    "appError": {
+      "errorLabel": "ERROR",
+      "title": "Something went wrong",
+      "body": "An unexpected error occurred. Try again — if it keeps happening, reload the page.",
+      "retry": "Try again"
     }
   },
   "validation": {
@@ -341,7 +347,8 @@
       "moveError": "Couldn't move the chat",
       "messagePlaceholder": "Type a message…",
       "sendAria": "Send",
-      "typingAria": "OneVoice is typing"
+      "typingAria": "OneVoice is typing",
+      "stopAria": "Stop"
     },
     "header": {
       "menuAria": "Chat menu",
@@ -381,7 +388,8 @@
     "toolCalls": {
       "showActions": "Show actions ({count})",
       "hideActions": "Hide actions ({count})",
-      "doneCount": "✓ {done}/{total}"
+      "doneCount": "✓ {done}/{total}",
+      "failCount": "{failed} failed"
     },
     "toolCard": {
       "running": "Running",
@@ -1074,7 +1082,8 @@
       "connect": "Connect",
       "connecting": "Connecting…",
       "connected": "VK community connected",
-      "connectFailed": "Couldn't connect the community"
+      "connectFailed": "Couldn't connect the community",
+      "oauthUnavailablePaste": "VK sign-in isn't available — paste a community key manually"
     },
     "vkCommunityPicker": {
       "title": "Pick a community",

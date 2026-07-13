@@ -49,7 +49,10 @@ export function ToolApprovalAccordionEntry({
   onSetRejectReason,
 }: ToolApprovalAccordionEntryProps) {
   const t = useTranslations('chat.toolApproval');
-  const [open, setOpen] = useState(false);
+  // Every tool in the approval card is a mutation the owner is being asked to
+  // approve, so the args (the text/caption to be published) are shown expanded
+  // by default — approving a collapsed card blind is the defect this avoids.
+  const [open, setOpen] = useState(true);
 
   useEffect(() => {
     if (draft.decision === 'edit' || draft.decision === 'reject') {

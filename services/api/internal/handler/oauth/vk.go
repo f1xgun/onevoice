@@ -34,6 +34,11 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.TrimSpace(h.cfg.VKClientID) == "" || strings.TrimSpace(h.cfg.VKClientSecret) == "" {
+		writeJSONError(w, http.StatusServiceUnavailable, "oauth_not_configured")
+		return
+	}
+
 	state, nonce, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     bc.UserID,
 		BusinessID: bc.BusinessID,

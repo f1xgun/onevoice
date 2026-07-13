@@ -60,13 +60,19 @@ describe('ToolApprovalAccordionEntry — header + decision toggle', () => {
     ).toBeInTheDocument();
   });
 
-  it('Space on the collapsible trigger reveals the body when the trigger is focusable', async () => {
+  it('starts expanded so the content to be approved is visible without a click', () => {
+    renderEntry({ call: singleCallBatch.calls[0]! });
+    expect(screen.getByLabelText(/telegram__send_channel_post — свернуть/)).toBeInTheDocument();
+    expect(screen.getByText('hello')).toBeInTheDocument();
+  });
+
+  it('Space on the collapsible trigger toggles the body when the trigger is focusable', async () => {
     const user = userEvent.setup();
     renderEntry({ call: singleCallBatch.calls[0]! });
-    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
+    const trigger = screen.getByLabelText(/telegram__send_channel_post — свернуть/);
     trigger.focus();
     await user.keyboard(' ');
-    expect(screen.getByLabelText(/telegram__send_channel_post — свернуть/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/telegram__send_channel_post — развернуть/)).toBeInTheDocument();
   });
 
   it('platform badge renders VK for a vk__ tool', () => {
@@ -144,13 +150,11 @@ describe('ToolApprovalAccordionEntry — reject textarea + counter', () => {
 });
 
 describe('ToolApprovalAccordionEntry — args form (read-only modes)', () => {
-  it('reveals the Аргументы heading and a labelled row for each arg when expanded (undecided)', async () => {
-    const user = userEvent.setup();
+  it('shows the Аргументы heading and a labelled row for each arg (publish tool starts expanded)', () => {
     renderEntry({
       call: singleCallBatch.calls[0]!, // args: { chat_id: 123, text: 'hello' }
       draft: makeDraft({ decision: 'undecided' }),
     });
-    await user.click(screen.getByLabelText(/telegram__send_channel_post — развернуть/));
     expect(screen.getByText('Аргументы')).toBeInTheDocument();
     expect(screen.getByText('Текст')).toBeInTheDocument();
     expect(screen.getByText('ID чата')).toBeInTheDocument();
@@ -158,13 +162,11 @@ describe('ToolApprovalAccordionEntry — args form (read-only modes)', () => {
     expect(screen.getByText('123')).toBeInTheDocument();
   });
 
-  it('still renders args read-only when decision is approve', async () => {
-    const user = userEvent.setup();
+  it('renders args read-only when decision is approve (publish tool starts expanded)', () => {
     renderEntry({
       call: singleCallBatch.calls[0]!,
       draft: makeDraft({ decision: 'approve' }),
     });
-    await user.click(screen.getByLabelText(/telegram__send_channel_post — развернуть/));
     expect(screen.getByText('Текст')).toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Текст' })).not.toBeInTheDocument();

@@ -264,31 +264,35 @@ func (h *ConnectHandler) probeTelegramLinkedGroup(ctx context.Context, botToken 
 // description; everything else (chat not found, etc.) → 400 with the
 // description. Non-typed errors fall through to a generic 500 since
 // callers should always pass through telegramGetChat.
-func writeTelegramAPIError(w http.ResponseWriter, err error, fallback string) {
+//
+// Our own generated messages are localized via fallbackKey; the upstream
+// Telegram description (deliberately surfaced verbatim so the owner sees the
+// real reason, e.g. "Forbidden: bot was kicked") passes through untranslated.
+func writeTelegramAPIError(w http.ResponseWriter, r *http.Request, err error, fallbackKey string) {
 	var apiErr *telegramAPIError
 	if !errors.As(err, &apiErr) {
-		writeJSONError(w, http.StatusInternalServerError, fallback)
+		writeJSONErrorKey(w, r, http.StatusInternalServerError, fallbackKey)
 		return
 	}
 	switch apiErr.Kind {
 	case telegramErrUnreachable:
-		writeJSONError(w, http.StatusBadGateway, "telegram api unreachable, please retry")
+		writeJSONErrorKey(w, r, http.StatusBadGateway, "connect.telegram.unreachable")
 	case telegramErrRateLimited:
-		writeJSONError(w, http.StatusTooManyRequests, "telegram api rate limited, please retry")
+		writeJSONErrorKey(w, r, http.StatusTooManyRequests, "connect.telegram.rate_limited")
 	case telegramErrForbidden:
-		msg := apiErr.Description
-		if msg == "" {
-			msg = "bot does not have access to this channel"
+		if apiErr.Description != "" {
+			writeJSONError(w, http.StatusForbidden, apiErr.Description)
+		} else {
+			writeJSONErrorKey(w, r, http.StatusForbidden, fallbackKey)
 		}
-		writeJSONError(w, http.StatusForbidden, msg)
 	case telegramErrAPIRejected:
-		msg := apiErr.Description
-		if msg == "" {
-			msg = fallback
+		if apiErr.Description != "" {
+			writeJSONError(w, http.StatusBadRequest, apiErr.Description)
+		} else {
+			writeJSONErrorKey(w, r, http.StatusBadRequest, fallbackKey)
 		}
-		writeJSONError(w, http.StatusBadRequest, msg)
 	default:
-		writeJSONError(w, http.StatusInternalServerError, fallback)
+		writeJSONErrorKey(w, r, http.StatusInternalServerError, fallbackKey)
 	}
 }
 
@@ -328,7 +332,7 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 		} else {
 			slog.Warn("telegram getChat failed", "error", err, "channel_id", req.ChannelId)
 		}
-		writeTelegramAPIError(w, err, "bot does not have access to this channel")
+		writeTelegramAPIError(w, r, err, "connect.telegram.no_access")
 		return
 	}
 
@@ -372,7 +376,7 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 			slog.Warn("telegram connect rejected: channel already claimed by another organization",
 				"channel_id", req.ChannelId,
 				"business_id", bc.BusinessID)
-			writeJSONError(w, http.StatusConflict, "this channel is already connected to another organization")
+			writeJSONErrorKey(w, r, http.StatusConflict, "connect.telegram.already_connected")
 			return
 		}
 		if errors.Is(err, domain.ErrBusinessNotFound) {
@@ -380,7 +384,7 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		slog.Error("failed to connect Telegram integration", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "failed to connect")
+		writeJSONErrorKey(w, r, http.StatusInternalServerError, "connect.telegram.connect_failed")
 		return
 	}
 
@@ -490,7 +494,7 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 		} else {
 			slog.Warn("telegram getChat failed during refresh", "error", err, "channel_id", req.ChannelId)
 		}
-		writeTelegramAPIError(w, err, "bot no longer has access to this channel")
+		writeTelegramAPIError(w, r, err, "connect.telegram.no_access")
 		return
 	}
 

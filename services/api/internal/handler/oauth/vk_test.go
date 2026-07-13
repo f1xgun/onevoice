@@ -36,8 +36,9 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 	})).Return("test-state-token", "test-nonce", nil)
 
 	cfg := OAuthConfig{
-		VKClientID:    "my_vk_client",
-		VKRedirectURI: "https://example.com/callback/vk",
+		VKClientID:     "my_vk_client",
+		VKClientSecret: "my_vk_secret",
+		VKRedirectURI:  "https://example.com/callback/vk",
 	}
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil, nil)
 
@@ -103,6 +104,46 @@ func TestGetVKAuthURL_Forbidden(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", rr.Code)
+	}
+}
+
+// TestGetVKAuthURL_OAuthNotConfigured: BusinessContext + PermIntegrationsConnect
+// present but VK OAuth not fully provisioned → 503 oauth_not_configured, so the
+// frontend leads with the community-key paste flow instead of redirecting the
+// owner to a broken VK page. The guard mirrors the PlatformAvailability.VK
+// contract (both client id AND secret required), so a partial config (id set,
+// secret empty) is caught too — otherwise the token exchange would fail
+// mid-flow after the redirect.
+func TestGetVKAuthURL_OAuthNotConfigured(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  OAuthConfig
+	}{
+		{"fully unset", OAuthConfig{}},
+		{"client id set, secret empty", OAuthConfig{VKClientID: "my_vk_client"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			businessID := uuid.New()
+			userID := uuid.New()
+			h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), tc.cfg, nil, nil)
+
+			req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
+			req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+			rr := httptest.NewRecorder()
+			h.GetVKAuthURL(rr, req)
+
+			if rr.Code != http.StatusServiceUnavailable {
+				t.Fatalf("expected 503, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var resp map[string]string
+			if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+			if resp["error"] != "oauth_not_configured" {
+				t.Fatalf("expected error=oauth_not_configured, got %q", resp["error"])
+			}
+		})
 	}
 }
 

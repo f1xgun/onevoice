@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Square } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -49,6 +49,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     isStreaming,
     awaitingTurn,
     sendMessage,
+    stop,
     pendingApproval,
     resolveApproval,
   } = useConversationFlow({ conversationId });
@@ -278,15 +279,21 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
           {/* TODO(design): slash-commands chip rail (`/ Команды`) per
               mock — backend command registry not in scope for v1.3, so
               the placeholder is deferred. */}
-          <Button
-            variant="primary"
-            size="md"
-            onClick={handleSend}
-            disabled={composerDisabled || !input.trim()}
-            aria-label={tChat('sendAria')}
-          >
-            <Send size={16} />
-          </Button>
+          {isStreaming ? (
+            <Button variant="outline" size="md" onClick={stop} aria-label={tChat('stopAria')}>
+              <Square size={16} />
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleSend}
+              disabled={composerDisabled || !input.trim()}
+              aria-label={tChat('sendAria')}
+            >
+              <Send size={16} />
+            </Button>
+          )}
         </div>
       </div>
     </div>
