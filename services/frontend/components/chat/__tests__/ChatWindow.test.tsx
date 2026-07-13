@@ -12,8 +12,9 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+const permState = vi.hoisted(() => ({ allowed: true }));
 vi.mock('@/lib/hooks/usePermission', () => ({
-  usePermission: () => ({ allowed: true, isLoading: false }),
+  usePermission: () => ({ allowed: permState.allowed, isLoading: false }),
 }));
 
 // Mock the axios-based api client used by fetchConversation, useProjectsQuery,
@@ -56,6 +57,12 @@ function mockGetMessages(responseBody: unknown) {
       headers: { 'Content-Type': 'application/json' },
     });
   });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function mockGetMessagesStatus(status: number) {
+  const fetchMock = vi.fn().mockImplementation(async () => new Response('{}', { status }));
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
@@ -134,6 +141,67 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('ChatWindow — history load failure', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    useAuthStore.setState({
+      user: null,
+      accessToken: 'test-token',
+      isAuthenticated: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows a load error with retry (not the empty onboarding state) when the messages GET fails', async () => {
+    mockGetMessagesStatus(500);
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText(
+      'Не удалось загрузить данные. Обновите страницу или попробуйте ещё раз.'
+    );
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+    // The onboarding empty state must NOT be shown — that would hide an existing
+    // conversation and let a fresh send run without its prior context.
+    expect(screen.queryByText('Чем могу помочь?')).not.toBeInTheDocument();
+    const input = screen.getByPlaceholderText('Напишите сообщение…');
+    expect(input).toBeDisabled();
+  });
+});
+
+describe('ChatWindow — read-only viewer', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    permState.allowed = false;
+    useAuthStore.setState({
+      user: null,
+      accessToken: 'test-token',
+      isAuthenticated: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    permState.allowed = true;
+  });
+
+  it('shows the read-only hint and disables the composer when the viewer lacks content.create', async () => {
+    mockGetMessages({ messages: [], pendingApprovals: [] });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText('У вас нет прав отправлять сообщения в этой организации');
+    expect(screen.getByPlaceholderText('Напишите сообщение…')).toBeDisabled();
   });
 });
 

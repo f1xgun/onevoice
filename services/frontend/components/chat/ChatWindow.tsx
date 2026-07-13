@@ -21,6 +21,7 @@ import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SkeletonChat } from '@/components/states';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { useConversationFlow } from '@/hooks/useConversationFlow';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
@@ -46,6 +47,8 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const {
     messages,
     isLoading,
+    loadError,
+    reload,
     isStreaming,
     awaitingTurn,
     sendMessage,
@@ -70,7 +73,8 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   // awaitingTurn: a prior turn is still generating server-side (we reloaded
   // mid-turn). Block new sends — the backend would reject with
   // turn_already_in_progress anyway.
-  const composerDisabled = isStreaming || awaitingTurn || pendingApproval !== null || !canSend;
+  const composerDisabled =
+    isStreaming || awaitingTurn || pendingApproval !== null || !canSend || loadError;
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
@@ -118,7 +122,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   });
   const showConnectHint = shouldPromptConnectChannel(integrations, integrationsLoaded);
 
-  const showEmptyState = messages.length === 0 && !isLoading;
+  const showEmptyState = messages.length === 0 && !isLoading && !loadError;
 
   const tokenInvalidCall = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -196,6 +200,10 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       <div className="flex-1 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6">
         {isLoading ? (
           <SkeletonChat className="bg-transparent p-0" />
+        ) : loadError ? (
+          <div className="flex min-h-full items-center justify-center py-6">
+            <ListLoadError onRetry={reload} />
+          </div>
         ) : messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center gap-4 py-6">
             {/* Self-contained activation checklist. Kept independent of the
@@ -295,6 +303,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             </Button>
           )}
         </div>
+        {!canSend && <p className="mt-2 text-xs text-ink-soft">{tChat('readOnlyHint')}</p>}
       </div>
     </div>
   );

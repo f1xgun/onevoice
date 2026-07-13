@@ -196,6 +196,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const [awaitingTurn, setAwaitingTurn] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [isResolving, setIsResolving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const isStreamingRef = useRef(false);
   const streamingConversationIdRef = useRef<string | null>(null);
   const isResolvingRef = useRef(false);
@@ -232,6 +234,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     let attempts = 0;
     setIsLoading(true);
     setAwaitingTurn(false);
+    setLoadError(false);
 
     // A real conversation switch (the App Router reuses this hook instance across
     // /chat/[id] navigations, so no unmount fires) while a send is streaming for
@@ -313,6 +316,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
       let keepWaiting = false;
       if (apiMsgs) {
+        setLoadError(false);
         const lastApi = apiMsgs[apiMsgs.length - 1];
         const trailingPlaceholder = !!lastApi && isInProgressPlaceholder(lastApi);
         const mapped = mapApiMessages(trailingPlaceholder ? apiMsgs.slice(0, -1) : apiMsgs);
@@ -336,6 +340,12 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         // Transient GET failure mid-poll — keep the placeholder and retry up to
         // the cap instead of dropping the indicator on a network blip.
         keepWaiting = attempts < TURN_POLL_MAX_ATTEMPTS;
+      } else {
+        // Initial history load failed (HTTP error or network) with no message
+        // list — surface an explicit error instead of the empty "start here"
+        // state, which would hide an existing conversation and let a fresh send
+        // run without its prior context.
+        setLoadError(true);
       }
 
       if (hasPending) {
@@ -365,7 +375,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       cancelled = true;
       clearPoll();
     };
-  }, [conversationId, activeBusinessId, queryClient]);
+  }, [conversationId, activeBusinessId, queryClient, reloadNonce]);
+
+  const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
 
   const handleChatSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
@@ -654,6 +666,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   return {
     messages,
     isLoading,
+    loadError,
+    reload,
     isStreaming,
     awaitingTurn,
     sendMessage,

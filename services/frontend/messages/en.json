@@ -348,7 +348,8 @@
       "messagePlaceholder": "Type a message…",
       "sendAria": "Send",
       "typingAria": "OneVoice is typing",
-      "stopAria": "Stop"
+      "stopAria": "Stop",
+      "readOnlyHint": "You don't have permission to send messages in this organization"
     },
     "header": {
       "menuAria": "Chat menu",
@@ -987,7 +988,8 @@
       "channelDisconnected": "Channel disconnected",
       "disconnectFailed": "Couldn't disconnect",
       "googleAuthFailed": "Couldn't open Google sign-in",
-      "vkAuthFailed": "Couldn't open VK sign-in. Try pasting a token manually instead."
+      "vkAuthFailed": "Couldn't open VK sign-in. Try pasting a token manually instead.",
+      "viewerNoChannels": "No channels connected yet. Ask an organization admin to connect channels."
     },
     "platformCard": {
       "connected": "Connected",
