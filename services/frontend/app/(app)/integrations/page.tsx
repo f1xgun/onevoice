@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyChannels, SkeletonChannels } from '@/components/states';
+import { InlineEmpty } from '@/components/states/InlineEmpty';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
@@ -288,6 +289,12 @@ export default function IntegrationsPage() {
                 }
               }}
             />
+          </div>
+        ) : integrations.length === 0 && !canConnect ? (
+          <div className="mb-8">
+            <InlineEmpty className="rounded-lg border border-line bg-paper-raised">
+              {tIntegrations('page.viewerNoChannels')}
+            </InlineEmpty>
           </div>
         ) : null}
         <div

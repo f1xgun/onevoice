@@ -205,11 +205,12 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if resp == nil || resp.Error != "" {
-		errMsg := "agent error"
-		if resp != nil && resp.Error != "" {
-			errMsg = resp.Error
+		agentErr := "nil response"
+		if resp != nil {
+			agentErr = resp.Error
 		}
-		writeJSONError(w, http.StatusBadGateway, errMsg)
+		slog.Info("yandex list companies: agent returned error", "business_id", bc.BusinessID, "error", agentErr)
+		writeJSONErrorKey(w, r, http.StatusBadGateway, "oauth.yandex.list_orgs_failed")
 		return
 	}
 

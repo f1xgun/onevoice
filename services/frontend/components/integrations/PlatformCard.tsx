@@ -324,6 +324,18 @@ function ChannelList({
                   {display.identifier}
                 </div>
               )}
+              {alarmingHealth && healthReason && (
+                <div
+                  className={cn(
+                    'mt-1 text-[11px] leading-snug',
+                    alarmingHealth === 'broken'
+                      ? 'text-[var(--ov-danger)]'
+                      : 'text-[var(--ov-warning-ink)]'
+                  )}
+                >
+                  {healthReason}
+                </div>
+              )}
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
