@@ -66,6 +66,12 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}, nil, h.Redis)
 	oauthHandler.WithSecureCookies(cfg.SecureCookies)
 	oauthHandler.WithTempEncryptor(h.Enc)
+	// Prefer the KMS envelope for temp creds so the connect-flow blob stays
+	// encrypted in KMS-only deployments (empty ENCRYPTION_KEY → nil h.Enc),
+	// where the legacy temp encryptor above would otherwise no-op to plaintext.
+	if h.Envelope != nil {
+		oauthHandler.WithTempEnvelope(h.Envelope)
+	}
 	if cfg.A2APayloadKey != "" {
 		payloadEnc, err := crypto.NewEncryptor([]byte(cfg.A2APayloadKey))
 		if err != nil {
