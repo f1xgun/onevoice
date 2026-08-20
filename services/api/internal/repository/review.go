@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -469,14 +470,22 @@ func (r *reviewRepository) ListRepliedExamples(ctx context.Context, businessID, 
 		f["platform"] = platform
 	}
 
-	// Prefer drafts the owner accepted with little editing as few-shot exemplars,
-	// then fall back to recency. draft_accepted_unedited sorts true → false →
-	// missing (legacy rows) descending, so accepted replies lead and older rows
-	// without the signal still fill the tail. This is the self-improving bias:
-	// styles the owner sends as-is get shown to the model more, so future drafts
-	// drift toward what gets accepted.
+	// Fetch a candidate POOL (wider than limit) sorted accepted-first then recent,
+	// so the accepted bias stays index-backed. draft_accepted_unedited sorts
+	// true → false → missing (legacy rows) descending. selectFewShotExamples then
+	// blends recency and drops near-duplicate replies before returning `limit`
+	// rows: pure accepted-first amplifies whatever style already dominates (and
+	// would amplify a poisoned draft), so the final set interleaves recent replies
+	// and enforces diversity.
+	poolLimit := limit * fewShotPoolFactor
+	if poolLimit > fewShotPoolCap {
+		poolLimit = fewShotPoolCap
+	}
+	if poolLimit < limit {
+		poolLimit = limit
+	}
 	opts := options.Find().
-		SetLimit(int64(limit)).
+		SetLimit(int64(poolLimit)).
 		SetSort(bson.D{
 			{Key: "draft_accepted_unedited", Value: -1},
 			{Key: "created_at", Value: -1},
@@ -488,11 +497,89 @@ func (r *reviewRepository) ListRepliedExamples(ctx context.Context, businessID, 
 	}
 	defer func() { _ = cursor.Close(ctx) }()
 
-	out := make([]domain.Review, 0)
-	if err := cursor.All(ctx, &out); err != nil {
+	pool := make([]domain.Review, 0, poolLimit)
+	if err := cursor.All(ctx, &pool); err != nil {
 		return nil, fmt.Errorf("decode replied examples: %w", err)
 	}
-	return out, nil
+	return selectFewShotExamples(pool, limit), nil
+}
+
+const (
+	// fewShotPoolFactor / fewShotPoolCap size the candidate pool ListRepliedExamples
+	// fetches before selectFewShotExamples trims it back to `limit`. A pool larger
+	// than the final set gives the diversity/recency blend room to drop duplicates
+	// and still fill every slot; the cap bounds the read.
+	fewShotPoolFactor = 4
+	fewShotPoolCap    = 40
+
+	// replyDedupeKeyRunes is how many leading runes of a normalized reply form the
+	// diversity key — enough to catch a repeated canned phrasing without treating
+	// two genuinely different replies that share an opening as duplicates.
+	replyDedupeKeyRunes = 80
+)
+
+// selectFewShotExamples trims an accepted-first, recency-ordered candidate pool
+// to at most `limit` few-shot exemplars, applying two defenses against the
+// accepted-first bias over-amplifying a single style (or a poisoned draft):
+//
+//   - diversity: near-duplicate replies (same normalized leading text) are
+//     dropped so one canned phrasing cannot fill the block;
+//   - recency blend: accepted and non-accepted (recency-ordered) rows are
+//     interleaved, so the model always sees some recent replies even when a
+//     large accepted backlog exists.
+//
+// Accepted rows still lead (the interleave starts with them), preserving the
+// self-improving bias without letting it dominate.
+func selectFewShotExamples(pool []domain.Review, limit int) []domain.Review {
+	if limit <= 0 || len(pool) == 0 {
+		return pool
+	}
+	seen := make(map[string]bool, len(pool))
+	accepted := make([]domain.Review, 0, len(pool))
+	recent := make([]domain.Review, 0, len(pool))
+	for i := range pool {
+		key := normalizeReplyKey(pool[i].ReplyText)
+		if key != "" {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		if pool[i].DraftAcceptedUnedited != nil && *pool[i].DraftAcceptedUnedited {
+			accepted = append(accepted, pool[i])
+		} else {
+			recent = append(recent, pool[i])
+		}
+	}
+
+	out := make([]domain.Review, 0, limit)
+	ai, ri := 0, 0
+	for len(out) < limit && (ai < len(accepted) || ri < len(recent)) {
+		if ai < len(accepted) {
+			out = append(out, accepted[ai])
+			ai++
+			if len(out) == limit {
+				break
+			}
+		}
+		if ri < len(recent) {
+			out = append(out, recent[ri])
+			ri++
+		}
+	}
+	return out
+}
+
+// normalizeReplyKey lowercases, collapses whitespace, and truncates a reply to
+// its leading runes so trivially-different copies of one canned reply collapse
+// to the same diversity key. An empty reply yields "" (never deduped).
+func normalizeReplyKey(reply string) string {
+	s := strings.ToLower(strings.TrimSpace(reply))
+	s = strings.Join(strings.Fields(s), " ")
+	if len([]rune(s)) > replyDedupeKeyRunes {
+		s = string([]rune(s)[:replyDedupeKeyRunes])
+	}
+	return s
 }
 
 // ClaimDraftForGenerating — see domain.ReviewRepository docstring.

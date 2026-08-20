@@ -179,11 +179,32 @@ func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
 // texts.
 const acceptedEditRatio = 0.1
 
+// autoPublishCtxKey marks a publishReply call as originating from the review-
+// reply autopilot.
+type autoPublishCtxKey struct{}
+
+// withAutoPublishSignal tags ctx as an autopilot auto-publish. publishReply then
+// records NO owner-edit feedback for it: an automatic send is neither accepted
+// nor rejected by the owner, so counting the verbatim draft as "accepted
+// unedited" would bias the few-shot exemplar selection toward the model's own
+// unreviewed output — a self-reinforcing drift that also amplifies a poisoned
+// draft. Manual and bulk-approve replies (a real owner action) keep the signal.
+func withAutoPublishSignal(ctx context.Context) context.Context {
+	return context.WithValue(ctx, autoPublishCtxKey{}, true)
+}
+
+// isAutoPublishSignal reports whether ctx was tagged by withAutoPublishSignal.
+func isAutoPublishSignal(ctx context.Context) bool {
+	v, _ := ctx.Value(autoPublishCtxKey{}).(bool)
+	return v
+}
+
 // draftReplyFeedback derives the owner-edit signal by comparing the AI draft to
 // the final reply. It returns nil when there was no draft (a manual reply to a
-// never-drafted review carries no signal to learn from). Auto-published and
-// bulk-approved replies send the draft verbatim, so they record as accepted with
-// zero edit distance.
+// never-drafted review carries no signal to learn from). A bulk-approve reply
+// sends the draft verbatim after an explicit owner click, so it records as
+// accepted; a fully-automatic auto-publish records no signal at all (see
+// withAutoPublishSignal / publishReply).
 func draftReplyFeedback(draft, final string) *domain.ReviewDraftFeedback {
 	d := strings.TrimSpace(draft)
 	if d == "" {
@@ -276,6 +297,9 @@ func (s *reviewService) publishReply(ctx context.Context, review *domain.Review,
 	}
 
 	feedback := draftReplyFeedback(review.DraftReply, replyText)
+	if isAutoPublishSignal(ctx) {
+		feedback = nil
+	}
 	if err := s.repo.UpdateReply(ctx, review.ID, replyText, finalStatus, feedback); err != nil {
 		slog.Error("review reply: dispatch ok but persist failed",
 			"review_id", review.ID, "platform", review.Platform, "error", err,
