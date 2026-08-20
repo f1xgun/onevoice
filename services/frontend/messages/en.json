@@ -520,6 +520,11 @@
       "yandex_business": "Yandex"
     },
     "errorFallback": "Couldn't publish. Check your channel connections and try again.",
+    "broadcast": {
+      "publishedAll": "{count, plural, one {Published to # channel} other {Published to # channels}}",
+      "partial": "{ok} of {total} — {channels}: error",
+      "failedAll": "Failed in all {count} channels"
+    },
     "mediaFile": "file {index}",
     "platformLabel": "Platform",
     "statusLabel": "Status",

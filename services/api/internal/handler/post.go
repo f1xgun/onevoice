@@ -63,6 +63,10 @@ func domainPostToOpenAPI(p domain.Post) openapi.Post {
 		ScheduledAt: p.ScheduledAt,
 		PublishedAt: p.PublishedAt,
 	}
+	if p.BroadcastGroupID != "" {
+		bg := p.BroadcastGroupID
+		out.BroadcastGroupId = &bg
+	}
 	if p.MediaURLs != nil {
 		mu := p.MediaURLs
 		out.MediaUrls = &mu

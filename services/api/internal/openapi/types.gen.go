@@ -1126,15 +1126,17 @@ type PlatformStatus string
 
 // Post defines model for Post.
 type Post struct {
-	BusinessId      openapi_types.UUID             `json:"businessId" validate:"required,uuid"`
-	Content         string                         `json:"content" validate:"required"`
-	CreatedAt       time.Time                      `json:"createdAt" validate:"required"`
-	Id              string                         `json:"id" validate:"required"`
-	MediaUrls       *[]string                      `json:"mediaUrls,omitempty"`
-	PlatformResults *map[string]PostPlatformResult `json:"platformResults,omitempty"`
-	PublishedAt     *time.Time                     `json:"publishedAt"`
-	ScheduledAt     *time.Time                     `json:"scheduledAt"`
-	Status          string                         `json:"status" validate:"required"`
+	// BroadcastGroupId Groups posts fanned out by one cross-platform broadcast turn. Posts sharing a non-empty value were created together; absent for standalone posts and records that predate the field.
+	BroadcastGroupId *string                        `json:"broadcastGroupId,omitempty"`
+	BusinessId       openapi_types.UUID             `json:"businessId" validate:"required,uuid"`
+	Content          string                         `json:"content" validate:"required"`
+	CreatedAt        time.Time                      `json:"createdAt" validate:"required"`
+	Id               string                         `json:"id" validate:"required"`
+	MediaUrls        *[]string                      `json:"mediaUrls,omitempty"`
+	PlatformResults  *map[string]PostPlatformResult `json:"platformResults,omitempty"`
+	PublishedAt      *time.Time                     `json:"publishedAt"`
+	ScheduledAt      *time.Time                     `json:"scheduledAt"`
+	Status           string                         `json:"status" validate:"required"`
 }
 
 // PostListResponse defines model for PostListResponse.

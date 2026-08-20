@@ -394,7 +394,7 @@ func TestRecordPosts_CoversAllPostingTools(t *testing.T) {
 		{ToolCallID: "c2"},
 		{ToolCallID: "c3"},
 	}
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	require.Len(t, repo.created, 3, "each posting tool must persist a Post")
 	byContent := map[string]domain.Post{}
@@ -418,6 +418,122 @@ func TestRecordPosts_CoversAllPostingTools(t *testing.T) {
 	assert.Equal(t, "published", yandex.Status)
 	_, hasYandex := yandex.PlatformResults["yandex_business"]
 	assert.True(t, hasYandex, "yandex create_post recorded under the yandex_business platform")
+}
+
+// TestRecordPosts_BroadcastGroup_SharedAcrossOneTurn — the Post records fanned
+// out by ONE turn (one recordPostsAndReviews invocation) must share the turn's
+// broadcast group id, including the failed channel, so the history can render
+// the broadcast as one card with a visible partial failure.
+func TestRecordPosts_BroadcastGroup_SharedAcrossOneTurn(t *testing.T) {
+	repo := &fakePostRepo{}
+	turn := &Turn{deps: Deps{Posts: repo}}
+
+	toolCalls := []domain.ToolCall{
+		{ID: "c1", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+		{ID: "c2", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "hi"}},
+		{ID: "c3", Name: tools.YandexBusinessCreatePost, Arguments: map[string]interface{}{"text": "hi"}},
+	}
+	toolResults := []domain.ToolResult{
+		{ToolCallID: "c1"},
+		{ToolCallID: "c2", IsError: true, Content: map[string]interface{}{"error": "rate limited"}},
+		{ToolCallID: "c3"},
+	}
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "turn-msg-1", toolCalls, toolResults)
+
+	require.Len(t, repo.created, 3, "each channel of the broadcast must persist its own Post")
+	for _, p := range repo.created {
+		assert.Equal(t, "turn-msg-1", p.BroadcastGroupID,
+			"every post of one turn — the failed channel included — must carry the turn's group id")
+	}
+}
+
+// TestRecordPosts_BroadcastGroup_StableAcrossResumeOfSameTurn — a sequential
+// HITL fan-out records the same turn's posts over SEVERAL invocations (pause →
+// approve → re-pause → approve), each passing the SAME assistant message id.
+// The group must not split. This is also the retry contract: a re-dispatch that
+// records under the original turn's id can never mint a new group.
+func TestRecordPosts_BroadcastGroup_StableAcrossResumeOfSameTurn(t *testing.T) {
+	repo := &fakePostRepo{}
+	turn := &Turn{deps: Deps{Posts: repo}}
+
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "turn-msg-7",
+		[]domain.ToolCall{{ID: "c1", Name: tools.YandexBusinessCreatePost, Arguments: map[string]interface{}{"text": "hi"}}},
+		[]domain.ToolResult{{ToolCallID: "c1"}},
+	)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "turn-msg-7",
+		[]domain.ToolCall{{ID: "c2", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}}},
+		[]domain.ToolResult{{ToolCallID: "c2"}},
+	)
+
+	require.Len(t, repo.created, 2)
+	assert.Equal(t, repo.created[0].BroadcastGroupID, repo.created[1].BroadcastGroupID,
+		"posts recorded by separate resume invocations of the same turn must share one group")
+}
+
+// TestRecordPosts_BroadcastGroup_DistinctAcrossTurns — posts produced by
+// different turns carry different group ids and must never be folded into one
+// broadcast card.
+func TestRecordPosts_BroadcastGroup_DistinctAcrossTurns(t *testing.T) {
+	repo := &fakePostRepo{}
+	turn := &Turn{deps: Deps{Posts: repo}}
+
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "turn-msg-a",
+		[]domain.ToolCall{{ID: "c1", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "first"}}},
+		[]domain.ToolResult{{ToolCallID: "c1"}},
+	)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "turn-msg-b",
+		[]domain.ToolCall{{ID: "c2", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "second"}}},
+		[]domain.ToolResult{{ToolCallID: "c2"}},
+	)
+
+	require.Len(t, repo.created, 2)
+	assert.NotEqual(t, repo.created[0].BroadcastGroupID, repo.created[1].BroadcastGroupID,
+		"posts of different turns must not share a broadcast group")
+}
+
+// TestRecordPosts_CapturesPermalinkFromToolResult — a successful posting tool
+// result carrying url/post_id must persist them onto the PlatformResult so the
+// history can offer an "open" permalink; an errored result must not (the post
+// never landed, a stale url would lie).
+func TestRecordPosts_CapturesPermalinkFromToolResult(t *testing.T) {
+	repo := &fakePostRepo{}
+	turn := &Turn{deps: Deps{Posts: repo}}
+
+	toolCalls := []domain.ToolCall{
+		{ID: "c1", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "vk post"}},
+		{ID: "c2", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "tg post"}},
+		{ID: "c3", Name: tools.YandexBusinessCreatePost, Arguments: map[string]interface{}{"text": "ya post"}},
+		{ID: "c4", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "vk failed"}},
+	}
+	toolResults := []domain.ToolResult{
+		{ToolCallID: "c1", Content: map[string]interface{}{"post_id": float64(321), "url": "https://vk.com/wall-77_321"}},
+		{ToolCallID: "c2", Content: map[string]interface{}{"status": "sent", "message_id": float64(45), "url": "https://t.me/mychannel/45"}},
+		{ToolCallID: "c3", Content: map[string]interface{}{"status": "created"}},
+		{ToolCallID: "c4", IsError: true, Content: map[string]interface{}{"error": "boom", "url": "https://vk.com/wall-77_999"}},
+	}
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "turn-msg-1", toolCalls, toolResults)
+
+	require.Len(t, repo.created, 4)
+	byContent := map[string]domain.Post{}
+	for _, p := range repo.created {
+		byContent[p.Content] = p
+	}
+
+	vk := byContent["vk post"].PlatformResults["vk"]
+	assert.Equal(t, "https://vk.com/wall-77_321", vk.URL)
+	assert.Equal(t, "321", vk.PostID, "numeric post_id must persist as its decimal string")
+
+	tg := byContent["tg post"].PlatformResults["telegram"]
+	assert.Equal(t, "https://t.me/mychannel/45", tg.URL)
+	assert.Equal(t, "45", tg.PostID, "telegram message_id must persist as the post id")
+
+	ya := byContent["ya post"].PlatformResults["yandex_business"]
+	assert.Empty(t, ya.URL, "a platform without a public permalink stays url-less")
+	assert.Empty(t, ya.PostID)
+
+	failed := byContent["vk failed"].PlatformResults["vk"]
+	assert.Empty(t, failed.URL, "an errored result must never persist a permalink")
+	assert.Equal(t, "boom", failed.Error)
 }
 
 // failingPostRepo always returns an error from Create so the test can assert the
@@ -467,7 +583,7 @@ func TestRecordPosts_EmitsPublishMetric(t *testing.T) {
 		{ToolCallID: "c1"},
 		{ToolCallID: "c2", IsError: true, Content: map[string]interface{}{"error": "rate limited"}},
 	}
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	require.InDelta(t, beforeOK+1, counterValue(t, "posts_published_total", okLabels), 0.0001,
 		"successful publish must increment {telegram,published}")
@@ -488,7 +604,7 @@ func TestRecordPosts_EmitsPublishMetricOnPersistFailure(t *testing.T) {
 		{ID: "c1", Name: tools.YandexBusinessCreatePost, Arguments: map[string]interface{}{"text": "ya"}},
 	}
 	toolResults := []domain.ToolResult{{ToolCallID: "c1"}}
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	require.InDelta(t, before+1, counterValue(t, "posts_published_total", labels), 0.0001,
 		"publish metric must fire even when the Post record fails to persist")
@@ -519,7 +635,7 @@ func TestRecordReviews_EmitsReplyMetric(t *testing.T) {
 		}}},
 		{ToolCallID: "c2", IsError: true, Content: map[string]interface{}{"error": "session expired"}},
 	}
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	require.Len(t, repo.upserted, 2, "both reviews must upsert")
 	require.InDelta(t, beforeReplied+1, counterValue(t, "reviews_replied_total", repliedLabels), 0.0001,
@@ -544,7 +660,7 @@ func TestRecordReviews_EmitsErrorMetricOnUpsertFailure(t *testing.T) {
 			map[string]interface{}{"id": "r1", "reply": "thanks!"},
 		}}},
 	}
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	require.InDelta(t, before+1, counterValue(t, "reviews_replied_total", labels), 0.0001,
 		"upsert failure must increment {yandex_business,error}")
@@ -608,7 +724,7 @@ func TestReconcileReviewReplies_FlipsStatusOnSuccessfulYandexReply(t *testing.T)
 	}}
 	toolResults := []domain.ToolResult{{ToolCallID: "c1"}}
 
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	require.Len(t, repo.updateCalls, 1, "a successful reply tool must reconcile the stored review exactly once")
 	got := repo.updateCalls[0]
@@ -642,7 +758,7 @@ func TestReconcileReviewReplies_VKComposesExternalID(t *testing.T) {
 	}}
 	toolResults := []domain.ToolResult{{ToolCallID: "c1"}}
 
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	require.Len(t, repo.updateCalls, 1, "vk reply must reconcile the composed-external-id review")
 	assert.Equal(t, domain.ReviewReplyStatusReplied, repo.updateCalls[0].status)
@@ -668,7 +784,7 @@ func TestReconcileReviewReplies_SkipsFailedReply(t *testing.T) {
 	}}
 	toolResults := []domain.ToolResult{{ToolCallID: "c1", IsError: true, Content: map[string]interface{}{"error": "captcha"}}}
 
-	turn.recordPostsAndReviews(context.Background(), "biz-1", toolCalls, toolResults)
+	turn.recordPostsAndReviews(context.Background(), "biz-1", "msg-1", toolCalls, toolResults)
 
 	assert.Empty(t, repo.updateCalls, "a failed reply must not reconcile the stored review")
 }

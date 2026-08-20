@@ -129,6 +129,58 @@ func TestHandler_PublishPost(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.True(t, resp.Success)
 	assert.Equal(t, float64(123), resp.Result["post_id"])
+	assert.Equal(t, "https://vk.com/wall-123456_123", resp.Result["url"],
+		"a landed wall post must report its public permalink")
+}
+
+// TestHandler_PublishPost_NonNumericGroupOmitsURL — a community resolved by a
+// non-numeric screen name cannot form a wall permalink; the result must omit
+// "url" rather than fabricate a broken link.
+func TestHandler_PublishPost_NonNumericGroupOmitsURL(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", extID: "my_community"}
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) { return 9, nil },
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t1",
+		Tool:       tools.VKPublishPost,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	_, hasURL := resp.Result["url"]
+	assert.False(t, hasURL, "non-numeric owner id must not produce a permalink")
+	assert.Equal(t, float64(9), resp.Result["post_id"])
+}
+
+// TestHandler_PostPhoto_ResultCarriesPermalink — the photo publish path must
+// report the same wall permalink shape as the text path.
+func TestHandler_PostPhoto_ResultCarriesPermalink(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok", extID: "-777"}
+	vkClient := &mockVKClient{
+		postPhotoFn: func(_, _, _ string) (int64, error) { return 55, nil },
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t1",
+		Tool:       tools.VKPostPhoto,
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"photo_url": "https://images.example.test/pic.jpg",
+			"caption":   "pic",
+			"group_id":  "-777",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "https://vk.com/wall-777_55", resp.Result["url"])
+	assert.Equal(t, float64(55), resp.Result["post_id"])
 }
 
 func TestHandler_PublishPost_FetchesToken(t *testing.T) {

@@ -553,7 +553,7 @@ func (t *Turn) runResumeStream(
 	}
 	t.bumpLastMessageAtNow(saveCtx, conversationID)
 	if t.deps.Posts != nil || t.deps.Reviews != nil {
-		t.recordPostsAndReviews(saveCtx, businessID, recCalls, recResults)
+		t.recordPostsAndReviews(saveCtx, businessID, msg.ID, recCalls, recResults)
 	}
 	t.auditRPAMutations(saveCtx, businessID, actorUserID, recCalls, recResults)
 	return OutcomeRejoinedResume, nil
@@ -630,7 +630,7 @@ func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Messa
 	}
 	t.bumpLastMessageAtNow(saveCtx, msg.ConversationID)
 	if t.deps.Posts != nil || t.deps.Reviews != nil {
-		t.recordPostsAndReviews(saveCtx, businessID, toolCalls, toolResults)
+		t.recordPostsAndReviews(saveCtx, businessID, msg.ID, toolCalls, toolResults)
 	}
 	t.auditRPAMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
 	return OutcomePauseHITL
@@ -651,7 +651,7 @@ func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message,
 	}
 	t.bumpLastMessageAtNow(saveCtx, msg.ConversationID)
 	if t.deps.Posts != nil || t.deps.Reviews != nil {
-		t.recordPostsAndReviews(saveCtx, businessID, toolCalls, toolResults)
+		t.recordPostsAndReviews(saveCtx, businessID, msg.ID, toolCalls, toolResults)
 	}
 	t.auditRPAMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
 }

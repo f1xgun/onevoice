@@ -140,13 +140,36 @@ func sanitizeTokenError(err error, token string) error {
 	return errors.New(redacted)
 }
 
-// SendMessage sends a text message to the given chat. chat is a numeric ID
-// (private chats/channels) or a public @channelusername — Telegram accepts
-// either as chat_id.
-func (b *Bot) SendMessage(chat, text string) error {
+// SentMessage is the delivery receipt of a channel send: the Telegram-assigned
+// message id plus the chat's public @username (without the "@", empty for
+// private channels). Together they are what a t.me permalink is built from —
+// the Bot API reports the username on the response even when the send was
+// addressed by numeric id, so public channels connected by id still yield one.
+type SentMessage struct {
+	MessageID    int
+	ChatUsername string
+}
+
+// sentMessageOf extracts the permalink-relevant fields from a Bot API send
+// response. Chat is nil-guarded: some sends echo no chat object back.
+func sentMessageOf(m tgbotapi.Message) SentMessage {
+	sent := SentMessage{MessageID: m.MessageID}
+	if m.Chat != nil {
+		sent.ChatUsername = m.Chat.UserName
+	}
+	return sent
+}
+
+// SendMessage sends a text message to the given chat and returns its delivery
+// receipt. chat is a numeric ID (private chats/channels) or a public
+// @channelusername — Telegram accepts either as chat_id.
+func (b *Bot) SendMessage(chat, text string) (SentMessage, error) {
 	msg := newTextMessage(chat, text)
-	_, err := b.api.Send(msg)
-	return sanitizeTokenError(err, b.token)
+	sent, err := b.api.Send(msg)
+	if err != nil {
+		return SentMessage{}, sanitizeTokenError(err, b.token)
+	}
+	return sentMessageOf(sent), nil
 }
 
 // SendMessageWithMarkup sends a text message with an optional inline keyboard.
@@ -186,14 +209,15 @@ func newTextMessage(chat, text string) tgbotapi.MessageConfig {
 }
 
 // SendPhoto downloads the image from photoURL and sends it to Telegram as file
-// bytes, avoiding Telegram-server-side URL fetching failures.
-func (b *Bot) SendPhoto(chat, photoURL, caption string) error {
+// bytes, avoiding Telegram-server-side URL fetching failures. Returns the
+// delivery receipt of the created channel post.
+func (b *Bot) SendPhoto(chat, photoURL, caption string) (SentMessage, error) {
 	data, ct, err := photoFetcher.Get(context.Background(), photoURL)
 	if err != nil {
-		return fmt.Errorf("download photo: %w", err)
+		return SentMessage{}, fmt.Errorf("download photo: %w", err)
 	}
 	if !strings.HasPrefix(ct, "image/") {
-		return fmt.Errorf("telegram: unexpected content-type %q, expected image/*", ct)
+		return SentMessage{}, fmt.Errorf("telegram: unexpected content-type %q, expected image/*", ct)
 	}
 
 	name := path.Base(photoURL)
@@ -209,8 +233,11 @@ func (b *Bot) SendPhoto(chat, photoURL, caption string) error {
 		photo = tgbotapi.NewPhotoToChannel(chat, file)
 	}
 	photo.Caption = caption
-	_, err = b.api.Send(photo)
-	return sanitizeTokenError(err, b.token)
+	sent, err := b.api.Send(photo)
+	if err != nil {
+		return SentMessage{}, sanitizeTokenError(err, b.token)
+	}
+	return sentMessageOf(sent), nil
 }
 
 // SendReply sends a text message as a reply to a specific message in a chat.

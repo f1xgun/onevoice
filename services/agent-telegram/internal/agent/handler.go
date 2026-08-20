@@ -30,15 +30,17 @@ type TokenFetcher = agentbase.TokenResolver
 // Sender abstracts Telegram message sending for testability. The chat target is
 // a string because Telegram's chat_id accepts either a numeric ID or a public
 // @channelusername — bot.go picks the right tgbotapi constructor per form.
+// The channel-post sends return the delivery receipt (message id + public
+// username when the channel has one) so the tool result can carry a permalink.
 type Sender interface {
-	SendMessage(chat, text string) error
-	SendPhoto(chat, photoURL, caption string) error
+	SendMessage(chat, text string) (telegram.SentMessage, error)
+	SendPhoto(chat, photoURL, caption string) (telegram.SentMessage, error)
 	SendReply(chat string, messageID int, text string) error
 	GetReviews(limit int) ([]map[string]interface{}, error)
 	// SendMessageWithMarkup is the additive send path that carries an optional
-	// inline keyboard. A nil markup is exactly equivalent to SendMessage, so
-	// existing callers are unaffected and the [Approve]/[Reject] approval buttons
-	// are strictly opt-in.
+	// inline keyboard. A nil markup is exactly equivalent to SendMessage (minus
+	// the receipt, which DM notifications never need), so existing callers are
+	// unaffected and the [Approve]/[Reject] approval buttons are strictly opt-in.
 	SendMessageWithMarkup(chat, text string, markup *tgbotapi.InlineKeyboardMarkup) error
 }
 
@@ -196,6 +198,37 @@ func (h *Handler) getSender(ctx context.Context, req a2a.ToolRequest, externalID
 	return sender, info.ExternalID, nil
 }
 
+// telegramPermalinkBase is the public t.me prefix a channel-post permalink is
+// built from: https://t.me/<username>/<message_id>.
+const telegramPermalinkBase = "https://t.me/"
+
+// channelPostURL builds the public permalink of a delivered channel post.
+// Telegram only exposes permalinks for channels with a public @username: the
+// send receipt carries it regardless of how the send was addressed, and the
+// @username target itself is the fallback for responses that omit the chat.
+// Private channels have neither — the permalink is then empty and the tool
+// result simply carries no url.
+func channelPostURL(sent telegram.SentMessage, target string) string {
+	username := sent.ChatUsername
+	if username == "" && strings.HasPrefix(target, "@") {
+		username = target[1:]
+	}
+	if username == "" || sent.MessageID <= 0 {
+		return ""
+	}
+	return telegramPermalinkBase + username + "/" + strconv.Itoa(sent.MessageID)
+}
+
+// sentPostResult builds the tool-result payload of a delivered channel post:
+// the message id always, the t.me permalink when the channel is public.
+func sentPostResult(sent telegram.SentMessage, target string) map[string]any {
+	result := map[string]any{"status": "sent", "message_id": sent.MessageID}
+	if url := channelPostURL(sent, target); url != "" {
+		result["url"] = url
+	}
+	return result
+}
+
 func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	text, _ := req.Args["text"].(string)
 	channelIDStr, _ := req.Args["channel_id"].(string)
@@ -210,11 +243,12 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 		return nil, err
 	}
 
-	if err := sender.SendMessage(target, text); err != nil {
+	sent, err := sender.SendMessage(target, text)
+	if err != nil {
 		return nil, fmt.Errorf("telegram: send message: %w", classifyTelegramError(err))
 	}
 
-	return a2a.OK(req, map[string]any{"status": "sent"}), nil
+	return a2a.OK(req, sentPostResult(sent, target)), nil
 }
 
 func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -232,11 +266,12 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 		return nil, err
 	}
 
-	if err := sender.SendPhoto(target, photoURL, caption); err != nil {
+	sent, err := sender.SendPhoto(target, photoURL, caption)
+	if err != nil {
 		return nil, fmt.Errorf("telegram: send photo: %w", classifyTelegramError(err))
 	}
 
-	return a2a.OK(req, map[string]any{"status": "sent"}), nil
+	return a2a.OK(req, sentPostResult(sent, target)), nil
 }
 
 // sendNotification delivers a private message to the business owner. Unlike the

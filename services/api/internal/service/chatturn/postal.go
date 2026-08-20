@@ -58,6 +58,34 @@ func parseScheduleTime(v interface{}) *time.Time {
 	return nil
 }
 
+// resultURL extracts the published post's public permalink from a successful
+// posting tool result. The agents populate "url" only when the platform
+// exposes one (Telegram needs a public @username, Yandex.Business has none),
+// so absence is normal and leaves PlatformResult.URL empty — the FE simply
+// renders no "open" link then.
+func resultURL(content map[string]interface{}) string {
+	u, _ := content["url"].(string)
+	return u
+}
+
+// resultPostID extracts the platform-assigned id of the created post from a
+// successful posting tool result: "post_id" (VK) or "message_id" (Telegram).
+// Agents emit numeric ids that arrive JSON-roundtripped as float64; string
+// ids are kept verbatim. Returns "" when the payload carries neither.
+func resultPostID(content map[string]interface{}) string {
+	for _, key := range []string{"post_id", "message_id"} {
+		switch v := content[key].(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case float64:
+			return strconv.FormatInt(int64(v), 10)
+		}
+	}
+	return ""
+}
+
 // postingTools maps tool names that publish content to their extraction info.
 // Every content-publishing tool the agents expose must be listed here, or a
 // successful publish leaves no Post record and the Posts feed silently omits it.
@@ -269,10 +297,16 @@ func externalIDFromToolArgs(platform string, toolArgs map[string]interface{}) st
 //   - creates Post records for each successful posting tool call
 //   - upserts Review records for each successful *__get_reviews tool call
 //
-// Mirrors the legacy chatproxy.PostalService.RecordPostsAndReviews verbatim.
+// broadcastGroupID is the turn's assistant message id, stamped onto every Post
+// so the records fanned out by one turn (a cross-platform broadcast) stay one
+// group in history. Callers on the pause/resume paths of the SAME turn pass
+// the SAME id, so a sequential HITL fan-out — recorded across several
+// invocations — still lands in one group, while posts of different turns never
+// share it.
 func (t *Turn) recordPostsAndReviews(
 	ctx context.Context,
 	businessID string,
+	broadcastGroupID string,
 	toolCalls []domain.ToolCall,
 	toolResults []domain.ToolResult,
 ) {
@@ -320,6 +354,9 @@ func (t *Turn) recordPostsAndReviews(
 				if errMsg, ok := tr.Content["error"].(string); ok {
 					platformResult.Error = errMsg
 				}
+			} else {
+				platformResult.URL = resultURL(tr.Content)
+				platformResult.PostID = resultPostID(tr.Content)
 			}
 
 			post := &domain.Post{
@@ -329,9 +366,10 @@ func (t *Turn) recordPostsAndReviews(
 				PlatformResults: map[string]domain.PlatformResult{
 					info.platform: platformResult,
 				},
-				Status:      status,
-				ScheduledAt: scheduledAt,
-				PublishedAt: publishedAt,
+				Status:           status,
+				ScheduledAt:      scheduledAt,
+				PublishedAt:      publishedAt,
+				BroadcastGroupID: broadcastGroupID,
 			}
 			if err := t.deps.Posts.Create(ctx, post); err != nil {
 				slog.ErrorContext(ctx, "chatturn: failed to create post record", "tool", tc.Name, "error", err)

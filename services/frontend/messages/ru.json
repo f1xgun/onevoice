@@ -520,6 +520,11 @@
       "yandex_business": "Яндекс"
     },
     "errorFallback": "Не удалось опубликовать. Проверьте подключение каналов и попробуйте ещё раз.",
+    "broadcast": {
+      "publishedAll": "{count, plural, one {Опубликовано в # канале} other {Опубликовано в # каналах}}",
+      "partial": "{ok} из {total} — {channels}: ошибка",
+      "failedAll": "Ошибка во всех {count} каналах"
+    },
     "mediaFile": "файл {index}",
     "platformLabel": "Платформа",
     "statusLabel": "Статус",

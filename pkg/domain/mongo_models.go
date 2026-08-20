@@ -244,7 +244,18 @@ type Post struct {
 	Status          string                    `json:"status" bson:"status"`
 	ScheduledAt     *time.Time                `json:"scheduledAt,omitempty" bson:"scheduled_at,omitempty"`
 	PublishedAt     *time.Time                `json:"publishedAt,omitempty" bson:"published_at,omitempty"`
-	CreatedAt       time.Time                 `json:"createdAt" bson:"created_at"`
+	// BroadcastGroupID ties together the Post records produced by ONE chat
+	// turn — a cross-platform broadcast ("publish everywhere") fans out into
+	// one Post per publishing tool call, and without a shared key the history
+	// shows N unrelated posts, hiding a partial failure. The key is the turn's
+	// assistant message id: stable across the pause/approve/resume cycles of
+	// the same turn (so a sequential HITL fan-out lands in one group) and
+	// never reused by another turn. A task retry re-dispatches without
+	// creating Post records, so it can neither split nor restart a group.
+	// Empty for records that predate the field — readers must render those
+	// ungrouped, exactly as before.
+	BroadcastGroupID string    `json:"broadcastGroupId,omitempty" bson:"broadcast_group_id,omitempty"`
+	CreatedAt        time.Time `json:"createdAt" bson:"created_at"`
 }
 
 type PlatformResult struct {
