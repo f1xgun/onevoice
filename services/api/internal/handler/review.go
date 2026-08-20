@@ -54,6 +54,7 @@ type ReviewService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
 	Reply(ctx context.Context, businessID uuid.UUID, id string, replyText string) error
+	RetryReply(ctx context.Context, businessID uuid.UUID, id string) error
 	Refresh(ctx context.Context, userID uuid.UUID) error
 	BatchDraft(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	BulkApprove(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
@@ -290,6 +291,40 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.Error("failed to reply to review", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// RetryReviewReply handles POST /businesses/{id}/reviews/{reviewID}/reply/retry
+// — re-sends the stored reply of a review whose previous send failed. No body:
+// the failed manual reply persisted the attempted text, so the retry re-uses it
+// verbatim (and the same dispatch idempotency key, so an already-delivered reply
+// is never posted twice). A review not in the error reply state → 409 with the
+// stable reply_not_retryable code. Authz mirrors ReplyToReview:
+// RequireBusinessAccess + PermContentUpdate + writeLimit (router) + the service
+// soft-delete gate.
+func (h *ReviewHandler) RetryReviewReply(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "RetryReviewReply", authz.PermContentUpdate)
+	if !ok {
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+
+	if err := h.reviewService.RetryReply(r.Context(), bc.BusinessID, id); err != nil {
+		switch {
+		case errors.Is(err, domain.ErrReviewNotFound):
+			writeJSONError(w, http.StatusNotFound, "review not found")
+		case errors.Is(err, domain.ErrBusinessNotFound):
+			writeJSONError(w, http.StatusNotFound, "business not found")
+		case errors.Is(err, domain.ErrReviewReplyNotRetryable):
+			writeJSONCodeError(w, http.StatusConflict, "reply_not_retryable")
+		default:
+			slog.Error("failed to retry review reply", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		}
 		return
 	}
 

@@ -208,6 +208,18 @@ export default function ReviewsPage() {
     onError: () => toast.error(tReviews('sendReplyError')),
   });
 
+  const retryMutation = useMutation({
+    mutationFn: (id: string) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId).post(BIZ_API_PATHS.REVIEWS.REPLY_RETRY(id), undefined);
+    },
+    onSuccess: () => toast.success(tReviews('failedReply.retrySuccess')),
+    onError: () => toast.error(tReviews('failedReply.retryError')),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
+    },
+  });
+
   const refreshMutation = useMutation({
     mutationFn: () =>
       bizApi(activeBusinessId!).post(BIZ_API_PATHS.REVIEWS.REFRESH, undefined, {
@@ -373,7 +385,9 @@ export default function ReviewsPage() {
                 onSendDraft={() => sendDraftAsIs(review)}
                 onEdit={() => openReply(review, review.draftReply ?? '')}
                 onWriteOwn={() => openReply(review, '')}
+                onRetry={() => retryMutation.mutate(review.id)}
                 isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
+                isRetrying={retryMutation.isPending && retryMutation.variables === review.id}
                 canReply={canReply}
               />
             ))}
@@ -460,14 +474,18 @@ function ReviewCard({
   onSendDraft,
   onEdit,
   onWriteOwn,
+  onRetry,
   isSending,
+  isRetrying,
   canReply,
 }: {
   review: Review;
   onSendDraft: () => void;
   onEdit: () => void;
   onWriteOwn: () => void;
+  onRetry: () => void;
   isSending: boolean;
+  isRetrying: boolean;
   canReply: boolean;
 }) {
   const tReviews = useTranslations('reviews');
@@ -492,6 +510,7 @@ function ReviewCard({
     review.draftReply.trim().length > 0;
   const draftGenerating = status === 'pending' && review.draftStatus === 'generating';
   const hasSentReply = status === 'replied' && !!review.replyText;
+  const hasFailedReply = status === 'error' && !!review.replyText;
 
   return (
     <article className="rounded-lg border border-line bg-paper-raised p-6 shadow-ov-1">
@@ -520,6 +539,23 @@ function ReviewCard({
         <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
           <MonoLabel>{tReviews('sentReply')}</MonoLabel>
           <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
+        </div>
+      )}
+
+      {/* Failed reply — the saved text never reached the platform. The owner
+          sees what was written, why it's still here, and a one-click resend. */}
+      {hasFailedReply && (
+        <div className="border-destructive/40 mt-4 rounded-md border bg-paper-sunken px-4 py-3">
+          <MonoLabel>{tReviews('failedReply.label')}</MonoLabel>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
+          <p className="mt-2 text-xs text-ink-soft">{tReviews('failedReply.explanation')}</p>
+          {canReply && (
+            <div className="mt-3">
+              <Button variant="primary" size="sm" onClick={onRetry} disabled={isRetrying}>
+                {isRetrying ? tReviews('sending') : tReviews('failedReply.retry')}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

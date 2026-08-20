@@ -718,6 +718,13 @@
       "yourReply": "Your reply"
     },
     "sentReply": "Reply sent",
+    "failedReply": {
+      "label": "Unsent reply",
+      "explanation": "The reply was saved but didn't reach the platform. Send it again.",
+      "retry": "Send again",
+      "retrySuccess": "Reply sent",
+      "retryError": "Sending failed again. The reply is saved — try later."
+    },
     "platformPlaceholder": "Platform",
     "replyPlaceholder": "Write a reply to the customer…",
     "refreshTitle": "Pull fresh reviews from connected platforms",

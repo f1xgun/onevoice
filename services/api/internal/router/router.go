@@ -315,6 +315,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/presence-health", handlers.PresenceHealth.GetPresenceHealth)
 				r.Get("/reviews/{id}", handlers.Review.GetReview)
 				r.With(writeLimit).Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
+				r.With(writeLimit).Post("/reviews/{id}/reply/retry", handlers.Review.RetryReviewReply)
 
 				r.Get("/posts", handlers.Post.ListPosts)
 				r.Get("/posts/{id}", handlers.Post.GetPost)

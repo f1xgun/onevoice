@@ -23,6 +23,7 @@ type stubReviewRepo struct {
 	domain.ReviewRepository
 	review        *domain.Review
 	updateReplies int
+	lastReplyText string
 	lastFeedback  *domain.ReviewDraftFeedback
 }
 
@@ -30,9 +31,10 @@ func (s *stubReviewRepo) GetByID(_ context.Context, _ string) (*domain.Review, e
 	return s.review, nil
 }
 
-func (s *stubReviewRepo) UpdateReply(_ context.Context, _, _, status string, feedback *domain.ReviewDraftFeedback) error {
+func (s *stubReviewRepo) UpdateReply(_ context.Context, _, replyText, status string, feedback *domain.ReviewDraftFeedback) error {
 	s.updateReplies++
 	s.review.ReplyStatus = status
+	s.lastReplyText = replyText
 	s.lastFeedback = feedback
 	return nil
 }
