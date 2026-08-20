@@ -9,15 +9,16 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { Post } from '@/types/post';
 
-import { firstLink, topLevelErrorStatus } from '../_helpers';
+import { firstLink, topLevelErrorStatus, type PostRow } from '../_helpers';
 import { MediaThumb } from './MediaThumb';
 import { PlatformResultCard } from './PlatformResultCard';
 
-export function ExpandedPanel({ post }: { post: Post }) {
+export function ExpandedPanel({ post }: { post: PostRow }) {
   const tPosts = useTranslations('posts');
-  const results = post.platformResults ? Object.entries(post.platformResults) : [];
+  const results =
+    post.broadcastChannels?.map((c) => [c.platform, c.result] as const) ??
+    (post.platformResults ? Object.entries(post.platformResults) : []);
   const firstError = results.find(([, r]) => r.error);
   const failureMessage =
     firstError?.[1].error ?? (topLevelErrorStatus(post) ? tPosts('errorFallback') : null);
@@ -71,8 +72,8 @@ export function ExpandedPanel({ post }: { post: Post }) {
             {tPosts('noStats')}
           </div>
         ) : (
-          results.map(([platform, result]) => (
-            <PlatformResultCard key={platform} platform={platform} result={result} />
+          results.map(([platform, result], i) => (
+            <PlatformResultCard key={`${platform}-${i}`} platform={platform} result={result} />
           ))
         )}
         <div className="mt-1 flex flex-wrap gap-2">

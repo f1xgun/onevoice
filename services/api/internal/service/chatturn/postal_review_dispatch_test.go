@@ -142,7 +142,7 @@ func TestOnToolCall_ReviewReplyRetryDedupedAfterLostResponse(t *testing.T) {
 		Arguments: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7), "text": "спасибо"},
 	}}
 	lostResponse := []domain.ToolResult{{ToolCallID: "call-3", IsError: true, Content: map[string]interface{}{"error": "context deadline exceeded"}}}
-	turn.recordPostsAndReviews(context.Background(), businessID, toolCalls, lostResponse)
+	turn.recordPostsAndReviews(context.Background(), businessID, "msg-1", toolCalls, lostResponse)
 
 	require.Equal(t, domain.ReviewReplyStatusPending, review.ReplyStatus,
 		"a lost-response reply must not reconcile the review to replied")

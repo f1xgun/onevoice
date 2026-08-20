@@ -190,7 +190,7 @@ func (t *Turn) Run(
 	if t.deps.Posts != nil || t.deps.Reviews != nil || t.deps.Audit != nil {
 		sideCtx, cancel := t.persistContext(ctx)
 		defer cancel()
-		t.recordPostsAndReviews(sideCtx, enriched.business.ID.String(), state.toolCalls, state.toolResults)
+		t.recordPostsAndReviews(sideCtx, enriched.business.ID.String(), streamStartID, state.toolCalls, state.toolResults)
 		t.auditRPAMutations(sideCtx, enriched.business.ID.String(), req.UserID.String(), state.toolCalls, state.toolResults)
 	}
 

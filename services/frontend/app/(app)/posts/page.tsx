@@ -53,6 +53,7 @@ import { useDataTableSearch } from '@/hooks/useDataTableSearch';
 import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
 import type { Post } from '@/types/post';
 
+import { BroadcastBadge } from './_components/BroadcastBadge';
 import { ChannelChip } from './_components/ChannelChip';
 import { ExpandedPanel } from './_components/ExpandedPanel';
 import { PostsEmpty } from './_components/PostsEmpty';
@@ -60,7 +61,12 @@ import { PostsSkeleton } from './_components/PostsSkeleton';
 import { SearchField } from './_components/SearchField';
 import { StatCard } from './_components/StatCard';
 import { StatusBadge } from './_components/StatusBadge';
-import { collectPlatforms, nextScheduledLabel } from './_helpers';
+import {
+  collectPlatforms,
+  mergeBroadcastGroups,
+  nextScheduledLabel,
+  type PostRow,
+} from './_helpers';
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -72,8 +78,10 @@ interface PostsFilters extends Record<string, string> {
   platform: PlatformKey;
 }
 
-const POSTS_GRID_TEMPLATE = '24px 1fr 140px 200px 160px 56px';
-const POSTS_MIN_WIDTH = '620px';
+// Status column is sized for the widest broadcast badge («Опубликовано в N
+// каналах»), not just the single-word per-post statuses.
+const POSTS_GRID_TEMPLATE = '24px 1fr 190px 200px 160px 56px';
+const POSTS_MIN_WIDTH = '670px';
 
 // Status radiogroup option order — used both for rendering the chips and
 // for the arrow-key navigation hook (which walks this list to decide which
@@ -115,8 +123,10 @@ export default function PostsPage() {
     enabled: !!activeBusinessId,
   });
 
-  const { query, setQuery, visibleRows } = useDataTableSearch<Post>({
-    rows: posts,
+  const tableRows = useMemo(() => mergeBroadcastGroups(posts), [posts]);
+
+  const { query, setQuery, visibleRows } = useDataTableSearch<PostRow>({
+    rows: tableRows,
     searchableFields: (p) => [p.content],
   });
 
@@ -136,7 +146,7 @@ export default function PostsPage() {
     };
   }, [posts]);
 
-  const postColumns = useMemo<Column<Post>[]>(
+  const postColumns = useMemo<Column<PostRow>[]>(
     () => [
       {
         id: 'expand',
@@ -159,7 +169,12 @@ export default function PostsPage() {
       {
         id: 'status',
         header: tPosts('table.status'),
-        cell: (p) => <StatusBadge status={p.status} />,
+        cell: (p) =>
+          p.broadcastChannels ? (
+            <BroadcastBadge channels={p.broadcastChannels} />
+          ) : (
+            <StatusBadge status={p.status} />
+          ),
       },
       {
         id: 'platforms',
@@ -327,7 +342,7 @@ export default function PostsPage() {
         {isError ? (
           <ListLoadError onRetry={refetch} />
         ) : (
-          <DataTable<Post>
+          <DataTable<PostRow>
             columns={postColumns}
             rows={visibleRows}
             rowKey={(p) => p.id}

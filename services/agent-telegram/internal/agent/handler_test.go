@@ -21,6 +21,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/agent"
+	"github.com/f1xgun/onevoice/services/agent-telegram/internal/telegram"
 )
 
 // fakeTokenFetcher records the last call and returns a preset token.
@@ -63,7 +64,8 @@ func (f *firstActiveTokenFetcher) GetToken(_ context.Context, _, _, _, _ string)
 	return agent.TokenInfo{AccessToken: f.token, ExternalID: f.ownExternalID}, nil
 }
 
-// fakeSender records the last message sent.
+// fakeSender records the last message sent. receipt is what the channel-post
+// sends report back — tests that assert permalink payloads configure it.
 type fakeSender struct {
 	sentMessage    string
 	sentChat       string
@@ -75,12 +77,13 @@ type fakeSender struct {
 	replyText      string
 	reviewsLimit   int
 	sentMarkup     *tgbotapi.InlineKeyboardMarkup
+	receipt        telegram.SentMessage
 }
 
-func (f *fakeSender) SendMessage(chat, text string) error {
+func (f *fakeSender) SendMessage(chat, text string) (telegram.SentMessage, error) {
 	f.sentMessage = text
 	f.sentChat = chat
-	return nil
+	return f.receipt, nil
 }
 
 func (f *fakeSender) SendMessageWithMarkup(chat, text string, markup *tgbotapi.InlineKeyboardMarkup) error {
@@ -90,11 +93,11 @@ func (f *fakeSender) SendMessageWithMarkup(chat, text string, markup *tgbotapi.I
 	return nil
 }
 
-func (f *fakeSender) SendPhoto(chat, photoURL, caption string) error {
+func (f *fakeSender) SendPhoto(chat, photoURL, caption string) (telegram.SentMessage, error) {
 	f.sentChat = chat
 	f.sentPhotoURL = photoURL
 	f.sentCaption = caption
-	return nil
+	return f.receipt, nil
 }
 
 func (f *fakeSender) SendReply(chat string, messageID int, text string) error {
@@ -140,6 +143,93 @@ func TestHandler_SendChannelPost_FetchesTokenPerRequest(t *testing.T) {
 	assert.Equal(t, "biz-42", fetcher.lastBizID)
 	assert.Equal(t, "telegram", fetcher.lastPlatform)
 	assert.Equal(t, "-1001234567890", fetcher.lastExtID)
+}
+
+// TestHandler_SendChannelPost_ResultCarriesPermalink — a public channel's send
+// receipt (username + message id) must surface as a t.me permalink and the
+// message id in the tool result, so the recorded Post can offer an "open" link.
+func TestHandler_SendChannelPost_ResultCarriesPermalink(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "-1001234567890"}
+	sender := &fakeSender{receipt: telegram.SentMessage{MessageID: 42, ChatUsername: "onevoice_news"}}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t1",
+		BusinessID: "biz-42",
+		Tool:       tools.TelegramSendChannelPost,
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "-1001234567890"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "https://t.me/onevoice_news/42", resp.Result["url"])
+	assert.Equal(t, 42, resp.Result["message_id"])
+}
+
+// TestHandler_SendChannelPost_UsernameTargetFallback — when the receipt omits
+// the chat object but the channel was addressed by public @username, the
+// permalink is built from the target itself.
+func TestHandler_SendChannelPost_UsernameTargetFallback(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "@onevoice_news"}
+	sender := &fakeSender{receipt: telegram.SentMessage{MessageID: 7}}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t1",
+		BusinessID: "biz-42",
+		Tool:       tools.TelegramSendChannelPost,
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "@onevoice_news"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "https://t.me/onevoice_news/7", resp.Result["url"])
+}
+
+// TestHandler_SendChannelPost_PrivateChannelHasNoPermalink — a private channel
+// (numeric id, no public username anywhere) has no permalink; the result must
+// omit "url" rather than fabricate one, while still reporting the message id.
+func TestHandler_SendChannelPost_PrivateChannelHasNoPermalink(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "-1001234567890"}
+	sender := &fakeSender{receipt: telegram.SentMessage{MessageID: 9}}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t1",
+		BusinessID: "biz-42",
+		Tool:       tools.TelegramSendChannelPost,
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "-1001234567890"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	_, hasURL := resp.Result["url"]
+	assert.False(t, hasURL, "a private channel must not fabricate a permalink")
+	assert.Equal(t, 9, resp.Result["message_id"])
+}
+
+// TestHandler_SendChannelPhoto_ResultCarriesPermalink — the photo publish path
+// must carry the same receipt-derived permalink as the text path.
+func TestHandler_SendChannelPhoto_ResultCarriesPermalink(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "@onevoice_news"}
+	sender := &fakeSender{receipt: telegram.SentMessage{MessageID: 43, ChatUsername: "onevoice_news"}}
+	h := newHandlerWithSender(fetcher, sender)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t1",
+		BusinessID: "biz-42",
+		Tool:       tools.TelegramSendChannelPhoto,
+		Args: map[string]interface{}{
+			"photo_url":  "https://images.example.test/pic.jpg",
+			"caption":    "pic",
+			"channel_id": "@onevoice_news",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "https://t.me/onevoice_news/43", resp.Result["url"])
+	assert.Equal(t, 43, resp.Result["message_id"])
 }
 
 // TestHandler_SendChannelPost_PublicUsername is the regression for the demo
@@ -540,8 +630,13 @@ type errSender struct {
 	err error
 }
 
-func (e *errSender) SendMessage(_, _ string) error             { return e.err }
-func (e *errSender) SendPhoto(_, _, _ string) error            { return e.err }
+func (e *errSender) SendMessage(_, _ string) (telegram.SentMessage, error) {
+	return telegram.SentMessage{}, e.err
+}
+
+func (e *errSender) SendPhoto(_, _, _ string) (telegram.SentMessage, error) {
+	return telegram.SentMessage{}, e.err
+}
 func (e *errSender) SendReply(_ string, _ int, _ string) error { return e.err }
 func (e *errSender) GetReviews(_ int) ([]map[string]interface{}, error) {
 	return nil, e.err
@@ -702,7 +797,7 @@ type countingSender struct {
 	sendCalls int64
 }
 
-func (c *countingSender) SendMessage(chat, text string) error {
+func (c *countingSender) SendMessage(chat, text string) (telegram.SentMessage, error) {
 	atomic.AddInt64(&c.sendCalls, 1)
 	return c.fakeSender.SendMessage(chat, text)
 }

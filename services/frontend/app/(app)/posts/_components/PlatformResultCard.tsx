@@ -1,8 +1,10 @@
 // app/(app)/posts/_components/PlatformResultCard.tsx — per-platform
-// result row inside the ExpandedPanel right column.
-//
-// Extracted from posts/page.tsx as part of.
+// result row inside the ExpandedPanel right column. When the platform
+// reported a public permalink, the row carries an "open" external link so
+// each channel of a broadcast can be opened individually.
 import { useTranslations } from 'next-intl';
+import { ExternalLink } from 'lucide-react';
+
 import { ChannelMark } from '@/components/ui/channel-mark';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import type { Post } from '@/types/post';
@@ -31,6 +33,18 @@ export function PlatformResultCard({
             : shortLabel
           : (result.error ?? result.status)}
       </span>
+      {ok && result.url && (
+        <a
+          href={result.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${tPosts('openLink')} — ${display}`}
+          title={tPosts('openLink')}
+          className="inline-flex shrink-0 items-center text-ink-soft transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ExternalLink aria-hidden className="size-3.5" />
+        </a>
+      )}
       <span
         aria-hidden
         className={

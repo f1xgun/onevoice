@@ -182,6 +182,35 @@ func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKCli
 	return h.clientFactory(info.AccessToken), groupID, nil
 }
 
+// vkWallURLBase is the public prefix of a community wall-post permalink:
+// https://vk.com/wall<owner_id>_<post_id>, owner_id negative for communities.
+const vkWallURLBase = "https://vk.com/wall"
+
+// wallPostURL builds the public permalink of a published wall post. groupID is
+// the resolveGroupTarget output — the negative owner_id string for numeric
+// community ids. A non-numeric groupID (a screen name the negative-id
+// normalization passed through) cannot form a wall permalink, so the URL is
+// omitted rather than guessed.
+func wallPostURL(groupID string, postID int64) string {
+	if !strings.HasPrefix(groupID, "-") {
+		return ""
+	}
+	if _, err := strconv.ParseInt(groupID, 10, 64); err != nil {
+		return ""
+	}
+	return vkWallURLBase + groupID + "_" + strconv.FormatInt(postID, 10)
+}
+
+// publishedPostResult builds the tool-result payload of a landed wall post:
+// the VK-assigned post id always, the public permalink when derivable.
+func publishedPostResult(groupID string, postID int64) map[string]any {
+	result := map[string]any{"post_id": float64(postID)}
+	if url := wallPostURL(groupID, postID); url != "" {
+		result["url"] = url
+	}
+	return result
+}
+
 func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	client, groupID, err := h.getClient(ctx, req)
 	if err != nil {
@@ -194,7 +223,7 @@ func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, fmt.Errorf("vk: publish post: %w", classifyVKError(err))
 	}
 
-	return a2a.OK(req, map[string]any{"post_id": float64(postID)}), nil
+	return a2a.OK(req, publishedPostResult(groupID, postID)), nil
 }
 
 func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -212,7 +241,7 @@ func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.Tool
 	if err != nil {
 		return nil, fmt.Errorf("vk: post photo: %w", classifyVKError(err))
 	}
-	return a2a.OK(req, map[string]any{"post_id": float64(postID)}), nil
+	return a2a.OK(req, publishedPostResult(groupID, postID)), nil
 }
 
 func (h *Handler) schedulePost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {

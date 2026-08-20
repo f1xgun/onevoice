@@ -76,12 +76,39 @@ func TestSendMessage_Success(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendMessage("-1001234567890", "Hello!")
+	sent, err := bot.SendMessage("-1001234567890", "Hello!")
 
 	require.NoError(t, err)
 	assert.Contains(t, capturedPath, "/sendMessage")
 	assert.Equal(t, "-1001234567890", capturedChatID)
 	assert.Equal(t, "Hello!", capturedText)
+	assert.Equal(t, 42, sent.MessageID, "receipt must carry the Telegram-assigned message id")
+	assert.Empty(t, sent.ChatUsername, "a chat without a public username yields an empty receipt username")
+}
+
+// TestSendMessage_ReceiptCarriesPublicUsername — when the API response echoes
+// the chat's public username, the receipt must surface it so the caller can
+// build a t.me permalink even for a channel addressed by numeric id.
+func TestSendMessage_ReceiptCarriesPublicUsername(t *testing.T) {
+	srv := newMockTelegramServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok": true,
+			"result": map[string]interface{}{
+				"message_id": 77,
+				"chat":       map[string]interface{}{"id": -1001234567890, "username": "onevoice_news"},
+			},
+		})
+	})
+	defer srv.Close()
+
+	bot := newTestBot(t, srv)
+	sent, err := bot.SendMessage("-1001234567890", "Hello!")
+
+	require.NoError(t, err)
+	assert.Equal(t, 77, sent.MessageID)
+	assert.Equal(t, "onevoice_news", sent.ChatUsername,
+		"the response chat username must reach the receipt")
 }
 
 func TestSendMessage_PublicChannelUsername(t *testing.T) {
@@ -102,7 +129,7 @@ func TestSendMessage_PublicChannelUsername(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendMessage("@onevoice_test", "Hello, public channel!")
+	_, err := bot.SendMessage("@onevoice_test", "Hello, public channel!")
 
 	require.NoError(t, err)
 	assert.Equal(t, "@onevoice_test", capturedChatID, "public @username must be sent verbatim as chat_id")
@@ -121,7 +148,7 @@ func TestSendMessage_APIError(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendMessage("999999", "Hello!")
+	_, err := bot.SendMessage("999999", "Hello!")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "chat not found")
@@ -166,9 +193,10 @@ func TestSendPhoto_Success(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendPhoto("-1001234567890", "https://images.example.test/image.jpg", "Nice pic!")
+	sent, err := bot.SendPhoto("-1001234567890", "https://images.example.test/image.jpg", "Nice pic!")
 
 	require.NoError(t, err)
+	assert.Equal(t, 43, sent.MessageID, "photo receipt must carry the created post's message id")
 	assert.Contains(t, capturedPath, "/sendPhoto")
 	assert.Contains(t, capturedContentType, "multipart/form-data", "photo should be sent as multipart upload")
 }
@@ -184,7 +212,7 @@ func TestSendPhoto_DownloadFails(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendPhoto("-1001234567890", "https://images.example.test/missing.jpg", "caption")
+	_, err := bot.SendPhoto("-1001234567890", "https://images.example.test/missing.jpg", "caption")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "download photo")
@@ -197,7 +225,7 @@ func TestSendPhoto_InvalidURL(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendPhoto("-1001234567890", "://invalid-url", "caption")
+	_, err := bot.SendPhoto("-1001234567890", "://invalid-url", "caption")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "download photo")
@@ -214,7 +242,7 @@ func TestSendPhoto_RejectsNonImageContentType(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendPhoto("-1001234567890", "https://images.example.test/page.html", "caption")
+	_, err := bot.SendPhoto("-1001234567890", "https://images.example.test/page.html", "caption")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "content-type")
@@ -238,7 +266,7 @@ func TestSendPhoto_RejectsSSRF(t *testing.T) {
 		"https://[::1]/photo.jpg",
 	}
 	for _, raw := range disallowed {
-		err := bot.SendPhoto("-1001234567890", raw, "caption")
+		_, err := bot.SendPhoto("-1001234567890", raw, "caption")
 		require.Error(t, err, "SendPhoto(%q) must be rejected", raw)
 		require.ErrorIs(t, err, safefetch.ErrUnsafeURL, "SendPhoto(%q) must fail closed with ErrUnsafeURL", raw)
 		assert.Contains(t, err.Error(), "download photo")
@@ -311,7 +339,7 @@ func TestSendMessage_EmptyText(t *testing.T) {
 	defer srv.Close()
 
 	bot := newTestBot(t, srv)
-	err := bot.SendMessage("-1001234567890", "")
+	_, err := bot.SendMessage("-1001234567890", "")
 
 	require.Error(t, err)
 }
@@ -343,7 +371,10 @@ func TestSendMessage_StalledServerTimesOut(t *testing.T) {
 	bot := &Bot{api: api}
 
 	done := make(chan error, 1)
-	go func() { done <- bot.SendMessage("-1001234567890", "Hello!") }()
+	go func() {
+		_, sendErr := bot.SendMessage("-1001234567890", "Hello!")
+		done <- sendErr
+	}()
 
 	select {
 	case sendErr := <-done:
