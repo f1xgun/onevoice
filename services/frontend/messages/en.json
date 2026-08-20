@@ -308,6 +308,10 @@
       "retry": "Try again"
     }
   },
+  "permissions": {
+    "loadError": "Couldn't check your access rights — editing is temporarily unavailable.",
+    "retry": "Retry"
+  },
   "validation": {
     "email": "Invalid email",
     "url": "Invalid URL",

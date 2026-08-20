@@ -28,8 +28,15 @@ vi.mock('@/lib/stores/business', () => ({
     selector({ activeBusinessId: BIZ_ID }),
 }));
 
+const permState = {
+  allowed: true,
+  isLoading: false,
+  isError: false,
+  refetch: vi.fn(),
+};
+
 vi.mock('@/lib/hooks/usePermission', () => ({
-  usePermission: () => ({ allowed: true, isLoading: false }),
+  usePermission: () => ({ ...permState }),
 }));
 
 const toastSuccess = vi.fn();
@@ -54,6 +61,8 @@ function newClient() {
 describe('VoiceProfileSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    permState.allowed = true;
+    permState.isError = false;
   });
 
   it('loads the stored profile via GET /voice-profile and shows it', async () => {
@@ -105,5 +114,33 @@ describe('VoiceProfileSection', () => {
 
     fireEvent.click(saveBtn);
     expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a retryable error when the permission check fails instead of a silent lock', async () => {
+    const user = userEvent.setup();
+    getMock.mockResolvedValue({ data: { voiceProfile: 'Пиши тепло.' } });
+    permState.allowed = false;
+    permState.isError = true;
+
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не получилось проверить права доступа'
+    );
+    const retryBtn = screen.getByRole('button', { name: 'Повторить' });
+    await user.click(retryBtn);
+    expect(permState.refetch).toHaveBeenCalled();
+  });
+
+  it('shows no error banner on a real permission denial — controls just stay disabled', async () => {
+    getMock.mockResolvedValue({ data: { voiceProfile: '' } });
+    permState.allowed = false;
+
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+
+    const textarea = await screen.findByRole<HTMLTextAreaElement>('textbox');
+    await waitFor(() => expect(getMock).toHaveBeenCalled());
+    expect(textarea).toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

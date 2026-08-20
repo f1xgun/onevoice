@@ -17,6 +17,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { cn } from '@/lib/utils';
 
 export const VOICE_PROFILE_MAX_LENGTH = 400;
@@ -29,7 +30,8 @@ export function VoiceProfileSection() {
   const t = useTranslations('business.voiceProfile');
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  const canEdit = usePermission('business.update').allowed;
+  const editPerm = usePermission('business.update');
+  const canEdit = editPerm.allowed;
 
   const { data, isLoading, isError } = useQuery<string>({
     queryKey: QUERY_KEYS.BUSINESS_VOICE_PROFILE(activeBusinessId),
@@ -93,6 +95,8 @@ export function VoiceProfileSection() {
       />
 
       {isError && <p className="text-xs text-[var(--ov-danger)]">{t('loadError')}</p>}
+
+      {editPerm.isError && <PermissionLoadError onRetry={editPerm.refetch} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <div className="flex flex-col gap-0.5">

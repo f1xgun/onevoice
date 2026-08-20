@@ -19,6 +19,7 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { createBusinessSchema, type BusinessInput } from '@/lib/schemas';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,8 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState(defaultValues?.logoUrl ?? '');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  const canEdit = usePermission('business.update').allowed;
+  const editPerm = usePermission('business.update');
+  const canEdit = editPerm.allowed;
 
   const businessSchema = useMemo(() => createBusinessSchema(tValidation), [tValidation]);
 
@@ -199,6 +201,8 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           />
         </Field>
       </div>
+
+      {editPerm.isError && <PermissionLoadError onRetry={editPerm.refetch} />}
 
       <div className="flex items-center justify-end pt-1">
         <Button
