@@ -15,12 +15,14 @@
 // implementation, so every call-site (ChatWindow, scroll-into-view,
 // data-message-id query selector for the highlight hook) keeps working.
 
-import Markdown from 'react-markdown';
+import Markdown, { type Components } from 'react-markdown';
+import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { ToolCallsBlock } from './ToolCallsBlock';
 import { TypingIndicator } from './TypingIndicator';
 import { StreamErrorNotice } from './StreamErrorNotice';
 import { ChannelMark } from '@/components/ui/channel-mark';
+import { isTrustedImageSrc, safeExternalHref } from '@/lib/trustedImage';
 import type { Message } from '@/types/chat';
 
 export function MessageBubble({ message }: { message: Message }) {
@@ -37,6 +39,39 @@ export function MessageBubble({ message }: { message: Message }) {
   // next LLM iteration and the operator can't tell OneVoice is still working.
   // Gated on hasContent so it never double-renders alongside the dots.
   const showWorkingFooter = isStreaming && hasContent;
+
+  // Never auto-load an image the model emitted from an untrusted host: a
+  // Markdown image in assistant output could be steered by injected review text
+  // into a tracking/exfil fetch. First-party/same-origin images render inline;
+  // anything else becomes a click-through link the operator opens deliberately.
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      img({ src, alt }) {
+        const url = typeof src === 'string' ? src : '';
+        const altText = typeof alt === 'string' ? alt : '';
+        if (url && isTrustedImageSrc(url)) {
+          // eslint-disable-next-line @next/next/no-img-element
+          return <img src={url} alt={altText} className="max-w-full rounded-md" />;
+        }
+        const href = safeExternalHref(url);
+        const label = altText.trim() !== '' ? altText : tWindow('externalImage');
+        if (!href) {
+          return <span className="text-ink-faint">{label}</span>;
+        }
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className="underline decoration-dotted underline-offset-2"
+          >
+            {label}
+          </a>
+        );
+      },
+    }),
+    [tWindow],
+  );
 
   if (isUser) {
     return (
@@ -62,7 +97,7 @@ export function MessageBubble({ message }: { message: Message }) {
               <TypingIndicator label={tWindow('typingAria')} />
             ) : (
               <div className="prose prose-sm max-w-none prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0.5">
-                <Markdown>{message.content}</Markdown>
+                <Markdown components={markdownComponents}>{message.content}</Markdown>
               </div>
             )}
           </div>

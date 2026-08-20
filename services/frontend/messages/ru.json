@@ -352,6 +352,7 @@
       "messagePlaceholder": "Напишите сообщение…",
       "sendAria": "Отправить",
       "typingAria": "OneVoice печатает",
+      "externalImage": "Открыть изображение",
       "stopAria": "Остановить",
       "readOnlyHint": "У вас нет прав отправлять сообщения в этой организации"
     },

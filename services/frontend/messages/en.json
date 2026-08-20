@@ -352,6 +352,7 @@
       "messagePlaceholder": "Type a message…",
       "sendAria": "Send",
       "typingAria": "OneVoice is typing",
+      "externalImage": "Open image",
       "stopAria": "Stop",
       "readOnlyHint": "You don't have permission to send messages in this organization"
     },
