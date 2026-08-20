@@ -80,7 +80,9 @@ func resultPostID(content map[string]interface{}) string {
 				return v
 			}
 		case float64:
-			return strconv.FormatInt(int64(v), 10)
+			if v != 0 {
+				return strconv.FormatInt(int64(v), 10)
+			}
 		}
 	}
 	return ""
