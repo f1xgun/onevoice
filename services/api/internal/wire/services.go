@@ -124,6 +124,10 @@ type Services struct {
 	// ChannelRequest records demand for not-yet-supported channels (fake-door).
 	ChannelRequest *service.ChannelRequestService
 
+	// Landing records public marketing-landing capture: closed-beta waitlist
+	// signups and fake-door channel votes.
+	Landing *service.LandingService
+
 	// PlanResolver resolves the per-business billing plan + rate-limit tier
 	// (v1.6). Fail-safe: DB error / no subscription → Free. Injected into the
 	// chat turn (tier forwarding) and the billing summary service.
@@ -572,6 +576,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.Telemetry = service.NewTelemetryService(repos.TelemetryEvent)
 	s.Feedback = service.NewFeedbackService(h.PG, repos.ProductFeedback, repos.EmailOutbox, repos.User, cfg.FeedbackNotifyEmail)
 	s.ChannelRequest = service.NewChannelRequestService(repos.ChannelDemandSignal)
+	s.Landing = service.NewLandingService(repos.Landing)
 
 	if h.NATS != nil && h.Mongo != nil {
 		var briefRouter service.OwnerBriefRouter

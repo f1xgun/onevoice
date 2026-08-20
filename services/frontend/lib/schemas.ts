@@ -64,6 +64,21 @@ export function createRegisterSchema(t: ValidationTranslator) {
     });
 }
 
+// Mirror the backend WaitlistRequest constraint (validate:"max=320"). The
+// sphere/pain enums are validated server-side against a closed allow-list, so
+// the form keeps them as free-optional strings and only gates email + consent.
+const WAITLIST_EMAIL_MAX_LEN = 320;
+
+export function createWaitlistSchema(t: ValidationTranslator) {
+  const consentRequiredMessage = t('consentRequired');
+  return z.object({
+    email: z.string().email(t('email')).max(WAITLIST_EMAIL_MAX_LEN),
+    sphere: z.string().optional(),
+    pain: z.string().optional(),
+    consent: z.literal(true, { message: consentRequiredMessage }),
+  });
+}
+
 export function createBusinessSchema(t: ValidationTranslator) {
   const minChars = (count: number) => t('minChars', { count });
   const maxChars = (count: number) => t('maxChars', { count });
@@ -93,6 +108,7 @@ export function createBusinessSchema(t: ValidationTranslator) {
 // canonical way to spell that.
 export type LoginInput = z.infer<ReturnType<typeof createLoginSchema>>;
 export type RegisterInput = z.infer<ReturnType<typeof createRegisterSchema>>;
+export type WaitlistInput = z.infer<ReturnType<typeof createWaitlistSchema>>;
 export type BusinessInput = z.infer<ReturnType<typeof createBusinessSchema>>;
 
 // HITL tool registry & approvals.

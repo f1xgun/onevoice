@@ -77,6 +77,10 @@ type Repos struct {
 	// only ChannelRequestService depends on it.
 	ChannelDemandSignal *repository.ChannelDemandSignalRepository
 
+	// Landing — public marketing-landing capture (waitlist_signups +
+	// channel_votes). Concrete pointer: only LandingService depends on it.
+	Landing *repository.LandingRepository
+
 	// MembershipLoader backs the authz cache (v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
 	// authz.MembershipLoader interface to keep the cache decoupled.
@@ -131,6 +135,7 @@ func Repositories(h *DBHandles) *Repos {
 		TelemetryEvent:         repository.NewTelemetryEventRepository(h.PG),
 		ProductFeedback:        repository.NewProductFeedbackRepository(h.PG),
 		ChannelDemandSignal:    repository.NewChannelDemandSignalRepository(h.PG),
+		Landing:                repository.NewLandingRepository(h.PG),
 		MembershipLoader:       repository.NewMembershipLoader(h.PG),
 		Billing:                repository.NewBillingRepository(h.PG),
 		Subscription:           repository.NewSubscriptionRepository(h.PG),

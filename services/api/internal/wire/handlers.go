@@ -326,5 +326,6 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Telemetry:            handler.NewTelemetryHandler(svcs.Telemetry),
 		Feedback:             handler.NewFeedbackHandler(svcs.Feedback),
 		ChannelRequest:       handler.NewChannelRequestHandler(svcs.ChannelRequest),
+		Landing:              handler.NewLandingHandler(svcs.Landing),
 	}, nil
 }

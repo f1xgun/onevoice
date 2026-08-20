@@ -99,11 +99,11 @@ const (
 
 // Defines values for CreateChannelRequestRequestChannel.
 const (
-	Avito       CreateChannelRequestRequestChannel = "avito"
-	N2gis       CreateChannelRequestRequestChannel = "2gis"
-	Other       CreateChannelRequestRequestChannel = "other"
-	Ozon        CreateChannelRequestRequestChannel = "ozon"
-	Wildberries CreateChannelRequestRequestChannel = "wildberries"
+	CreateChannelRequestRequestChannelAvito       CreateChannelRequestRequestChannel = "avito"
+	CreateChannelRequestRequestChannelN2gis       CreateChannelRequestRequestChannel = "2gis"
+	CreateChannelRequestRequestChannelOther       CreateChannelRequestRequestChannel = "other"
+	CreateChannelRequestRequestChannelOzon        CreateChannelRequestRequestChannel = "ozon"
+	CreateChannelRequestRequestChannelWildberries CreateChannelRequestRequestChannel = "wildberries"
 )
 
 // Defines values for HITLAlreadyResolvedErrorError.
@@ -224,6 +224,14 @@ const (
 	ProjectRequestWhitelistModeExplicit ProjectRequestWhitelistMode = "explicit"
 	ProjectRequestWhitelistModeInherit  ProjectRequestWhitelistMode = "inherit"
 	ProjectRequestWhitelistModeNone     ProjectRequestWhitelistMode = "none"
+)
+
+// Defines values for PublicChannelVoteRequestChannel.
+const (
+	PublicChannelVoteRequestChannelAvito    PublicChannelVoteRequestChannel = "avito"
+	PublicChannelVoteRequestChannelN2gis    PublicChannelVoteRequestChannel = "2gis"
+	PublicChannelVoteRequestChannelOther    PublicChannelVoteRequestChannel = "other"
+	PublicChannelVoteRequestChannelWhatsapp PublicChannelVoteRequestChannel = "whatsapp"
 )
 
 // Defines values for RefreshStartedResponseStatus.
@@ -351,6 +359,22 @@ const (
 // Defines values for VersionMismatchResponseCode.
 const (
 	VersionMismatch VersionMismatchResponseCode = "version_mismatch"
+)
+
+// Defines values for WaitlistRequestPain.
+const (
+	Card    WaitlistRequestPain = "card"
+	Posts   WaitlistRequestPain = "posts"
+	Reviews WaitlistRequestPain = "reviews"
+)
+
+// Defines values for WaitlistRequestSphere.
+const (
+	Beauty   WaitlistRequestSphere = "beauty"
+	Cafe     WaitlistRequestSphere = "cafe"
+	Other    WaitlistRequestSphere = "other"
+	Retail   WaitlistRequestSphere = "retail"
+	Services WaitlistRequestSphere = "services"
 )
 
 // Defines values for ListAuditLogsParamsCategory.
@@ -1268,6 +1292,18 @@ type ProjectRequestApprovalOverrides string
 // ProjectRequestWhitelistMode defines model for ProjectRequest.WhitelistMode.
 type ProjectRequestWhitelistMode string
 
+// PublicChannelVoteRequest Public fake-door vote for a not-yet-supported channel, cast from the
+// marketing landing by an unauthenticated visitor. Measures anonymous
+// top-of-funnel demand; distinct from the business-scoped
+// CreateChannelRequestRequest.
+type PublicChannelVoteRequest struct {
+	Channel PublicChannelVoteRequestChannel `json:"channel" validate:"required,oneof=whatsapp avito 2gis other"`
+	Note    *string                         `json:"note,omitempty" validate:"omitempty,max=280"`
+}
+
+// PublicChannelVoteRequestChannel defines model for PublicChannelVoteRequest.Channel.
+type PublicChannelVoteRequestChannel string
+
 // ReconsentPolicy defines model for ReconsentPolicy.
 type ReconsentPolicy struct {
 	Sha256  *string `json:"sha256,omitempty"`
@@ -1923,6 +1959,29 @@ type VoiceProfileResponse struct {
 	VoiceProfile string `json:"voiceProfile" validate:"required"`
 }
 
+// WaitlistRequest Public closed-beta waitlist signup submitted from the marketing
+// landing. Only email and the processing-consent flag are required; the
+// segmentation fields are optional. Enums are inlined (not $ref) so the
+// generated struct carries validate:oneof tags.
+type WaitlistRequest struct {
+	// Consent Must be true — the visitor ticked the personal-data-processing
+	// consent checkbox. A false or absent value fails validation.
+	Consent bool                `json:"consent" validate:"required"`
+	Email   openapi_types.Email `json:"email" validate:"required,email,max=320"`
+
+	// Pain Optional strongest-pain segment.
+	Pain *WaitlistRequestPain `json:"pain,omitempty" validate:"omitempty,oneof=reviews posts card"`
+
+	// Sphere Optional organization-sphere segment.
+	Sphere *WaitlistRequestSphere `json:"sphere,omitempty" validate:"omitempty,oneof=cafe beauty services retail other"`
+}
+
+// WaitlistRequestPain Optional strongest-pain segment.
+type WaitlistRequestPain string
+
+// WaitlistRequestSphere Optional organization-sphere segment.
+type WaitlistRequestSphere string
+
 // YandexCompaniesResponse defines model for YandexCompaniesResponse.
 type YandexCompaniesResponse struct {
 	Companies []YandexCompanyEntry `json:"companies" validate:"required"`
@@ -2260,6 +2319,9 @@ type UpdateBusinessVoiceProfileJSONRequestBody = UpdateVoiceProfileRequest
 // UpdateBusinessVoiceToneJSONRequestBody defines body for UpdateBusinessVoiceTone for application/json ContentType.
 type UpdateBusinessVoiceToneJSONRequestBody = UpdateVoiceToneRequest
 
+// RecordChannelVoteJSONRequestBody defines body for RecordChannelVote for application/json ContentType.
+type RecordChannelVoteJSONRequestBody = PublicChannelVoteRequest
+
 // OrchestratorChatJSONRequestBody defines body for OrchestratorChat for application/json ContentType.
 type OrchestratorChatJSONRequestBody = ChatRequest
 
@@ -2274,6 +2336,9 @@ type IngestTelemetryJSONRequestBody = IngestTelemetryJSONBody
 
 // DeleteAccountJSONRequestBody defines body for DeleteAccount for application/json ContentType.
 type DeleteAccountJSONRequestBody = DeleteAccountRequest
+
+// JoinWaitlistJSONRequestBody defines body for JoinWaitlist for application/json ContentType.
+type JoinWaitlistJSONRequestBody = WaitlistRequest
 
 // Getter for additional properties for TelegramLoginRequest. Returns the specified
 // element and whether it was found
