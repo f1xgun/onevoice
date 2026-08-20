@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
@@ -228,6 +229,60 @@ func TestReply_CapturesDraftFeedback(t *testing.T) {
 		fb := reply(t, "", "спасибо, вручную")
 		require.Nil(t, fb)
 	})
+}
+
+// TestReply_ManualDispatchEmitsAuditRow is the fail-on-revert anchor for the
+// manual-reply audit gap: a successful reply that lands a public mutation on a
+// platform must journal one platform.review_replied row attributed to the
+// business and the acting user. Removing the auditReviewReplied call fails this.
+func TestReply_ManualDispatchEmitsAuditRow(t *testing.T) {
+	biz := uuid.New()
+	user := uuid.New()
+	review := &domain.Review{
+		ID:           "rev-audit",
+		BusinessID:   biz.String(),
+		Platform:     a2a.AgentTelegram,
+		ExternalID:   "-100_7",
+		ReplyStatus:  domain.ReviewReplyStatusPending,
+		PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+	}
+	repo := &stubReviewRepo{review: review}
+	auditLog := &captureAuditLogger{}
+	svc := &reviewService{repo: repo, nc: &capturingRequester{}, dispatchTimeout: time.Second, auditLog: auditLog}
+
+	ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{BusinessID: biz, UserID: user})
+	require.NoError(t, svc.Reply(ctx, biz, "rev-audit", "спасибо"))
+
+	require.Len(t, auditLog.entries, 1, "a landed manual reply must journal exactly one platform mutation")
+	e := auditLog.entries[0]
+	require.Equal(t, audit.ActionPlatformReviewReplied, e.Action)
+	require.NotNil(t, e.BusinessID)
+	require.Equal(t, biz, *e.BusinessID)
+	require.NotNil(t, e.UserID)
+	require.Equal(t, user, *e.UserID)
+}
+
+// TestReply_AutopilotDoesNotDoubleAudit asserts the autopilot auto-publish path
+// (tagged via withAutoPublishSignal) does NOT emit a platform.review_replied row
+// here — that path already records review.auto_replied in the drafter, so a
+// second row would double-count the same mutation.
+func TestReply_AutopilotDoesNotDoubleAudit(t *testing.T) {
+	biz := uuid.New()
+	review := &domain.Review{
+		ID:           "rev-auto",
+		BusinessID:   biz.String(),
+		Platform:     a2a.AgentTelegram,
+		ExternalID:   "-100_7",
+		ReplyStatus:  domain.ReviewReplyStatusPending,
+		PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)},
+	}
+	repo := &stubReviewRepo{review: review}
+	auditLog := &captureAuditLogger{}
+	svc := &reviewService{repo: repo, nc: &capturingRequester{}, dispatchTimeout: time.Second, auditLog: auditLog}
+
+	ctx := withAutoPublishSignal(context.Background())
+	require.NoError(t, svc.Reply(ctx, biz, "rev-auto", "спасибо"))
+	require.Empty(t, auditLog.entries, "autopilot auto-publish must not emit a second review-reply audit row")
 }
 
 func TestReply_ManualDispatchCarriesStableApprovalID(t *testing.T) {
