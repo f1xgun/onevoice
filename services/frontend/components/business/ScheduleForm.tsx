@@ -24,6 +24,7 @@ import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
@@ -136,7 +137,8 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
   const dayLabels = useDayLabels();
   const { schedule, setSchedule, specialDates } = useSchedule(initialSchedule, initialSpecialDates);
   const mutation = useScheduleMutation('schedule', tSchedule('hoursSaved'), tSchedule('saveError'));
-  const canEdit = usePermission('business.update').allowed;
+  const editPerm = usePermission('business.update');
+  const canEdit = editPerm.allowed;
 
   function updateDay(index: number, updates: Partial<ScheduleDay>) {
     setSchedule((prev) => prev.map((d, i) => (i === index ? { ...d, ...updates } : d)));
@@ -154,6 +156,8 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
           />
         ))}
       </div>
+      {editPerm.isError && <PermissionLoadError onRetry={editPerm.refetch} />}
+
       <div className="flex items-center justify-end pt-1">
         <Button
           type="button"
@@ -259,7 +263,8 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
     tSchedule('datesSaved'),
     tSchedule('saveError')
   );
-  const canEdit = usePermission('business.update').allowed;
+  const editPerm = usePermission('business.update');
+  const canEdit = editPerm.allowed;
 
   function addSpecialDate(date: Date) {
     const iso = format(date, 'yyyy-MM-dd');
@@ -294,6 +299,8 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
           ))}
         </div>
       )}
+
+      {editPerm.isError && <PermissionLoadError onRetry={editPerm.refetch} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>

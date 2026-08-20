@@ -43,9 +43,43 @@ describe('usePermission (reads /me/permissions)', () => {
     const { result } = renderHook(() => usePermission('members.invite'), {
       wrapper: makeWrapper(qc),
     });
-    expect(result.current).toEqual({ allowed: false, isLoading: true });
+    expect(result.current).toMatchObject({ allowed: false, isLoading: true, isError: false });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.allowed).toBe(true);
+  });
+
+  it('reports a load failure as isError (distinct from a denial) and recovers via refetch', async () => {
+    mockedGetMyPermissions.mockRejectedValue(new Error('network down'));
+    const qc = new QueryClient();
+    const { result } = renderHook(() => usePermission('business.read'), {
+      wrapper: makeWrapper(qc),
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 5000 });
+    expect(result.current.allowed).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+
+    mockedGetMyPermissions.mockResolvedValue(['business.read']);
+    await act(async () => {
+      result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.allowed).toBe(true));
+    expect(result.current.isError).toBe(false);
+  });
+
+  it('keeps the last loaded permissions without isError when a background refresh fails', async () => {
+    mockedGetMyPermissions.mockResolvedValue(['business.read']);
+    const qc = new QueryClient();
+    const { result } = renderHook(() => usePermission('business.read'), {
+      wrapper: makeWrapper(qc),
+    });
+    await waitFor(() => expect(result.current.allowed).toBe(true));
+
+    mockedGetMyPermissions.mockRejectedValue(new Error('transient blip'));
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ['businesses', 'biz-1', 'permissions'] });
+    });
+    expect(result.current.allowed).toBe(true);
+    expect(result.current.isError).toBe(false);
   });
 
   it('returns allowed=false when the requested perm is absent from the API response', async () => {

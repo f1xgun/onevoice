@@ -19,6 +19,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { cn } from '@/lib/utils';
 import { createToneLabel, createToneOptions, type ToneId } from '@/lib/tones';
 
@@ -42,7 +43,8 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
   const [dirty, setDirty] = useState(false);
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  const canEdit = usePermission('business.update').allowed;
+  const editPerm = usePermission('business.update');
+  const canEdit = editPerm.allowed;
 
   const initialKey = (initial ?? []).slice().sort().join('|');
   useEffect(() => {
@@ -107,6 +109,8 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
           );
         })}
       </div>
+
+      {editPerm.isError && <PermissionLoadError onRetry={editPerm.refetch} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <p className="text-xs text-ink-soft">

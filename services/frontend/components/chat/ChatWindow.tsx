@@ -31,6 +31,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { trackEvent } from '@/lib/telemetry';
 import type { Conversation } from '@/lib/conversations';
 
@@ -68,7 +69,8 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   }, []);
   const closeWizard = useCallback(() => setWizardOpen(false), []);
 
-  const canSend = usePermission('content.create').allowed;
+  const sendPerm = usePermission('content.create');
+  const canSend = sendPerm.allowed;
 
   // awaitingTurn: a prior turn is still generating server-side (we reloaded
   // mid-turn). Block new sends — the backend would reject with
@@ -303,7 +305,13 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             </Button>
           )}
         </div>
-        {!canSend && <p className="mt-2 text-xs text-ink-soft">{tChat('readOnlyHint')}</p>}
+        {sendPerm.isError ? (
+          <div className="mt-2">
+            <PermissionLoadError onRetry={sendPerm.refetch} />
+          </div>
+        ) : (
+          !canSend && <p className="mt-2 text-xs text-ink-soft">{tChat('readOnlyHint')}</p>
+        )}
       </div>
     </div>
   );
