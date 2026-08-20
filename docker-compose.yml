@@ -7,8 +7,12 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set, generate with openssl rand -base64 24}
       POSTGRES_DB: onevoice
+    # Not published beyond loopback: clients reach it on postgres:5432 inside
+    # onevoice-network; the 127.0.0.1 host mapping lets host-run binaries dial it
+    # without exposing the port on the VM's public IP. docker-compose.prod.yml
+    # drops even the loopback mapping via `ports: !reset []`.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,14 +23,25 @@ services:
     networks:
       - onevoice-network
 
-  # MongoDB
+  # MongoDB — access control enabled (mongod --auth). The root user is created
+  # on first boot from MONGO_ROOT_USERNAME/PASSWORD; api and orchestrator
+  # authenticate with the same credentials embedded in MONGO_URI
+  # (authSource=admin). Not published beyond loopback: clients reach it on
+  # mongodb:27017 inside onevoice-network, and the 127.0.0.1 host mapping keeps
+  # host-run binaries able to dial it without exposing an unauthenticated-by-
+  # default port on the VM's public IP. docker-compose.prod.yml drops even the
+  # loopback mapping via `ports: !reset []`. The `ping` healthcheck needs no
+  # credentials (it is exempt from auth).
   mongodb:
     image: mongo:7
     container_name: onevoice-mongodb
+    command: ["mongod", "--auth", "--bind_ip_all"]
     environment:
       MONGO_INITDB_DATABASE: onevoice
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set (MongoDB auth); see .env.example}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set, generate with openssl rand -hex 24}
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb_data:/data/db
       - ./migrations/mongo:/docker-entrypoint-initdb.d
@@ -94,9 +109,13 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set, generate with openssl rand -base64 24}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set, generate with openssl rand -base64 24}
+    # Not published beyond loopback: clients reach it on minio:9000 inside
+    # onevoice-network; the 127.0.0.1 host mappings keep the S3 API (9000) and
+    # console (9001) reachable for host-run dev without exposing them on the VM's
+    # public IP. docker-compose.prod.yml drops even the loopback mappings.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -154,7 +173,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set, generate with openssl rand -base64 24}
       POSTGRES_DB: onevoice
-      MONGO_URI: mongodb://mongodb:27017
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set (MongoDB auth); see .env.example}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set, generate with openssl rand -hex 24}@mongodb:27017/onevoice?authSource=admin
       MONGO_DB: onevoice
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -430,7 +449,7 @@ services:
       NATS_URL: nats://nats:4222
       NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
       NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
-      MONGO_URI: mongodb://mongodb:27017
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set (MongoDB auth); see .env.example}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set, generate with openssl rand -hex 24}@mongodb:27017/onevoice?authSource=admin
       MONGO_DB: onevoice
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       # Internal API URL used by billingclient over mTLS.
