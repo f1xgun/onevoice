@@ -186,7 +186,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	tempJSON, _ := json.Marshal(tempData)
 	redisKey := "google_temp:" + stateData.BusinessID.String()
-	if err := h.redis.Set(r.Context(), redisKey, tempJSON, tempOAuthCredsTTL).Err(); err != nil {
+	if err := h.storeTempCreds(r.Context(), redisKey, tempJSON, tempOAuthCredsTTL); err != nil {
 		slog.ErrorContext(r.Context(), "failed to store Google temp data in Redis", "error", err)
 		http.Redirect(w, r, "/integrations?error=internal_error", http.StatusFound)
 		return
@@ -260,14 +260,14 @@ func (h *OAuthHandler) GoogleLocations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redisKey := "google_temp:" + bc.BusinessID.String()
-	val, err := h.redis.Get(r.Context(), redisKey).Result()
+	val, err := h.loadTempCreds(r.Context(), redisKey)
 	if err != nil {
 		writeJSONError(w, http.StatusGone, "Google session expired, please reconnect")
 		return
 	}
 
 	var tempData googleTempData
-	if err := json.Unmarshal([]byte(val), &tempData); err != nil {
+	if err := json.Unmarshal(val, &tempData); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "invalid temp data")
 		return
 	}
@@ -317,14 +317,14 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 	}
 
 	redisKey := "google_temp:" + bc.BusinessID.String()
-	val, err := h.redis.Get(r.Context(), redisKey).Result()
+	val, err := h.loadTempCreds(r.Context(), redisKey)
 	if err != nil {
 		writeJSONError(w, http.StatusGone, "Google session expired, please reconnect")
 		return
 	}
 
 	var tempData googleTempData
-	if err := json.Unmarshal([]byte(val), &tempData); err != nil {
+	if err := json.Unmarshal(val, &tempData); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "invalid temp data")
 		return
 	}

@@ -92,8 +92,16 @@ type Config struct {
 	MongoDB       string
 	RedisHost     string
 	RedisPort     string
+	// RedisPassword authenticates the Redis connection (requirepass). Empty
+	// keeps the connection unauthenticated for local dev.
+	RedisPassword string
 	JWTSecret     string
 	EncryptionKey string
+	// A2APayloadKey is an optional 32-byte AES-256 key used to encrypt secret
+	// A2A tool arguments (currently the Yandex connect cookies) before they
+	// cross the NATS bus. Empty leaves those arguments in plaintext (dev). It
+	// MUST match A2A_PAYLOAD_KEY on the receiving agent.
+	A2APayloadKey string
 	SecureCookies bool
 
 	VKClientID     string
@@ -347,8 +355,10 @@ func Load() (*Config, error) {
 		MongoDB:       getEnv("MONGO_DB", "onevoice"),
 		RedisHost:     getEnv("REDIS_HOST", "localhost"),
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
+		A2APayloadKey: os.Getenv("A2A_PAYLOAD_KEY"),
 		SecureCookies: getEnv("SECURE_COOKIES", envBoolTrue) == envBoolTrue,
 
 		VKClientID:                 os.Getenv("VK_CLIENT_ID"),
@@ -632,6 +642,12 @@ func Load() (*Config, error) {
 		if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
 			return nil, fmt.Errorf("ENCRYPTION_KEY validation failed: %w (generate a new key with: openssl rand -base64 24)", err)
 		}
+	}
+	// A2A_PAYLOAD_KEY is optional; when set it encrypts secret tool arguments
+	// over NATS and must be a valid AES-256 key so a misconfigured length fails
+	// loud at boot rather than at the first Yandex connect.
+	if cfg.A2APayloadKey != "" && len(cfg.A2APayloadKey) != crypto.AES256KeyLen {
+		return nil, fmt.Errorf("A2A_PAYLOAD_KEY must be exactly %d bytes", crypto.AES256KeyLen)
 	}
 
 	cfg.TokenEncryptionKMSKeyID = os.Getenv("TOKEN_ENCRYPTION_KMS_KEY_ID")

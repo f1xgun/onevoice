@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -156,6 +157,22 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, integration)
 }
 
+// yandexCookiesArg builds the list_companies tool argument carrying the pasted
+// session cookies. With a payload encryptor configured the cookies are sealed
+// (AES-256-GCM, base64) under the "cookies_enc" key so the secret never crosses
+// the NATS bus in the clear; the agent decrypts with the shared key. Without an
+// encryptor it falls back to the plaintext "cookies" key (dev), unchanged.
+func (h *OAuthHandler) yandexCookiesArg(cookiesJSON string) (map[string]any, error) {
+	if h.payloadEnc == nil {
+		return map[string]any{"cookies": cookiesJSON}, nil
+	}
+	sealed, err := h.payloadEnc.Encrypt([]byte(cookiesJSON))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"cookies_enc": base64.StdEncoding.EncodeToString(sealed)}, nil
+}
+
 // yandexListCompaniesTimeout caps the agent's list_companies RPA (Playwright
 // SPA hydration ~25-45s).
 const yandexListCompaniesTimeout = 60 * time.Second
@@ -192,10 +209,16 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	args, err := h.yandexCookiesArg(parsed.JSON())
+	if err != nil {
+		slog.Error("yandex list companies: encrypt cookies", "error", err)
+		writeJSONErrorKey(w, r, http.StatusInternalServerError, "oauth.yandex.list_orgs_failed")
+		return
+	}
 	toolReq := a2a.ToolRequest{
 		TaskID:     uuid.NewString(),
 		Tool:       tools.YandexBusinessListCompanies,
-		Args:       map[string]any{"cookies": parsed.JSON()},
+		Args:       args,
 		BusinessID: bc.BusinessID.String(),
 	}
 	resp, callErr := h.taskPublisher.RequestTool(r.Context(), a2a.Subject(a2a.AgentYandexBusiness), toolReq, yandexListCompaniesTimeout)

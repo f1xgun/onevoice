@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/pkg/ssecounter"
@@ -64,6 +65,14 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		GoogleRedirectURI:      cfg.GoogleRedirectURI,
 	}, nil, h.Redis)
 	oauthHandler.WithSecureCookies(cfg.SecureCookies)
+	oauthHandler.WithTempEncryptor(h.Enc)
+	if cfg.A2APayloadKey != "" {
+		payloadEnc, err := crypto.NewEncryptor([]byte(cfg.A2APayloadKey))
+		if err != nil {
+			return nil, fmt.Errorf("wire: a2a payload encryptor: %w", err)
+		}
+		oauthHandler.WithPayloadEncryptor(payloadEnc)
+	}
 	if svcs.AgentTaskPublisher != nil {
 		oauthHandler.WithAgentTaskPublisher(svcs.AgentTaskPublisher)
 	}

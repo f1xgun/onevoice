@@ -22,6 +22,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
@@ -141,6 +142,12 @@ type OAuthHandler struct {
 	redis              *goredis.Client
 	taskPublisher      AgentTaskPublisher // optional; nil disables refresh-name
 	secureCookies      bool               // gate Secure on the CSRF cookie; off for local http dev
+	// tempEnc encrypts short-lived OAuth credentials before they land in Redis
+	// (unauthenticated in dev). Nil falls back to plaintext.
+	tempEnc *crypto.Encryptor
+	// payloadEnc encrypts secret tool arguments (Yandex connect cookies) before
+	// they cross the NATS bus. Nil falls back to a plaintext argument.
+	payloadEnc *crypto.Encryptor
 }
 
 // NewOAuthHandler creates a new OAuthHandler.
@@ -181,6 +188,52 @@ func (h *OAuthHandler) WithAgentTaskPublisher(p AgentTaskPublisher) *OAuthHandle
 func (h *OAuthHandler) WithSecureCookies(secure bool) *OAuthHandler {
 	h.secureCookies = secure
 	return h
+}
+
+// WithTempEncryptor injects the AES encryptor used to protect short-lived
+// OAuth credentials stored in Redis. Not constructor-injected to keep existing
+// call sites and tests untouched; nil is the safe default (plaintext).
+func (h *OAuthHandler) WithTempEncryptor(enc *crypto.Encryptor) *OAuthHandler {
+	h.tempEnc = enc
+	return h
+}
+
+// WithPayloadEncryptor injects the AES encryptor used to protect secret tool
+// arguments (Yandex connect cookies) that cross the NATS bus. Nil is the safe
+// default — arguments are sent in plaintext, as before.
+func (h *OAuthHandler) WithPayloadEncryptor(enc *crypto.Encryptor) *OAuthHandler {
+	h.payloadEnc = enc
+	return h
+}
+
+// storeTempCreds persists a short-lived OAuth credential blob in Redis,
+// encrypting it first when a temp encryptor is configured. The value is stored
+// as raw bytes so binary ciphertext round-trips unchanged.
+func (h *OAuthHandler) storeTempCreds(ctx context.Context, key string, plaintext []byte, ttl time.Duration) error {
+	value := plaintext
+	if h.tempEnc != nil {
+		enc, err := h.tempEnc.Encrypt(plaintext)
+		if err != nil {
+			return err
+		}
+		value = enc
+	}
+	return h.redis.Set(ctx, key, value, ttl).Err()
+}
+
+// loadTempCreds reads a short-lived OAuth credential blob from Redis, decrypting
+// it when a temp encryptor is configured. It mirrors storeTempCreds: every write
+// in a given deployment uses the same path, so a value written encrypted is read
+// back encrypted.
+func (h *OAuthHandler) loadTempCreds(ctx context.Context, key string) ([]byte, error) {
+	raw, err := h.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	if h.tempEnc == nil {
+		return raw, nil
+	}
+	return h.tempEnc.Decrypt(raw)
 }
 
 // issueOAuthCSRFCookie plants the per-flow nonce as a short-lived, HttpOnly

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -65,10 +66,18 @@ type SharedSession interface {
 // cmd/main.go. The dispatch chain (dispatcher fallback + per-tool routing +
 // "unknown tool" error) lives in agentbase.NewRouter.
 type Handler struct {
-	tokens TokenFetcher
-	pool   BrowserPool
-	shared SharedSession
-	exec   agentbase.ToolExec
+	tokens     TokenFetcher
+	pool       BrowserPool
+	shared     SharedSession
+	payloadDec PayloadDecryptor
+	exec       agentbase.ToolExec
+}
+
+// PayloadDecryptor decrypts sealed secret tool arguments (the Yandex connect
+// cookies) that the API encrypts before they cross the NATS bus. Satisfied by
+// *crypto.Encryptor. Nil keeps the plaintext-cookies path (dev), unchanged.
+type PayloadDecryptor interface {
+	Decrypt(ciphertext []byte) ([]byte, error)
 }
 
 // NewHandler creates a Handler with the given TokenFetcher, BrowserPool, and
@@ -94,6 +103,14 @@ func NewHandler(tokens TokenFetcher, pool BrowserPool, dispatcher agentbase.Disp
 // for chaining.
 func (h *Handler) WithSharedSession(s SharedSession) *Handler {
 	h.shared = s
+	return h
+}
+
+// WithPayloadDecryptor injects the decryptor for sealed cookies arguments. Not
+// constructor-injected so existing call sites and tests stay untouched; nil (the
+// default) keeps the plaintext-cookies path. Returns the handler for chaining.
+func (h *Handler) WithPayloadDecryptor(d PayloadDecryptor) *Handler {
+	h.payloadDec = d
 	return h
 }
 
@@ -232,8 +249,39 @@ func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRe
 	return a2a.OK(req, info), nil
 }
 
+// resolveCookiesArg extracts the connect cookies from a list_companies request.
+// A "cookies_enc" argument (base64 AES-256-GCM sealed by the API) is decrypted
+// with the shared payload key; a bad key or ciphertext is non-retryable. The
+// legacy plaintext "cookies" argument is honored when no sealed value is
+// present, and an absent argument yields "" so the caller falls back to the
+// integration-resolved browser.
+func (h *Handler) resolveCookiesArg(req a2a.ToolRequest) (string, error) {
+	if sealed, ok := req.Args["cookies_enc"].(string); ok && sealed != "" {
+		if h.payloadDec == nil {
+			return "", a2a.NewNonRetryableError(errors.New("encrypted cookies received but no A2A payload key configured"))
+		}
+		raw, err := base64.StdEncoding.DecodeString(sealed)
+		if err != nil {
+			return "", a2a.NewNonRetryableError(fmt.Errorf("decode cookies_enc: %w", err))
+		}
+		plain, err := h.payloadDec.Decrypt(raw)
+		if err != nil {
+			return "", a2a.NewNonRetryableError(fmt.Errorf("decrypt cookies_enc: %w", err))
+		}
+		return string(plain), nil
+	}
+	if cookiesJSON, ok := req.Args["cookies"].(string); ok {
+		return cookiesJSON, nil
+	}
+	return "", nil
+}
+
 func (h *Handler) listCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	if cookiesJSON, ok := req.Args["cookies"].(string); ok && cookiesJSON != "" {
+	cookiesJSON, err := h.resolveCookiesArg(req)
+	if err != nil {
+		return nil, err
+	}
+	if cookiesJSON != "" {
 		browser := h.pool.ForBusiness(req.BusinessID, cookiesJSON, "")
 		companies, listErr := browser.ListCompanies(ctx)
 		if listErr != nil {
