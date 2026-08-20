@@ -11,6 +11,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 // openAICompatProvider is the shared OpenAI-compatible Chat/ChatStream
@@ -101,6 +102,35 @@ func buildOpenAITools(tools []llm.ToolDefinition) []openai.Tool {
 	return out
 }
 
+// mapOpenAIUsage projects a go-openai Usage struct onto llm.TokenUsage,
+// splitting out any cache-read prefix the upstream reported.
+//
+// OpenAI-family prompt_tokens counts the WHOLE prompt, cached prefix included.
+// prompt_tokens_details.cached_tokens (OpenAI prompt cache, vLLM prefix caching)
+// reports how many of those were served from cache. Moving the cached portion
+// into CacheReadTokens — and leaving InputTokens as the post-cache remainder —
+// mirrors the Anthropic adapter's post-cache InputTokens contract, so the
+// router's cache-aware billing and the per-business daily-spend gate stop
+// charging the cached prefix at the full input rate. Upstreams that omit the
+// field leave CacheReadTokens zero, preserving prior behavior. CacheCreation
+// stays zero: the OpenAI-compatible surface bills no separate cache-write class.
+func mapOpenAIUsage(u openai.Usage) llm.TokenUsage {
+	usage := llm.TokenUsage{
+		InputTokens:  u.PromptTokens,
+		OutputTokens: u.CompletionTokens,
+		TotalTokens:  u.TotalTokens,
+	}
+	if d := u.PromptTokensDetails; d != nil && d.CachedTokens > 0 {
+		cached := d.CachedTokens
+		if cached > u.PromptTokens {
+			cached = u.PromptTokens
+		}
+		usage.InputTokens = u.PromptTokens - cached
+		usage.CacheReadTokens = cached
+	}
+	return usage
+}
+
 // Chat sends a request and returns the complete response.
 func (p *openAICompatProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	start := time.Now()
@@ -144,17 +174,16 @@ func (p *openAICompatProvider) Chat(ctx context.Context, req llm.ChatRequest) (*
 		finishReason = "tool_calls"
 	}
 
+	usage := mapOpenAIUsage(resp.Usage)
+	metrics.RecordLLMCacheUsage(req.Model, usage.CacheReadTokens, usage.CacheCreationTokens, usage.InputTokens)
+
 	return &llm.ChatResponse{
 		Content:      content,
 		ToolCalls:    toolCalls,
 		FinishReason: finishReason,
-		Usage: llm.TokenUsage{
-			InputTokens:  resp.Usage.PromptTokens,
-			OutputTokens: resp.Usage.CompletionTokens,
-			TotalTokens:  resp.Usage.TotalTokens,
-		},
-		Latency:  time.Since(start),
-		Provider: p.providerName,
+		Usage:        usage,
+		Latency:      time.Since(start),
+		Provider:     p.providerName,
 	}, nil
 }
 
