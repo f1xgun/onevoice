@@ -278,10 +278,10 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	h.clearOAuthCSRFCookie(w)
 
 	tokenURL := fmt.Sprintf(h.vkTokenBaseURL()+"/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
-		h.cfg.VKClientID,
-		h.cfg.VKClientSecret,
+		url.QueryEscape(h.cfg.VKClientID),
+		url.QueryEscape(h.cfg.VKClientSecret),
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
-		code,
+		url.QueryEscape(code),
 	)
 	resp, err := h.httpClient.Get(tokenURL)
 	if err != nil {
