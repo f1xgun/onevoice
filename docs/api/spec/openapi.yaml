@@ -266,6 +266,8 @@ paths:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}
   /businesses/{id}/reviews/{reviewID}/reply:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}~1reply
+  /businesses/{id}/reviews/{reviewID}/reply/retry:
+    $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}~1reply~1retry
   /businesses/{id}/tasks:
     $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks
   /businesses/{id}/tasks/stream:

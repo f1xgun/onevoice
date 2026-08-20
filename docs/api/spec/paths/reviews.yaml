@@ -150,6 +150,53 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/reviews/{reviewID}/reply/retry:
+  post:
+    operationId: retryReviewReply
+    summary: Re-send the stored reply of a review whose previous send failed.
+    description: >-
+      No request body: the failed reply attempt already persisted its text with
+      the `error` reply status, so the retry re-dispatches that stored text
+      verbatim. Only a review in the `error` reply state is retryable; the
+      dispatch reuses the original idempotency key, so a reply that actually
+      reached the platform is answered from the agent's dedupe cache instead of
+      being posted a second time.
+    tags:
+    - reviews
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: reviewID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Retry dispatched and outcome persisted.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/StatusOkResponse
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Review or business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: >-
+          Review is not in the `error` reply state (`reply_not_retryable`) —
+          a delivered or still-pending reply is never re-sent.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
 /businesses/{id}/reviews/{reviewID}/reply:
   put:
     operationId: replyToReview

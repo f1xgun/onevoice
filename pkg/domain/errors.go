@@ -132,6 +132,11 @@ var (
 // Review errors.
 var (
 	ErrReviewNotFound = errors.New("review not found")
+	// ErrReviewReplyNotRetryable rejects a reply retry for a review that is not
+	// in the error reply state (or carries no stored reply text to re-send) —
+	// only a reply whose previous send failed may be re-dispatched, so a retry
+	// can never double-post an already-delivered reply.
+	ErrReviewReplyNotRetryable = errors.New("review reply is not retryable")
 )
 
 // Post errors.

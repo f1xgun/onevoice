@@ -32,6 +32,14 @@ type ReviewService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
 	Reply(ctx context.Context, businessID uuid.UUID, id string, replyText string) error
+	// RetryReply re-sends the stored reply of a review whose previous send
+	// failed. Allowed only from the error reply state; any other state returns
+	// domain.ErrReviewReplyNotRetryable so a retry can never double-post an
+	// already-delivered reply. The dispatch reuses the same idempotency key as
+	// the original send (manualReplyApprovalID), so a reply that actually
+	// landed at the platform but was recorded as an error is served from the
+	// agent's dedupe cache instead of being posted a second time.
+	RetryReply(ctx context.Context, businessID uuid.UUID, id string) error
 	// Refresh triggers a synchronous pull from every supported platform
 	// for the user's business. The endpoint exists so the operator can
 	// shortcut the 30-min review-syncer ticker after replying directly
@@ -221,6 +229,46 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 		return err
 	}
 
+	return s.publishReply(ctx, review, replyText)
+}
+
+// RetryReply re-sends the stored reply text of a review whose previous send
+// failed — the manual reply path persists the attempted text with the error
+// reply status, so the operator's retry needs no body. State gate: only the
+// error status with a non-empty stored reply is retryable; a replied or
+// pending review returns domain.ErrReviewReplyNotRetryable. The already-answered
+// guard in Reply intentionally does not apply here — the stored text on an
+// error row is OUR failed attempt, not proof of delivery — while double
+// publication stays excluded because the dispatch reuses the original
+// idempotency key (manualReplyApprovalID): a reply that actually landed is
+// answered from the agent's dedupe cache instead of being posted again.
+func (s *reviewService) RetryReply(ctx context.Context, businessID uuid.UUID, id string) error {
+	review, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get review: %w", err)
+	}
+
+	if review.BusinessID != businessID.String() {
+		return domain.ErrReviewNotFound
+	}
+
+	if review.ReplyStatus != domain.ReviewReplyStatusError || review.ReplyText == "" {
+		return domain.ErrReviewReplyNotRetryable
+	}
+
+	if err := s.gateBusiness(ctx, businessID); err != nil {
+		return err
+	}
+
+	return s.publishReply(ctx, review, review.ReplyText)
+}
+
+// publishReply is the shared dispatch-and-persist tail of Reply and RetryReply:
+// send the text to the platform agent, then record the outcome — replied on
+// success, error on a failed dispatch (the text is persisted either way so a
+// failed send can be retried verbatim). Callers run their own state guards
+// before this point.
+func (s *reviewService) publishReply(ctx context.Context, review *domain.Review, replyText string) error {
 	dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
 	finalStatus := domain.ReviewReplyStatusReplied
 	if dispatchErr != nil {
@@ -228,9 +276,9 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 	}
 
 	feedback := draftReplyFeedback(review.DraftReply, replyText)
-	if err := s.repo.UpdateReply(ctx, id, replyText, finalStatus, feedback); err != nil {
+	if err := s.repo.UpdateReply(ctx, review.ID, replyText, finalStatus, feedback); err != nil {
 		slog.Error("review reply: dispatch ok but persist failed",
-			"review_id", id, "platform", review.Platform, "error", err,
+			"review_id", review.ID, "platform", review.Platform, "error", err,
 		)
 		return fmt.Errorf("update reply: %w", err)
 	}

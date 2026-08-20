@@ -30,6 +30,7 @@ type mockReviewService struct {
 	listFn        func(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	getByIDFn     func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
 	replyFn       func(ctx context.Context, businessID uuid.UUID, id, replyText string) error
+	retryReplyFn  func(ctx context.Context, businessID uuid.UUID, id string) error
 	refreshFn     func(ctx context.Context, userID uuid.UUID) error
 	batchDraftFn  func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	bulkApproveFn func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
@@ -46,6 +47,13 @@ func (m *mockReviewService) GetByID(ctx context.Context, businessID uuid.UUID, i
 
 func (m *mockReviewService) Reply(ctx context.Context, businessID uuid.UUID, id, replyText string) error {
 	return m.replyFn(ctx, businessID, id, replyText)
+}
+
+func (m *mockReviewService) RetryReply(ctx context.Context, businessID uuid.UUID, id string) error {
+	if m.retryReplyFn == nil {
+		return nil
+	}
+	return m.retryReplyFn(ctx, businessID, id)
 }
 
 // reviewReadCtx seeds a BusinessContext with PermContentRead for review read tests.
@@ -406,6 +414,93 @@ func TestReplyToReview_ReviewNotFound(t *testing.T) {
 	r.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+// retryReviewRequest runs POST /reviews/{id}/reply/retry through a chi router so
+// chi.URLParam resolves, with the supplied BusinessContext on the request.
+func retryReviewRequest(ctx context.Context, t *testing.T, svc *mockReviewService) *httptest.ResponseRecorder {
+	t.Helper()
+	h, err := NewReviewHandler(svc)
+	require.NoError(t, err)
+
+	r := chi.NewRouter()
+	r.Post("/reviews/{id}/reply/retry", h.RetryReviewReply)
+
+	req := httptest.NewRequest(http.MethodPost, "/reviews/rev-1/reply/retry", http.NoBody)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestRetryReviewReply_Success(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockReviewService{
+		retryReplyFn: func(_ context.Context, biz uuid.UUID, id string) error {
+			called = true
+			assert.Equal(t, businessID, biz)
+			assert.Equal(t, "rev-1", id)
+			return nil
+		},
+	}
+
+	rr := retryReviewRequest(reviewUpdateCtx(businessID, userID), t, svc)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, called, "RetryReply should run for a caller with PermContentUpdate")
+}
+
+// TestRetryReviewReply_NotRetryableMapsTo409 pins the state-gate contract on the
+// wire: a review that is not in the error reply state must surface as 409 with
+// the stable reply_not_retryable code, not as a fake success or a 500.
+func TestRetryReviewReply_NotRetryableMapsTo409(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		retryReplyFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+			return domain.ErrReviewReplyNotRetryable
+		},
+	}
+
+	rr := retryReviewRequest(reviewUpdateCtx(businessID, userID), t, svc)
+
+	assert.Equal(t, http.StatusConflict, rr.Code)
+	var body struct {
+		Code string `json:"code"`
+	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+	assert.Equal(t, "reply_not_retryable", body.Code)
+}
+
+func TestRetryReviewReply_ReviewNotFound(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		retryReplyFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+			return domain.ErrReviewNotFound
+		},
+	}
+
+	rr := retryReviewRequest(reviewUpdateCtx(businessID, userID), t, svc)
+
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func TestRetryReviewReply_ViewerForbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		retryReplyFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+			t.Fatal("RetryReply must not be invoked for a read-only viewer")
+			return nil
+		},
+	}
+
+	rr := retryReviewRequest(reviewReadCtx(businessID, userID), t, svc)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
 }
 
 func TestRefreshReviews_Success(t *testing.T) {

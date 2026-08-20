@@ -117,6 +117,7 @@ export const BIZ_API_PATHS = {
     BATCH_DRAFT: '/reviews/batch-draft',
     BULK_APPROVE: '/reviews/bulk-approve',
     REPLY: (id: string) => `/reviews/${id}/reply`,
+    REPLY_RETRY: (id: string) => `/reviews/${id}/reply/retry`,
   },
   POSTS: {
     ROOT: '/posts',
