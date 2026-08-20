@@ -1777,6 +1777,9 @@ components:
       - project.created
       - project.updated
       - project.deleted
+      - platform.post_published
+      - platform.dm_sent
+      - platform.review_replied
       - review.auto_replied
       - hitl.approval_resolved
     AuditEvent:

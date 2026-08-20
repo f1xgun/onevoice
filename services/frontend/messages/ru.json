@@ -2055,7 +2055,10 @@
       "rpa_post_published": "Публикация размещена",
       "rpa_photo_uploaded": "Фото загружено",
       "rpa_info_updated": "Информация о карточке обновлена",
-      "rpa_hours_updated": "Часы работы обновлены"
+      "rpa_hours_updated": "Часы работы обновлены",
+      "platform_post_published": "Публикация размещена",
+      "platform_dm_sent": "Личное сообщение отправлено",
+      "platform_review_replied": "Ответ на отзыв опубликован"
     }
   },
   "sidebar": {

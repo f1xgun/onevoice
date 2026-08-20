@@ -559,6 +559,17 @@ func TestResumeApproved_NoDoubleRecord_RePauseThenDone(t *testing.T) {
 		"the done resume records only the VK post — the Yandex post is NOT recorded a second time")
 	assert.Equal(t, "ya", posts.created[0].Content)
 	assert.Equal(t, "vk", posts.created[1].Content)
-	require.Len(t, auditLog.entries, 1,
-		"only the Yandex RPA write is audited; VK is an API publish, not an RPA mutation")
+	var rpaPosts, platformPosts int
+	for _, e := range auditLog.entries {
+		switch e.Action {
+		case audit.ActionRPAPostPublished:
+			rpaPosts++
+		case audit.ActionPlatformPostPublished:
+			platformPosts++
+		}
+	}
+	require.Len(t, auditLog.entries, 2,
+		"both writes are audited exactly once across the re-pause→done split: the Yandex RPA post and the VK direct-API publish")
+	assert.Equal(t, 1, rpaPosts, "Yandex RPA post audited once (not double-recorded)")
+	assert.Equal(t, 1, platformPosts, "VK direct-API publish audited once")
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/metrics"
@@ -61,7 +62,28 @@ type HITLHandler struct {
 
 	// defaultTier labels the SSE concurrency block metric; empty → "free".
 	defaultTier string
+
+	// audit records the in-app HITL approval resolution, mirroring the off-app
+	// TelegramApprovalConsumer emission. Never nil after construction (defaults
+	// to audit.Nop()); SetAuditLogger swaps in the real logger at wire time.
+	audit audit.Logger
 }
+
+// SetAuditLogger wires the audit logger used to record in-app approval
+// resolutions. A nil logger degrades to audit.Nop() so the handler never
+// panics when audit is unconfigured (tests). Mirrors the off-app
+// TelegramApprovalConsumer, so an in-app resolve is attributable to the acting
+// owner + channel exactly as an off-app tap is.
+func (h *HITLHandler) SetAuditLogger(auditLogger audit.Logger) {
+	if auditLogger == nil {
+		auditLogger = audit.Nop()
+	}
+	h.audit = auditLogger
+}
+
+// approvalChannelApp labels the inbound plane an in-app approval was resolved
+// through, distinguishing it from the off-app "telegram" channel.
+const approvalChannelApp = "app"
 
 // SetSSECounter wires the per-user SSE concurrency cap (optional). Mirrors
 // ChatProxyHandler.SetSSECounter so the chat and resume streams share one cap.
@@ -106,6 +128,7 @@ func NewHITLHandler(
 		conversationRepo: conversationRepo,
 		integrationRepo:  integrationRepo,
 		resumer:          resumer,
+		audit:            audit.Nop(),
 	}, nil
 }
 
@@ -183,7 +206,34 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	audit.LogHITLApprovalResolved(r.Context(), h.audit, bc.BusinessID, bc.UserID,
+		batchID, conversationID, approvalChannelApp,
+		summarizeResolveAction(result.Decisions), len(result.Decisions))
+
 	writeJSON(w, http.StatusOK, result)
+}
+
+// summarizeResolveAction collapses the per-call in-app verdicts into one
+// batch-wide label for the audit row: "approve" when every call was
+// approved/edited, "reject" when every call was rejected, and "mixed"
+// otherwise. edit counts as an approve (the tool still dispatches).
+func summarizeResolveAction(decisions []service.ResolvedCall) string {
+	approved, rejected := 0, 0
+	for _, d := range decisions {
+		if d.Action == "reject" {
+			rejected++
+			continue
+		}
+		approved++
+	}
+	switch {
+	case rejected == 0:
+		return "approve"
+	case approved == 0:
+		return "reject"
+	default:
+		return "mixed"
+	}
 }
 
 // mapResolveError translates HITLService errors to HTTP status codes + bodies.

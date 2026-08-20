@@ -207,6 +207,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create hitl handler: %w", err)
 	}
+	hitlHandler.SetAuditLogger(svcs.AuditLogger)
 
 	if cfg.TelegramApprovalHMACSecret != "" {
 		svcs.TelegramApproval = service.NewTelegramApprovalConsumer(
@@ -226,7 +227,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	businessHandler.SetToolsCache(svcs.ToolsCache)
 	projectHandler.SetToolsCache(svcs.ToolsCache)
 
-	titlerHandler := handler.NewTitlerHandler(svcs.Titler, repos.Conversation, repos.Message, cfg.MessageHistoryLimit)
+	titlerHandler := handler.NewTitlerHandler(svcs.Titler, svcs.Business, repos.Conversation, repos.Message, cfg.MessageHistoryLimit)
 
 	searchHandler, err := handler.NewSearchHandler(svcs.Searcher)
 	if err != nil {

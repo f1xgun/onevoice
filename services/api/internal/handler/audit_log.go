@@ -99,6 +99,9 @@ var knownActions = map[string]struct{}{
 	audit.ActionRPAPhotoUploaded:             {},
 	audit.ActionRPAInfoUpdated:               {},
 	audit.ActionRPAHoursUpdated:              {},
+	audit.ActionPlatformPostPublished:        {},
+	audit.ActionPlatformDMSent:               {},
+	audit.ActionPlatformReviewReplied:        {},
 }
 
 // noiseActionsHiddenByDefault lists high-volume system events suppressed from

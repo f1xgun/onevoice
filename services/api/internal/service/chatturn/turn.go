@@ -192,6 +192,7 @@ func (t *Turn) Run(
 		defer cancel()
 		t.recordPostsAndReviews(sideCtx, enriched.business.ID.String(), streamStartID, state.toolCalls, state.toolResults)
 		t.auditRPAMutations(sideCtx, enriched.business.ID.String(), req.UserID.String(), state.toolCalls, state.toolResults)
+		t.auditPlatformMutations(sideCtx, enriched.business.ID.String(), req.UserID.String(), state.toolCalls, state.toolResults)
 	}
 
 	if state.pauseEvent != nil {
