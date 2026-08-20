@@ -208,11 +208,19 @@ func NewRateLimiter(rdb *redis.Client, limits TierLimits, opts ...RateLimiterOpt
 //  3. Per-minute token count (per-user) via Redis INCRBY.
 //  4. Per-month token count (per-user) via Redis INCRBY.
 //
-// businessID may be uuid.Nil — system-internal callers (titler, draft-reply
-// pre-25b) carry no business attribution, so the daily-spend gate skips them.
+// businessID may be uuid.Nil — a caller with no business attribution skips the
+// daily-spend gate. userID may be uuid.Nil — a business-attributed system caller
+// (review drafter, titler) still runs the per-business daily-spend gate, but the
+// per-user Redis buckets are skipped so those callers never share one bucket.
+// An unknown tier fails closed for a real user (a misconfiguration/attack) but
+// passes for a Nil user, whose ungated background tier (e.g. "background") has
+// no configured limits to apply.
 func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, tokens int) (bool, error) {
 	limits, ok := rl.limits[tier]
 	if !ok {
+		if userID == uuid.Nil {
+			return true, nil
+		}
 		return false, fmt.Errorf("unknown tier: %s", tier)
 	}
 
@@ -235,7 +243,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 
 	now := time.Now()
 
-	if limits.RequestsPerMin > 0 {
+	if limits.RequestsPerMin > 0 && userID != uuid.Nil {
 		reqKey := fmt.Sprintf("ratelimit:%s:requests:min", userID.String())
 		count, err := rl.incrWithExpiry(ctx, reqKey, 1, time.Minute, gateRequestsMin)
 		if err != nil {
@@ -247,7 +255,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		}
 	}
 
-	if limits.TokensPerMin > 0 {
+	if limits.TokensPerMin > 0 && userID != uuid.Nil {
 		tokKey := fmt.Sprintf("ratelimit:%s:tokens:min", userID.String())
 		count, err := rl.incrWithExpiry(ctx, tokKey, int64(tokens), time.Minute, gateTokensMin)
 		if err != nil {
@@ -259,7 +267,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		}
 	}
 
-	if limits.TokensPerMonth > 0 {
+	if limits.TokensPerMonth > 0 && userID != uuid.Nil {
 		monthKey := fmt.Sprintf("ratelimit:%s:tokens:month:%s", userID.String(), now.Format("2006-01"))
 		endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 		count, err := rl.incrWithExpiry(ctx, monthKey, int64(tokens), endOfMonth.Sub(now), gateTokensMonth)

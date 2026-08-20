@@ -285,6 +285,65 @@ func TestRateLimiter_DailySpend_SkippedNilBusiness(t *testing.T) {
 	assert.False(t, spender.called, "DailySpender must not be consulted when businessID is nil")
 }
 
+// TestRateLimiter_NilUser_RunsDailySpendGate — a business-attributed system
+// caller (userID==Nil, real businessID) still runs the per-business daily-spend
+// gate, so a budget-blown business is blocked. This is the anchor for the
+// bypass fix: before it, checkRateLimit short-circuited on the Nil user.
+func TestRateLimiter_NilUser_RunsDailySpendGate(t *testing.T) {
+	_, rdb := freshRedis(t)
+	spender := &fakeDailySpender{spend: 5.0}
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
+
+	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "free", 100)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "got %v", err)
+	assert.False(t, allowed)
+	assert.True(t, spender.called, "daily-spend gate must run for a business-attributed nil-user call")
+}
+
+// TestRateLimiter_NilUser_SkipsPerUserBuckets — a Nil user passes the gates
+// (spend under cap) without landing a per-user Redis bucket keyed on the Nil
+// UUID, so system callers never collide on one shared bucket.
+func TestRateLimiter_NilUser_SkipsPerUserBuckets(t *testing.T) {
+	mr, rdb := freshRedis(t)
+	spender := &fakeDailySpender{spend: 0.1}
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
+
+	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "free", 100)
+	require.NoError(t, err)
+	assert.True(t, allowed)
+	for _, k := range mr.Keys() {
+		assert.NotContains(t, k, "ratelimit:"+uuid.Nil.String())
+	}
+}
+
+// TestRateLimiter_NilUser_UnknownTierPasses — a system caller's ungated
+// background tier is absent from the limits table; a Nil user passes rather than
+// erroring, preserving the titler / owner-brief ungated behavior.
+func TestRateLimiter_NilUser_UnknownTierPasses(t *testing.T) {
+	_, rdb := freshRedis(t)
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
+
+	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "background", 100)
+	require.NoError(t, err)
+	assert.True(t, allowed)
+}
+
+// TestRateLimiter_RealUser_UnknownTierFailsClosed — an unknown tier from a real
+// user is a misconfiguration and still fails closed.
+func TestRateLimiter_RealUser_UnknownTierFailsClosed(t *testing.T) {
+	_, rdb := freshRedis(t)
+
+	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
+
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "ghost", 100)
+	require.Error(t, err)
+	assert.False(t, allowed)
+}
+
 // TestRateLimiter_DailySpend_BlocksBeforeRedis — when spend is over cap the
 // gate fires BEFORE the per-minute Redis INCR, so no rate-limit key lands.
 func TestRateLimiter_DailySpend_BlocksBeforeRedis(t *testing.T) {
