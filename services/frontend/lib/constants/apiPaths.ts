@@ -36,6 +36,9 @@ export const API_PATHS = {
   TASKS: '/tasks',
   TELEMETRY: '/telemetry',
   FEEDBACK: '/feedback',
+  // Public, unauthenticated marketing-landing capture.
+  WAITLIST: '/waitlist',
+  CHANNEL_VOTES: '/channel-votes',
   // Public invitation routes go through raw `api` (NOT `bizApi`). Preview
   // call must pass `skipBusinessNotFound: true` so the 404 interceptor
   // doesn't mistake a missing token for a stale active business.

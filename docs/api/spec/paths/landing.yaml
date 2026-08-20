@@ -1,0 +1,75 @@
+/waitlist:
+  post:
+    operationId: joinWaitlist
+    summary: Join the closed-beta waitlist.
+    description: |
+      Public, unauthenticated. Records a marketing-landing visitor's interest
+      in the closed beta. Deduplicated by email; the response never reveals
+      whether the email was already present.
+    tags:
+    - landing
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/WaitlistRequest
+    responses:
+      '204':
+        description: Signup recorded (or already present — indistinguishable).
+      '400':
+        description: Invalid email, unknown enum value, or consent not given.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '429':
+        description: Too many requests from this IP.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/channel-votes:
+  post:
+    operationId: recordChannelVote
+    summary: Cast a fake-door vote for a not-yet-supported channel.
+    description: |
+      Public, unauthenticated. Records anonymous demand for a channel OneVoice
+      does not support yet, from the marketing landing.
+    tags:
+    - landing
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/PublicChannelVoteRequest
+    responses:
+      '204':
+        description: Vote recorded.
+      '400':
+        description: Unknown channel or note too long.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '429':
+        description: Too many requests from this IP.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

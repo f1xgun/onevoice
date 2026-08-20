@@ -1371,7 +1371,9 @@
       "login": "Log in",
       "tryIt": "Try it",
       "logoMark": "OV",
-      "wordmark": "OneVoice"
+      "wordmark": "OneVoice",
+      "pricing": "Pricing",
+      "waitlist": "Join the waitlist"
     },
     "hero": {
       "kicker": "OneVoice",
@@ -1380,8 +1382,10 @@
       "headlinePunctuation": ".",
       "wordmark": "OneVoice",
       "body": "Telegram, VK, Yandex.Business — all in one inbox. OneVoice drafts replies, prepares posts for every channel, and keeps reviews in plain sight while you focus on your work.",
-      "cta": "Try it",
-      "secondary": "See how it works"
+      "cta": "Join the waitlist",
+      "secondary": "See how it works",
+      "betaBadge": "Closed beta · autumn 2026",
+      "betaNote": "Waitlist members get a Pro discount, with the price locked in for a year."
     },
     "preview": {
       "url": "onevoice.app/inbox",
@@ -1550,7 +1554,126 @@
       "rights": "© {year} · All rights reserved",
       "contacts": "Contact",
       "logoMark": "OV",
-      "wordmark": "OneVoice"
+      "wordmark": "OneVoice",
+      "channel": "Telegram channel",
+      "privacy": "Privacy policy"
+    },
+    "pricing": {
+      "kicker": "Pricing",
+      "headline": "Cheaper than hiring a specialist. Simpler than doing it yourself",
+      "body": "Monitoring across every channel and your first AI actions are free. The full action pool and learning from your edits come with Pro.",
+      "cta": "Join the waitlist",
+      "compareNote": "For comparison: a freelance social-media specialist runs 15,000–40,000 ₽ a month for a single organization — and still needs supervising.",
+      "tiers": {
+        "free": {
+          "name": "Free",
+          "price": "0 ₽",
+          "period": "",
+          "features": {
+            "0": "One organization",
+            "1": "Monitoring across every channel: new reviews and data mismatches, with notifications",
+            "2": "About 10 AI actions a month: a post, a review reply, or a listing fix"
+          }
+        },
+        "pro": {
+          "name": "Pro",
+          "price": "3,990–4,990 ₽",
+          "period": "per location, monthly",
+          "betaTag": "Beta members get a discount, with the price locked in for a year",
+          "features": {
+            "0": "Every channel, with unlimited monitoring",
+            "1": "The full AI action pool: posts, replies, one-command publishing to every channel",
+            "2": "The AI learns your tone from your edits",
+            "3": "Priority support in chat"
+          }
+        },
+        "enterprise": {
+          "name": "Enterprise",
+          "price": "from 15,000 ₽",
+          "period": "monthly",
+          "features": {
+            "0": "Multiple locations and organizations",
+            "1": "Custom terms and onboarding",
+            "2": "For chains and agencies"
+          }
+        }
+      }
+    },
+    "faq": {
+      "kicker": "Frequently asked",
+      "headline": "Frequently asked",
+      "items": {
+        "0": {
+          "q": "Is this safe? You get access to my accounts",
+          "a": "Connections go through each platform's own official mechanisms, and you grant exactly the rights the work needs: publish a post, reply to a review. Access is stored encrypted, and every action is written to a journal — you always see what the AI did and when. You can disconnect any channel in one click, and access is revoked with it."
+        },
+        "1": {
+          "q": "What if the AI writes nonsense on behalf of my organization?",
+          "a": "It won't — because it can't publish. That is the core principle of OneVoice: the AI only prepares drafts; your Approve button publishes them. If you spot an awkward line, you write a correction in the chat, and the AI redoes it and remembers — over time the drafts land right on the first try more and more often."
+        },
+        "2": {
+          "q": "How long does setup take?",
+          "a": "Usually 10–15 minutes for all the channels: Telegram and VK connect in a couple of minutes each, Yandex Business takes a little longer. We help beta members connect personally — if something doesn't work, we sort it out together the same day."
+        },
+        "3": {
+          "q": "I'm not tech-savvy. Can I handle it?",
+          "a": "If you can chat in a messenger, you can handle it. All of OneVoice is a chat: you write in plain words what you need, and press Approve when it's ready. No settings, no schedulers, no training courses."
+        },
+        "4": {
+          "q": "How is this different from scheduled-posting tools?",
+          "a": "Scheduled posting publishes what you wrote and uploaded yourself. OneVoice writes it for you: posts, review replies, listing fixes. Your part isn't 'running social media' — it's approving what's ready. That's minutes a day, not hours."
+        }
+      }
+    },
+    "waitlist": {
+      "kicker": "Waitlist",
+      "headline": "Take your place in the closed beta",
+      "body": "We open access in waves, in small groups — so we can help everyone connect personally. Waitlist members get a Pro discount, with the price locked in for a year.",
+      "emailLabel": "Email",
+      "emailPlaceholder": "you@example.com",
+      "sphereLabel": "Organization sphere",
+      "spherePlaceholder": "Choose a sphere",
+      "optional": "optional",
+      "sphereOptions": {
+        "cafe": "Cafe or restaurant",
+        "beauty": "Salon or beauty",
+        "services": "Services",
+        "retail": "Shop",
+        "other": "Other"
+      },
+      "painLabel": "What hurts the most",
+      "painOptions": {
+        "reviews": "Reviews left unanswered",
+        "posts": "Posts don't go out",
+        "card": "The listing is outdated"
+      },
+      "consentLabel": "I consent to the processing of my personal data.",
+      "consentLinkText": "Personal-data processing policy",
+      "submit": "Join the waitlist",
+      "submitting": "Sending…",
+      "error": "Couldn't send. Please try again.",
+      "errorRateLimit": "Too many attempts. Wait a minute and try again.",
+      "success": {
+        "label": "Done",
+        "title": "You're on the list",
+        "body": "We'll write when your wave opens. In the meantime, follow our Telegram channel: we run it through OneVoice itself and show how everything works.",
+        "cta": "Open the Telegram channel"
+      }
+    },
+    "channelVote": {
+      "kicker": "Coming up",
+      "headline": "You decide what we connect next",
+      "body": "Vote for a channel, and we'll take on the one that gets the most votes.",
+      "options": {
+        "whatsapp": "WhatsApp",
+        "avito": "Avito",
+        "2gis": "2GIS",
+        "other": "Something else — tell us"
+      },
+      "otherPlaceholder": "Which channel should we add?",
+      "otherSubmit": "Send",
+      "thanks": "Vote counted. Thank you.",
+      "error": "Couldn't record your vote. Please try again."
     }
   },
   "projects": {

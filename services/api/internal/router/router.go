@@ -87,6 +87,7 @@ type Handlers struct {
 	Consents             *handler.ConsentsHandler
 	Feedback             *handler.FeedbackHandler
 	ChannelRequest       *handler.ChannelRequestHandler
+	Landing              *handler.LandingHandler
 }
 
 // Setup creates and configures the public Chi router. See
@@ -136,6 +137,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		r.Get("/oauth/google_business/callback", handlers.OAuth.GoogleCallback)
 
 		r.Get("/platforms", handlers.Platforms.List)
+
+		// Public marketing-landing capture. Unauthenticated, so both share the
+		// per-IP Register budget as a spam/abuse floor.
+		if handlers.Landing != nil {
+			r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).
+				Post("/waitlist", handlers.Landing.JoinWaitlist)
+			r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).
+				Post("/channel-votes", handlers.Landing.RecordChannelVote)
+		}
 
 		if handlers.Invitations != nil {
 			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).

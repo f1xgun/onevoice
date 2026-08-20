@@ -81,6 +81,8 @@ tags:
   description: Auto-titler regenerate trigger.
 - name: internal
   description: Cluster-only endpoints (mTLS). Not exposed publicly.
+- name: landing
+  description: Public marketing-landing capture — closed-beta waitlist + fake-door channel votes.
 paths:
   /auth/login:
     $ref: paths/auth.yaml#/~1auth~1login
@@ -218,6 +220,10 @@ paths:
     $ref: paths/audit.yaml#/~1businesses~1{id}~1audit-logs
   /telemetry:
     $ref: paths/telemetry.yaml#/~1telemetry
+  /waitlist:
+    $ref: paths/landing.yaml#/~1waitlist
+  /channel-votes:
+    $ref: paths/landing.yaml#/~1channel-votes
   /businesses/{id}/chat/{conversationID}:
     $ref: paths/chat.yaml#/~1businesses~1{id}~1chat~1{conversationID}
   /businesses/{id}/chat/{conversationID}/resume:
@@ -3355,3 +3361,59 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChannelDemandCount'
+    WaitlistRequest:
+      type: object
+      description: |
+        Public closed-beta waitlist signup submitted from the marketing
+        landing. Only email and the processing-consent flag are required; the
+        segmentation fields are optional. Enums are inlined (not $ref) so the
+        generated struct carries validate:oneof tags.
+      required:
+      - email
+      - consent
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        sphere:
+          type: string
+          description: Optional organization-sphere segment.
+          enum:
+          - cafe
+          - beauty
+          - services
+          - retail
+          - other
+        pain:
+          type: string
+          description: Optional strongest-pain segment.
+          enum:
+          - reviews
+          - posts
+          - card
+        consent:
+          type: boolean
+          description: |
+            Must be true — the visitor ticked the personal-data-processing
+            consent checkbox. A false or absent value fails validation.
+    PublicChannelVoteRequest:
+      type: object
+      description: |
+        Public fake-door vote for a not-yet-supported channel, cast from the
+        marketing landing by an unauthenticated visitor. Measures anonymous
+        top-of-funnel demand; distinct from the business-scoped
+        CreateChannelRequestRequest.
+      required:
+      - channel
+      properties:
+        channel:
+          type: string
+          enum:
+          - whatsapp
+          - avito
+          - 2gis
+          - other
+        note:
+          type: string
+          maxLength: 280

@@ -9,7 +9,7 @@
 // no exclamation marks, no emoji, no AI-powered hype, no urgency tactics.
 
 import Link from 'next/link';
-import { ArrowRight, Calendar } from 'lucide-react';
+import { ArrowRight, Calendar, Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +18,10 @@ import { ChannelMark } from '@/components/ui/channel-mark';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
+import { WaitlistForm } from '@/components/landing/WaitlistForm';
+import { ChannelVote } from '@/components/landing/ChannelVote';
+import { TELEGRAM_CHANNEL_URL } from '@/lib/constants/landing';
+import { legalDocHref } from '@/lib/legal/routes';
 
 // ─── Local helpers ────────────────────────────────────────────────────
 // The wordmark is the only place we use a serif on the landing — inline
@@ -28,7 +32,7 @@ const MAX_REVIEW_STARS = 5;
 
 // Static href anchors for nav. Labels are resolved via useTranslations
 // inside each component.
-const NAV_HREFS = ['#features', '#channels'] as const;
+const NAV_HREFS = ['#features', '#channels', '#pricing'] as const;
 
 // ─── Page ─────────────────────────────────────────────────────────────
 
@@ -50,8 +54,10 @@ export default function LandingPage() {
         <Features />
         <HowItWorks />
         <Platforms />
+        <Pricing />
+        <Faq />
         <Quote />
-        {/* <Pricing /> — временно скрыто: продукт бесплатный */}
+        <Waitlist />
       </main>
       <SiteFooter />
     </div>
@@ -65,6 +71,7 @@ function SiteNav() {
   const navLabels: Record<(typeof NAV_HREFS)[number], string> = {
     '#features': tNav('features'),
     '#channels': tNav('channels'),
+    '#pricing': tNav('pricing'),
   };
   return (
     <header className="bg-paper/85 sticky top-0 z-10 border-b border-line-soft backdrop-blur">
@@ -88,7 +95,7 @@ function SiteNav() {
             {tNav('login')}
           </Link>
           <Button asChild size="sm" variant="primary">
-            <Link href="/register">{tNav('tryIt')}</Link>
+            <a href="#waitlist">{tNav('waitlist')}</a>
           </Button>
         </div>
       </div>
@@ -104,7 +111,10 @@ function Hero() {
     <section className="border-b border-line-soft">
       <div className="mx-auto grid w-full max-w-[1180px] items-center gap-16 px-6 py-20 sm:px-12 md:py-28 lg:grid-cols-[1.1fr_0.9fr]">
         <div>
-          <MonoLabel>{tHero('kicker')}</MonoLabel>
+          <div className="flex flex-wrap items-center gap-3">
+            <MonoLabel>{tHero('kicker')}</MonoLabel>
+            <Badge tone="accent">{tHero('betaBadge')}</Badge>
+          </div>
           <h1 className="mt-5 text-pretty text-[44px] font-medium leading-[1.04] tracking-[-0.025em] sm:text-[56px] lg:text-[64px]">
             {tHero('headlineLine1')}
             <br />
@@ -119,15 +129,18 @@ function Hero() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg" variant="primary">
-              <Link href="/register">
+              <a href="#waitlist">
                 {tHero('cta')}
                 <ArrowRight aria-hidden />
-              </Link>
+              </a>
             </Button>
             <Button asChild size="lg" variant="secondary">
               <a href="#features">{tHero('secondary')}</a>
             </Button>
           </div>
+          <p className="mt-4 max-w-[460px] text-[13px] leading-relaxed text-ink-soft">
+            {tHero('betaNote')}
+          </p>
         </div>
         <HeroPreview />
       </div>
@@ -462,6 +475,7 @@ function Platforms() {
         </h2>
         <p className="mt-3 max-w-[640px] text-[16px] leading-relaxed text-ink-mid">{tCh('body')}</p>
         <SupportedPlatforms />
+        <ChannelVote />
       </div>
     </section>
   );
@@ -487,66 +501,134 @@ function Quote() {
   );
 }
 
-// ─── Pricing CTA ──────────────────────────────────────────────────────
-// Временно отключено: продукт бесплатный. Когда вернём оплату — раскомментировать
-// <Pricing /> в LandingPage и пункт «Цены» в NAV_LINKS.
-/*
+// ─── Pricing ──────────────────────────────────────────────────────────
+
+// Tier meta stays in code (which tiers, feature counts, the highlighted one,
+// which carries the beta-discount tag); all copy resolves from
+// landing.pricing.tiers.<key> per locale.
+const PRICING_TIERS: Array<{
+  key: 'free' | 'pro' | 'enterprise';
+  featureCount: number;
+  highlight: boolean;
+  hasBetaTag: boolean;
+}> = [
+  { key: 'free', featureCount: 3, highlight: false, hasBetaTag: false },
+  { key: 'pro', featureCount: 4, highlight: true, hasBetaTag: true },
+  { key: 'enterprise', featureCount: 3, highlight: false, hasBetaTag: false },
+];
+
 function Pricing() {
+  const t = useTranslations('landing.pricing');
   return (
-    <section id="pricing">
-      <div className="mx-auto w-full max-w-[1180px] px-6 py-28 sm:px-12">
-        <div className="grid items-center gap-12 rounded-xl border border-line bg-paper-raised p-10 sm:p-14 lg:grid-cols-[1.4fr_1fr] lg:gap-14">
-          <div>
-            <MonoLabel>Тариф</MonoLabel>
-            <h2 className="mt-3 text-[28px] font-medium leading-[1.18] tracking-[-0.015em] sm:text-[34px]">
-              Подключите первый канал за минуту. Остальное — наша забота.
-            </h2>
-            <p className="mt-4 max-w-[480px] text-[16px] leading-relaxed text-ink-mid">
-              14 дней бесплатно. Без карты. До трёх каналов и без лимита на
-              сообщения и посты.
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Button asChild size="lg" variant="primary">
-                <Link href="/register">
-                  Попробовать бесплатно
-                  <ArrowRight aria-hidden />
-                </Link>
-              </Button>
-              <Button asChild size="lg" variant="ghost">
-                <a href="mailto:hello@onevoice.app">Поговорить с командой</a>
-              </Button>
+    <section id="pricing" className="border-b border-line-soft bg-paper-sunken">
+      <div className="mx-auto w-full max-w-[1180px] px-6 py-24 sm:px-12">
+        <MonoLabel>{t('kicker')}</MonoLabel>
+        <h2 className="mt-3 max-w-[720px] text-[28px] font-medium leading-tight tracking-[-0.015em] sm:text-[36px]">
+          {t('headline')}
+        </h2>
+        <p className="mt-3 max-w-[640px] text-[16px] leading-relaxed text-ink-mid">{t('body')}</p>
+
+        <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {PRICING_TIERS.map((tier) => (
+            <div
+              key={tier.key}
+              className={`flex flex-col rounded-xl border bg-paper-raised p-6 sm:p-7 ${
+                tier.highlight ? 'border-ochre shadow-ov-3' : 'border-line'
+              }`}
+            >
+              <MonoLabel tone={tier.highlight ? 'ochre' : undefined}>
+                {t(`tiers.${tier.key}.name`)}
+              </MonoLabel>
+              <div className="mt-3 flex items-baseline gap-1.5">
+                <span className="text-[30px] font-medium tracking-[-0.02em] sm:text-[34px]">
+                  {t(`tiers.${tier.key}.price`)}
+                </span>
+                <span className="text-[14px] text-ink-mid">{t(`tiers.${tier.key}.period`)}</span>
+              </div>
+              {tier.hasBetaTag && (
+                <p className="bg-ochre-soft/50 mt-3 rounded-md border border-ochre-soft px-3 py-2 text-[13px] leading-snug text-ochre-ink">
+                  {t(`tiers.${tier.key}.betaTag`)}
+                </p>
+              )}
+              <ul className="mt-5 flex flex-1 flex-col gap-2.5 text-[14px] text-ink-mid">
+                {Array.from({ length: tier.featureCount }).map((_, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <Check className="mt-0.5 size-4 shrink-0 text-ochre-deep" aria-hidden />
+                    {t(`tiers.${tier.key}.features.${i}`)}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-          <div className="rounded-lg border border-line bg-paper-sunken p-6">
-            <MonoLabel>Тариф «Одна точка»</MonoLabel>
-            <div className="mt-2 flex items-baseline gap-1.5">
-              <span className="text-[40px] font-medium tracking-[-0.02em] sm:text-[44px]">
-                1 490
-              </span>
-              <span className="text-[16px] text-ink-mid">₽ / мес</span>
-            </div>
-            <ul className="mt-4 flex flex-col gap-2 text-[14px] text-ink-mid">
-              {[
-                'До 3 каналов',
-                'Без лимита на сообщения и посты',
-                'История за 12 месяцев',
-                'Поддержка в Telegram',
-              ].map((l) => (
-                <li key={l} className="flex items-center gap-2">
-                  <span className="inline-flex size-3.5 items-center justify-center rounded-full bg-ochre-soft text-[10px] text-ochre-ink">
-                    ✓
-                  </span>
-                  {l}
-                </li>
-              ))}
-            </ul>
-          </div>
+          ))}
+        </div>
+
+        <div className="mt-10 flex flex-col gap-4">
+          <Button asChild size="lg" variant="primary" className="self-start">
+            <a href="#waitlist">
+              {t('cta')}
+              <ArrowRight aria-hidden />
+            </a>
+          </Button>
+          <p className="max-w-[640px] text-[13px] leading-relaxed text-ink-soft">
+            {t('compareNote')}
+          </p>
         </div>
       </div>
     </section>
   );
 }
-*/
+
+// ─── FAQ ──────────────────────────────────────────────────────────────
+
+// Question/answer copy resolves from landing.faq.items.<idx>; the count is
+// fixed in code (same in every locale).
+const FAQ_COUNT = 5;
+
+function Faq() {
+  const t = useTranslations('landing.faq');
+  return (
+    <section className="border-b border-line-soft">
+      <div className="mx-auto w-full max-w-[880px] px-6 py-24 sm:px-12">
+        <MonoLabel>{t('kicker')}</MonoLabel>
+        <h2 className="mt-3 text-[28px] font-medium leading-tight tracking-[-0.015em] sm:text-[34px]">
+          {t('headline')}
+        </h2>
+        <dl className="mt-12 flex flex-col border-t border-line-soft">
+          {Array.from({ length: FAQ_COUNT }).map((_, i) => (
+            <div key={i} className="border-b border-line-soft py-6">
+              <dt className="text-[17px] font-medium leading-snug tracking-[-0.005em]">
+                {t(`items.${i}.q`)}
+              </dt>
+              <dd className="mt-2.5 max-w-[720px] text-[15px] leading-relaxed text-ink-mid">
+                {t(`items.${i}.a`)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+// ─── Waitlist ─────────────────────────────────────────────────────────
+
+function Waitlist() {
+  const t = useTranslations('landing.waitlist');
+  return (
+    <section id="waitlist" className="border-b border-line-soft bg-paper-sunken">
+      <div className="mx-auto grid w-full max-w-[1180px] items-start gap-12 px-6 py-24 sm:px-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
+        <div>
+          <MonoLabel>{t('kicker')}</MonoLabel>
+          <h2 className="mt-3 text-[30px] font-medium leading-tight tracking-[-0.015em] sm:text-[38px]">
+            {t('headline')}
+          </h2>
+          <p className="mt-5 max-w-[480px] text-[16px] leading-relaxed text-ink-mid">{t('body')}</p>
+        </div>
+        <WaitlistForm />
+      </div>
+    </section>
+  );
+}
 
 // ─── Footer ──────────────────────────────────────────────────────────
 
@@ -563,6 +645,17 @@ function SiteFooter() {
         </span>
         <MonoLabel>{tFooter('rights', { year: new Date().getFullYear() })}</MonoLabel>
         <div className="ml-auto flex flex-wrap items-center gap-5">
+          <a
+            href={TELEGRAM_CHANNEL_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="transition-colors hover:text-ink"
+          >
+            {tFooter('channel')}
+          </a>
+          <Link href={legalDocHref('privacy')} className="transition-colors hover:text-ink">
+            {tFooter('privacy')}
+          </Link>
           <a href="mailto:hello@onevoice.app" className="transition-colors hover:text-ink">
             {tFooter('contacts')}
           </a>
