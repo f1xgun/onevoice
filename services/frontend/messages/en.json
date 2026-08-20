@@ -309,7 +309,7 @@
     }
   },
   "permissions": {
-    "loadError": "Couldn't check your access rights — editing is temporarily unavailable.",
+    "loadError": "Couldn't check your access rights — please try again.",
     "retry": "Retry"
   },
   "validation": {
