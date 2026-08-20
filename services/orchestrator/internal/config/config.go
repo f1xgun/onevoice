@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
 
 // defaultShutdownTimeout is the fallback graceful-shutdown budget when SHUTDOWN_TIMEOUT is unset.
@@ -104,6 +106,12 @@ type Config struct {
 
 	// APIInternalURL must be HTTPS — the mTLS substrate requires it on this endpoint.
 	APIInternalURL string
+
+	// InternalSecret is the shared service-to-service secret the orchestrator
+	// requires on its cluster-internal inbound (chat / resume / tool registry /
+	// draft-reply). Empty disables the guard for dev/tests; RequireInternalSecret
+	// makes a non-empty, sufficiently long value mandatory in production.
+	InternalSecret string
 
 	SelfHostedEndpoints []SelfHostedEndpoint
 
@@ -366,6 +374,8 @@ func Load() (*Config, error) {
 
 		APIInternalURL: getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
 
+		InternalSecret: os.Getenv("ORCHESTRATOR_INTERNAL_SECRET"),
+
 		SelfHostedEndpoints: parseIndexedEndpoints(),
 
 		RedisURL: getEnv("REDIS_URL", ""),
@@ -434,6 +444,31 @@ func (c *Config) RateLimiterGate() (RateLimiterDecision, error) {
 			"REDIS_URL is required in production: the LLM cost guard (daily-spend / per-business cap) cannot run without Redis; set REDIS_URL or ALLOW_NO_RATE_LIMIT=true to override (unbounded LLM spend)")
 	}
 	return RateLimiterDecision{Degraded: true}, nil
+}
+
+// RequireInternalSecret decides whether the orchestrator may boot without the
+// shared internal-inbound secret. The chat / resume / tool-registry /
+// draft-reply routes trust attacker-controllable request bodies (UserID,
+// BusinessID, Tier), so in production they must be reachable only by the api
+// over an authenticated channel.
+//
+// Rules (mirroring RateLimiterGate's APP_ENV=production idiom):
+//   - ORCHESTRATOR_INTERNAL_SECRET set, long enough → OK.
+//   - set but shorter than InternalSecretMinLen        → boot error.
+//   - unset, production                                → boot error.
+//   - unset, non-production                            → OK (guard disabled).
+func (c *Config) RequireInternalSecret() error {
+	if c.InternalSecret != "" {
+		if len(c.InternalSecret) < orchestratorclient.InternalSecretMinLen {
+			return fmt.Errorf("ORCHESTRATOR_INTERNAL_SECRET must be at least %d characters (generate with: openssl rand -base64 32)", orchestratorclient.InternalSecretMinLen)
+		}
+		return nil
+	}
+	isProd := strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
+	if isProd {
+		return fmt.Errorf("ORCHESTRATOR_INTERNAL_SECRET is required in production: the orchestrator's internal inbound (chat/resume/draft-reply) trusts request-body identity and tier, so it must be reachable only over an authenticated channel; set ORCHESTRATOR_INTERNAL_SECRET (generate with: openssl rand -base64 32)")
+	}
+	return nil
 }
 
 // RedactMongoURI returns the Mongo URI with embedded user:password stripped, safe for logs.

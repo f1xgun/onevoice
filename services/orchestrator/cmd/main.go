@@ -30,6 +30,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/mtls"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/httpauth"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/streamlimit"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/wire"
@@ -86,6 +87,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	defer cancel()
 
 	log.Info("mtls", "enabled", mtls.IsEnabled())
+
+	if err := cfg.RequireInternalSecret(); err != nil {
+		return err
+	}
+	log.Info("internal inbound auth", "shared_secret", cfg.InternalSecret != "")
 
 	billingHTTP, err := billingclient.New(cfg.APIInternalURL, nil)
 	if err != nil {
@@ -216,12 +222,19 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 	// concurrent SSE streams this process serves (the api caps per-user; this is
 	// the aggregate backstop). The internal tool/draft routes are not streams
 	// and are intentionally left uncapped.
+	//
+	// Every route below trusts request-body identity/tier, so all of them sit
+	// behind the shared-secret guard; health and metrics stay outside it so
+	// operator/liveness probes never need the secret.
 	streamLimit := streamlimit.Middleware(cfg.MaxConcurrentStreams)
-	r.With(streamLimit).Post("/chat/{conversationID}", h.Chat.Chat)
-	r.With(streamLimit).Post("/chat/{conversationID}/resume", h.Resume.Resume)
-	r.Get("/internal/tools/names", h.Tools.Names)
-	r.Get("/internal/tools", h.ToolsAll.ServeHTTP)
-	r.Post("/internal/draft-reply", h.DraftReply.ServeHTTP)
+	r.Group(func(pr chi.Router) {
+		pr.Use(httpauth.InternalSecret(cfg.InternalSecret))
+		pr.With(streamLimit).Post("/chat/{conversationID}", h.Chat.Chat)
+		pr.With(streamLimit).Post("/chat/{conversationID}/resume", h.Resume.Resume)
+		pr.Get("/internal/tools/names", h.Tools.Names)
+		pr.Get("/internal/tools", h.ToolsAll.ServeHTTP)
+		pr.Post("/internal/draft-reply", h.DraftReply.ServeHTTP)
+	})
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())

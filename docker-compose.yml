@@ -186,6 +186,11 @@ services:
       INTERNAL_PORT: 8443
       ONEVOICE_INTERNAL_ACL_JSON: ${ONEVOICE_INTERNAL_ACL_JSON:?ONEVOICE_INTERNAL_ACL_JSON must be set (CN->platforms map for /internal/v1/tokens); see .env.example}
       ORCHESTRATOR_URL: http://orchestrator:8090
+      # Shared secret authenticating api→orchestrator calls. MUST match the
+      # orchestrator's ORCHESTRATOR_INTERNAL_SECRET; the orchestrator rejects
+      # unauthenticated callers so its body-trusting internal inbound cannot be
+      # reached (or its tier/identity forged) by anyone routing to :8090.
+      ORCHESTRATOR_INTERNAL_SECRET: ${ORCHESTRATOR_INTERNAL_SECRET:?ORCHESTRATOR_INTERNAL_SECRET must be set, generate with openssl rand -base64 32}
       NATS_URL: nats://nats:4222
       NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
       NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
@@ -454,6 +459,11 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       # Internal API URL used by billingclient over mTLS.
       API_INTERNAL_URL: https://api:8443
+      # Shared secret the internal inbound (chat/resume/draft-reply) requires.
+      # MUST match the api's ORCHESTRATOR_INTERNAL_SECRET. Empty is refused at
+      # boot when APP_ENV=production (see config.RequireInternalSecret).
+      ORCHESTRATOR_INTERNAL_SECRET: ${ORCHESTRATOR_INTERNAL_SECRET:?ORCHESTRATOR_INTERNAL_SECRET must be set, generate with openssl rand -base64 32}
+      APP_ENV: ${APP_ENV:-development}
       # Default — Anthropic Sonnet 4.6 for prompt-cache savings and Russian
       # quality. scripts/check-llm-defaults.sh asserts this fallback in CI;
       # do not revert without rotating the lint guard.
@@ -497,8 +507,13 @@ services:
       IMAGE_GEN_BUCKET_TIMEOUT: ${IMAGE_GEN_BUCKET_TIMEOUT:-}
       YANDEX_ART_API_KEY: ${YANDEX_ART_API_KEY:-}
       YANDEX_ART_FOLDER_ID: ${YANDEX_ART_FOLDER_ID:-}
+    # Not published beyond loopback: the api reaches it on orchestrator:8090
+    # inside onevoice-network; the 127.0.0.1 host mapping keeps it dialable for
+    # host-run dev without exposing the unauthenticated-by-default (dev) inbound
+    # on the VM's public IP. docker-compose.prod.yml drops even the loopback
+    # mapping via `ports: !reset []`.
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
     depends_on:

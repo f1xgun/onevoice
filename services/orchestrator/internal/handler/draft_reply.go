@@ -47,6 +47,11 @@ const (
 	draftReplyTemperature = 0.4
 )
 
+// maxDraftReplyBodyBytes caps the POST /internal/draft-reply request body. The
+// payload is one review plus a bounded few-shot example list, so the ceiling
+// bounds a direct caller while leaving ample room for legitimate requests.
+const maxDraftReplyBodyBytes = 512 << 10
+
 // DraftChatter is the narrow LLM surface the draft handler needs. *llm.Router
 // satisfies it; tests can pass a fake.
 type DraftChatter interface {
@@ -114,6 +119,7 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxDraftReplyBodyBytes)
 	var req DraftReplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)

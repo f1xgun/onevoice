@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/crypto"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
@@ -153,6 +154,12 @@ type Config struct {
 	InternalACL map[string][]string
 
 	OrchestratorURL string
+
+	// OrchestratorInternalSecret is stamped on every api→orchestrator request so
+	// the orchestrator's internal inbound can authenticate the api as the caller.
+	// Empty is allowed outside production (the orchestrator guard is then also
+	// disabled); production requires it — see the validation in Load.
+	OrchestratorInternalSecret string
 
 	NATSUrl string // empty disables review sync
 
@@ -378,6 +385,7 @@ func Load() (*Config, error) {
 		GoogleRedirectURI:          getEnv("GOOGLE_REDIRECT_URI", defaultGoogleRedirectURI),
 		InternalPort:               getEnv("INTERNAL_PORT", "8443"),
 		OrchestratorURL:            getEnv("ORCHESTRATOR_URL", defaultOrchestratorURL),
+		OrchestratorInternalSecret: os.Getenv("ORCHESTRATOR_INTERNAL_SECRET"),
 		NATSUrl:                    os.Getenv("NATS_URL"),
 		ReviewSyncInterval:         getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30), //nolint:mnd // env-driven default
 
@@ -632,6 +640,14 @@ func Load() (*Config, error) {
 	}
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return nil, fmt.Errorf("JWT_SECRET validation failed: %w (generate a new secret with: openssl rand -base64 48)", err)
+	}
+
+	if cfg.OrchestratorInternalSecret != "" {
+		if len(cfg.OrchestratorInternalSecret) < orchestratorclient.InternalSecretMinLen {
+			return nil, fmt.Errorf("ORCHESTRATOR_INTERNAL_SECRET must be at least %d characters (generate with: openssl rand -base64 32)", orchestratorclient.InternalSecretMinLen)
+		}
+	} else if cfg.IsProduction() {
+		return nil, fmt.Errorf("ORCHESTRATOR_INTERNAL_SECRET is required in production: it authenticates api→orchestrator calls so the orchestrator's internal inbound cannot be reached (and its request-body tier/identity forged) by anyone routing to the port; set it (generate with: openssl rand -base64 32)")
 	}
 	// ENCRYPTION_KEY is optional in new deployments that use KMS-only encryption.
 	// When set it must pass the same strength checks to prevent weak-key attacks.
