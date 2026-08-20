@@ -78,8 +78,10 @@ interface PostsFilters extends Record<string, string> {
   platform: PlatformKey;
 }
 
-const POSTS_GRID_TEMPLATE = '24px 1fr 140px 200px 160px 56px';
-const POSTS_MIN_WIDTH = '620px';
+// Status column is sized for the widest broadcast badge («Опубликовано в N
+// каналах»), not just the single-word per-post statuses.
+const POSTS_GRID_TEMPLATE = '24px 1fr 190px 200px 160px 56px';
+const POSTS_MIN_WIDTH = '670px';
 
 // Status radiogroup option order — used both for rendering the chips and
 // for the arrow-key navigation hook (which walks this list to decide which

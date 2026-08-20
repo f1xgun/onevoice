@@ -19,15 +19,15 @@ export function BroadcastBadge({ channels }: { channels: BroadcastChannelResult[
 
   if (failed.length === 0) {
     return (
-      <Badge tone="success" dot>
-        {tPosts('broadcast.publishedAll', { count: total })}
+      <Badge tone="success" dot className="max-w-full [&>span:first-child]:shrink-0">
+        <span className="truncate">{tPosts('broadcast.publishedAll', { count: total })}</span>
       </Badge>
     );
   }
   if (failed.length === total) {
     return (
-      <Badge tone="danger" dot>
-        {tPosts('broadcast.failedAll', { count: total })}
+      <Badge tone="danger" dot className="max-w-full [&>span:first-child]:shrink-0">
+        <span className="truncate">{tPosts('broadcast.failedAll', { count: total })}</span>
       </Badge>
     );
   }
@@ -36,13 +36,19 @@ export function BroadcastBadge({ channels }: { channels: BroadcastChannelResult[
       failed.map((c) => (PLATFORM_SHORT_KEYS.has(c.platform) ? tShort(c.platform) : c.platform))
     ),
   ].join(', ');
+  const partialLabel = tPosts('broadcast.partial', {
+    ok: total - failed.length,
+    total,
+    channels: failedNames,
+  });
   return (
-    <Badge tone="danger" dot>
-      {tPosts('broadcast.partial', {
-        ok: total - failed.length,
-        total,
-        channels: failedNames,
-      })}
+    <Badge
+      tone="danger"
+      dot
+      title={partialLabel}
+      className="max-w-full [&>span:first-child]:shrink-0"
+    >
+      <span className="truncate">{partialLabel}</span>
     </Badge>
   );
 }

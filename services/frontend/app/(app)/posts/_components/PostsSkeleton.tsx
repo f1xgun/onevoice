@@ -13,7 +13,7 @@ export function PostsSkeleton() {
       {Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
         <div
           key={i}
-          className="grid min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-4"
+          className="grid min-w-[670px] grid-cols-[24px_1fr_190px_200px_160px_56px] items-center gap-4 px-5 py-4"
         >
           <span aria-hidden />
           <Skeleton className="h-4 w-3/4" />
