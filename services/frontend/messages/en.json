@@ -1385,7 +1385,7 @@
       "cta": "Join the waitlist",
       "secondary": "See how it works",
       "betaBadge": "Closed beta · autumn 2026",
-      "betaNote": "Waitlist members get a Pro discount, with the price locked in for a year."
+      "betaNote": "Connect during the beta and the discounted Pro price stays locked in for a year."
     },
     "preview": {
       "url": "onevoice.app/inbox",
@@ -1579,7 +1579,7 @@
           "name": "Pro",
           "price": "3,990–4,990 ₽",
           "period": "per location, monthly",
-          "betaTag": "Beta members get a discount, with the price locked in for a year",
+          "betaTag": "Connect during the beta and your discounted price locks in for a year",
           "features": {
             "0": "Every channel, with unlimited monitoring",
             "1": "The full AI action pool: posts, replies, one-command publishing to every channel",
@@ -1628,7 +1628,7 @@
     "waitlist": {
       "kicker": "Waitlist",
       "headline": "Take your place in the closed beta",
-      "body": "We open access in waves, in small groups — so we can help everyone connect personally. Waitlist members get a Pro discount, with the price locked in for a year.",
+      "body": "We open access in waves, in small groups — so we can help everyone connect personally. Connect during the beta and you get a discounted Pro price, locked in for a year.",
       "emailLabel": "Email",
       "emailPlaceholder": "you@example.com",
       "sphereLabel": "Organization sphere",
