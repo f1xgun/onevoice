@@ -284,7 +284,9 @@ const natsReconnectWait = 2 * time.Second
 // standalone helper so it can be unit tested and any drift back to a bare
 // Connect is caught.
 func resilientNATSOptions(log *slog.Logger) []natslib.Option {
-	opts := []natslib.Option{
+	authOpts := natsauth.Options()
+	opts := make([]natslib.Option, 0, 5+len(authOpts))
+	opts = append(opts,
 		natslib.RetryOnFailedConnect(true),
 		natslib.MaxReconnects(-1),
 		natslib.ReconnectWait(natsReconnectWait),
@@ -294,8 +296,8 @@ func resilientNATSOptions(log *slog.Logger) []natslib.Option {
 		natslib.ReconnectHandler(func(c *natslib.Conn) {
 			log.Info("NATS reconnected", "url", c.ConnectedUrl())
 		}),
-	}
-	return append(opts, natsauth.Options()...)
+	)
+	return append(opts, authOpts...)
 }
 
 // kmsSelfTest performs a single Encrypt call against the KMS client to

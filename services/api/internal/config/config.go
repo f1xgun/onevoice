@@ -81,17 +81,17 @@ type Config struct {
 	// AppEnv is the deployment environment ("production" enables fail-closed
 	// gates; any other value, including empty, is treated as dev/non-prod).
 	// Compare via IsProduction rather than reading the field directly.
-	AppEnv        string
-	Port          string
-	PostgresHost  string
-	PostgresPort  string
-	PostgresUser  string
-	PostgresPass  string
-	PostgresDB    string
-	MongoURI      string
-	MongoDB       string
-	RedisHost     string
-	RedisPort     string
+	AppEnv       string
+	Port         string
+	PostgresHost string
+	PostgresPort string
+	PostgresUser string
+	PostgresPass string
+	PostgresDB   string
+	MongoURI     string
+	MongoDB      string
+	RedisHost    string
+	RedisPort    string
 	// RedisPassword authenticates the Redis connection (requirepass). Empty
 	// keeps the connection unauthenticated for local dev.
 	RedisPassword string

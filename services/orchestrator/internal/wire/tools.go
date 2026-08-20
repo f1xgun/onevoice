@@ -41,7 +41,9 @@ func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing ll
 
 	registerReviewStatsTool(log, reg, mongoDB)
 
-	dialOpts := []natslib.Option{
+	authOpts := natsauth.Options()
+	dialOpts := make([]natslib.Option, 0, 5+len(authOpts))
+	dialOpts = append(dialOpts,
 		natslib.RetryOnFailedConnect(true),
 		natslib.MaxReconnects(-1),
 		natslib.ReconnectWait(natsReconnectWait),
@@ -51,8 +53,8 @@ func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing ll
 		natslib.ReconnectHandler(func(c *natslib.Conn) {
 			log.Info("NATS reconnected", "url", c.ConnectedUrl())
 		}),
-	}
-	dialOpts = append(dialOpts, natsauth.Options()...)
+	)
+	dialOpts = append(dialOpts, authOpts...)
 	nc, err := natslib.Connect(cfg.NATSUrl, dialOpts...)
 	if err != nil {
 		// With RetryOnFailedConnect a failed initial dial surfaces as a

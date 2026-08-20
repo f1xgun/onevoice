@@ -34,7 +34,7 @@ export function isTrustedImageSrc(src: string): boolean {
     return true;
   }
   return TRUSTED_IMAGE_HOST_SUFFIXES.some(
-    (suffix) => host === suffix || host.endsWith('.' + suffix),
+    (suffix) => host === suffix || host.endsWith('.' + suffix)
   );
 }
 
