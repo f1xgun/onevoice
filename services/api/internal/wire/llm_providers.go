@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -30,17 +31,37 @@ var apiModelPricing = map[string]struct {
 	"anthropic/claude-haiku-4-5":  {1.00, 5.00},
 	"anthropic/claude-opus-4-7":   {5.00, 25.00},
 	"openai/gpt-4o-mini":          {0.15, 0.60},
+	// DeepSeek V4 Flash via Yandex AI Studio (RU prod primary). Kept in lockstep
+	// with the orchestrator rate card — see docs/llm-pricing.md. Model IDs arrive
+	// folder-qualified; priceFor normalizes them to this bare slug.
+	"deepseek-v4-flash": {3.60, 6.00},
 }
 
 // priceFor returns (input, output) USD-per-1M-token prices for a model ID.
 // Unknown models return (0, 0) so the router still constructs; the operator
 // sees zero-cost usage_logs rows as a drift signal.
 func priceFor(modelID string) (inputUSDPer1MTok, outputUSDPer1MTok float64) {
-	entry, ok := apiModelPricing[modelID]
+	entry, ok := apiModelPricing[normalizeModelID(modelID)]
 	if !ok {
 		return 0, 0
 	}
 	return entry.InputCostPer1MTok, entry.OutputCostPer1MTok
+}
+
+// normalizeModelID reduces a provider-qualified model identifier to the bare
+// slug used as an apiModelPricing key. Yandex AI Studio addresses models as
+// gpt://<folder>/<model>[/<version>]; the folder segment is deployment-specific,
+// so the rate card keys on <model> alone. Non-URI IDs pass through unchanged.
+// Kept identical to the orchestrator's normalizeModelID.
+func normalizeModelID(modelID string) string {
+	rest, ok := strings.CutPrefix(modelID, "gpt://")
+	if !ok {
+		return modelID
+	}
+	if segs := strings.Split(rest, "/"); len(segs) >= 2 {
+		return segs[1]
+	}
+	return modelID
 }
 
 // allConfiguredModelIDs returns the deduplicated set of model IDs the API
