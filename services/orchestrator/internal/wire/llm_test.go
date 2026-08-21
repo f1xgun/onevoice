@@ -114,7 +114,7 @@ func TestLLMRouter_PricesAllConfiguredModels(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.model, func(t *testing.T) {
-			in, out := priceFor(tc.model)
+			in, out := llm.PriceFor(tc.model)
 			assert.InDelta(t, tc.wantIn, in, 1e-9, "input price")
 			assert.InDelta(t, tc.wantOut, out, 1e-9, "output price")
 		})
@@ -137,7 +137,7 @@ func TestLLMRouter_UnknownModel_ZeroCost(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, router)
 
-	in, out := priceFor("foo/unknown-model")
+	in, out := llm.PriceFor("foo/unknown-model")
 	assert.Equal(t, 0.0, in, "unknown model input cost must be 0")
 	assert.Equal(t, 0.0, out, "unknown model output cost must be 0")
 }
@@ -146,7 +146,8 @@ func TestLLMRouter_UnknownModel_ZeroCost(t *testing.T) {
 // card must produce a WARN at registration naming the model and pointing at
 // docs/llm-pricing.md, so the operator sees that billing will record $0 and the
 // daily-spend gate is inert rather than discovering it by inspecting
-// usage_logs. Removing the warnRateCardMiss call must fail this test.
+// usage_logs. Removing the shared rate-card-miss warning (llmwire) must fail
+// this test.
 func TestLLMRouter_UnknownModel_WarnsRateCardMiss(t *testing.T) {
 	t.Setenv("LLM_MODEL", "foo/unknown-model")
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
@@ -226,38 +227,9 @@ func TestLLMRouter_PassesExtraOptions(t *testing.T) {
 	}, eventuallyTimeout, eventuallyTick, "billing writer must have been called via WithBilling option pass-through")
 }
 
-// TestPriceFor_KnownModel — pin sonnet/haiku/opus/gpt-4o-mini prices so a
-// rate-card edit must update docs/llm-pricing.md AND this test in lockstep.
-func TestPriceFor_KnownModel(t *testing.T) {
-	cases := []struct {
-		model   string
-		wantIn  float64
-		wantOut float64
-	}{
-		{"anthropic/claude-sonnet-4-6", 3.00, 15.00},
-		{"anthropic/claude-haiku-4-5", 1.00, 5.00},
-		{"anthropic/claude-opus-4-7", 5.00, 25.00},
-		{"openai/gpt-4o-mini", 0.15, 0.60},
-		{"deepseek-v4-flash", 3.60, 6.00},
-		// Folder-qualified Yandex URI must normalize to the bare slug and price
-		// identically — this is how the model ID actually reaches priceFor.
-		{"gpt://b1gnbi7pl8c7d6s885t5/deepseek-v4-flash/latest", 3.60, 6.00},
-	}
-	for _, tc := range cases {
-		t.Run(tc.model, func(t *testing.T) {
-			in, out := priceFor(tc.model)
-			assert.InDelta(t, tc.wantIn, in, 1e-9)
-			assert.InDelta(t, tc.wantOut, out, 1e-9)
-		})
-	}
-}
-
-// TestPriceFor_UnknownModel_ZeroZero — unknown model returns (0,0).
-func TestPriceFor_UnknownModel_ZeroZero(t *testing.T) {
-	in, out := priceFor("nonexistent/model")
-	assert.Equal(t, 0.0, in)
-	assert.Equal(t, 0.0, out)
-}
+// PriceFor / NormalizeModelID unit tests moved to pkg/llm/pricing_test.go (the
+// single source of truth). The router-wiring tests above still exercise
+// llm.PriceFor through the registration path.
 
 // --- fakes ---
 

@@ -44,11 +44,15 @@ Commission (`pkg/llm.CommissionConfig`):
 
 ## To update
 
-1. Edit `services/orchestrator/internal/wire/llm.go` `modelPricing` map.
+The rate card lives in ONE place now: `pkg/llm/pricing.go` (`modelPricing`),
+shared by both the api and orchestrator wire packages via `llm.PriceFor`. There
+is no per-service copy to keep in sync.
+
+1. Edit `pkg/llm/pricing.go` `modelPricing` map.
 2. Edit this file's table AND bump "Last verified".
-3. Extend `services/orchestrator/internal/wire/llm_test.go::TestPriceFor_KnownModel`
-   to include the new model + assert its exact rates.
-4. Run `make test-all` — the test enforces the dual-edit contract.
+3. Extend `pkg/llm/pricing_test.go::TestPriceFor_KnownModel` to include the new
+   model + assert its exact rates.
+4. Run `make test-all`.
 
 Forgetting any of steps 1–3 drops cost rows for that model to $0 and
 silently breaks the daily-spend rate limiter.

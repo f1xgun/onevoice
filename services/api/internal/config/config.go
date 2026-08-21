@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/crypto"
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
@@ -68,14 +69,6 @@ const (
 	defaultPublicURL     = "http://localhost"
 	defaultCORSDevOrigin = "http://localhost:3000"
 )
-
-// SelfHostedEndpoint holds configuration for one self-hosted LLM inference
-// endpoint. Mirrors services/orchestrator/internal/config/config.go.
-type SelfHostedEndpoint struct {
-	URL    string
-	Model  string
-	APIKey string // optional
-}
 
 // Config is the API service's runtime configuration.
 type Config struct {
@@ -306,7 +299,7 @@ type Config struct {
 	OpenRouterAPIKey    string
 	OpenAIAPIKey        string
 	AnthropicAPIKey     string
-	SelfHostedEndpoints []SelfHostedEndpoint
+	SelfHostedEndpoints []llm.SelfHostedEndpoint
 
 	FreeTierDailySpendUSD        float64
 	RedisDownPolicy              string
@@ -494,7 +487,7 @@ func Load() (*Config, error) {
 	cfg.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
 	cfg.AnthropicAPIKey = os.Getenv("ANTHROPIC_API_KEY")
-	cfg.SelfHostedEndpoints = parseIndexedEndpoints()
+	cfg.SelfHostedEndpoints = llm.ParseIndexedEndpoints(os.Getenv)
 
 	if v := os.Getenv("LLM_FREE_TIER_DAILY_SPEND_USD"); v != "" {
 		if f, perr := strconv.ParseFloat(v, 64); perr == nil {
@@ -823,30 +816,6 @@ func getEnvSlice(key string, defaultValue []string) []string {
 		return defaultValue
 	}
 	return out
-}
-
-// parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env
-// vars for N = 0, 1, 2, … stopping when SELF_HOSTED_N_URL is missing.
-// Entries without MODEL are skipped. Mirrors orchestrator config.
-func parseIndexedEndpoints() []SelfHostedEndpoint {
-	var result []SelfHostedEndpoint
-	for i := 0; ; i++ {
-		prefix := fmt.Sprintf("SELF_HOSTED_%d_", i)
-		url := os.Getenv(prefix + "URL")
-		if url == "" {
-			break
-		}
-		model := os.Getenv(prefix + "MODEL")
-		if model == "" {
-			continue
-		}
-		result = append(result, SelfHostedEndpoint{
-			URL:    url,
-			Model:  model,
-			APIKey: os.Getenv(prefix + "API_KEY"),
-		})
-	}
-	return result
 }
 
 // parseIntEnv reads an integer env var with fail-loud parsing. Empty
