@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -17,52 +16,10 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 )
 
-// apiModelPricing mirrors the orchestrator-side modelPricing rate card
-// (services/orchestrator/internal/wire/llm.go). Source of truth for these
-// numbers lives in docs/llm-pricing.md; both copies must stay in lockstep —
-// the regression test in this package fails if priceFor diverges from the
-// orchestrator's known-model prices. Forgetting to update one side drops
-// billing rows to $0 for the cheap-tier titler / draft-reply paths.
-var apiModelPricing = map[string]struct {
-	InputCostPer1MTok  float64
-	OutputCostPer1MTok float64
-}{
-	"anthropic/claude-sonnet-4-6": {3.00, 15.00},
-	"anthropic/claude-haiku-4-5":  {1.00, 5.00},
-	"anthropic/claude-opus-4-7":   {5.00, 25.00},
-	"openai/gpt-4o-mini":          {0.15, 0.60},
-	// DeepSeek V4 Flash via Yandex AI Studio (RU prod primary). Kept in lockstep
-	// with the orchestrator rate card — see docs/llm-pricing.md. Model IDs arrive
-	// folder-qualified; priceFor normalizes them to this bare slug.
-	"deepseek-v4-flash": {3.60, 6.00},
-}
-
-// priceFor returns (input, output) USD-per-1M-token prices for a model ID.
-// Unknown models return (0, 0) so the router still constructs; the operator
-// sees zero-cost usage_logs rows as a drift signal.
-func priceFor(modelID string) (inputUSDPer1MTok, outputUSDPer1MTok float64) {
-	entry, ok := apiModelPricing[normalizeModelID(modelID)]
-	if !ok {
-		return 0, 0
-	}
-	return entry.InputCostPer1MTok, entry.OutputCostPer1MTok
-}
-
-// normalizeModelID reduces a provider-qualified model identifier to the bare
-// slug used as an apiModelPricing key. Yandex AI Studio addresses models as
-// gpt://<folder>/<model>[/<version>]; the folder segment is deployment-specific,
-// so the rate card keys on <model> alone. Non-URI IDs pass through unchanged.
-// Kept identical to the orchestrator's normalizeModelID.
-func normalizeModelID(modelID string) string {
-	rest, ok := strings.CutPrefix(modelID, "gpt://")
-	if !ok {
-		return modelID
-	}
-	if segs := strings.Split(rest, "/"); len(segs) >= 2 {
-		return segs[1]
-	}
-	return modelID
-}
+// The LLM rate card (model → per-1M-token price), llm.PriceFor, and
+// llm.NormalizeModelID live in pkg/llm/pricing.go — the single source of truth
+// shared with services/orchestrator. This service used to keep its own copy
+// here, which silently drifted; add a model in pkg/llm now, once.
 
 // allConfiguredModelIDs returns the deduplicated set of model IDs the API
 // service can route to: the main chat model (LLMModel) and the auto-titler
@@ -86,8 +43,9 @@ func allConfiguredModelIDs(cfg *config.Config) []string {
 
 // LLMProviderOpts creates RouterOptions for every API key that is set in
 // config, and registers (provider, model) entries in the registry for every
-// configured model ID. Each entry carries its rate-card pricing from priceFor
-// so usage_logs rows surface a non-zero cost on the titler Router. Returns at
+// configured model ID. Each entry carries its rate-card pricing from
+// llm.PriceFor so usage_logs rows surface a non-zero cost on the titler Router.
+// Returns at
 // least one option if any key is set, nil if none.
 //
 // Mirrors services/orchestrator/internal/wire/llm.go buildProviderOpts —
@@ -116,7 +74,7 @@ func LLMProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) []
 		p := spec.factory(spec.apiKey)
 		opts = append(opts, llm.WithProvider(p))
 		for _, modelID := range configuredModels {
-			inCost, outCost := priceFor(modelID)
+			inCost, outCost := llm.PriceFor(modelID)
 			reg.RegisterModelProvider(&llm.ModelProviderEntry{
 				Model:              modelID,
 				Provider:           spec.name,
@@ -142,7 +100,7 @@ func LLMProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) []
 			continue
 		}
 		opts = append(opts, llm.WithProvider(p))
-		inCost, outCost := priceFor(ep.Model)
+		inCost, outCost := llm.PriceFor(ep.Model)
 		reg.RegisterModelProvider(&llm.ModelProviderEntry{
 			Model:              ep.Model,
 			Provider:           name,

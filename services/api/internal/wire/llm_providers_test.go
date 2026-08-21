@@ -248,36 +248,6 @@ func TestLLMProviderOpts_RegistersEveryProviderForBothModels(t *testing.T) {
 	}
 }
 
-// TestPriceFor_KnownModel — pin sonnet/haiku/opus/gpt-4o-mini prices. A
-// rate-card edit must update docs/llm-pricing.md AND this test in lockstep
-// with the orchestrator-side copy.
-func TestPriceFor_KnownModel(t *testing.T) {
-	cases := []struct {
-		model   string
-		wantIn  float64
-		wantOut float64
-	}{
-		{"anthropic/claude-sonnet-4-6", 3.00, 15.00},
-		{"anthropic/claude-haiku-4-5", 1.00, 5.00},
-		{"anthropic/claude-opus-4-7", 5.00, 25.00},
-		{"openai/gpt-4o-mini", 0.15, 0.60},
-		{"deepseek-v4-flash", 3.60, 6.00},
-		// Folder-qualified Yandex URI must normalize to the bare slug and price
-		// identically — this is how the model ID actually reaches priceFor.
-		{"gpt://b1gnbi7pl8c7d6s885t5/deepseek-v4-flash/latest", 3.60, 6.00},
-	}
-	for _, tc := range cases {
-		t.Run(tc.model, func(t *testing.T) {
-			in, out := priceFor(tc.model)
-			assert.InDelta(t, tc.wantIn, in, 1e-9)
-			assert.InDelta(t, tc.wantOut, out, 1e-9)
-		})
-	}
-}
-
-// TestPriceFor_UnknownModel_ZeroZero — unknown model returns (0, 0).
-func TestPriceFor_UnknownModel_ZeroZero(t *testing.T) {
-	in, out := priceFor("nonexistent/model")
-	assert.Equal(t, 0.0, in)
-	assert.Equal(t, 0.0, out)
-}
+// PriceFor / NormalizeModelID unit tests live in pkg/llm/pricing_test.go (the
+// single source of truth for the shared rate card). The registration tests
+// above still exercise llm.PriceFor through LLMProviderOpts.
