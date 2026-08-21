@@ -15,6 +15,11 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/sseevent"
 )
 
+// maxResumeBodyBytes caps the POST /chat/{id}/resume request body. The body is
+// only the re-fetched approval maps plus a model/tier hint, so a tight ceiling
+// bounds a direct caller without affecting the api's own small payload.
+const maxResumeBodyBytes = 256 << 10
+
 // Resumer is the narrow interface consumed by ResumeHandler. Implemented by
 // *orchestrator.Orchestrator in production; tests inject a stub.
 type Resumer interface {
@@ -78,6 +83,7 @@ func (h *ResumeHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	var req resumeRequest
 	if r.Body != nil && r.ContentLength != 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, maxResumeBodyBytes)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			slog.WarnContext(r.Context(), "resume: body decode failed, using zero-value request",
 				"batch_id", batchID, "error", err,

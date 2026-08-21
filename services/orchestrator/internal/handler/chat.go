@@ -25,6 +25,12 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/sseevent"
 )
 
+// maxChatBodyBytes caps the POST /chat/{id} request body. The api enriches the
+// user turn with up to defaultHistoryLimit prior messages before forwarding, so
+// the ceiling is generous relative to the api's own 1 MiB user-input cap; it
+// exists to bound a direct caller, not to shape legitimate traffic.
+const maxChatBodyBytes = 4 << 20
+
 // Runner abstracts orchestrator.Orchestrator.Run for test injection.
 type Runner interface {
 	Run(ctx context.Context, req orchestrator.RunRequest) (<-chan orchestrator.Event, error)
@@ -69,8 +75,15 @@ type chatRequest struct {
 	ProjectWhitelistMode string   `json:"project_whitelist_mode"`
 	ProjectAllowedTools  []string `json:"project_allowed_tools"`
 
-	UserID                   string                      `json:"user_id"`
-	MessageID                string                      `json:"message_id"`
+	UserID    string `json:"user_id"`
+	MessageID string `json:"message_id"`
+	// Tier selects the rate-limit / daily-spend bucket and is forwarded into
+	// RunRequest verbatim. It is computed by the api from the authenticated
+	// user's subscription and is trusted ONLY because the shared-secret
+	// middleware (services/orchestrator/internal/httpauth) authenticates the
+	// caller as the api. A tier="enterprise" body from an unauthenticated
+	// caller is rejected before it reaches this handler, so it cannot forge an
+	// unlimited bucket.
 	Tier                     string                      `json:"tier"`
 	BusinessApprovals        map[string]domain.ToolFloor `json:"business_approvals"`
 	ProjectApprovalOverrides map[string]domain.ToolFloor `json:"project_approval_overrides"`
@@ -81,6 +94,7 @@ type chatRequest struct {
 // Chat handles POST /chat/{conversationID} and streams orchestrator events as SSE.
 // See docs/orchestrator/chat-handler.md.
 func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxChatBodyBytes)
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)

@@ -31,6 +31,13 @@ const reviewSyncDispatchTimeout = 60 * time.Second
 // simultaneously.
 const reviewSyncConcurrency = 4
 
+// ingestedTextMaxRunes bounds the review/reply text stored from a sync fetch.
+// Real reviews on the supported platforms sit far below this, so it only trims
+// pathologically large (or crafted) payloads before they enter storage and, from
+// there, the few-shot drafter prompt — one more bound on the indirect-injection
+// surface alongside the drafter's per-example clamp.
+const ingestedTextMaxRunes = 8000
+
 // reviewToolByPlatform maps a platform ID to the tool name that returns
 // review/comment-like entries. Not every platform follows the __get_reviews
 // suffix — VK uses __get_comments because wall.getComments is the native VK
@@ -293,6 +300,8 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 	externalID := externalIDFromMap(m, platform)
 	text, _ := m["text"].(string)
 	reply, _ := m["reply"].(string)
+	text = clampRunes(text, ingestedTextMaxRunes)
+	reply = clampRunes(reply, ingestedTextMaxRunes)
 
 	author, _ := m["author"].(string)
 	if author == "" {

@@ -643,6 +643,23 @@ func LogRPAMutation(ctx context.Context, l Logger, action string, businessID uui
 	})
 }
 
+// LogPlatformMutation records a direct-API write the agents landed on a
+// connected platform (Telegram/VK) via the owner's token — a published post, an
+// owner DM, or a public review/comment reply dispatched through the chat turn.
+// action is one of the ActionPlatform* constants; actorID may be nil when the
+// triggering user can't be resolved (the event is still attributable to
+// businessID). target is a non-PII external identifier (post id / review id) or
+// "". This is the direct-API counterpart to LogRPAMutation. Fire-and-forget.
+func LogPlatformMutation(ctx context.Context, l Logger, action string, businessID uuid.UUID, actorID *uuid.UUID, tool, platform, target string) {
+	l.Log(ctx, Entry{
+		Action:     action,
+		Resource:   "integration",
+		BusinessID: &businessID,
+		UserID:     actorID,
+		Details:    mustMarshal(RPAMutationDetails{Tool: tool, Platform: platform, Target: target}),
+	})
+}
+
 // ---- review builders ----------------------------------------------------
 
 // LogReviewAutoReplied records the review-reply autopilot auto-publishing a

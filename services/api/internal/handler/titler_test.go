@@ -179,7 +179,7 @@ func newTitlerHandlerWithRealTitler(t *testing.T, conv *domain.Conversation, lis
 	msgRepo := &titlerMsgRepo{listReturn: listMsgs}
 	fc := &service.FakeChatCaller{ReturnContent: "Запланировать пост"}
 	titler := service.NewTitler(fc, convRepo, "test-model")
-	h := NewTitlerHandler(titler, convRepo, msgRepo, 0)
+	h := NewTitlerHandler(titler, &noopBusinessService{}, convRepo, msgRepo, 0)
 	return h, convRepo, fc
 }
 
@@ -308,7 +308,7 @@ func TestRegenerateTitle_503_TitlerDisabled(t *testing.T) {
 	}
 	convRepo := &titlerConvRepo{getByIDReturn: conv}
 	msgRepo := &titlerMsgRepo{}
-	h := NewTitlerHandler(nil, convRepo, msgRepo, 0)
+	h := NewTitlerHandler(nil, &noopBusinessService{}, convRepo, msgRepo, 0)
 
 	rec := titlerRoute(t, h, userID, convID)
 
@@ -394,7 +394,7 @@ func TestRegenerateTitle_404_NotFound(t *testing.T) {
 	msgRepo := &titlerMsgRepo{}
 	fc := &service.FakeChatCaller{ReturnContent: "irrelevant"}
 	titler := service.NewTitler(fc, convRepo, "test-model")
-	h := NewTitlerHandler(titler, convRepo, msgRepo, 0)
+	h := NewTitlerHandler(titler, &noopBusinessService{}, convRepo, msgRepo, 0)
 
 	rec := titlerRoute(t, h, userID, convID)
 
@@ -426,7 +426,7 @@ func TestRegenerateTitle_409_TransitionRace(t *testing.T) {
 	msgRepo := &titlerMsgRepo{}
 	fc := &service.FakeChatCaller{ReturnContent: "irrelevant"}
 	titler := service.NewTitler(fc, convRepo, "test-model")
-	h := NewTitlerHandler(titler, convRepo, msgRepo, 0)
+	h := NewTitlerHandler(titler, &noopBusinessService{}, convRepo, msgRepo, 0)
 
 	rec := titlerRoute(t, h, userID, convID)
 
@@ -445,7 +445,7 @@ func TestRegenerateTitle_NoBusinessContext(t *testing.T) {
 	convID := "507f1f77bcf86cd799439026"
 	convRepo := &titlerConvRepo{}
 	msgRepo := &titlerMsgRepo{}
-	h := NewTitlerHandler(nil, convRepo, msgRepo, 0)
+	h := NewTitlerHandler(nil, &noopBusinessService{}, convRepo, msgRepo, 0)
 
 	req := httptest.NewRequest(http.MethodPost,
 		"/api/v1/conversations/"+convID+"/regenerate-title", http.NoBody)
@@ -525,7 +525,7 @@ func TestRegenerateTitle_TransitionUnexpectedError_500(t *testing.T) {
 	msgRepo := &titlerMsgRepo{}
 	fc := &service.FakeChatCaller{ReturnContent: "irrelevant"}
 	titler := service.NewTitler(fc, convRepo, "test-model")
-	h := NewTitlerHandler(titler, convRepo, msgRepo, 0)
+	h := NewTitlerHandler(titler, &noopBusinessService{}, convRepo, msgRepo, 0)
 
 	rec := titlerRoute(t, h, userID, convID)
 

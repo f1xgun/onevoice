@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitlstore"
 	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -210,7 +211,8 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	go runOrphanReconcile(h.PendingToolCallRepo)
 
 	redisClient := goredis.NewClient(&goredis.Options{
-		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		Password: cfg.RedisPassword,
 	})
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		_ = redisClient.Close()
@@ -282,7 +284,9 @@ const natsReconnectWait = 2 * time.Second
 // standalone helper so it can be unit tested and any drift back to a bare
 // Connect is caught.
 func resilientNATSOptions(log *slog.Logger) []natslib.Option {
-	return []natslib.Option{
+	authOpts := natsauth.Options()
+	opts := make([]natslib.Option, 0, 5+len(authOpts))
+	opts = append(opts,
 		natslib.RetryOnFailedConnect(true),
 		natslib.MaxReconnects(-1),
 		natslib.ReconnectWait(natsReconnectWait),
@@ -292,7 +296,8 @@ func resilientNATSOptions(log *slog.Logger) []natslib.Option {
 		natslib.ReconnectHandler(func(c *natslib.Conn) {
 			log.Info("NATS reconnected", "url", c.ConnectedUrl())
 		}),
-	}
+	)
+	return append(opts, authOpts...)
 }
 
 // kmsSelfTest performs a single Encrypt call against the KMS client to

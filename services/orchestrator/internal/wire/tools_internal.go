@@ -39,9 +39,12 @@ const (
 )
 
 // generateImageSpec is the declarative tool definition for generate_image. Bare
-// name (no "{platform}__" prefix) → always offered; Auto floor → no HITL gate
-// (the downstream publish tool is still Manual-gated, and cost is handled by the
-// daily-spend gate, not HITL).
+// name (no "{platform}__" prefix) → offered to the model, but Manual floor → the
+// call pauses for HITL approval before it runs. Image generation spends money and
+// can be steered by indirect injection (a review/comment the model summarizes),
+// so a human confirms each generation rather than trusting the per-turn cap and
+// post-hoc daily-spend accounting alone. Under an explicit project whitelist the
+// tool must now be listed to be offered (Manual floor is no longer auto-exempt).
 func generateImageSpec() toolregistry.ToolSpec {
 	return toolregistry.ToolSpec{
 		DisplayName:    "Сгенерировать изображение",
@@ -79,7 +82,7 @@ func generateImageSpec() toolregistry.ToolSpec {
 				"required": []string{"prompt"},
 			},
 		}},
-		Floor:          domain.ToolFloorAuto,
+		Floor:          domain.ToolFloorManual,
 		EditableFields: nil,
 	}
 }

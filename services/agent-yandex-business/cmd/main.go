@@ -13,6 +13,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
+	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	agentpkg "github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/config"
@@ -45,6 +46,13 @@ func run() error {
 	shared := agentbase.NewSharedSessionResolver(tokens, cfg.YandexSharedBusinessID)
 	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher).
 		WithSharedSession(shared)
+	if cfg.A2APayloadKey != "" {
+		payloadDec, encErr := crypto.NewEncryptor([]byte(cfg.A2APayloadKey))
+		if encErr != nil {
+			return fmt.Errorf("a2a payload key: %w", encErr)
+		}
+		handler.WithPayloadDecryptor(payloadDec)
+	}
 
 	sweeperCtx, stopSweeper := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSweeper()

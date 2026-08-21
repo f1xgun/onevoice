@@ -213,8 +213,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				// guards routes that trigger external work (integration
 				// connect/refresh, RPA probes, review reply/refresh, business
 				// update, logo upload + schedule edits — both fan out to every
-				// connected platform); inviteLimit is tighter for email-sending
-				// invites.
+				// connected platform; conversation create and auto-title
+				// regenerate — the latter spends a best-effort LLM call on the
+				// background tier that the per-business daily-spend gate does not
+				// bound); inviteLimit is tighter for email-sending invites.
 				writeLimit := middleware.RateLimitByUser(redisClient, rateLimits.Writes, time.Minute, "writes")
 				inviteLimit := middleware.RateLimitByUser(redisClient, rateLimits.Invitations, time.Minute, "invitations")
 
@@ -293,7 +295,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 
 				r.Get("/conversations", handlers.Conversation.ListConversations)
-				r.Post("/conversations", handlers.Conversation.CreateConversation)
+				r.With(writeLimit).Post("/conversations", handlers.Conversation.CreateConversation)
 				r.Get("/conversations/{id}", handlers.Conversation.GetConversation)
 				r.Put("/conversations/{id}", handlers.Conversation.UpdateConversation)
 				r.Delete("/conversations/{id}", handlers.Conversation.DeleteConversation)
@@ -302,7 +304,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Post("/conversations/{id}/pin", handlers.Conversation.Pin)
 				r.Post("/conversations/{id}/unpin", handlers.Conversation.Unpin)
 				if handlers.Titler != nil {
-					r.Post("/conversations/{id}/regenerate-title", handlers.Titler.RegenerateTitle)
+					r.With(writeLimit).Post("/conversations/{id}/regenerate-title", handlers.Titler.RegenerateTitle)
 				}
 
 				r.Get("/projects", handlers.Project.List)

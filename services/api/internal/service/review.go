@@ -13,6 +13,7 @@ import (
 	natslib "github.com/nats-io/nats.go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
@@ -77,6 +78,7 @@ type reviewService struct {
 	dispatchTimeout time.Duration
 	refresher       ReviewRefresher // nil = manual refresh disabled
 	drafter         SingleDrafter   // nil = batch-draft disabled (returns configured error)
+	auditLog        audit.Logger    // nil = manual-reply mutations not audited
 }
 
 // Compile-time check that reviewService implements ReviewService
@@ -95,10 +97,17 @@ var _ AutoPublisher = (*reviewService)(nil)
 // returns a configured error while the rest of the surface is unaffected (the
 // on-demand batch-draft is an explicit user action, so it works even when the
 // passive REVIEW_DRAFT_ENABLED auto-drafter is off, provided a drafter is wired).
-func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn, refresher ReviewRefresher, drafter SingleDrafter) ReviewService {
+//
+// auditLog records the manual-reply platform mutation (who published which
+// public reply, when). Nil disables that audit emission (Mongo-only / test
+// callers) — it is defaulted to a no-op logger so the write path never nil-panics.
+func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn, refresher ReviewRefresher, drafter SingleDrafter, auditLog audit.Logger) ReviewService {
 	var requester natsRequester
 	if nc != nil {
 		requester = nc
+	}
+	if auditLog == nil {
+		auditLog = audit.Nop()
 	}
 	return &reviewService{
 		repo:            repo,
@@ -107,6 +116,7 @@ func NewReviewService(repo domain.ReviewRepository, businessService BusinessServ
 		dispatchTimeout: reviewDispatchTimeout,
 		refresher:       refresher,
 		drafter:         drafter,
+		auditLog:        auditLog,
 	}
 }
 
@@ -179,11 +189,32 @@ func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
 // texts.
 const acceptedEditRatio = 0.1
 
+// autoPublishCtxKey marks a publishReply call as originating from the review-
+// reply autopilot.
+type autoPublishCtxKey struct{}
+
+// withAutoPublishSignal tags ctx as an autopilot auto-publish. publishReply then
+// records NO owner-edit feedback for it: an automatic send is neither accepted
+// nor rejected by the owner, so counting the verbatim draft as "accepted
+// unedited" would bias the few-shot exemplar selection toward the model's own
+// unreviewed output — a self-reinforcing drift that also amplifies a poisoned
+// draft. Manual and bulk-approve replies (a real owner action) keep the signal.
+func withAutoPublishSignal(ctx context.Context) context.Context {
+	return context.WithValue(ctx, autoPublishCtxKey{}, true)
+}
+
+// isAutoPublishSignal reports whether ctx was tagged by withAutoPublishSignal.
+func isAutoPublishSignal(ctx context.Context) bool {
+	v, _ := ctx.Value(autoPublishCtxKey{}).(bool)
+	return v
+}
+
 // draftReplyFeedback derives the owner-edit signal by comparing the AI draft to
 // the final reply. It returns nil when there was no draft (a manual reply to a
-// never-drafted review carries no signal to learn from). Auto-published and
-// bulk-approved replies send the draft verbatim, so they record as accepted with
-// zero edit distance.
+// never-drafted review carries no signal to learn from). A bulk-approve reply
+// sends the draft verbatim after an explicit owner click, so it records as
+// accepted; a fully-automatic auto-publish records no signal at all (see
+// withAutoPublishSignal / publishReply).
 func draftReplyFeedback(draft, final string) *domain.ReviewDraftFeedback {
 	d := strings.TrimSpace(draft)
 	if d == "" {
@@ -269,13 +300,20 @@ func (s *reviewService) RetryReply(ctx context.Context, businessID uuid.UUID, id
 // failed send can be retried verbatim). Callers run their own state guards
 // before this point.
 func (s *reviewService) publishReply(ctx context.Context, review *domain.Review, replyText string) error {
-	dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
+	toolName, dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
 	finalStatus := domain.ReviewReplyStatusReplied
 	if dispatchErr != nil {
 		finalStatus = domain.ReviewReplyStatusError
 	}
 
+	if dispatchErr == nil && toolName != "" && !isAutoPublishSignal(ctx) {
+		s.auditReviewReplied(ctx, review, toolName)
+	}
+
 	feedback := draftReplyFeedback(review.DraftReply, replyText)
+	if isAutoPublishSignal(ctx) {
+		feedback = nil
+	}
 	if err := s.repo.UpdateReply(ctx, review.ID, replyText, finalStatus, feedback); err != nil {
 		slog.Error("review reply: dispatch ok but persist failed",
 			"review_id", review.ID, "platform", review.Platform, "error", err,
@@ -290,26 +328,61 @@ func (s *reviewService) publishReply(ctx context.Context, review *domain.Review,
 }
 
 // dispatchToPlatform sends the manual reply to the platform agent over NATS.
-// Returns nil when the agent confirms success, an error otherwise. A nil
-// NATS connection (Mongo-only mode) returns nil — same legacy behavior.
-// Unsupported platforms also return nil so business operators can still
-// "mark as replied" for surfaces that don't have an agent yet.
-func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.Review, replyText string) error {
+// It returns the dispatched tool name (empty when no real dispatch happened) and
+// nil error when the agent confirms success, an error otherwise. A nil NATS
+// connection (Mongo-only mode) returns ("", nil) — same legacy behavior.
+// Unsupported platforms also return ("", nil) so business operators can still
+// "mark as replied" for surfaces that don't have an agent yet. The returned tool
+// name lets the caller audit only mutations that actually landed on a platform.
+func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.Review, replyText string) (string, error) {
 	if s.nc == nil {
-		return nil
+		return "", nil
 	}
 
 	toolName, args, err := buildPlatformReply(review, replyText)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if toolName == "" {
-		return nil
+		return "", nil
 	}
 
 	_, err = dispatchToolWithApproval(ctx, s.nc, review.Platform, toolName, args,
 		review.BusinessID, manualReplyApprovalID(review), s.dispatchTimeout)
-	return err
+	if err != nil {
+		return "", err
+	}
+	return toolName, nil
+}
+
+// auditReviewReplied records a manual (or bulk-approve) review reply that landed
+// a public mutation on a connected platform, attributing it to the business and
+// the acting user (from the request's BusinessContext; nil when unresolved).
+// Yandex.Business goes through the RPA path (rpa.review_replied); every other
+// platform is a direct-API mutation (platform.review_replied). The autopilot
+// path is excluded by the caller — it already emits review.auto_replied. Target
+// is the review's non-PII external id; no review text or reply body is recorded.
+// Fire-and-forget, mirroring the chat-turn platform-mutation audit.
+func (s *reviewService) auditReviewReplied(ctx context.Context, review *domain.Review, toolName string) {
+	if s.auditLog == nil {
+		return
+	}
+	bizID, err := uuid.Parse(review.BusinessID)
+	if err != nil {
+		return
+	}
+	var actor *uuid.UUID
+	if bc, ok := authz.BusinessContextFromCtx(ctx); ok {
+		a := bc.UserID
+		actor = &a
+	}
+	if review.Platform == a2a.AgentYandexBusiness {
+		audit.LogRPAMutation(ctx, s.auditLog, audit.ActionRPAReviewReplied, bizID, actor,
+			toolName, review.Platform, review.ExternalID)
+		return
+	}
+	audit.LogPlatformMutation(ctx, s.auditLog, audit.ActionPlatformReviewReplied, bizID, actor,
+		toolName, review.Platform, review.ExternalID)
 }
 
 // manualReplyApprovalID derives the HITL dedupe key for a manual review reply.

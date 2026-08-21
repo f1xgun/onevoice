@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/pkg/ssecounter"
@@ -64,6 +65,20 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		GoogleRedirectURI:      cfg.GoogleRedirectURI,
 	}, nil, h.Redis)
 	oauthHandler.WithSecureCookies(cfg.SecureCookies)
+	oauthHandler.WithTempEncryptor(h.Enc)
+	// Prefer the KMS envelope for temp creds so the connect-flow blob stays
+	// encrypted in KMS-only deployments (empty ENCRYPTION_KEY → nil h.Enc),
+	// where the legacy temp encryptor above would otherwise no-op to plaintext.
+	if h.Envelope != nil {
+		oauthHandler.WithTempEnvelope(h.Envelope)
+	}
+	if cfg.A2APayloadKey != "" {
+		payloadEnc, err := crypto.NewEncryptor([]byte(cfg.A2APayloadKey))
+		if err != nil {
+			return nil, fmt.Errorf("wire: a2a payload encryptor: %w", err)
+		}
+		oauthHandler.WithPayloadEncryptor(payloadEnc)
+	}
 	if svcs.AgentTaskPublisher != nil {
 		oauthHandler.WithAgentTaskPublisher(svcs.AgentTaskPublisher)
 	}
@@ -198,6 +213,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create hitl handler: %w", err)
 	}
+	hitlHandler.SetAuditLogger(svcs.AuditLogger)
 
 	if cfg.TelegramApprovalHMACSecret != "" {
 		svcs.TelegramApproval = service.NewTelegramApprovalConsumer(
@@ -217,7 +233,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	businessHandler.SetToolsCache(svcs.ToolsCache)
 	projectHandler.SetToolsCache(svcs.ToolsCache)
 
-	titlerHandler := handler.NewTitlerHandler(svcs.Titler, repos.Conversation, repos.Message, cfg.MessageHistoryLimit)
+	titlerHandler := handler.NewTitlerHandler(svcs.Titler, svcs.Business, repos.Conversation, repos.Message, cfg.MessageHistoryLimit)
 
 	searchHandler, err := handler.NewSearchHandler(svcs.Searcher)
 	if err != nil {

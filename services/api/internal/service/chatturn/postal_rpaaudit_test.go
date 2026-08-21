@@ -99,3 +99,64 @@ func TestAuditRPAMutations_NilLoggerNoop(t *testing.T) {
 		[]domain.ToolCall{{ID: "c1", Name: tools.YandexBusinessReplyReview}},
 		[]domain.ToolResult{{ToolCallID: "c1"}})
 }
+
+// TestAuditPlatformMutations_EmitsOnDirectAPIMutations mirrors the RPA guard for
+// the direct-API (Telegram/VK) path: one audit row per landed post / DM / reply,
+// none for reads or failures, attributed to the business + actor, carrying no
+// post text or reply body.
+func TestAuditPlatformMutations_EmitsOnDirectAPIMutations(t *testing.T) {
+	biz := uuid.New()
+	actor := uuid.New()
+	fake := &fakeAuditLogger{}
+	turn := &Turn{deps: Deps{Audit: fake}}
+
+	toolCalls := []domain.ToolCall{
+		{ID: "c1", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "secret post body"}},
+		{ID: "c2", Name: tools.TelegramSendNotification, Arguments: map[string]interface{}{"text": "dm body"}},
+		{ID: "c3", Name: tools.VKReplyComment, Arguments: map[string]interface{}{"post_id": float64(10), "comment_id": float64(20), "text": "reply body"}},
+		{ID: "c4", Name: tools.VKGetComments}, // read — not audited
+		{ID: "c5", Name: tools.YandexBusinessCreatePost, Arguments: map[string]interface{}{"text": "rpa"}},   // RPA path — not here
+		{ID: "c6", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "failed"}}, // failed — not audited
+	}
+	toolResults := []domain.ToolResult{
+		{ToolCallID: "c1", IsError: false, Content: map[string]interface{}{"post_id": float64(555)}},
+		{ToolCallID: "c2", IsError: false, Content: map[string]interface{}{"message_id": float64(777)}},
+		{ToolCallID: "c3", IsError: false},
+		{ToolCallID: "c4", IsError: false},
+		{ToolCallID: "c5", IsError: false},
+		{ToolCallID: "c6", IsError: true},
+	}
+
+	turn.auditPlatformMutations(context.Background(), biz.String(), actor.String(), toolCalls, toolResults)
+
+	require.Len(t, fake.entries, 3)
+	byAction := map[string]audit.Entry{}
+	for _, e := range fake.entries {
+		byAction[e.Action] = e
+	}
+
+	post, ok := byAction[audit.ActionPlatformPostPublished]
+	require.True(t, ok, "expected a post-published audit entry")
+	require.NotNil(t, post.BusinessID)
+	assert.Equal(t, biz, *post.BusinessID)
+	require.NotNil(t, post.UserID)
+	assert.Equal(t, actor, *post.UserID)
+	assert.Contains(t, string(post.Details), "555")
+	assert.NotContains(t, string(post.Details), "secret post body")
+
+	_, dmOK := byAction[audit.ActionPlatformDMSent]
+	assert.True(t, dmOK, "expected a dm-sent audit entry")
+
+	reply, ok := byAction[audit.ActionPlatformReviewReplied]
+	require.True(t, ok, "expected a review-replied audit entry")
+	assert.Contains(t, string(reply.Details), "10_20")
+	assert.NotContains(t, string(reply.Details), "reply body")
+}
+
+// TestAuditPlatformMutations_NilLoggerNoop: no Audit dep → no panic, no work.
+func TestAuditPlatformMutations_NilLoggerNoop(t *testing.T) {
+	turn := &Turn{deps: Deps{}}
+	turn.auditPlatformMutations(context.Background(), uuid.NewString(), uuid.NewString(),
+		[]domain.ToolCall{{ID: "c1", Name: tools.VKPublishPost}},
+		[]domain.ToolResult{{ToolCallID: "c1"}})
+}

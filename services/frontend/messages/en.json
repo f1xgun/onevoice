@@ -352,6 +352,7 @@
       "messagePlaceholder": "Type a message…",
       "sendAria": "Send",
       "typingAria": "OneVoice is typing",
+      "externalImage": "Open image",
       "stopAria": "Stop",
       "readOnlyHint": "You don't have permission to send messages in this organization"
     },
@@ -2177,7 +2178,10 @@
       "rpa_post_published": "Post published",
       "rpa_photo_uploaded": "Photo uploaded",
       "rpa_info_updated": "Listing info updated",
-      "rpa_hours_updated": "Business hours updated"
+      "rpa_hours_updated": "Business hours updated",
+      "platform_post_published": "Post published",
+      "platform_dm_sent": "Direct message sent",
+      "platform_review_replied": "Review reply published"
     }
   },
   "sidebar": {

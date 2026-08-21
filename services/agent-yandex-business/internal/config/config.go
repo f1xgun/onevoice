@@ -35,6 +35,11 @@ type Config struct {
 	// nothing else changes. Must match the API's YANDEX_SHARED_BUSINESS_ID.
 	YandexSharedBusinessID string
 
+	// A2APayloadKey is the optional 32-byte AES-256 key used to decrypt sealed
+	// tool arguments (the Yandex connect cookies) the API sends over NATS. Empty
+	// keeps the plaintext-cookies path. Must match A2A_PAYLOAD_KEY on the API.
+	A2APayloadKey string
+
 	// ScopeGateEnforce controls the RPA request scope gate. When false (the
 	// default) the gate runs REPORT-ONLY: out-of-scope requests are metered,
 	// audited, and logged but NOT aborted, adding observability without risking
@@ -61,6 +66,7 @@ func Load() (*Config, error) {
 		RedisURL:               getEnv("REDIS_URL", "redis://redis:6379"),
 		BrowserPoolMaxContexts: maxContexts,
 		YandexSharedBusinessID: os.Getenv("YANDEX_SHARED_BUSINESS_ID"),
+		A2APayloadKey:          os.Getenv("A2A_PAYLOAD_KEY"),
 		ScopeGateEnforce:       os.Getenv("SCOPE_GATE_ENFORCE") == "true",
 	}, nil
 }

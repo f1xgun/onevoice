@@ -354,7 +354,8 @@ func runReconcileLoop(ctx context.Context, log *slog.Logger, fn func(context.Con
 // function with identical identifiers in one package — Services is the
 // returned aggregate type.
 func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, repos *Repos, h *DBHandles) (*Services, error) {
-	orchClient := orchestratorclient.New(cfg.OrchestratorURL, &http.Client{Timeout: 0})
+	orchHTTP := orchestratorclient.WithInternalSecret(&http.Client{Timeout: 0}, cfg.OrchestratorInternalSecret)
+	orchClient := orchestratorclient.New(cfg.OrchestratorURL, orchHTTP)
 
 	s := &Services{
 		TaskHub:     taskhub.New(),
@@ -457,7 +458,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	if s.ReviewSyncer != nil {
 		reviewRefresher = s.ReviewSyncer
 	}
-	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher, reviewDrafter)
+	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher, reviewDrafter, s.AuditLogger)
 	if h.NATS != nil {
 		reviewDrafter.SetAutoPublisher(s.Review, s.AuditLogger)
 	}
@@ -499,7 +500,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.PresenceHealth = service.NewPresenceHealthService(repos.Review, repos.SyncState)
 	s.PresenceHealthSnapshot = presencehealth.New(repos.PresenceHealthSnapshot, s.PresenceHealth, repos.PresenceHealthSnapshot, log)
 
-	s.ToolsCache = service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, toolsCacheTTL)
+	s.ToolsCache = service.NewToolsRegistryCache(cfg.OrchestratorURL, orchHTTP, toolsCacheTTL)
 	s.HITL = service.NewHITLService(
 		h.PendingToolCallRepo,
 		repos.Business,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -98,7 +99,7 @@ func (h *ConnectHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Requ
 	mac.Write([]byte(checkString))
 	expectedHash := hex.EncodeToString(mac.Sum(nil))
 
-	if hash != expectedHash {
+	if subtle.ConstantTimeCompare([]byte(hash), []byte(expectedHash)) != 1 {
 		writeJSONError(w, http.StatusUnauthorized, "invalid hash")
 		return
 	}
@@ -355,8 +356,17 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 	if channelInfo.LinkedChatID != 0 {
 		metadata["linked_chat_id"] = channelInfo.LinkedChatID
 	}
+	// The body-supplied telegram_user_id is self-asserted — the backend has no
+	// proof the caller controls that Telegram account — so it is stored under a
+	// clearly-unverified key and NEVER under "telegram_user_id". The latter is the
+	// off-app HITL authorization anchor (TelegramApprovalConsumer.tapperIsOwner)
+	// and the owner-DM target (OwnerBriefService), and is set only from the
+	// VERIFIED message.from.id captured by the /start owner-link handshake
+	// (TelegramOwnerLinkService.Bind). Trusting the body value here would let an
+	// admin bind an arbitrary owner id and approve off-app batches or receive
+	// owner-private DMs as that account.
 	if req.TelegramUserId != nil && *req.TelegramUserId != "" {
-		metadata["telegram_user_id"] = *req.TelegramUserId
+		metadata["telegram_user_id_unverified"] = *req.TelegramUserId
 	}
 	metadata = connhealth.MergeIntoMetadata(metadata, health)
 

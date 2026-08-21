@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 )
 
 const (
@@ -53,6 +54,7 @@ type RunConfig struct {
 func Run(cfg RunConfig) error {
 	var shuttingDown atomic.Bool
 	opts := resilientNATSOptions()
+	opts = append(opts, natsauth.Options()...)
 	opts = append(opts, natslib.ClosedHandler(func(_ *natslib.Conn) {
 		if shuttingDown.Load() {
 			return

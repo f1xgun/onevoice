@@ -68,21 +68,27 @@ func defNames(defs []llm.ToolDefinition) []string {
 func testCfg() *config.Config { return &config.Config{LLMTier: "free"} }
 
 // TestRegisterInternalTools_WithGenerator is the fail-on-revert guard: a non-nil
-// generator registers generate_image with an Auto floor and it must surface in
-// both Available(nil) and the EXPLICIT whitelist (Auto exempts the whitelist).
+// generator registers generate_image with a Manual floor (image generation
+// spends money and is injection-steerable, so it pauses for HITL). It is still
+// offered with no active integrations, but a Manual floor is NOT auto-exempt from
+// an explicit project whitelist — the tool must be listed to be offered there.
 func TestRegisterInternalTools_WithGenerator(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	RegisterInternalTools(reg, &stubGenerator{}, &stubStore{}, &stubWriter{}, testCfg())
 
 	require.True(t, reg.Has(tools.GenerateImage), "generate_image must be registered")
-	assert.Equal(t, domain.ToolFloorAuto, reg.Floor(tools.GenerateImage))
+	assert.Equal(t, domain.ToolFloorManual, reg.Floor(tools.GenerateImage))
 
 	assert.Contains(t, defNames(reg.Available(nil)), tools.GenerateImage,
 		"bare-name tool must be available with no active integrations")
 
-	wl := reg.AvailableForWhitelist(context.Background(), nil, domain.WhitelistModeExplicit, nil)
-	assert.Contains(t, defNames(wl), tools.GenerateImage,
-		"Auto-floor tool must pass an EXPLICIT whitelist even when not listed")
+	wlOmitted := reg.AvailableForWhitelist(context.Background(), nil, domain.WhitelistModeExplicit, nil)
+	assert.NotContains(t, defNames(wlOmitted), tools.GenerateImage,
+		"Manual-floor tool must NOT pass an EXPLICIT whitelist unless listed")
+
+	wlListed := reg.AvailableForWhitelist(context.Background(), nil, domain.WhitelistModeExplicit, []string{tools.GenerateImage})
+	assert.Contains(t, defNames(wlListed), tools.GenerateImage,
+		"an explicitly whitelisted generate_image must be offered")
 }
 
 // TestRegisterInternalTools_NilGenerator proves a disabled generator adds no tool.

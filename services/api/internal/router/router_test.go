@@ -398,6 +398,89 @@ func TestRouter_LogoUploadRateLimited(t *testing.T) {
 		"the (Writes+1)th PUT /logo from one user must be throttled by writeLimit")
 }
 
+// replayRegenerateTitleChain rebuilds the POST
+// /conversations/{id}/regenerate-title route's exact route-scoped middleware
+// chain (including the per-user writeLimit) onto a fresh chi router terminating
+// in a benign 200 handler. Mirrors replayLogoChain: the outer-group Auth
+// middleware is prepended explicitly (chi.Walk does not report parent-group Use
+// middlewares) and the route is mounted under /api/v1/businesses/{id}.
+func replayRegenerateTitleChain(t *testing.T, src *chi.Mux, jwtSecret []byte) *chi.Mux {
+	t.Helper()
+	const wantPattern = "/api/v1/businesses/{id}/conversations/{id}/regenerate-title"
+	var chain []func(http.Handler) http.Handler
+	var found bool
+	err := chi.Walk(src, func(method, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
+		if method == http.MethodPost && route == wantPattern {
+			found = true
+			chain = mws
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, found, "route %s must be registered", wantPattern)
+
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := chi.NewRouter()
+	mux.Use(apimiddleware.Auth(jwtSecret))
+	mux.Route("/api/v1/businesses/{id}", func(r chi.Router) {
+		r.With(chain...).Post("/conversations/{id}/regenerate-title", terminal)
+	})
+	return mux
+}
+
+// TestRouter_RegenerateTitleRateLimited is the fail-on-revert guard for the
+// auto-title write rate-limit: POST /conversations/{id}/regenerate-title spends
+// a best-effort LLM call on the ungated "background" tier (which the per-business
+// daily-spend gate does not bound), so an authenticated user must not be able to
+// flood it. It carries the per-user writeLimit like its write siblings. Here we
+// drive Writes+1 requests for one user through the route's real middleware
+// chain: the first Writes pass (200) and the (Writes+1)th is throttled (429).
+// Reverting the .With(writeLimit) wrapper lets every request through (200),
+// failing the final assertion.
+func TestRouter_RegenerateTitleRateLimited(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&permissiveLoader{roleID: uuid.New()}, time.Minute, time.Minute)
+	hc := health.New()
+	handlers := buildTestHandlers()
+	const writesLimit = 3
+	r := router.Setup(handlers, jwtSecret, redisClient, hc,
+		[]string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: writesLimit, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	regen := replayRegenerateTitleChain(t, r, jwtSecret)
+
+	userID := uuid.New()
+	token := mintAccessToken(t, jwtSecret, userID)
+	bizID := uuid.New()
+	convID := uuid.New()
+	url := "/api/v1/businesses/" + bizID.String() + "/conversations/" + convID.String() + "/regenerate-title"
+
+	var lastCode int
+	for i := 0; i <= writesLimit; i++ {
+		req := httptest.NewRequest(http.MethodPost, url, http.NoBody)
+		req.RemoteAddr = "203.0.113.11:5555"
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		regen.ServeHTTP(rec, req)
+		lastCode = rec.Code
+		if i < writesLimit {
+			require.Equal(t, http.StatusOK, rec.Code,
+				"request %d/%d (within budget) must pass the writeLimit", i+1, writesLimit)
+		}
+	}
+	assert.Equal(t, http.StatusTooManyRequests, lastCode,
+		"the (Writes+1)th regenerate-title from one user must be throttled by writeLimit")
+}
+
 // replayResetRequestChain rebuilds the public POST /auth/password-reset/request
 // route's middleware chain (the per-IP RateLimit for password-reset) onto a fresh
 // chi router terminating in a benign 200 handler, so the real limiter wiring is

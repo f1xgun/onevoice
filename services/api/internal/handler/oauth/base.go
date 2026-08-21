@@ -22,6 +22,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
@@ -141,6 +142,19 @@ type OAuthHandler struct {
 	redis              *goredis.Client
 	taskPublisher      AgentTaskPublisher // optional; nil disables refresh-name
 	secureCookies      bool               // gate Secure on the CSRF cookie; off for local http dev
+	// tempEnvelope KMS-wraps short-lived OAuth credentials before they land in
+	// Redis. Preferred over tempEnc: it keeps temp creds encrypted in the
+	// recommended KMS-only deployment (empty ENCRYPTION_KEY), where the legacy
+	// tempEnc is absent — so the connect-flow blob (VK/Google token) is never
+	// written in plaintext there. Nil falls back to tempEnc, then plaintext.
+	tempEnvelope *crypto.Envelope
+	// tempEnc encrypts short-lived OAuth credentials before they land in Redis
+	// (unauthenticated in dev). Used only when tempEnvelope is nil. Nil in turn
+	// falls back to plaintext.
+	tempEnc *crypto.Encryptor
+	// payloadEnc encrypts secret tool arguments (Yandex connect cookies) before
+	// they cross the NATS bus. Nil falls back to a plaintext argument.
+	payloadEnc *crypto.Encryptor
 }
 
 // NewOAuthHandler creates a new OAuthHandler.
@@ -181,6 +195,94 @@ func (h *OAuthHandler) WithAgentTaskPublisher(p AgentTaskPublisher) *OAuthHandle
 func (h *OAuthHandler) WithSecureCookies(secure bool) *OAuthHandler {
 	h.secureCookies = secure
 	return h
+}
+
+// WithTempEncryptor injects the AES encryptor used to protect short-lived
+// OAuth credentials stored in Redis. Not constructor-injected to keep existing
+// call sites and tests untouched; nil is the safe default (plaintext).
+func (h *OAuthHandler) WithTempEncryptor(enc *crypto.Encryptor) *OAuthHandler {
+	h.tempEnc = enc
+	return h
+}
+
+// WithTempEnvelope injects the KMS-backed envelope used to protect short-lived
+// OAuth credentials stored in Redis. Preferred over WithTempEncryptor because it
+// works in KMS-only deployments (empty ENCRYPTION_KEY), where no legacy temp
+// encryptor exists and temp creds would otherwise be written in plaintext. Nil
+// is the safe default. Not constructor-injected to keep call sites/tests intact.
+func (h *OAuthHandler) WithTempEnvelope(env *crypto.Envelope) *OAuthHandler {
+	h.tempEnvelope = env
+	return h
+}
+
+// WithPayloadEncryptor injects the AES encryptor used to protect secret tool
+// arguments (Yandex connect cookies) that cross the NATS bus. Nil is the safe
+// default — arguments are sent in plaintext, as before.
+func (h *OAuthHandler) WithPayloadEncryptor(enc *crypto.Encryptor) *OAuthHandler {
+	h.payloadEnc = enc
+	return h
+}
+
+// tempCredsBlob is the on-Redis representation of an envelope-sealed temp
+// credential: the AES-GCM ciphertext plus its KMS-wrapped DEK, stored together
+// so the blob is self-contained for the connect window. The Redis key is bound
+// into the AAD, so a sealed blob only opens under the key it was written for.
+type tempCredsBlob struct {
+	Ciphertext []byte `json:"c"`
+	WrappedDEK []byte `json:"w"`
+}
+
+// storeTempCreds persists a short-lived OAuth credential blob in Redis, sealing
+// it first with the KMS envelope when configured, else the legacy temp
+// encryptor. The value is stored as raw bytes so binary ciphertext round-trips
+// unchanged. loadTempCreds mirrors the chosen path.
+func (h *OAuthHandler) storeTempCreds(ctx context.Context, key string, plaintext []byte, ttl time.Duration) error {
+	value := plaintext
+	switch {
+	case h.tempEnvelope != nil:
+		ct, wrapped, _, _, err := h.tempEnvelope.EncryptToken(ctx, uuid.Nil, key, plaintext)
+		if err != nil {
+			return err
+		}
+		blob, err := json.Marshal(tempCredsBlob{Ciphertext: ct, WrappedDEK: wrapped})
+		if err != nil {
+			return err
+		}
+		value = blob
+	case h.tempEnc != nil:
+		enc, err := h.tempEnc.Encrypt(plaintext)
+		if err != nil {
+			return err
+		}
+		value = enc
+	}
+	return h.redis.Set(ctx, key, value, ttl).Err()
+}
+
+// loadTempCreds reads a short-lived OAuth credential blob from Redis, unsealing
+// it via the same path storeTempCreds used. Every write in a given deployment
+// uses one path, so a value written sealed is read back sealed.
+func (h *OAuthHandler) loadTempCreds(ctx context.Context, key string) ([]byte, error) {
+	raw, err := h.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case h.tempEnvelope != nil:
+		var blob tempCredsBlob
+		if err := json.Unmarshal(raw, &blob); err != nil {
+			return nil, err
+		}
+		pt, _, err := h.tempEnvelope.DecryptToken(ctx, uuid.Nil, key, blob.Ciphertext, blob.WrappedDEK)
+		if err != nil {
+			return nil, err
+		}
+		return pt, nil
+	case h.tempEnc != nil:
+		return h.tempEnc.Decrypt(raw)
+	default:
+		return raw, nil
+	}
 }
 
 // issueOAuthCSRFCookie plants the per-flow nonce as a short-lived, HttpOnly

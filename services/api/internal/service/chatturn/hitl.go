@@ -556,6 +556,7 @@ func (t *Turn) runResumeStream(
 		t.recordPostsAndReviews(saveCtx, businessID, msg.ID, recCalls, recResults)
 	}
 	t.auditRPAMutations(saveCtx, businessID, actorUserID, recCalls, recResults)
+	t.auditPlatformMutations(saveCtx, businessID, actorUserID, recCalls, recResults)
 	return OutcomeRejoinedResume, nil
 }
 
@@ -633,6 +634,7 @@ func (t *Turn) persistResumeRePause(parentCtx context.Context, msg *domain.Messa
 		t.recordPostsAndReviews(saveCtx, businessID, msg.ID, toolCalls, toolResults)
 	}
 	t.auditRPAMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
+	t.auditPlatformMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
 	return OutcomePauseHITL
 }
 
@@ -654,4 +656,5 @@ func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message,
 		t.recordPostsAndReviews(saveCtx, businessID, msg.ID, toolCalls, toolResults)
 	}
 	t.auditRPAMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
+	t.auditPlatformMutations(saveCtx, businessID, actorUserID, toolCalls, toolResults)
 }

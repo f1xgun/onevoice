@@ -37,6 +37,7 @@ func minTestEnv(t *testing.T) {
 	t.Setenv("JWT_SECRET", "Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8")
 	t.Setenv("ENCRYPTION_KEY", "uW4qX9pTzN3vM8yJ7sR2bL5kH1gD0fA6")
 	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", canonicalACLJSON)
+	t.Setenv("ORCHESTRATOR_INTERNAL_SECRET", "test-internal-secret-abcdef123")
 	t.Setenv("TOKEN_ENCRYPTION_KMS_KEY_ID", "aes256-test-key-id")
 	t.Setenv("YC_SA_JSON_CREDENTIALS", `{"id":"test","service_account_id":"test","created_at":"2024-01-01T00:00:00Z","key_algorithm":"RSA_2048","public_key":"-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0000000000000000000=\n-----END PUBLIC KEY-----\n","private_key":"-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0000000000000000000=\n-----END RSA PRIVATE KEY-----\n"}`)
 }
@@ -591,6 +592,33 @@ func TestLoad_AcceptValidLegal_Prod(t *testing.T) {
 	setValidLegal(t)
 	_, err := config.Load()
 	require.NoError(t, err)
+}
+
+func TestLoad_RejectMissingOrchestratorSecret_Prod(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("APP_ENV", "production")
+	setValidLegal(t)
+	t.Setenv("ORCHESTRATOR_INTERNAL_SECRET", "")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ORCHESTRATOR_INTERNAL_SECRET")
+}
+
+func TestLoad_RejectShortOrchestratorSecret(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("ORCHESTRATOR_INTERNAL_SECRET", "short")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ORCHESTRATOR_INTERNAL_SECRET")
+}
+
+func TestLoad_AllowMissingOrchestratorSecret_Dev(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("ORCHESTRATOR_INTERNAL_SECRET", "")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.OrchestratorInternalSecret)
 }
 
 func TestLoad_AllowPlaceholders_Dev(t *testing.T) {

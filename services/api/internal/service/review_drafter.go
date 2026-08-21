@@ -32,6 +32,15 @@ const (
 	// because the orchestrator's max-token budget is a soft byte-ish limit, not a
 	// hard rune count.
 	yandexReplyMaxRunes = 2500
+
+	// exampleMaxRunes caps a single few-shot review/reply string, and
+	// fewShotTotalRuneBudget caps the combined size of the whole few-shot block.
+	// Together they bound the token cost and the indirect-injection surface a
+	// pathologically long (or crafted) review/reply could add to the drafter
+	// prompt: an example that overflows either bound is truncated or dropped
+	// rather than forwarded verbatim.
+	exampleMaxRunes        = 600
+	fewShotTotalRuneBudget = 3000
 )
 
 // DraftReplyClient is the narrow surface of *orchestratorclient.Client that
@@ -248,7 +257,7 @@ func (d *ReviewDrafter) maybeAutoPublish(ctx context.Context, business *domain.B
 		return
 	}
 
-	if err := d.autoPublisher.Reply(ctx, business.ID, review.ID, draft); err != nil {
+	if err := d.autoPublisher.Reply(withAutoPublishSignal(ctx), business.ID, review.ID, draft); err != nil {
 		slog.Warn("review autopilot: auto-publish failed, leaving draft for HITL",
 			"review_id", review.ID,
 			"business_id", business.ID,
@@ -262,11 +271,14 @@ func (d *ReviewDrafter) maybeAutoPublish(ctx context.Context, business *domain.B
 }
 
 // autopilotShouldPublish is the full auto-publish gate. It is intentionally the
-// conjunction of four independent guards so reverting any single one still blocks
-// a forbidden auto-publish:
+// conjunction of independent guards so reverting any single one still blocks a
+// forbidden auto-publish:
 //   - opt-in: the business enabled the autopilot;
 //   - positive + ready: a ready non-empty non-needs_review draft above the
 //     negative rating threshold (isPositiveDraftReady, shared with bulk-approve);
+//   - content safety: the draft carries no link / external call-to-action and is
+//     not suspiciously long (isDraftSafeForAutoPublish) — an unreviewed reply
+//     that an indirect injection steered off-topic is held for HITL;
 //   - rating floor: the rating clears the business-configured minRating (already
 //     clamped to at least ReviewAutopilotMinRatingFloor at read time);
 //   - platform: Yandex.Business is excluded (beta -> HITL only).
@@ -284,10 +296,45 @@ func autopilotShouldPublish(cfg apiplatform.ReviewAutopilotConfig, review *domai
 	if !isPositiveDraftReady(&gate) {
 		return false
 	}
+	if !isDraftSafeForAutoPublish(draft) {
+		return false
+	}
 	if review.Rating < cfg.MinRating {
 		return false
 	}
 	if review.Platform == a2a.AgentYandexBusiness {
+		return false
+	}
+	return true
+}
+
+// autoPublishMaxRunes caps the length of a draft eligible for automatic
+// publication. A positive thank-you reply is short; unusual length is a weak
+// signal of a derailed or injected draft, so a longer one is held for HITL.
+const autoPublishMaxRunes = 800
+
+// Link probes for isDraftSafeForAutoPublish. These are substrings, not request
+// targets, so the nourl check does not apply — they never name a host.
+const (
+	urlSchemeSeparator = "://"
+	bareDomainPrefix   = "www."
+	markdownLinkOpen   = "]("
+)
+
+// isDraftSafeForAutoPublish reports whether a drafted reply is safe to publish
+// WITHOUT a human in the loop. It rejects drafts that carry a link / external
+// call-to-action or that are suspiciously long — an autopilot reply is a short,
+// link-free acknowledgement by construction. A rejected draft is not lost: it
+// stays ready for the owner to approve by hand, so the guard only declines to
+// send automatically.
+func isDraftSafeForAutoPublish(draft string) bool {
+	if utf8.RuneCountInString(draft) > autoPublishMaxRunes {
+		return false
+	}
+	lower := strings.ToLower(draft)
+	if strings.Contains(lower, urlSchemeSeparator) ||
+		strings.Contains(lower, bareDomainPrefix) ||
+		strings.Contains(draft, markdownLinkOpen) {
 		return false
 	}
 	return true
@@ -338,22 +385,43 @@ func (d *ReviewDrafter) callOrchestrator(ctx context.Context, body orchestratorc
 
 // buildExamples projects domain.Review records into the wire shape and drops
 // the row matching skipID (so a row that just transitioned reply_status the
-// other way doesn't feed itself back as an example).
+// other way doesn't feed itself back as an example). Each example's review and
+// reply text is clamped to exampleMaxRunes, and the running total is bounded by
+// fewShotTotalRuneBudget so one oversized (or crafted) row cannot bloat the
+// prompt or widen the indirect-injection surface — once the budget is spent no
+// further examples are appended.
 func buildExamples(src []domain.Review, skipID string) []orchestratorclient.DraftReplyExample {
 	out := make([]orchestratorclient.DraftReplyExample, 0, len(src))
+	remaining := fewShotTotalRuneBudget
 	for i := range src {
 		ex := src[i]
 		if ex.ID == skipID {
 			continue
 		}
-		if strings.TrimSpace(ex.Text) == "" || strings.TrimSpace(ex.ReplyText) == "" {
+		reviewText := clampRunes(strings.TrimSpace(ex.Text), exampleMaxRunes)
+		replyText := clampRunes(strings.TrimSpace(ex.ReplyText), exampleMaxRunes)
+		if reviewText == "" || replyText == "" {
 			continue
 		}
+		cost := utf8.RuneCountInString(reviewText) + utf8.RuneCountInString(replyText)
+		if cost > remaining {
+			break
+		}
+		remaining -= cost
 		out = append(out, orchestratorclient.DraftReplyExample{
-			ReviewText: ex.Text,
-			ReplyText:  ex.ReplyText,
+			ReviewText: reviewText,
+			ReplyText:  replyText,
 			Rating:     ex.Rating,
 		})
 	}
 	return out
+}
+
+// clampRunes truncates s to at most maxRunes runes. maxRunes <= 0 returns s
+// unchanged.
+func clampRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 || utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	return string([]rune(s)[:maxRunes])
 }

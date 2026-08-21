@@ -28,7 +28,9 @@ var (
 const tokensPerMillion = 1_000_000
 
 // RateLimitChecker is a testable interface for rate limit enforcement.
-// businessID == uuid.Nil skips the per-business daily-spend gate.
+// businessID == uuid.Nil skips the per-business daily-spend gate; userID ==
+// uuid.Nil skips the per-user Redis buckets (system callers) while the
+// per-business daily-spend gate still runs on a non-nil businessID.
 type RateLimitChecker interface {
 	CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, tokens int) (bool, error)
 }
@@ -120,10 +122,20 @@ func tierFromRequest(req ChatRequest) string {
 	return req.Tier
 }
 
-// checkRateLimit enforces the per-user/tier limit before any provider work.
-// Shared by Chat and ChatStream so they cannot drift.
+// checkRateLimit enforces the per-user/tier and per-business gates before any
+// provider work. Shared by Chat and ChatStream so they cannot drift.
+//
+// A call with neither a user nor a business carries no gate identity, so it is
+// left ungated. A business-attributed call still reaches CheckLimit even when
+// UserID is Nil: system callers (the review drafter, the titler) set UserID=Nil
+// with a real BusinessID precisely so the per-business daily-spend gate can
+// attribute them. CheckLimit skips the per-user Redis buckets for a Nil user, so
+// those system callers never collide on one shared bucket.
 func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
-	if r.rateLimiter == nil || req.UserID == uuid.Nil {
+	if r.rateLimiter == nil {
+		return nil
+	}
+	if req.UserID == uuid.Nil && req.BusinessID == uuid.Nil {
 		return nil
 	}
 	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), estimateRequestTokens(req))

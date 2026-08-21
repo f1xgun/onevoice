@@ -640,3 +640,80 @@ func rpaTargetID(toolName string, args map[string]interface{}) string {
 	}
 	return ""
 }
+
+// platformMutation binds a direct-API (non-RPA) write tool to the audit action
+// it records and the platform whose listing it mutates.
+type platformMutation struct {
+	action   string
+	platform string
+}
+
+// platformMutationTools maps each direct-API write tool the agents expose to its
+// audit action. Posts, owner DMs, and public review/comment replies dispatched
+// through the chat turn land real changes on Telegram/VK (and Google Business)
+// via the owner's token, so the trail is what makes "who changed what, when"
+// answerable for incident investigation and 152-FZ minimization evidence. This
+// is the direct-API counterpart to rpaMutationTools (which audits the
+// Yandex.Business RPA path). Reads (get_reviews / get_comments / get_info) are
+// absent: only mutations are audited.
+var platformMutationTools = map[string]platformMutation{
+	tools.TelegramSendChannelPost:   {audit.ActionPlatformPostPublished, a2a.AgentTelegram},
+	tools.TelegramSendChannelPhoto:  {audit.ActionPlatformPostPublished, a2a.AgentTelegram},
+	tools.TelegramSendNotification:  {audit.ActionPlatformDMSent, a2a.AgentTelegram},
+	tools.TelegramReplyToComment:    {audit.ActionPlatformReviewReplied, a2a.AgentTelegram},
+	tools.VKPublishPost:             {audit.ActionPlatformPostPublished, a2a.AgentVK},
+	tools.VKPostPhoto:               {audit.ActionPlatformPostPublished, a2a.AgentVK},
+	tools.VKSchedulePost:            {audit.ActionPlatformPostPublished, a2a.AgentVK},
+	tools.VKReplyComment:            {audit.ActionPlatformReviewReplied, a2a.AgentVK},
+	tools.GoogleBusinessReplyReview: {audit.ActionPlatformReviewReplied, a2a.AgentGoogleBusiness},
+}
+
+// auditPlatformMutations writes one audit row per successful direct-API platform
+// mutation in the turn, attributing the change to the business and (when
+// resolvable) the actor. Mirrors auditRPAMutations for the Telegram/VK/Google
+// direct-API tools. No-op without an Audit logger. Errors are skipped — only
+// landed writes are recorded.
+func (t *Turn) auditPlatformMutations(ctx context.Context, businessID, actorUserID string, toolCalls []domain.ToolCall, toolResults []domain.ToolResult) {
+	if t.deps.Audit == nil || len(toolResults) == 0 {
+		return
+	}
+	bizID, err := uuid.Parse(businessID)
+	if err != nil {
+		return
+	}
+	var actor *uuid.UUID
+	if a, perr := uuid.Parse(actorUserID); perr == nil {
+		actor = &a
+	}
+
+	callByID := make(map[string]domain.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		callByID[tc.ID] = tc
+	}
+	for _, tr := range toolResults {
+		if tr.IsError {
+			continue
+		}
+		tc, ok := callByID[tr.ToolCallID]
+		if !ok {
+			continue
+		}
+		mut, isMutation := platformMutationTools[tc.Name]
+		if !isMutation {
+			continue
+		}
+		audit.LogPlatformMutation(ctx, t.deps.Audit, mut.action, bizID, actor,
+			tc.Name, mut.platform, platformMutationTarget(tc.Name, tc.Arguments, tr.Content))
+	}
+}
+
+// platformMutationTarget extracts a non-PII external identifier of the mutated
+// object: the answered review's external_id for a reply tool, else the created
+// post/message id from the tool result. Returns "" when neither is present.
+// Never returns post text, DM body, or author data.
+func platformMutationTarget(toolName string, args, content map[string]interface{}) string {
+	if _, isReply := replyReviewPlatform[toolName]; isReply {
+		return replyReviewExternalID(toolName, args)
+	}
+	return resultPostID(content)
+}

@@ -29,6 +29,7 @@ import (
 // RegenerateTitle handler returns 503 in that case.
 type TitlerHandler struct {
 	titler           *service.Titler
+	businessService  BusinessService
 	conversationRepo domain.ConversationRepository
 	messageRepo      domain.MessageRepository
 	historyLimit     int
@@ -41,10 +42,14 @@ type TitlerHandler struct {
 // falls back to defaultHistoryLimit.
 func NewTitlerHandler(
 	titler *service.Titler,
+	businessService BusinessService,
 	conversationRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
 	historyLimit int,
 ) *TitlerHandler {
+	if businessService == nil {
+		panic("NewTitlerHandler: businessService cannot be nil")
+	}
 	if conversationRepo == nil {
 		panic("NewTitlerHandler: conversationRepo cannot be nil")
 	}
@@ -56,6 +61,7 @@ func NewTitlerHandler(
 	}
 	return &TitlerHandler{
 		titler:           titler,
+		businessService:  businessService,
 		conversationRepo: conversationRepo,
 		messageRepo:      messageRepo,
 		historyLimit:     historyLimit,
@@ -67,6 +73,10 @@ func NewTitlerHandler(
 // State machine:
 //
 //  1. middleware.GetUserID — 401 on miss.
+//     1a. business soft-delete gate: h.businessService.GetByID — 404 on
+//     ErrBusinessNotFound (GetByID filters deleted_at IS NULL, so a
+//     soft-deleted organization reads as not-found and its conversations
+//     become unwritable), 500 on other err.
 //  2. h.conversationRepo.GetByID — 404 on ErrConversationNotFound, 500 on other err.
 //  3. ownership: conv.UserID != userID.String() → 403.
 //  4. titler-disabled gate: h.titler == nil → 503 (graceful disable).
@@ -83,6 +93,16 @@ func NewTitlerHandler(
 func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "RegenerateTitle", authz.PermContentUpdate)
 	if !ok {
+		return
+	}
+
+	if _, err := h.businessService.GetByID(r.Context(), bc.BusinessID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "regenerate-title: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 

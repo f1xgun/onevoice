@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/reviewstats"
@@ -40,7 +41,9 @@ func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing ll
 
 	registerReviewStatsTool(log, reg, mongoDB)
 
-	nc, err := natslib.Connect(cfg.NATSUrl,
+	authOpts := natsauth.Options()
+	dialOpts := make([]natslib.Option, 0, 5+len(authOpts))
+	dialOpts = append(dialOpts,
 		natslib.RetryOnFailedConnect(true),
 		natslib.MaxReconnects(-1),
 		natslib.ReconnectWait(natsReconnectWait),
@@ -51,6 +54,8 @@ func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing ll
 			log.Info("NATS reconnected", "url", c.ConnectedUrl())
 		}),
 	)
+	dialOpts = append(dialOpts, authOpts...)
+	nc, err := natslib.Connect(cfg.NATSUrl, dialOpts...)
 	if err != nil {
 		// With RetryOnFailedConnect a failed initial dial surfaces as a
 		// reconnecting conn, not an error — so an error here means an

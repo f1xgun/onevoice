@@ -50,13 +50,16 @@ func TestActionConstants(t *testing.T) {
 		"project.updated":                           ActionProjectUpdated,
 		"project.deleted":                           ActionProjectDeleted,
 		"rpa.scope_violation":                       ActionRPAScopeViolation,
+		"platform.post_published":                   ActionPlatformPostPublished,
+		"platform.dm_sent":                          ActionPlatformDMSent,
+		"platform.review_replied":                   ActionPlatformReviewReplied,
 		"review.auto_replied":                       ActionReviewAutoReplied,
 		"hitl.approval_resolved":                    ActionHITLApprovalResolved,
 	}
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 44, "expected 44 audit actions (base + password reset + email verify + account deletion + consent + integration sec hardening + integration mutation audit + rpa scope gate + review autopilot + hitl approval resolve)")
+	require.Len(t, tests, 47, "expected 47 audit actions (base + password reset + email verify + account deletion + consent + integration sec hardening + integration mutation audit + rpa scope gate + direct-API platform mutation audit + review autopilot + hitl approval resolve)")
 }
 
 func TestActionCategory(t *testing.T) {
@@ -76,6 +79,9 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "account", ActionCategory(ActionSoleOwnerBlocked))
 	require.Equal(t, "account", ActionCategory(ActionUserSelfDeleted))
 	require.Equal(t, "rpa", ActionCategory(ActionRPAScopeViolation))
+	require.Equal(t, "platform", ActionCategory(ActionPlatformPostPublished))
+	require.Equal(t, "platform", ActionCategory(ActionPlatformDMSent))
+	require.Equal(t, "platform", ActionCategory(ActionPlatformReviewReplied))
 	require.Equal(t, "review", ActionCategory(ActionReviewAutoReplied))
 	require.Equal(t, "hitl", ActionCategory(ActionHITLApprovalResolved))
 	require.Equal(t, "other", ActionCategory("unknown.thing"))

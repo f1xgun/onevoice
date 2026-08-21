@@ -322,6 +322,32 @@ func TestRouter_CheckRateLimit_PassesBusinessID(t *testing.T) {
 	assert.Equal(t, bizID, frl.gotBusinessID)
 }
 
+// TestRouter_CheckRateLimit_NilUserBusinessAttributed_ReachesCheckLimit — a
+// system caller (UserID Nil) with a real BusinessID must still reach CheckLimit
+// (the per-business daily-spend gate lives there), so a rejection blocks it.
+// Before the bypass fix, checkRateLimit short-circuited on the Nil user and the
+// gate never ran.
+func TestRouter_CheckRateLimit_NilUserBusinessAttributed_ReachesCheckLimit(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	frl := &fakeRateLimiter{allowed: false}
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimitChecker(frl),
+	)
+
+	bizID := uuid.New()
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.Nil,
+		BusinessID: bizID,
+		Tier:       "free",
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, llm.ErrRateLimitExceeded), "got %v", err)
+	assert.Equal(t, bizID, frl.gotBusinessID)
+}
+
 // TestRouter_CheckRateLimit_PassesNonZeroEstimate — the router must charge the
 // token gate a pre-flight ESTIMATE derived from the prompt, not a literal 0.
 // This is the fail-on-revert anchor: restore CheckLimit(..., 0) at router.go and

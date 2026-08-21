@@ -7,8 +7,12 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set, generate with openssl rand -base64 24}
       POSTGRES_DB: onevoice
+    # Not published beyond loopback: clients reach it on postgres:5432 inside
+    # onevoice-network; the 127.0.0.1 host mapping lets host-run binaries dial it
+    # without exposing the port on the VM's public IP. docker-compose.prod.yml
+    # drops even the loopback mapping via `ports: !reset []`.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,14 +23,25 @@ services:
     networks:
       - onevoice-network
 
-  # MongoDB
+  # MongoDB — access control enabled (mongod --auth). The root user is created
+  # on first boot from MONGO_ROOT_USERNAME/PASSWORD; api and orchestrator
+  # authenticate with the same credentials embedded in MONGO_URI
+  # (authSource=admin). Not published beyond loopback: clients reach it on
+  # mongodb:27017 inside onevoice-network, and the 127.0.0.1 host mapping keeps
+  # host-run binaries able to dial it without exposing an unauthenticated-by-
+  # default port on the VM's public IP. docker-compose.prod.yml drops even the
+  # loopback mapping via `ports: !reset []`. The `ping` healthcheck needs no
+  # credentials (it is exempt from auth).
   mongodb:
     image: mongo:7
     container_name: onevoice-mongodb
+    command: ["mongod", "--auth", "--bind_ip_all"]
     environment:
       MONGO_INITDB_DATABASE: onevoice
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set (MongoDB auth); see .env.example}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set, generate with openssl rand -hex 24}
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb_data:/data/db
       - ./migrations/mongo:/docker-entrypoint-initdb.d
@@ -38,12 +53,18 @@ services:
     networks:
       - onevoice-network
 
-  # Redis
+  # Redis — password-protected (requirepass). Not published beyond loopback;
+  # clients reach it on redis:6379 inside onevoice-network. REDISCLI_AUTH lets
+  # the healthcheck's redis-cli authenticate without embedding the password in
+  # the command line. docker-compose.prod.yml drops the loopback mapping.
   redis:
     image: redis:7-alpine
     container_name: onevoice-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -54,16 +75,24 @@ services:
     networks:
       - onevoice-network
 
-  # NATS (for future use)
+  # NATS — authenticated (see infra/nats/nats-server.conf). Not published to the
+  # host beyond loopback: clients reach it on nats:4222 inside onevoice-network.
+  # The dev loopback binding (127.0.0.1) keeps host-run binaries able to dial it
+  # without exposing an unauthenticated-by-default port on the VM's public IP;
+  # docker-compose.prod.yml drops even the loopback mapping via `ports: !reset []`.
   nats:
     image: nats:2.10-alpine
     container_name: onevoice-nats
-    command: ["-js", "-sd", "/data", "-m", "8222"]
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    environment:
+      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
+      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     volumes:
       - nats_data:/data
+      - ./infra/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8222/healthz"]
       interval: 5s
@@ -80,9 +109,13 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set, generate with openssl rand -base64 24}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set, generate with openssl rand -base64 24}
+    # Not published beyond loopback: clients reach it on minio:9000 inside
+    # onevoice-network; the 127.0.0.1 host mappings keep the S3 API (9000) and
+    # console (9001) reachable for host-run dev without exposing them on the VM's
+    # public IP. docker-compose.prod.yml drops even the loopback mappings.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -140,16 +173,27 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set, generate with openssl rand -base64 24}
       POSTGRES_DB: onevoice
-      MONGO_URI: mongodb://mongodb:27017
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set (MongoDB auth); see .env.example}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set, generate with openssl rand -hex 24}@mongodb:27017/onevoice?authSource=admin
       MONGO_DB: onevoice
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set, generate with openssl rand -base64 48}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set, generate with openssl rand -base64 24}
+      # Optional shared key that encrypts secret A2A tool args (Yandex connect
+      # cookies) over NATS. Must match agent-yandex-business. Empty = plaintext.
+      A2A_PAYLOAD_KEY: ${A2A_PAYLOAD_KEY:-}
       INTERNAL_PORT: 8443
       ONEVOICE_INTERNAL_ACL_JSON: ${ONEVOICE_INTERNAL_ACL_JSON:?ONEVOICE_INTERNAL_ACL_JSON must be set (CN->platforms map for /internal/v1/tokens); see .env.example}
       ORCHESTRATOR_URL: http://orchestrator:8090
+      # Shared secret authenticating api→orchestrator calls. MUST match the
+      # orchestrator's ORCHESTRATOR_INTERNAL_SECRET; the orchestrator rejects
+      # unauthenticated callers so its body-trusting internal inbound cannot be
+      # reached (or its tier/identity forged) by anyone routing to :8090.
+      ORCHESTRATOR_INTERNAL_SECRET: ${ORCHESTRATOR_INTERNAL_SECRET:?ORCHESTRATOR_INTERNAL_SECRET must be set, generate with openssl rand -base64 32}
       NATS_URL: nats://nats:4222
+      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
+      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
       REVIEW_SYNC_INTERVAL_MINUTES: ${REVIEW_SYNC_INTERVAL_MINUTES:-30}
       # AI review-draft generation (post-sync hook). Disabled by default — set
       # REVIEW_DRAFT_ENABLED=true to start spending on LLM calls. Requires at
@@ -255,8 +299,10 @@ services:
     container_name: onevoice-agent-telegram
     environment:
       NATS_URL: nats://nats:4222
+      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
+      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
       API_INTERNAL_URL: https://api:8443
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-telegram.crt
@@ -280,9 +326,11 @@ services:
     container_name: onevoice-agent-vk
     environment:
       NATS_URL: nats://nats:4222
+      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
+      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
       API_INTERNAL_URL: https://api:8443
       VK_SERVICE_KEY: ${VK_SERVICE_KEY:-}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-vk.crt
@@ -306,9 +354,11 @@ services:
     container_name: onevoice-agent-google-business
     environment:
       NATS_URL: nats://nats:4222
+      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
+      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
       API_INTERNAL_URL: https://api:8443
       HEALTH_PORT: "8084"
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-google-business.crt
@@ -332,8 +382,10 @@ services:
     container_name: onevoice-agent-yandex-business
     environment:
       NATS_URL: nats://nats:4222
+      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
+      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
       API_INTERNAL_URL: https://api:8443
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       # APP_ENV gates the boot-time PII warning when SCREENSHOT_MODE != off
       # (see cmd/main.go). Without propagation the production check was
       # silently dead in compose deploys.
@@ -346,6 +398,10 @@ services:
       # triage, or `full` for dev. See services/agent-yandex-business
       # /internal/yandex/browser.go for the enum.
       SCREENSHOT_MODE: ${SCREENSHOT_MODE:-off}
+      # Optional shared key that decrypts secret A2A tool args (connect cookies)
+      # received over NATS. Must match the api's A2A_PAYLOAD_KEY. Empty =
+      # plaintext (the api then sends the legacy plaintext `cookies` argument).
+      A2A_PAYLOAD_KEY: ${A2A_PAYLOAD_KEY:-}
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-yandex-business.crt
@@ -365,9 +421,23 @@ services:
     # Chromium sandbox off (--no-sandbox), so shrink the blast radius of a
     # renderer compromise. A headless Chromium launched with --no-sandbox
     # needs no Linux capabilities, so drop them all, and block privilege
-    # escalation through setuid binaries. Running non-root, a read-only
-    # rootfs, and re-enabling the sandbox each require a live browser
-    # smoke-test and are handled separately.
+    # escalation through setuid binaries.
+    #
+    # Runs as the base image's non-root `pwuser` on a read-only root
+    # filesystem; the only writable surfaces are the tmpfs mounts below
+    # (Chromium user-data-dir under /tmp, shared memory on /dev/shm sized up
+    # from the 64 MB default so the renderer does not OOM, and pwuser's HOME
+    # for the browser profile/cache). Re-enabling the Chromium sandbox is a
+    # separate step (would require added caps + a smoke-test).
+    #
+    # NEEDS-LIVE-VALIDATION: run one real Yandex RPA tool after deploy to
+    # confirm the browser still launches under user/read_only/tmpfs.
+    user: pwuser
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+      - /dev/shm:size=256m
+      - /home/pwuser:size=64m
     cap_drop:
       - ALL
     security_opt:
@@ -382,11 +452,18 @@ services:
     environment:
       PORT: 8090
       NATS_URL: nats://nats:4222
-      MONGO_URI: mongodb://mongodb:27017
+      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
+      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set (MongoDB auth); see .env.example}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set, generate with openssl rand -hex 24}@mongodb:27017/onevoice?authSource=admin
       MONGO_DB: onevoice
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       # Internal API URL used by billingclient over mTLS.
       API_INTERNAL_URL: https://api:8443
+      # Shared secret the internal inbound (chat/resume/draft-reply) requires.
+      # MUST match the api's ORCHESTRATOR_INTERNAL_SECRET. Empty is refused at
+      # boot when APP_ENV=production (see config.RequireInternalSecret).
+      ORCHESTRATOR_INTERNAL_SECRET: ${ORCHESTRATOR_INTERNAL_SECRET:?ORCHESTRATOR_INTERNAL_SECRET must be set, generate with openssl rand -base64 32}
+      APP_ENV: ${APP_ENV:-development}
       # Default — Anthropic Sonnet 4.6 for prompt-cache savings and Russian
       # quality. scripts/check-llm-defaults.sh asserts this fallback in CI;
       # do not revert without rotating the lint guard.
@@ -430,8 +507,13 @@ services:
       IMAGE_GEN_BUCKET_TIMEOUT: ${IMAGE_GEN_BUCKET_TIMEOUT:-}
       YANDEX_ART_API_KEY: ${YANDEX_ART_API_KEY:-}
       YANDEX_ART_FOLDER_ID: ${YANDEX_ART_FOLDER_ID:-}
+    # Not published beyond loopback: the api reaches it on orchestrator:8090
+    # inside onevoice-network; the 127.0.0.1 host mapping keeps it dialable for
+    # host-run dev without exposing the unauthenticated-by-default (dev) inbound
+    # on the VM's public IP. docker-compose.prod.yml drops even the loopback
+    # mapping via `ports: !reset []`.
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
     depends_on:

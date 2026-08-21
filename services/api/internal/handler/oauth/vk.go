@@ -123,7 +123,7 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
-	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, tempOAuthCredsTTL).Err(); err != nil {
+	if err := h.storeTempCreds(r.Context(), redisKey, []byte(tokenResp.AccessToken), tempOAuthCredsTTL); err != nil {
 		slog.Error("failed to store temp VK token", "error", err)
 		http.Redirect(w, r, "/integrations?error=internal", http.StatusFound)
 		return
@@ -153,12 +153,13 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redisKey := fmt.Sprintf("vk_temp_token:%s", bc.BusinessID.String())
-	token, err := h.redis.Get(r.Context(), redisKey).Result()
+	tokenBytes, err := h.loadTempCreds(r.Context(), redisKey)
 	if err != nil {
 		slog.Warn("VK temp token not found or expired", "error", err)
 		writeJSONError(w, http.StatusGone, "VK session expired, please reconnect")
 		return
 	}
+	token := string(tokenBytes)
 
 	vkURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL+"/method/groups.get?filter=admin&extended=1&fields=name,photo_50,screen_name,members_count&access_token=%s&v="+vkapi.APIVersion,
 		url.QueryEscape(token),
@@ -277,10 +278,10 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	h.clearOAuthCSRFCookie(w)
 
 	tokenURL := fmt.Sprintf(h.vkTokenBaseURL()+"/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
-		h.cfg.VKClientID,
-		h.cfg.VKClientSecret,
+		url.QueryEscape(h.cfg.VKClientID),
+		url.QueryEscape(h.cfg.VKClientSecret),
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
-		code,
+		url.QueryEscape(code),
 	)
 	resp, err := h.httpClient.Get(tokenURL)
 	if err != nil {
@@ -322,7 +323,8 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	groupIDStr := strconv.FormatInt(group.GroupID, 10)
 
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
-	userToken, _ := h.redis.Get(r.Context(), redisKey).Result()
+	userTokenBytes, _ := h.loadTempCreds(r.Context(), redisKey)
+	userToken := string(userTokenBytes)
 
 	communityName, _ := h.fetchVKCommunityName(r.Context(), groupIDStr, group.AccessToken)
 

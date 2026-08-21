@@ -103,6 +103,20 @@ const (
 	ActionRPAHoursUpdated   = "rpa.hours_updated"
 )
 
+// platform.* — direct-API (non-RPA) mutations the agents land on a connected
+// platform (Telegram/VK) via the owner's token, dispatched through the chat
+// turn. These are the direct-API counterpart to the rpa.* mutation actions
+// (which cover the Yandex.Business RPA path): a post published, an owner DM
+// sent, or a public review/comment answered. Each row is attributable to the
+// business + actor for incident investigation and 152-FZ data-minimization
+// evidence; details carry only non-PII operational metadata (tool, platform,
+// target external id) — never post text, DM body, or author data.
+const (
+	ActionPlatformPostPublished = "platform.post_published"
+	ActionPlatformDMSent        = "platform.dm_sent"
+	ActionPlatformReviewReplied = "platform.review_replied"
+)
+
 // review.* — review-reply automation. ActionReviewAutoReplied records an
 // opt-in autopilot auto-publishing a positive drafted reply on a direct-API
 // platform (Telegram/VK; Yandex.Business is excluded from the autopilot). It is
@@ -128,7 +142,7 @@ func ActionCategory(action string) string {
 		if action[i] == '.' {
 			cat := action[:i]
 			switch cat {
-			case "rbac", "auth", "integration", "business", "project", "account", "rpa", "review", "hitl":
+			case "rbac", "auth", "integration", "business", "project", "account", "rpa", "review", "hitl", "platform":
 				return cat
 			default:
 				return "other"
