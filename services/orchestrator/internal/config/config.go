@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
 
@@ -113,7 +114,7 @@ type Config struct {
 	// makes a non-empty, sufficiently long value mandatory in production.
 	InternalSecret string
 
-	SelfHostedEndpoints []SelfHostedEndpoint
+	SelfHostedEndpoints []llm.SelfHostedEndpoint
 
 	// RedisURL empty disables rate-limiter wiring at boot.
 	RedisURL string
@@ -183,13 +184,6 @@ type Config struct {
 	S3SecretKey string
 	S3Bucket    string
 	S3UseSSL    bool
-}
-
-// SelfHostedEndpoint holds one self-hosted LLM inference endpoint.
-type SelfHostedEndpoint struct {
-	URL    string
-	Model  string
-	APIKey string // optional
 }
 
 // Load reads config from environment, applying defaults and failing loud on
@@ -376,7 +370,7 @@ func Load() (*Config, error) {
 
 		InternalSecret: os.Getenv("ORCHESTRATOR_INTERNAL_SECRET"),
 
-		SelfHostedEndpoints: parseIndexedEndpoints(),
+		SelfHostedEndpoints: llm.ParseIndexedEndpoints(os.Getenv),
 
 		RedisURL: getEnv("REDIS_URL", ""),
 
@@ -503,29 +497,6 @@ func (c *Config) RedactMongoURI() string {
 		return uri
 	}
 	return uri[:schemeEnd] + "***:***@" + uri[atIdx+1:]
-}
-
-// parseIndexedEndpoints scans SELF_HOSTED_N_URL/_MODEL/_API_KEY for N=0,1,…
-// stopping at the first missing _URL; entries without _MODEL are skipped.
-func parseIndexedEndpoints() []SelfHostedEndpoint {
-	var result []SelfHostedEndpoint
-	for i := 0; ; i++ {
-		prefix := fmt.Sprintf("SELF_HOSTED_%d_", i)
-		url := os.Getenv(prefix + "URL")
-		if url == "" {
-			break
-		}
-		model := os.Getenv(prefix + "MODEL")
-		if model == "" {
-			continue
-		}
-		result = append(result, SelfHostedEndpoint{
-			URL:    url,
-			Model:  model,
-			APIKey: os.Getenv(prefix + "API_KEY"),
-		})
-	}
-	return result
 }
 
 // getEnv returns defaultValue when the env var is absent or empty.
