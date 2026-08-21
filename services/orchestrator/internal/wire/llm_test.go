@@ -146,7 +146,8 @@ func TestLLMRouter_UnknownModel_ZeroCost(t *testing.T) {
 // card must produce a WARN at registration naming the model and pointing at
 // docs/llm-pricing.md, so the operator sees that billing will record $0 and the
 // daily-spend gate is inert rather than discovering it by inspecting
-// usage_logs. Removing the warnRateCardMiss call must fail this test.
+// usage_logs. Removing the shared rate-card-miss warning (llmwire) must fail
+// this test.
 func TestLLMRouter_UnknownModel_WarnsRateCardMiss(t *testing.T) {
 	t.Setenv("LLM_MODEL", "foo/unknown-model")
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
