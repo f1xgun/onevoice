@@ -52,9 +52,9 @@ func (h *captureHandler) mentioning(needle string) []string {
 
 func TestRegisterConfiguredProviders_PricesKnownModels(t *testing.T) {
 	reg := llm.NewRegistry()
-	cap := &captureHandler{}
+	capH := &captureHandler{}
 
-	opts := RegisterConfiguredProviders(reg, slog.New(cap),
+	opts := RegisterConfiguredProviders(reg, slog.New(capH),
 		ProviderKeys{OpenRouter: "sk-or", Anthropic: "sk-ant"},
 		[]string{"anthropic/claude-sonnet-4-6"},
 		nil,
@@ -70,21 +70,21 @@ func TestRegisterConfiguredProviders_PricesKnownModels(t *testing.T) {
 		assert.InDelta(t, 3.00, e.InputCostPer1MTok, 1e-9)
 		assert.InDelta(t, 15.00, e.OutputCostPer1MTok, 1e-9)
 	}
-	assert.Empty(t, cap.mentioning("docs/llm-pricing.md"), "priced model must not warn")
+	assert.Empty(t, capH.mentioning("docs/llm-pricing.md"), "priced model must not warn")
 }
 
 func TestRegisterConfiguredProviders_WarnsOnRateCardMiss(t *testing.T) {
 	reg := llm.NewRegistry()
-	cap := &captureHandler{}
+	capH := &captureHandler{}
 
-	RegisterConfiguredProviders(reg, slog.New(cap),
+	RegisterConfiguredProviders(reg, slog.New(capH),
 		ProviderKeys{OpenRouter: "sk-or"},
 		[]string{"foo/unknown-model"},
 		nil,
 	)
 
-	require.NotEmpty(t, cap.mentioning("foo/unknown-model"), "unknown model must warn")
-	assert.NotEmpty(t, cap.mentioning("docs/llm-pricing.md"), "warning must point at the rate-card doc")
+	require.NotEmpty(t, capH.mentioning("foo/unknown-model"), "unknown model must warn")
+	assert.NotEmpty(t, capH.mentioning("docs/llm-pricing.md"), "warning must point at the rate-card doc")
 }
 
 func TestRegisterConfiguredProviders_SelfHostedEndpoint(t *testing.T) {
