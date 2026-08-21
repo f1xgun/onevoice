@@ -1,12 +1,13 @@
 # LLM Pricing — source of truth
 
-Last verified: 2026-05-30
+Last verified: 2026-08-21
 
 Sources:
 
 - Anthropic: <https://platform.claude.com/docs/en/about-claude/pricing>
 - OpenAI: <https://openai.com/api/pricing/>
 - OpenRouter: zero per-token markup over upstream provider list price (<https://openrouter.ai/pricing>)
+- Yandex AI Studio (sync mode): <https://aistudio.yandex.ru/docs/ru/ai-studio/pricing.html>
 
 | Model ID                    | Input $/1M tok | Output $/1M tok |
 | --------------------------- | -------------: | --------------: |
@@ -14,13 +15,25 @@ Sources:
 | anthropic/claude-haiku-4-5  |           1.00 |            5.00 |
 | anthropic/claude-opus-4-7   |           5.00 |           25.00 |
 | openai/gpt-4o-mini          |           0.15 |            0.60 |
+| deepseek-v4-flash           |           3.60 |            6.00 |
 
-Cache modifiers (Anthropic 5-minute ephemeral cache, applied by
-`pkg/llm.Router.logBilling`):
+`deepseek-v4-flash` is priced natively in rubles by Yandex AI Studio: input
+300 ₽/1M, output 500 ₽/1M incl. VAT. Converted here at CBR 83.36 ₽/$
+(2026-08-21) → 3.60 / 6.00 $/1M; re-check the FX when refreshing. Registered
+model IDs arrive folder-qualified (`gpt://<folder>/deepseek-v4-flash/latest`);
+`priceFor` strips the scheme + folder + version to the bare slug before lookup.
+
+Cache modifiers (applied by `pkg/llm.Router.logBilling`, provider-agnostic):
 
 - `CacheReadTokens` billed at 0.1× input rate
 - `CacheCreationTokens` billed at 1.25× input rate
 - `InputTokens` (post-cache) billed at 1.0× input rate
+
+Note: these ratios were tuned for the Anthropic 5-minute ephemeral cache. Yandex
+AI Studio's implicit prefix cache prices cached tokens at 75 ₽ vs 300 ₽ input
+(0.25× — a 4× discount), so the 0.1× read modifier under-bills a Yandex cache
+hit relative to true cost. This is customer-favorable and conservative; revisit
+if a per-provider cache ratio is introduced.
 
 Commission (`pkg/llm.CommissionConfig`):
 

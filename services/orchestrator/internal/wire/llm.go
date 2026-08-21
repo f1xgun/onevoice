@@ -8,6 +8,7 @@ package wire
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/time/rate"
@@ -41,6 +42,12 @@ var modelPricing = map[string]struct {
 	// an unknown ($0-drift) model; the per-1M-token fields are not consulted for
 	// image generation.
 	"dall-e-3": {0.04, 0.04},
+	// DeepSeek V4 Flash via Yandex AI Studio (RU prod primary). Source: Yandex
+	// AI Studio pricing, sync mode, verified 2026-08-21 — input 300 ₽/1M,
+	// output 500 ₽/1M incl. VAT; converted at CBR 83.36 ₽/$ (2026-08-21). Model
+	// IDs arrive folder-qualified (gpt://<folder>/deepseek-v4-flash/latest);
+	// priceFor normalizes them to this bare slug before lookup.
+	"deepseek-v4-flash": {3.60, 6.00},
 }
 
 // priceFor returns the (input, output) USD-per-1M-token list price for the
@@ -48,11 +55,26 @@ var modelPricing = map[string]struct {
 // without error but billing rows surface cost=0 — visible in usage_logs as the
 // operator's drift signal that the rate card needs an update.
 func priceFor(modelID string) (inputUSDPer1MTok, outputUSDPer1MTok float64) {
-	entry, ok := modelPricing[modelID]
+	entry, ok := modelPricing[normalizeModelID(modelID)]
 	if !ok {
 		return 0, 0
 	}
 	return entry.InputCostPer1MTok, entry.OutputCostPer1MTok
+}
+
+// normalizeModelID reduces a provider-qualified model identifier to the bare
+// slug used as a modelPricing key. Yandex AI Studio addresses models as
+// gpt://<folder>/<model>[/<version>]; the folder segment is deployment-specific,
+// so the rate card keys on <model> alone. Non-URI IDs pass through unchanged.
+func normalizeModelID(modelID string) string {
+	rest, ok := strings.CutPrefix(modelID, "gpt://")
+	if !ok {
+		return modelID
+	}
+	if segs := strings.Split(rest, "/"); len(segs) >= 2 {
+		return segs[1]
+	}
+	return modelID
 }
 
 // allConfiguredModelIDs returns the deduplicated set of model IDs the
