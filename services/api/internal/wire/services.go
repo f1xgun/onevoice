@@ -30,11 +30,13 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
+	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 	"github.com/f1xgun/onevoice/services/api/internal/service/creditgrant"
 	"github.com/f1xgun/onevoice/services/api/internal/service/planresolver"
 	"github.com/f1xgun/onevoice/services/api/internal/service/presencehealth"
+	"github.com/f1xgun/onevoice/services/api/internal/service/productmetrics"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -73,6 +75,7 @@ type Services struct {
 	ToolsCache                *service.ToolsRegistryCache
 	PlatformSync              *platform.Syncer
 	ReviewSyncer              *service.ReviewSyncer
+	ProductMetrics            *productmetrics.Collector
 	Reconciler                *service.ReconciliationService
 	TaskHub                   *taskhub.Hub
 	ObjectStorage             *storage.MinioClient
@@ -170,6 +173,10 @@ type Services struct {
 	// is nil.
 	reviewSyncerCancel context.CancelFunc
 
+	// productMetricsCancel stops the North-Star gauge collector loop. nil when
+	// ProductMetrics is nil.
+	productMetricsCancel context.CancelFunc
+
 	// reconcilerCancel stops the proactive-sync reconciler loop. nil when the
 	// reconciler is not started (SYNC_RECONCILE_ENABLED=false).
 	reconcilerCancel context.CancelFunc
@@ -208,6 +215,9 @@ func (s *Services) Close() {
 	}
 	if s.reviewSyncerCancel != nil {
 		s.reviewSyncerCancel()
+	}
+	if s.productMetricsCancel != nil {
+		s.productMetricsCancel()
 	}
 	if s.reconcilerCancel != nil {
 		s.reconcilerCancel()
@@ -288,6 +298,28 @@ func (s *Services) StartReviewSyncer(ctx context.Context, wg *sync.WaitGroup, lo
 		s.ReviewSyncer.Start(syncCtx)
 	}()
 	log.Info("review syncer started", "interval_minutes", intervalMinutes)
+}
+
+// productMetricsInterval is how often the North-Star gauges are recomputed. A
+// gauge refresh, not an event path, so a coarse interval is fine; hardcoded to
+// keep config surface minimal (promote to an env var if tuning is needed).
+const productMetricsInterval = 15 * time.Minute
+
+// StartProductMetrics starts the North-Star gauge collector loop. No-op when the
+// collector is nil (Mongo unavailable). Enrolled on wg and canceled by Close,
+// exactly like StartReviewSyncer, so shutdown never writes to a closed handle.
+func (s *Services) StartProductMetrics(ctx context.Context, wg *sync.WaitGroup, log *slog.Logger) {
+	if s == nil || s.ProductMetrics == nil {
+		return
+	}
+	collectCtx, collectCancel := context.WithCancel(ctx)
+	s.productMetricsCancel = collectCancel
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.ProductMetrics.Start(collectCtx)
+	}()
+	log.Info("product metrics collector started", "interval", productMetricsInterval.String())
 }
 
 // StartReconciler starts the proactive platform-sync reconciler loop. It is a
@@ -452,6 +484,16 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		}
 		syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
 		s.ReviewSyncer = service.NewReviewSyncer(h.NATS, repos.Integration, repos.Review, passiveDrafter, syncInterval)
+	}
+
+	// North-Star gauge collector — derives the metric from the durable `posts`
+	// record (Mongo), so it needs only the Mongo handle.
+	if h.Mongo != nil {
+		s.ProductMetrics = productmetrics.NewCollector(
+			repository.NewPresenceRepository(h.Mongo),
+			productMetricsInterval,
+			log,
+		)
 	}
 
 	var reviewRefresher service.ReviewRefresher
