@@ -173,8 +173,8 @@ type Services struct {
 	// is nil.
 	reviewSyncerCancel context.CancelFunc
 
-	// productMetricsCancel stops the North-Star gauge collector loop. nil when
-	// ProductMetrics is nil.
+	// productMetricsCancel stops the product-metrics gauge collector loop. nil
+	// when ProductMetrics is nil.
 	productMetricsCancel context.CancelFunc
 
 	// reconcilerCancel stops the proactive-sync reconciler loop. nil when the
@@ -300,14 +300,16 @@ func (s *Services) StartReviewSyncer(ctx context.Context, wg *sync.WaitGroup, lo
 	log.Info("review syncer started", "interval_minutes", intervalMinutes)
 }
 
-// productMetricsInterval is how often the North-Star gauges are recomputed. A
-// gauge refresh, not an event path, so a coarse interval is fine; hardcoded to
-// keep config surface minimal (promote to an env var if tuning is needed).
+// productMetricsInterval is how often the product-metrics gauges (North-Star +
+// activation funnel) are recomputed. A gauge refresh, not an event path, so a
+// coarse interval is fine; hardcoded to keep config surface minimal (promote to
+// an env var if tuning is needed).
 const productMetricsInterval = 15 * time.Minute
 
-// StartProductMetrics starts the North-Star gauge collector loop. No-op when the
-// collector is nil (Mongo unavailable). Enrolled on wg and canceled by Close,
-// exactly like StartReviewSyncer, so shutdown never writes to a closed handle.
+// StartProductMetrics starts the product-metrics gauge collector loop. No-op when
+// the collector is nil (no PG or Mongo handle). Enrolled on wg and canceled by
+// Close, exactly like StartReviewSyncer, so shutdown never writes to a closed
+// handle.
 func (s *Services) StartProductMetrics(ctx context.Context, wg *sync.WaitGroup, log *slog.Logger) {
 	if s == nil || s.ProductMetrics == nil {
 		return
@@ -486,14 +488,22 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.ReviewSyncer = service.NewReviewSyncer(h.NATS, repos.Integration, repos.Review, passiveDrafter, syncInterval)
 	}
 
-	// North-Star gauge collector — derives the metric from the durable `posts`
-	// record (Mongo), so it needs only the Mongo handle.
+	// Product-metrics gauge collector — the North-Star is derived from the
+	// durable `posts` record (Mongo) and the activation funnel from the
+	// users/businesses/integrations tables (Postgres). Each source is wired only
+	// when its handle is present; the collector runs whichever is available. The
+	// interface vars stay nil (not typed-nil) when a handle is absent, so the
+	// collector's per-source nil guards hold.
+	var presenceSrc productmetrics.PresenceSource
 	if h.Mongo != nil {
-		s.ProductMetrics = productmetrics.NewCollector(
-			repository.NewPresenceRepository(h.Mongo),
-			productMetricsInterval,
-			log,
-		)
+		presenceSrc = repository.NewPresenceRepository(h.Mongo)
+	}
+	var activationSrc productmetrics.ActivationSource
+	if h.PG != nil {
+		activationSrc = repository.NewActivationRepository(h.PG)
+	}
+	if presenceSrc != nil || activationSrc != nil {
+		s.ProductMetrics = productmetrics.NewCollector(presenceSrc, activationSrc, productMetricsInterval, log)
 	}
 
 	var reviewRefresher service.ReviewRefresher
