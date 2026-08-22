@@ -36,6 +36,7 @@ func minTestEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("JWT_SECRET", "Tk8pZ3vXq2RmJ7wL4HdNcF9YbVgUaSx5KQePtBnCMrZyDoIxhEfWj1uvLA8")
 	t.Setenv("ENCRYPTION_KEY", "uW4qX9pTzN3vM8yJ7sR2bL5kH1gD0fA6")
+	t.Setenv("A2A_PAYLOAD_KEY", "pT9wX2qZ7vN4mJ8yR3sB6kL1hG5dF0aC")
 	t.Setenv("ONEVOICE_INTERNAL_ACL_JSON", canonicalACLJSON)
 	t.Setenv("ORCHESTRATOR_INTERNAL_SECRET", "test-internal-secret-abcdef123")
 	t.Setenv("TOKEN_ENCRYPTION_KMS_KEY_ID", "aes256-test-key-id")
@@ -732,4 +733,19 @@ func TestConfigLoad_PopulatesAppEnv(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "production", cfg.AppEnv)
 	assert.True(t, cfg.IsProduction())
+}
+
+func TestConfigLoad_A2APayloadKeyRequired(t *testing.T) {
+	// Full valid config passes; overriding only A2A_PAYLOAD_KEY isolates the
+	// mandatory-key requirement (the seal for Yandex connect cookies over NATS).
+	minTestEnv(t)
+	setValidLegal(t)
+	t.Setenv("A2A_PAYLOAD_KEY", "")
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() succeeded without A2A_PAYLOAD_KEY; want error")
+	}
+	t.Setenv("A2A_PAYLOAD_KEY", "too-short")
+	if _, err := config.Load(); err == nil {
+		t.Fatal("Load() succeeded with a short A2A_PAYLOAD_KEY; want error")
+	}
 }

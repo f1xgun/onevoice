@@ -652,10 +652,15 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("ENCRYPTION_KEY validation failed: %w (generate a new key with: openssl rand -base64 24)", err)
 		}
 	}
-	// A2A_PAYLOAD_KEY is optional; when set it encrypts secret tool arguments
-	// over NATS and must be a valid AES-256 key so a misconfigured length fails
-	// loud at boot rather than at the first Yandex connect.
-	if cfg.A2APayloadKey != "" && len(cfg.A2APayloadKey) != crypto.AES256KeyLen {
+	// A2A_PAYLOAD_KEY seals secret tool arguments (the Yandex connect cookies)
+	// with AES-256-GCM before they cross NATS, so the broker never sees the
+	// plaintext session cookie. Required (not merely validated-if-present) so the
+	// seal cannot be silently skipped; MUST be exactly an AES-256 key and MUST
+	// match A2A_PAYLOAD_KEY on agent-yandex-business.
+	if cfg.A2APayloadKey == "" {
+		return nil, fmt.Errorf("A2A_PAYLOAD_KEY is required (exactly %d bytes; must match agent-yandex-business) — generate with: openssl rand -base64 24", crypto.AES256KeyLen)
+	}
+	if len(cfg.A2APayloadKey) != crypto.AES256KeyLen {
 		return nil, fmt.Errorf("A2A_PAYLOAD_KEY must be exactly %d bytes", crypto.AES256KeyLen)
 	}
 
