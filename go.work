@@ -12,6 +12,7 @@ use (
 	./services/orchestrator
 	./test/integration
 	./tools/lint-rbac
+	./tools/natskeygen
 	./tools/nourl
 	./tools/oapi-validate-tags
 )

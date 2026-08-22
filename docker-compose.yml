@@ -84,15 +84,20 @@ services:
     image: nats:2.10-alpine
     container_name: onevoice-nats
     command: ["-c", "/etc/nats/nats-server.conf"]
-    environment:
-      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
-      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+    # Auth is per-service nkey (creds/auth.conf) + server TLS (nats.crt). No
+    # shared password env — run `make nats-creds` and `make mtls-certs` before
+    # `docker compose up` to populate the mounted material.
     ports:
       - "127.0.0.1:4222:4222"
       - "127.0.0.1:8222:8222"
     volumes:
       - nats_data:/data
       - ./infra/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      # Generated per-service nkey user table (public keys + subject ACLs). The
+      # server needs only auth.conf, not the seeds — mount the single file.
+      - ./infra/nats/creds/auth.conf:/etc/nats/creds/auth.conf:ro
+      # NATS server TLS cert + key (rides the shared dev CA under infra/mtls).
+      - ./infra/mtls/certs:/etc/nats/certs:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8222/healthz"]
       interval: 5s
@@ -192,8 +197,8 @@ services:
       # reached (or its tier/identity forged) by anyone routing to :8090.
       ORCHESTRATOR_INTERNAL_SECRET: ${ORCHESTRATOR_INTERNAL_SECRET:?ORCHESTRATOR_INTERNAL_SECRET must be set, generate with openssl rand -base64 32}
       NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
-      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+      NATS_NKEY_SEED: /etc/nats/creds/api.nk
+      NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       REVIEW_SYNC_INTERVAL_MINUTES: ${REVIEW_SYNC_INTERVAL_MINUTES:-30}
       # AI review-draft generation (post-sync hook). Disabled by default — set
       # REVIEW_DRAFT_ENABLED=true to start spending on LLM calls. Requires at
@@ -280,6 +285,8 @@ services:
       # replaces this mount with a secrets-manager-provisioned volume per
       # infra/mtls/README.md ("Dev vs Prod CA divergence").
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
+      # Per-service NATS nkey seed (this service's identity only).
+      - ./infra/nats/creds/api.nk:/etc/nats/creds/api.nk:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -303,8 +310,8 @@ services:
     container_name: onevoice-agent-telegram
     environment:
       NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
-      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+      NATS_NKEY_SEED: /etc/nats/creds/agent-telegram.nk
+      NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       API_INTERNAL_URL: https://api:8443
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       ONEVOICE_MTLS_ENABLED: "true"
@@ -313,6 +320,8 @@ services:
       ONEVOICE_MTLS_KEY_PATH: /etc/onevoice/mtls/agent-telegram.key
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
+      # Per-service NATS nkey seed (this service's identity only).
+      - ./infra/nats/creds/agent-telegram.nk:/etc/nats/creds/agent-telegram.nk:ro
     depends_on:
       nats:
         condition: service_healthy
@@ -330,8 +339,8 @@ services:
     container_name: onevoice-agent-vk
     environment:
       NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
-      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+      NATS_NKEY_SEED: /etc/nats/creds/agent-vk.nk
+      NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       API_INTERNAL_URL: https://api:8443
       VK_SERVICE_KEY: ${VK_SERVICE_KEY:-}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
@@ -341,6 +350,8 @@ services:
       ONEVOICE_MTLS_KEY_PATH: /etc/onevoice/mtls/agent-vk.key
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
+      # Per-service NATS nkey seed (this service's identity only).
+      - ./infra/nats/creds/agent-vk.nk:/etc/nats/creds/agent-vk.nk:ro
     depends_on:
       nats:
         condition: service_healthy
@@ -358,8 +369,8 @@ services:
     container_name: onevoice-agent-google-business
     environment:
       NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
-      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+      NATS_NKEY_SEED: /etc/nats/creds/agent-google-business.nk
+      NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       API_INTERNAL_URL: https://api:8443
       HEALTH_PORT: "8084"
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
@@ -369,6 +380,8 @@ services:
       ONEVOICE_MTLS_KEY_PATH: /etc/onevoice/mtls/agent-google-business.key
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
+      # Per-service NATS nkey seed (this service's identity only).
+      - ./infra/nats/creds/agent-google-business.nk:/etc/nats/creds/agent-google-business.nk:ro
     depends_on:
       nats:
         condition: service_healthy
@@ -386,8 +399,8 @@ services:
     container_name: onevoice-agent-yandex-business
     environment:
       NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
-      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+      NATS_NKEY_SEED: /etc/nats/creds/agent-yandex-business.nk
+      NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       API_INTERNAL_URL: https://api:8443
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       # APP_ENV gates the boot-time PII warning when SCREENSHOT_MODE != off
@@ -412,6 +425,8 @@ services:
       ONEVOICE_MTLS_KEY_PATH: /etc/onevoice/mtls/agent-yandex-business.key
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
+      # Per-service NATS nkey seed (this service's identity only).
+      - ./infra/nats/creds/agent-yandex-business.nk:/etc/nats/creds/agent-yandex-business.nk:ro
     depends_on:
       nats:
         condition: service_healthy
@@ -456,8 +471,8 @@ services:
     environment:
       PORT: 8090
       NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_USER:?NATS_USER must be set (NATS auth); see .env.example}
-      NATS_PASSWORD: ${NATS_PASSWORD:?NATS_PASSWORD must be set, generate with openssl rand -base64 24}
+      NATS_NKEY_SEED: /etc/nats/creds/orchestrator.nk
+      NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set (MongoDB auth); see .env.example}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set, generate with openssl rand -hex 24}@mongodb:27017/onevoice?authSource=admin
       MONGO_DB: onevoice
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
@@ -524,6 +539,8 @@ services:
       - "127.0.0.1:8090:8090"
     volumes:
       - ./infra/mtls/certs:/etc/onevoice/mtls:ro
+      # Per-service NATS nkey seed (this service's identity only).
+      - ./infra/nats/creds/orchestrator.nk:/etc/nats/creds/orchestrator.nk:ro
     depends_on:
       nats:
         condition: service_healthy

@@ -15,7 +15,7 @@ if [[ -z "$ROOT" ]]; then
 fi
 CERT_DIR="$ROOT/infra/mtls/certs"
 CA="$CERT_DIR/ca.crt"
-SERVICES=(api orchestrator agent-telegram agent-vk agent-yandex-business agent-google-business)
+SERVICES=(api orchestrator agent-telegram agent-vk agent-yandex-business agent-google-business nats)
 THRESHOLD_SECS=$((30 * 24 * 60 * 60))   # 30 days
 
 failures=0

@@ -1,0 +1,5 @@
+# Generated NATS credentials — never commit.
+# nkey seeds (<service>.nk) are per-service secrets; auth.conf is regenerated
+# per deploy. Both come from `make nats-creds` (tools/natskeygen).
+*
+!.gitignore
