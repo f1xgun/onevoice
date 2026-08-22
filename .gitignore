@@ -53,6 +53,12 @@ certs/
 infra/mtls/certs/*
 !infra/mtls/certs/.gitignore
 
+# Generated NATS credentials (nkey seeds + auth.conf) — secrets, never commit.
+# Preserve the gitignore stub so the dir exists as a tracked path.
+!infra/nats/creds/
+infra/nats/creds/*
+!infra/nats/creds/.gitignore
+
 # Temporary
 tmp/
 *.log

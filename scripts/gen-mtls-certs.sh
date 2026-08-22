@@ -9,7 +9,11 @@
 #   ca.crt / ca.key                                     # root CA
 #   <service>.crt / <service>.key  for each service in
 #   {api, orchestrator, agent-telegram, agent-vk,
-#    agent-yandex-business, agent-google-business}
+#    agent-yandex-business, agent-google-business, nats}
+#
+# The `nats` leaf is the NATS server's TLS cert (SAN DNS:nats). Every client
+# already mounts this dir and trusts ca.crt, so it doubles as the NATS transport
+# CA (NATS_CA_PATH=<mount>/ca.crt); NATS client auth is by nkey, not client cert.
 #
 # Each leaf cert includes  subjectAltName=DNS:<service>,DNS:localhost
 # so it works inside Docker (service-name hostname) and on a developer's
@@ -26,7 +30,7 @@ CERT_DIR="$ROOT/infra/mtls/certs"
 CA_CNF="$ROOT/infra/mtls/ca/openssl-ca.cnf"
 CA_DAYS=3650
 LEAF_DAYS=365
-SERVICES=(api orchestrator agent-telegram agent-vk agent-yandex-business agent-google-business)
+SERVICES=(api orchestrator agent-telegram agent-vk agent-yandex-business agent-google-business nats)
 
 mkdir -p "$CERT_DIR"
 
