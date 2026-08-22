@@ -23,6 +23,7 @@ The primary dashboard is **OneVoice Health** (uid `onevoice-health`), located in
 
 - `metrics-overview` — HTTP / Tool / LLM detail panels
 - `request-trace` — per-request trace inspection
+- `product-north-star` — product North-Star, activation funnel, and product event counters
 
 ### Verifying scrape health from CLI
 
@@ -184,6 +185,12 @@ Maps `pkg/metrics/*.go` collectors to the Prometheus metric names that dashboard
 | pkg/metrics/sweepers.go | `sweeper_runs_total` | sweeper, result | Background deletion/warning sweeper passes (sweeper: account_hard_delete, business_hard_delete, deletion_warning; result: ok, error) |
 | pkg/metrics/sweepers.go | `sweeper_items_processed_total` | sweeper | Items acted upon (users/orgs hard-deleted, T-7 warning mails enqueued) |
 | pkg/metrics/sweepers.go | `sweeper_last_success_timestamp` (gauge) | sweeper | Unix epoch of last error-free sweeper pass; seeded at startup so a never-succeeding sweeper still ages past the `*SweeperStalled` threshold |
+| pkg/metrics/product.go | `posts_published_total` | platform, result | Publish attempts, result {published, scheduled, error, other} |
+| pkg/metrics/product.go | `reviews_replied_total` | platform, result | Review upserts, result {replied, pending, error, other} |
+| pkg/metrics/product.go | `hitl_decisions_total` | decision | HITL verdicts, decision {approve, edit, reject, other} |
+| pkg/metrics/product.go | `chat_turns_total` | outcome | Chat-turn outcomes (chatturn.TurnOutcome), emitted per send + resume segment |
+| pkg/metrics/productmetrics.go | `presence_updates_7d`, `active_businesses_7d`, `nsm_presence_updates_per_active_business_7d` (gauges) | — | North-Star: successful presence updates, active businesses, and their ratio over the trailing 7d. Recomputed every 15m by the api `productmetrics` collector from the Mongo `posts` record |
+| pkg/metrics/productmetrics.go | `signups_7d`, `activated_signups_7d`, `activation_rate_7d` (gauges) | — | Activation funnel: trailing-7d signups, the subset that connected an integration, and their ratio (fraction). Recomputed every 15m from Postgres users/businesses/integrations |
 
 ### Label discipline
 
