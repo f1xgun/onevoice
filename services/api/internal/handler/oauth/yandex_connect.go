@@ -158,13 +158,15 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 }
 
 // yandexCookiesArg builds the list_companies tool argument carrying the pasted
-// session cookies. With a payload encryptor configured the cookies are sealed
-// (AES-256-GCM, base64) under the "cookies_enc" key so the secret never crosses
-// the NATS bus in the clear; the agent decrypts with the shared key. Without an
-// encryptor it falls back to the plaintext "cookies" key (dev), unchanged.
+// session cookies, always sealed (AES-256-GCM, base64) under the "cookies_enc"
+// key so the secret never crosses the NATS bus in the clear; the agent decrypts
+// with the shared key. It is fail-closed: a missing payload encryptor is an
+// error, never a plaintext fallback. The encryptor is guaranteed present because
+// A2A_PAYLOAD_KEY is a required config value, so this error is a defense-in-depth
+// backstop, not a normal path.
 func (h *OAuthHandler) yandexCookiesArg(cookiesJSON string) (map[string]any, error) {
 	if h.payloadEnc == nil {
-		return map[string]any{"cookies": cookiesJSON}, nil
+		return nil, errors.New("A2A payload encryptor not configured: refusing to send session cookies unsealed")
 	}
 	sealed, err := h.payloadEnc.Encrypt([]byte(cookiesJSON))
 	if err != nil {

@@ -185,9 +185,10 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set, generate with openssl rand -base64 48}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set, generate with openssl rand -base64 24}
-      # Optional shared key that encrypts secret A2A tool args (Yandex connect
-      # cookies) over NATS. Must match agent-yandex-business. Empty = plaintext.
-      A2A_PAYLOAD_KEY: ${A2A_PAYLOAD_KEY:-}
+      # Required shared key that seals secret A2A tool args (Yandex connect
+      # cookies) with AES-256-GCM over NATS, so the broker never sees the
+      # plaintext cookie. Must be identical on agent-yandex-business.
+      A2A_PAYLOAD_KEY: ${A2A_PAYLOAD_KEY:?A2A_PAYLOAD_KEY must be set, EXACTLY 32 bytes (openssl rand -base64 24); identical on api + agent-yandex-business}
       INTERNAL_PORT: 8443
       ONEVOICE_INTERNAL_ACL_JSON: ${ONEVOICE_INTERNAL_ACL_JSON:?ONEVOICE_INTERNAL_ACL_JSON must be set (CN->platforms map for /internal/v1/tokens); see .env.example}
       ORCHESTRATOR_URL: http://orchestrator:8090
@@ -415,10 +416,10 @@ services:
       # triage, or `full` for dev. See services/agent-yandex-business
       # /internal/yandex/browser.go for the enum.
       SCREENSHOT_MODE: ${SCREENSHOT_MODE:-off}
-      # Optional shared key that decrypts secret A2A tool args (connect cookies)
-      # received over NATS. Must match the api's A2A_PAYLOAD_KEY. Empty =
-      # plaintext (the api then sends the legacy plaintext `cookies` argument).
-      A2A_PAYLOAD_KEY: ${A2A_PAYLOAD_KEY:-}
+      # Required shared key that decrypts the sealed A2A tool args (connect
+      # cookies) the api sends over NATS. Must be identical to the api's
+      # A2A_PAYLOAD_KEY, or the connect flow cannot decrypt the cookies.
+      A2A_PAYLOAD_KEY: ${A2A_PAYLOAD_KEY:?A2A_PAYLOAD_KEY must be set, EXACTLY 32 bytes (openssl rand -base64 24); identical on api + agent-yandex-business}
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-yandex-business.crt

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/f1xgun/onevoice/pkg/crypto"
 )
 
 // defaultAPIInternalURL is the dev-mode fallback for API_INTERNAL_URL —
@@ -35,9 +37,10 @@ type Config struct {
 	// nothing else changes. Must match the API's YANDEX_SHARED_BUSINESS_ID.
 	YandexSharedBusinessID string
 
-	// A2APayloadKey is the optional 32-byte AES-256 key used to decrypt sealed
-	// tool arguments (the Yandex connect cookies) the API sends over NATS. Empty
-	// keeps the plaintext-cookies path. Must match A2A_PAYLOAD_KEY on the API.
+	// A2APayloadKey is the required 32-byte AES-256 key used to decrypt sealed
+	// tool arguments (the Yandex connect cookies) the API seals before sending
+	// them over NATS. Must match A2A_PAYLOAD_KEY on the API, or the connect flow
+	// cannot decrypt the cookies.
 	A2APayloadKey string
 
 	// ScopeGateEnforce controls the RPA request scope gate. When false (the
@@ -59,6 +62,17 @@ func Load() (*Config, error) {
 	if maxContexts < 0 {
 		return nil, fmt.Errorf("BROWSER_POOL_MAX_CONTEXTS must be >= 0, got %d", maxContexts)
 	}
+	// A2A_PAYLOAD_KEY is required and must be a valid AES-256 key: the API always
+	// seals the connect cookies, so a missing or wrong-length key here would fail
+	// the connect flow at decrypt time. Fail loud at boot instead, and keep it in
+	// lockstep with the API's identical requirement.
+	payloadKey := os.Getenv("A2A_PAYLOAD_KEY")
+	if payloadKey == "" {
+		return nil, fmt.Errorf("A2A_PAYLOAD_KEY is required (exactly %d bytes; must match the API) — generate with: openssl rand -base64 24", crypto.AES256KeyLen)
+	}
+	if len(payloadKey) != crypto.AES256KeyLen {
+		return nil, fmt.Errorf("A2A_PAYLOAD_KEY must be exactly %d bytes", crypto.AES256KeyLen)
+	}
 	return &Config{
 		NATSUrl:                getEnv("NATS_URL", "nats://localhost:4222"),
 		APIInternalURL:         getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
@@ -66,7 +80,7 @@ func Load() (*Config, error) {
 		RedisURL:               getEnv("REDIS_URL", "redis://redis:6379"),
 		BrowserPoolMaxContexts: maxContexts,
 		YandexSharedBusinessID: os.Getenv("YANDEX_SHARED_BUSINESS_ID"),
-		A2APayloadKey:          os.Getenv("A2A_PAYLOAD_KEY"),
+		A2APayloadKey:          payloadKey,
 		ScopeGateEnforce:       os.Getenv("SCOPE_GATE_ENFORCE") == "true",
 	}, nil
 }
