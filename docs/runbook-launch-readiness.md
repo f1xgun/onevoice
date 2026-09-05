@@ -64,7 +64,7 @@ Failure of ANY item below is a **HARD block** on production deploy. The launch-r
 
 - [ ] `/legal/privacy` — Russian renders; `DataControllerBlock` shows the REAL ИНН (not «—»); `Footer` shows the REAL operator name (not «[Юридическое лицо — будет обновлено]»).
 - [ ] `/legal/terms` — Russian renders; effective_from + version visible.
-- [ ] `/legal/consent` — Russian renders; cross-border section names Anthropic PBC + OpenAI L.L.C. matching the РКН Art. 12 filing.
+- [ ] `/legal/consent` — Russian renders; §3 names the RF processors only (Yandex Cloud / AI Studio, Unisender Go) and states that no cross-border transfer takes place — this MUST match the production LLM wiring (`SELF_HOSTED_N_*` only, `ALLOW_TRANSBORDER_LLM` unset). If the operator deliberately enables a foreign provider, the consent + privacy texts and the Art. 12 filing must be re-done first.
 - [ ] `/legal/contact` — `DataControllerBlock` renders the real entity; 15-day SLA copy visible referencing `pdn@onevoice.app`.
 - [ ] Footer renders the three legal links + copyright + ПДн contact email on `/`, `/login`, `/register`, `/chat`, `/settings/account`, `/settings/privacy`, `/legal/privacy`.
 - [ ] Register a fresh test account — both consent checkboxes are required; submit button is disabled until BOTH are ticked.
@@ -78,9 +78,10 @@ Failure of ANY item below is a **HARD block** on production deploy. The launch-r
 ### 6.5 РКН filings (per `docs/runbook-rkn-filing.md`)
 
 - [ ] `docs/runbook-rkn-filing.md §2` completed — standard «Уведомление об обработке персональных данных» (152-ФЗ Art. 22) filed; РКН confirmation email received.
-- [ ] `docs/runbook-rkn-filing.md §3` completed — separate «Уведомление о трансграничной передаче персональных данных» (152-ФЗ Art. 12 amended) filed naming Anthropic PBC + OpenAI L.L.C. as US recipients. **Filed AT LEAST 30 days BEFORE launch** (LEGAL-05). Confirmation email received.
+- [ ] `docs/runbook-rkn-filing.md §3` — NOT required in the default RF-only LLM setup (no cross-border transfer). Only if `ALLOW_TRANSBORDER_LLM=true` is deliberately set: file the separate «Уведомление о трансграничной передаче персональных данных» (152-ФЗ Art. 12) naming the foreign recipients **AT LEAST 30 days BEFORE launch** (LEGAL-05) and re-issue the consent text first.
 - [ ] Operator entry visible at `https://pd.rkn.gov.ru` searching by ИНН.
-- [ ] Cross-border filing appears as a separate entry in the operator dashboard.
+- [ ] Production env has NO `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` and `ALLOW_TRANSBORDER_LLM` is unset — the api and orchestrator refuse to boot otherwise (`llm.EnforceResidency`), which is the code-level guarantee behind the "no cross-border transfer" statement in `/legal/privacy` §6.
+- [ ] `docs/runbook-pdn-incident.md` reviewed — the 24h / 72h РКН incident-notification duty is understood and the РКН operator account can file it.
 
 ### 6.6 PDN-request operations
 

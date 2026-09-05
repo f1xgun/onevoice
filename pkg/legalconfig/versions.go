@@ -4,9 +4,9 @@ package legalconfig
 // every user whose user_consents row has a stale policy_version.
 // MUST mirror services/frontend/lib/legal/versions.ts.
 const (
-	TOSVersion     = "v1.0"
-	PrivacyVersion = "v1.0"
-	PDNVersion     = "v1.0"
+	TOSVersion     = "v1.1"
+	PrivacyVersion = "v1.1"
+	PDNVersion     = "v1.1"
 )
 
 // PolicySlug is the typed slug for Register / ReConsent / Withdraw.

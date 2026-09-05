@@ -1,41 +1,37 @@
 ---
 slug: consent
-version: v1.0
-effective_from: 2026-06-01
+version: v1.1
+effective_from: 2026-09-08
 title: Personal Data Processing Consent
 showsController: true
 ---
 
 _English translation provided for convenience. The Russian version prevails in any dispute._
 
+## 1. Data subject and controller
+
 I, a user of the OneVoice service ("Service"), acting freely, of my own will and in my own interest, in accordance with Federal Law 152-FZ of 27.07.2006 "On Personal Data", consent to the processing of my personal data by the Service operator whose details are listed in the "Personal data controller" block below.
 
-## 1. Processing purposes
+## 2. Data and purposes
 
-Personal data is processed for the purposes listed in section 4 of the Privacy Policy (/legal/privacy):
+This consent covers: e-mail address, name, IP address and browser identifier, the name, phone and address of the business-account owner, the content of messages in the Service chat and the metadata of connected integrations.
 
-- registration and authentication in the Service;
-- providing access to the Service's functionality;
-- maintaining audit logs required by Federal Law 152-FZ;
-- ensuring information security;
-- complying with Russian Federation law.
+Purposes: registration and authentication, providing the Service functionality, drafting posts and replies with language models, keeping audit logs, information security.
 
-## 2. Categories of data
+Operations: collection, recording, systematization, accumulation, storage, updating, retrieval, use, transfer to processors, blocking, deletion, destruction — by automated means.
 
-The list of processed personal data is set out in section 3 of the Privacy Policy. It includes, in particular, the email address, name, IP address and User-Agent, business account owner contact details, and the contents of messages sent through the Service.
+## 3. Transfer to processors
 
-## 3. Cross-border data transfer
+Processing involves processors whose servers are located in the Russian Federation: Yandex Cloud (hosting and the Yandex AI Studio platform for language-model requests) and Unisender Go (transactional e-mail). No cross-border transfer of personal data takes place. The current list of processors is given in section 6 of the Privacy Policy.
 
-OneVoice uses LLM provider services (Anthropic PBC, OpenAI L.L.C.) located in the USA. Cross-border transfer is performed under Art. 12 of Federal Law 152-FZ and covers only the contents of messages transmitted to the LLM provider, plus associated technical metadata (language, timestamp, request identifier).
+## 4. Operator registry
 
-## 4. Personal data processing notification
+Information on the operator's entry in the Roskomnadzor register of personal-data operators is published at pd.rkn.gov.ru. The search details (operator name, INN) are listed in the "Personal data controller" block below.
 
-Information about the operator's inclusion in the Roskomnadzor register of personal data operators is published at pd.rkn.gov.ru. The lookup details (operator name, TIN) are listed in the "Personal data controller" block below.
+## 5. Withdrawal
 
-## 5. Withdrawal of consent
-
-This consent may be withdrawn by the User in Settings → Privacy of the Service. Withdrawal leads to deletion of the account and associated data within 30 days from the time of withdrawal (152-FZ Art. 21). Until 30 days have elapsed, the User may cancel the withdrawal in Settings → Account.
+This consent can be withdrawn in Settings → Privacy. Withdrawal leads to deletion of the account and the associated data within 30 days (152-FZ art. 21). Before the 30 days elapse the deletion can be cancelled in Settings → Account.
 
 ## 6. Term
 
-This consent is effective from the moment it is given and until it is withdrawn by the User or until the account is deleted. The consent version is listed in the header of this page.
+This consent is effective from the moment it is given until it is withdrawn or the account is deleted. The consent version is shown in the header of this page.

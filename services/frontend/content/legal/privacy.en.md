@@ -1,7 +1,7 @@
 ---
 slug: privacy
-version: v1.0
-effective_from: 2026-06-01
+version: v1.1
+effective_from: 2026-09-08
 title: Privacy Policy
 showsController: true
 ---
@@ -10,65 +10,84 @@ _English translation provided for convenience. The Russian version prevails in a
 
 ## 1. General provisions
 
-This Privacy Policy ("Policy") is developed in accordance with Federal Law 152-FZ of 27.07.2006 "On Personal Data" and regulates the processing of personal data of users of the OneVoice service ("Service").
+This Privacy Policy ("Policy") is developed in accordance with Federal Law 152-FZ of 27.07.2006 "On Personal Data" and regulates the processing of personal data of users of the OneVoice service ("Service"), as well as personal data of third parties that reaches the Service from external platforms the user connects.
 
-By using the Service, the user confirms that they have reviewed this Policy and agree to the processing of their personal data described below.
+By using the Service the user confirms having read this Policy.
 
 ## 2. Personal data controller
 
-The personal data controller is the legal entity operating the Service. Full controller details (name, TIN, address, PDN contact email) are listed in the "Personal data controller" block at the end of this document.
+The controller of the personal data of Service users is the entity operating the Service. Its full details (name, INN, address, e-mail for personal-data requests) are listed in the "Personal data controller" block at the end of this document.
 
-## 3. Categories of processed data
+For personal data of third parties (the user's customers — authors of reviews, comments and messages on connected platforms) the controller is the user, and the Service processes such data on the user's behalf under section 7 of the Terms of Service.
 
-The Service processes the following categories of personal data:
+## 3. Categories of data processed
 
-- email address;
+### 3.1. Service users
+
+- e-mail address;
 - user name (at registration);
 - IP address and browser identifier (User-Agent);
-- business account owner name, phone, and address;
-- contents of messages sent through the chat interface;
-- metadata of integrations with external platforms (Telegram, VK, Yandex.Business, and others).
+- name, phone and address of the business-account owner as entered in the organization card;
+- content of messages sent through the chat interface;
+- metadata of integrations with external platforms (Telegram, VK, Yandex Business and others), including access credentials, which are stored only in encrypted form.
 
-## 4. Processing purposes
+### 3.2. Third parties, received from connected platforms
 
-Personal data is processed for the following purposes:
+- names (nicknames) of authors of reviews, comments and messages;
+- texts of reviews, comments and messages, their ratings and dates;
+- public identifiers of the authors on the respective platform.
+
+The Service does not request any additional data from third parties and processes only what they have already published on the connected platform.
+
+### 3.3. Cookies
+
+The Service uses only technically necessary cookies: the session / authorization cookie and the interface-language cookie. The Service uses no third-party counters or advertising trackers. Should analytics cookies be introduced, the Service will ask for a separate consent.
+
+## 4. Purposes of processing
 
 - user registration and authentication;
-- providing access to the Service's functionality;
-- maintaining audit logs required by Federal Law 152-FZ;
-- ensuring information security;
-- complying with Russian Federation law.
+- providing the Service functionality: managing organization cards, publishing content and review replies on connected platforms, drafting texts with language models;
+- keeping the audit logs required by 152-FZ;
+- information security;
+- compliance with the legislation of the Russian Federation.
 
-## 5. Retention periods
+## 5. Retention
 
-Personal data is retained until the user requests account deletion. Audit logs are retained for 5 years after account deletion for forensic purposes (152-FZ Art. 19 §2 cl. 7).
+User personal data is stored until the account is deleted. Deletion is performed on the user's request with a 30-day grace period during which it can be cancelled.
 
-## 6. Transfers to third parties
+Third-party data received from connected platforms is stored until the respective integration is disconnected or the organization card is deleted, and is removed together with it.
 
-The Service uses the following processors:
+Audit logs are retained for 5 years after account deletion for incident investigation (152-FZ art. 19, part 2, item 7).
 
-- Yandex Cloud — cloud hosting (Russian Federation);
-- Anthropic PBC and OpenAI L.L.C. — large language model providers (USA). Transfers to these services are governed by a separate "Personal Data Processing Consent" disclosing cross-border transfer;
-- Unisender Go — transactional email delivery (Russian Federation).
+## 6. Processors and transfers
 
-The list of processors may change. The Service notifies users of material changes via a modal dialog at next login.
+The Service engages the following processors operating on servers located in the Russian Federation:
 
-## 7. Data subject rights
+- Yandex Cloud (Yandex.Cloud LLC) — cloud hosting of the Service infrastructure and the Yandex AI Studio platform through which language-model requests are executed. Retention of request contents on the platform side is disabled by the Service;
+- Unisender Go — transactional e-mail (address confirmation, password reset, deletion notices).
+
+No cross-border transfer of personal data takes place. The list of processors may change; the Service announces material changes with a modal window at the user's next sign-in and asks to confirm the new Policy version.
+
+## 7. Use of language models
+
+The Service drafts posts and review replies with large language models. Before a text is sent to a model the Service removes phone numbers, e-mail addresses, document numbers, INN and bank-card numbers from it. Drafts are published only after the user confirms them, or in the automatic-reply mode that the user enables personally for reviews rated at or above the threshold they choose.
+
+## 8. Data-subject rights
 
 The user has the right to:
 
 - access their personal data;
 - correct inaccurate or outdated data;
-- delete data and withdraw consent (152-FZ Art. 21);
+- delete data and withdraw consent (152-FZ art. 21);
 - restrict processing;
-- file a complaint with Roskomnadzor and apply to the courts.
+- complain to Roskomnadzor and go to court.
 
-The response time for a written user request is 15 business days from receipt (see /legal/contact).
+A written request is answered within 15 business days of receipt (see /legal/contact). Third parties whose data is processed on the user's behalf address their requests to the user as controller; the Service assists the user in fulfilling them.
 
-## 8. Age restrictions
+## 9. Age restrictions
 
-The Service is intended for persons 18 years of age or older. Use by persons under 18 is not part of the OneVoice business model and is not supported.
+The Service is intended for persons over 18. Use by persons under 18 is not provided for and not supported.
 
-## 9. Changes to the Policy
+## 10. Changes to the Policy
 
-When the Policy version changes, all users are notified via a modal dialog at next login and must confirm the new version. The current version and effective date are listed in the header of this page.
+When the Policy version changes, all users are notified with a modal window at the next sign-in and must confirm the new version. The version and effective date are shown in the header of this page.
