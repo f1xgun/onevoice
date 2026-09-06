@@ -269,6 +269,7 @@ export function createMapTelegramConnectError(t: TranslateFn): (err: unknown) =>
     const response = (err as AxiosError<{ reason?: string }> | undefined)?.response;
     const reason = response?.data?.reason;
     if (reason) return t(Object.hasOwn(reasonKeys, reason) ? reasonKeys[reason] : 'failed');
+    if (response?.status === HTTP_STATUS.CONFLICT) return t('alreadyConnected');
     if (!response || response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) return t('unreachable');
     if (response.status === HTTP_STATUS.TOO_MANY_REQUESTS) return t('rateLimited');
     return t('failed');

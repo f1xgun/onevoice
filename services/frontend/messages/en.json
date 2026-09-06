@@ -1235,7 +1235,7 @@
       "unreachable": "Could not reach Telegram. Try later — bot access has not been checked.",
       "rateLimited": "Telegram is temporarily limiting requests. Wait before reconnecting.",
       "failed": "Could not connect the channel. Try again later.",
-      "alreadyConnected": "This channel is already connected to another organization."
+      "alreadyConnected": "This channel is already connected to another organization. Disconnect it from that organization or choose another channel."
     }
   },
   "gettingStarted": {
