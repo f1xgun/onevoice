@@ -58,6 +58,7 @@ func TestRun_TerminalStreamOutcome(t *testing.T) {
 				if message.Role == domain.MessageRoleAssistant {
 					assert.Equal(t, wantStatus, message.Status)
 					assert.Equal(t, tc.code, message.ErrorCode)
+					assert.Equal(t, tc.code == "", message.SuccessfulOutcome)
 					assert.Equal(t, "Partial answer", message.Content)
 				}
 			}

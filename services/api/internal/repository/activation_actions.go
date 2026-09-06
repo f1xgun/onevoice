@@ -23,11 +23,12 @@ func NewActionActivationRepository(db *mongo.Database) *ActionActivationReposito
 
 func successfulAnswerFilter() bson.M {
 	return bson.M{
-		"role":         domain.MessageRoleAssistant,
-		"status":       domain.MessageStatusComplete,
-		"error_code":   bson.M{"$in": bson.A{nil, ""}},
-		"content":      bson.M{"$regex": `\S`},
-		"tool_calls.0": bson.M{"$exists": false},
+		"successful_outcome": true,
+		"role":               domain.MessageRoleAssistant,
+		"status":             domain.MessageStatusComplete,
+		"error_code":         bson.M{"$in": bson.A{nil, ""}},
+		"content":            bson.M{"$regex": `\S`},
+		"tool_calls.0":       bson.M{"$exists": false},
 	}
 }
 

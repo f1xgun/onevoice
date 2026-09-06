@@ -76,16 +76,17 @@ type Conversation struct {
 }
 
 type Message struct {
-	BusinessID     string                 `json:"-" bson:"business_id,omitempty"`
-	ID             string                 `json:"id" bson:"_id,omitempty"`
-	ConversationID string                 `json:"conversationId" bson:"conversation_id"`
-	Role           string                 `json:"role" bson:"role"`
-	Content        string                 `json:"content" bson:"content"`
-	Attachments    []Attachment           `json:"attachments,omitempty" bson:"attachments,omitempty"`
-	ToolCalls      []ToolCall             `json:"toolCalls,omitempty" bson:"tool_calls,omitempty"`
-	ToolResults    []ToolResult           `json:"toolResults,omitempty" bson:"tool_results,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
-	ErrorCode      string                 `json:"errorCode,omitempty" bson:"error_code,omitempty"`
+	SuccessfulOutcome bool                   `json:"-" bson:"successful_outcome,omitempty"`
+	BusinessID        string                 `json:"-" bson:"business_id,omitempty"`
+	ID                string                 `json:"id" bson:"_id,omitempty"`
+	ConversationID    string                 `json:"conversationId" bson:"conversation_id"`
+	Role              string                 `json:"role" bson:"role"`
+	Content           string                 `json:"content" bson:"content"`
+	Attachments       []Attachment           `json:"attachments,omitempty" bson:"attachments,omitempty"`
+	ToolCalls         []ToolCall             `json:"toolCalls,omitempty" bson:"tool_calls,omitempty"`
+	ToolResults       []ToolResult           `json:"toolResults,omitempty" bson:"tool_results,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
+	ErrorCode         string                 `json:"errorCode,omitempty" bson:"error_code,omitempty"`
 	// Status is the HITL message lifecycle marker. Valid non-empty
 	// values: "complete", "error", "pending_approval", "in_progress" (see
 	// MessageStatus* constants above).

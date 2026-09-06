@@ -1,0 +1,1 @@
+`hasFirstSuccessfulAction` requires a completed platform tool task or an explicit successful turn outcome; ambiguous historical turns do not count, and the backfill copies organization IDs only, never success outcomes.

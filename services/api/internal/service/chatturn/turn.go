@@ -337,14 +337,15 @@ func (t *Turn) persistAfterStream(
 		content = i18n.Tr(saveCtx, "api.chat.stream_error_wrapper", state.streamErrContent)
 	}
 	assistantMsg := &domain.Message{
-		ID:             streamStartID,
-		ConversationID: req.ConversationID,
-		Role:           domain.MessageRoleAssistant,
-		Content:        content,
-		ToolCalls:      state.toolCalls,
-		ToolResults:    state.toolResults,
-		Status:         domain.MessageStatusComplete,
-		CreatedAt:      streamStartAt,
+		ID:                streamStartID,
+		ConversationID:    req.ConversationID,
+		Role:              domain.MessageRoleAssistant,
+		Content:           content,
+		ToolCalls:         state.toolCalls,
+		ToolResults:       state.toolResults,
+		Status:            domain.MessageStatusComplete,
+		SuccessfulOutcome: state.doneSeen && state.streamErrCode == "",
+		CreatedAt:         streamStartAt,
 	}
 	if state.streamErrCode != "" {
 		assistantMsg.Status = domain.MessageStatusError

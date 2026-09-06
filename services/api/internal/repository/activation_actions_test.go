@@ -14,23 +14,27 @@ import (
 
 func TestActionActivationHistory(t *testing.T) {
 	for _, tt := range []struct {
-		name       string
-		status     string
-		content    string
-		errorCode  string
-		tools      []domain.ToolCall
-		taskStatus string
-		want       bool
+		name              string
+		status            string
+		content           string
+		errorCode         string
+		tools             []domain.ToolCall
+		successfulOutcome bool
+		taskStatus        string
+		want              bool
 	}{
-		{name: "old success with twenty newer empty chats", status: "complete", content: "Done", want: true},
+		{name: "success with twenty newer empty chats", status: "complete", content: "Done", successfulOutcome: true, want: true},
+		{name: "pre-upgrade failed stream", status: "complete", content: "Partial answer"},
+		{name: "pre-upgrade interrupted stream", status: "complete", content: "Partial answer"},
+		{name: "ambiguous old completed answer", status: "complete", content: "Done"},
 		{name: "no success"},
 		{name: "failed turn", status: "error", content: "Partial answer"},
 		{name: "legacy answer", content: "Done"},
 		{name: "pending turn", status: "pending_approval", content: "Partial"},
-		{name: "blank answer", status: "complete", content: " \n\t"},
-		{name: "error code", status: "complete", content: "Partial", errorCode: "STREAM_ERROR"},
-		{name: "tool answer without successful task", status: "complete", content: "Done", tools: []domain.ToolCall{{ID: "tool"}}},
-		{name: "successful task", taskStatus: "done", want: true},
+		{name: "blank answer", successfulOutcome: true, status: "complete", content: " \n\t"},
+		{name: "error code", successfulOutcome: true, status: "complete", content: "Partial", errorCode: "STREAM_ERROR"},
+		{name: "tool answer without successful task", successfulOutcome: true, status: "complete", content: "Done", tools: []domain.ToolCall{{ID: "tool"}}},
+		{name: "unambiguous old successful tool task", taskStatus: "done", want: true},
 		{name: "failed task", taskStatus: "error"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -41,7 +45,7 @@ func TestActionActivationHistory(t *testing.T) {
 			conversations := NewConversationRepository(db)
 			old := &domain.Conversation{ID: "old", BusinessID: org.String()}
 			require.NoError(t, conversations.Create(ctx, old))
-			msg := &domain.Message{ID: "old-answer", ConversationID: old.ID, Role: domain.MessageRoleAssistant, Status: tt.status, Content: tt.content, ErrorCode: tt.errorCode, ToolCalls: tt.tools, CreatedAt: time.Now().Add(-24 * time.Hour)}
+			msg := &domain.Message{ID: "old-answer", ConversationID: old.ID, Role: domain.MessageRoleAssistant, Status: tt.status, Content: tt.content, ErrorCode: tt.errorCode, SuccessfulOutcome: tt.successfulOutcome, ToolCalls: tt.tools, CreatedAt: time.Now().Add(-24 * time.Hour)}
 			_, err := db.Collection("messages").InsertOne(ctx, msg)
 			require.NoError(t, err)
 			for i := 0; i < 20; i++ {
@@ -59,6 +63,7 @@ func TestActionActivationHistory(t *testing.T) {
 			var stored domain.Message
 			require.NoError(t, db.Collection("messages").FindOne(ctx, bson.M{"_id": msg.ID}).Decode(&stored))
 			require.Equal(t, org.String(), stored.BusinessID)
+			require.Equal(t, msg.SuccessfulOutcome, stored.SuccessfulOutcome)
 			require.Equal(t, msg.Status, stored.Status)
 			require.Equal(t, msg.Content, stored.Content)
 		})
@@ -79,6 +84,11 @@ func TestActionActivationMessageWrites(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, found)
 	msg.Status = domain.MessageStatusComplete
+	require.NoError(t, messages.Update(ctx, msg))
+	found, err = reader.HasFirstSuccessfulAction(ctx, org)
+	require.NoError(t, err)
+	require.False(t, found)
+	msg.SuccessfulOutcome = true
 	msg.BusinessID = uuid.NewString()
 	require.NoError(t, messages.Update(ctx, msg))
 	found, err = reader.HasFirstSuccessfulAction(ctx, org)

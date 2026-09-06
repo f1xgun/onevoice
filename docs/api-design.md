@@ -115,7 +115,7 @@ Sync/bulk operations (e.g. "apply change to all connected platforms") return a `
 Assistant messages from failed streams have `status: "error"` and an
 `errorCode` (the upstream code, or `STREAM_ERROR` when absent). Partial text
 is retained; immediate errors retain the localized error content. Successful
-turns have `status: "complete"`. Clients must not infer success from nonempty
+turns have `status: "complete"` and an internal `successful_outcome: true` marker. Clients must not infer success from nonempty
 content or an absent legacy status. Successful tool tasks independently prove
 that an action completed.
 
@@ -123,7 +123,7 @@ that an action completed.
 
 `GET /api/v1/businesses/{id}` includes `hasFirstSuccessfulAction`. The API reads
 all persisted history for the authorized organization: an `agent_tasks` record
-with status `done`, or an assistant message with status `complete`, nonblank
+with status `done`, or an assistant message with explicit `successful_outcome: true`, status `complete`, nonblank
 content, no error code, and no tool calls. Failed, pending, and ambiguous legacy
 turns do not count. New empty conversations cannot reset completion. Read errors
 fail the profile request instead of returning a misleading `false`.
