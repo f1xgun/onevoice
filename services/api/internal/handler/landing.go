@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -120,7 +121,7 @@ func (h *LandingHandler) RecordLandingEvent(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.svc.RecordLandingEvent(r.Context(), service.LandingEventInput{CTA: string(req.Cta), Path: req.Path}); err != nil {
-		if errors.Is(err, service.ErrInvalidLandingEvent) {
+		if errors.Is(err, domain.ErrInvalidLandingEvent) {
 			writeJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -186,7 +187,7 @@ func TestLandingEventValidationAndCounter(t *testing.T) {
 	} {
 		t.Run(in.CTA+in.Path, func(t *testing.T) {
 			repo := &fakeLandingRepo{}
-			require.ErrorIs(t, NewLandingService(repo).RecordLandingEvent(context.Background(), in), ErrInvalidLandingEvent)
+			require.ErrorIs(t, NewLandingService(repo).RecordLandingEvent(context.Background(), in), domain.ErrInvalidLandingEvent)
 			assert.Empty(t, repo.events)
 		})
 	}

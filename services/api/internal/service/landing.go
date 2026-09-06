@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -164,9 +165,6 @@ func (s *LandingService) RecordChannelVote(ctx context.Context, in ChannelVoteIn
 	return nil
 }
 
-// ErrInvalidLandingEvent identifies an invalid CTA or pathname.
-var ErrInvalidLandingEvent = errors.New("invalid landing event")
-
 var landingCTAClicks = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "landing_cta_clicks_total",
 	Help: "Persisted anonymous landing CTA clicks.",
@@ -183,10 +181,10 @@ func (s *LandingService) RecordLandingEvent(ctx context.Context, in LandingEvent
 	switch in.CTA {
 	case "hero-waitlist", "hero-register", "nav-register", "nav-login", "pricing-free-register", "pricing-pro-waitlist", "waitlist-success-register":
 	default:
-		return ErrInvalidLandingEvent
+		return domain.ErrInvalidLandingEvent
 	}
 	if !utf8.ValidString(in.Path) || len(in.Path) > 1024 || !strings.HasPrefix(in.Path, "/") || strings.HasPrefix(in.Path, "//") || strings.ContainsAny(in.Path, "?#\\") || strings.ContainsFunc(in.Path, unicode.IsControl) {
-		return ErrInvalidLandingEvent
+		return domain.ErrInvalidLandingEvent
 	}
 	if err := s.repo.InsertLandingEvent(ctx, repository.LandingEventRow{CTA: in.CTA, Path: in.Path}); err != nil {
 		return fmt.Errorf("landing event record: %w", err)

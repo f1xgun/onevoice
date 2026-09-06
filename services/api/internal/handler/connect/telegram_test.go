@@ -486,7 +486,6 @@ func TestConnectTelegram_BotNoAccess(t *testing.T) {
 	if resp.Error != i18n.Tr(req.Context(), "connect.telegram.channel_unavailable") {
 		t.Errorf("expected localized channel guidance, got %q", resp.Error)
 	}
-
 }
 
 // TestConnectTelegram_BotForbidden: Telegram returns ok:false with a

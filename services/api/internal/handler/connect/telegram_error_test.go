@@ -8,15 +8,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/mock"
-
-	"github.com/f1xgun/onevoice/pkg/i18n"
-	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/language"
+
+	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 func TestTelegramErrorsLocalizedAndStable(t *testing.T) {
