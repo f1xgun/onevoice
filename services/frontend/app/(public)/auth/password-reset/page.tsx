@@ -37,7 +37,7 @@ export default function PasswordResetRequestPage() {
   const schema = useMemo(
     () =>
       z.object({
-        email: z.string().email(t('emailInvalid')),
+        email: z.string().trim().toLowerCase().email(t('emailInvalid')),
       }),
     [t]
   );

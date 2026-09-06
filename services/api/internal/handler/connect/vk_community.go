@@ -111,6 +111,10 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		ParsedFormat: service.ParsedFormatAccessToken,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrIntegrationClaimedByOtherTenant) {
+			writeJSONErrorKey(w, r, http.StatusConflict, "connect.integration.already_connected")
+			return
+		}
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return

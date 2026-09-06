@@ -97,3 +97,22 @@ func TestUserRepository_GraceWindowLookupSemantics(t *testing.T) {
 		assert.Nil(t, u.DeletionCanceledAt, "an uncanceled request is genuinely pending")
 	})
 }
+
+func TestUserRepository_CanonicalEmail(t *testing.T) {
+	ctx, pool, repo := graceLookupRepo(t)
+	id := uuid.New()
+	_, err := pool.Exec(ctx, `INSERT INTO users (id, email) VALUES ($1, $2)`, id, "Owner@Example.COM")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `CREATE UNIQUE INDEX users_email_canonical_unique ON users (lower(btrim(email)))`)
+	require.NoError(t, err)
+	for _, email := range []string{"owner@example.com", "  OWNER@example.COM  "} {
+		user, err := repo.GetByEmail(ctx, email)
+		require.NoError(t, err)
+		require.Equal(t, id, user.ID)
+		user, err = repo.GetByEmailIncludingDeleted(ctx, email)
+		require.NoError(t, err)
+		require.Equal(t, id, user.ID)
+		err = repo.Create(ctx, &domain.User{Email: email})
+		require.ErrorIs(t, err, domain.ErrUserExists)
+	}
+}

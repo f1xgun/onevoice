@@ -800,3 +800,29 @@ func TestBulkApproveReviews_ViewerForbidden(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, rr.Code)
 }
+
+func TestReplyToReview_AlreadyAnswered(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockReviewService{
+		replyFn: func(_ context.Context, bid uuid.UUID, id, text string) error {
+			assert.Equal(t, businessID, bid)
+			assert.Equal(t, "rev-1", id)
+			assert.Equal(t, "Thank you!", text)
+			return domain.ErrReviewAlreadyAnswered
+		},
+	}
+	h, _ := NewReviewHandler(svc)
+
+	r := chi.NewRouter()
+	r.Put("/reviews/{id}/reply", h.ReplyToReview)
+
+	body := `{"replyText":"Thank you!"}`
+	req := httptest.NewRequest(http.MethodPut, "/reviews/rev-1/reply", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusConflict, rr.Code)
+}

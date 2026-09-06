@@ -117,7 +117,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	externalID := "default"
+	externalID := "pending:" + bc.BusinessID.String()
 	if req.Permalink != nil {
 		if p := strings.TrimSpace(*req.Permalink); p != "" {
 			externalID = p
@@ -145,6 +145,10 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		ParsedFormat: parsed.Format,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrIntegrationClaimedByOtherTenant) {
+			writeJSONErrorKey(w, r, http.StatusConflict, "connect.integration.already_connected")
+			return
+		}
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return

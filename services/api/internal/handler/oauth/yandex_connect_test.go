@@ -182,7 +182,7 @@ func TestConnectYandexBusiness_Success(t *testing.T) {
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		return p.BusinessID == businessID &&
 			p.Platform == "yandex_business" &&
-			p.ExternalID == "default" &&
+			p.ExternalID == "pending:"+businessID.String() &&
 			strings.Contains(p.AccessToken, "Session_id") &&
 			strings.Contains(p.AccessToken, validYandexSession)
 	})).Return(&domain.Integration{ID: integrationID, Platform: "yandex_business"}, nil)
@@ -237,4 +237,31 @@ func TestConnectYandexBusiness_Forbidden(t *testing.T) {
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", rr.Code)
 	}
+}
+
+func TestConnectYandexBusiness_ClaimedByOtherTenant(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockIntegration := new(MockOAuthIntegrationService)
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
+		return p.BusinessID == businessID &&
+			p.Platform == "yandex_business" &&
+			p.ExternalID == "pending:"+businessID.String() &&
+			strings.Contains(p.AccessToken, "Session_id") &&
+			strings.Contains(p.AccessToken, validYandexSession)
+	})).Return(nil, domain.ErrIntegrationClaimedByOtherTenant)
+
+	h := NewOAuthHandler(new(MockOAuthStateService), mockIntegration, new(MockBusinessService), OAuthConfig{}, nil, nil)
+
+	body := `{"cookies":"Session_id=` + validYandexSession + `; sessionid2=3:abc"}`
+	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/connect", strings.NewReader(body))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+	h.ConnectYandexBusiness(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
 }

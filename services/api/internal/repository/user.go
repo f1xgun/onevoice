@@ -132,6 +132,7 @@ func (a *UserResetExtAdapter) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.
 // Create inserts a user via the pool; used by test paths that don't compose
 // a surrounding transaction. Production registration uses CreateInTx.
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
+	user.Email = domain.NormalizeEmail(user.Email)
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
 	}
@@ -163,6 +164,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 // commits atomically with user_consents + email_verification_tokens +
 // email_outbox INSERTs (no half-registered user without verification email).
 func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error {
+	user.Email = domain.NormalizeEmail(user.Email)
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
 	}
@@ -308,7 +310,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	sql, args, err := r.sb.
 		Select(userColumns...).
 		From("users").
-		Where(squirrel.Eq{"email": email}).
+		Where(squirrel.Eq{"lower(btrim(email))": domain.NormalizeEmail(email)}).
 		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
@@ -333,7 +335,7 @@ func (r *userRepository) GetByEmailIncludingDeleted(ctx context.Context, email s
 	sql, args, err := r.sb.
 		Select(userColumns...).
 		From("users").
-		Where(squirrel.Eq{"email": email}).
+		Where(squirrel.Eq{"lower(btrim(email))": domain.NormalizeEmail(email)}).
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
@@ -352,6 +354,7 @@ func (r *userRepository) GetByEmailIncludingDeleted(ctx context.Context, email s
 
 // Update mutates email + password_hash + updated_at via the pool.
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
+	user.Email = domain.NormalizeEmail(user.Email)
 	user.UpdatedAt = time.Now()
 
 	sql, args, err := r.sb.
@@ -406,7 +409,7 @@ func (r *userRepository) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, 
 func (r *userRepository) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, newEmail string) error {
 	sqlStr, args, err := r.sb.
 		Update("users").
-		Set("email", newEmail).
+		Set("email", domain.NormalizeEmail(newEmail)).
 		Set("updated_at", time.Now()).
 		Where(squirrel.Eq{"id": userID}).
 		ToSql()

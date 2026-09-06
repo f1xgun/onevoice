@@ -249,6 +249,31 @@ func (r *invitationRepository) Revoke(ctx context.Context, id, businessID uuid.U
 	return nil
 }
 
+// RevokeByCreatorInTx — see domain.InvitationRepository docstring. Runs inside
+// the caller's tx so the revocation commits atomically with the membership
+// change that caused it.
+func (r *invitationRepository) RevokeByCreatorInTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	businessID, creatorUserID uuid.UUID,
+) (int64, error) {
+	sql, args, err := r.sb.
+		Update("invitations").
+		Set("revoked_at", time.Now().UTC()).
+		Where(squirrel.Eq{"business_id": businessID, "created_by": creatorUserID}).
+		Where("accepted_at IS NULL").
+		Where("revoked_at IS NULL").
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("build revoke by creator: %w", err)
+	}
+	tag, err := tx.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, fmt.Errorf("revoke invitations by creator: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // MarkAccepted — pool-based. Provided for interface completeness; the handler
 // uses MarkAcceptedInTx inside the accept tx.
 func (r *invitationRepository) MarkAccepted(ctx context.Context, id, accepterUserID uuid.UUID) error {

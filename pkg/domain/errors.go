@@ -136,6 +136,7 @@ var (
 	// in the error reply state (or carries no stored reply text to re-send) —
 	// only a reply whose previous send failed may be re-dispatched, so a retry
 	// can never double-post an already-delivered reply.
+	ErrReviewAlreadyAnswered   = errors.New("review already answered")
 	ErrReviewReplyNotRetryable = errors.New("review reply is not retryable")
 )
 

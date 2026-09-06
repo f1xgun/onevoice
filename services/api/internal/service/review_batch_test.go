@@ -413,3 +413,31 @@ func indexResults(results []BatchItemResult) map[string]BatchItemResult {
 	}
 	return out
 }
+
+func TestFailedReply_BatchDraftAndApproval(t *testing.T) {
+	for _, status := range []string{domain.ReviewReplyStatusError, domain.ReviewReplyStatusReplied, domain.ReviewReplyStatusPending} {
+		t.Run(status, func(t *testing.T) {
+			biz := uuid.New()
+			review := positiveReview("7", biz.String(), 5)
+			review.ReplyStatus = status
+			review.ReplyText = "failed attempt"
+			review.DraftReply = "corrected draft"
+			review.DraftStatus = domain.ReviewDraftStatusReady
+			repo := &multiReviewRepo{byID: map[string]*domain.Review{review.ID: review}}
+			svc := &reviewService{repo: repo, nc: &okRequester{}, dispatchTimeout: time.Second}
+			targets, skipped, err := svc.resolveDraftTargets(context.Background(), biz, []string{review.ID})
+			require.NoError(t, err)
+			result := svc.bulkApproveOne(context.Background(), biz, review.ID)
+			if status == domain.ReviewReplyStatusError {
+				require.Len(t, targets, 1)
+				require.Empty(t, skipped)
+				require.Equal(t, BatchItemStatusPublished, result.Status)
+				require.Equal(t, "corrected draft", review.ReplyText)
+			} else {
+				require.Empty(t, targets)
+				require.Len(t, skipped, 1)
+				require.Equal(t, "already_answered", result.Error)
+			}
+		})
+	}
+}

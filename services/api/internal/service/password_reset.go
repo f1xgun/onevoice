@@ -94,6 +94,7 @@ func NewPasswordResetService(
 // RequestReset issues a reset token and sends the recovery email. Always returns nil (no enumeration).
 // See docs/services/password-reset.md for the full lifecycle.
 func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clientIP, userAgent string) error {
+	emailAddr = domain.NormalizeEmail(emailAddr)
 	rateLimited := s.bumpRateLimit(ctx, emailAddr)
 
 	user, err := s.userRepo.GetByEmail(ctx, emailAddr)

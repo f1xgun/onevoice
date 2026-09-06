@@ -20,8 +20,8 @@ import (
 
 // Tunables for title generation. See docs/services/titler.md.
 const (
-	titleMaxChars        = 80  // cap in RUNES (Russian runes are multi-byte).
-	titleMaxOutputTokens = 30  // research-recommended budget for cheap-model titler.
+	titleMaxChars        = 80 // cap in RUNES (Russian runes are multi-byte).
+	titleMaxOutputTokens = 300
 	titleTemperature     = 0.3 // research-recommended low-but-not-zero.
 
 	titleSystemPromptRu = "Сформулируй короткий заголовок (3–6 слов) для этого диалога. Без кавычек и точек в конце."
@@ -109,6 +109,10 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 	}
 
 	resp, err := t.router.Chat(ctx, req)
+	if err == nil && resp != nil && strings.TrimSpace(resp.Content) == "" && resp.FinishReason == "length" {
+		req.MaxTokens = titleMaxOutputTokens * 2
+		resp, err = t.router.Chat(ctx, req)
+	}
 	if err != nil {
 		slog.WarnContext(ctx, "auto-title: llm error",
 			"conversation_id", conversationID,
@@ -265,7 +269,7 @@ func untitledChatRussian(t time.Time) string {
 		"января", "февраля", "марта", "апреля", "мая", "июня",
 		"июля", "августа", "сентября", "октября", "ноября", "декабря",
 	}
-	return fmt.Sprintf("Untitled chat %d %s", t.Day(), months[t.Month()-1])
+	return fmt.Sprintf("Без названия %d %s", t.Day(), months[t.Month()-1])
 }
 
 // untitledChatEnglish returns the EN terminal-fallback title (e.g. "Untitled chat April 26").
@@ -277,7 +281,7 @@ func untitledChatEnglish(t time.Time) string {
 	return fmt.Sprintf("Untitled chat %s %d", months[t.Month()-1], t.Day())
 }
 
-// untitledChatLocalized dispatches to the per-locale terminal-fallback ("Untitled chat" prefix stays EN).
+// untitledChatLocalized dispatches to the per-locale terminal-fallback.
 // See docs/services/titler.md.
 func untitledChatLocalized(t time.Time, tag language.Tag) string {
 	if tag == language.English {

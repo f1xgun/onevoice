@@ -142,6 +142,7 @@ func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSe
 
 // Register creates a new user with encrypted password. See docs/services/user.md.
 func (s *userService) Register(ctx context.Context, email, password string) (*domain.User, error) {
+	email = domain.NormalizeEmail(email)
 	if err := validateEmail(email); err != nil {
 		return nil, err
 	}
@@ -205,6 +206,7 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 
 // RegisterWithContext is the atomic-Register entry point. See docs/services/user.md.
 func (s *userService) RegisterWithContext(ctx context.Context, email, password string, regCtx RegistrationContext) (*domain.User, error) {
+	email = domain.NormalizeEmail(email)
 	if err := validateEmail(email); err != nil {
 		return nil, err
 	}
@@ -271,6 +273,7 @@ func purgeEligible(user *domain.User) bool {
 // can authenticate to reach the restore endpoint; a purge-eligible (past-grace)
 // account is rejected as if not found.
 func (s *userService) Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error) {
+	email = domain.NormalizeEmail(email)
 	user, err = s.repo.GetByEmailIncludingDeleted(ctx, email)
 	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
 		return nil, "", "", fmt.Errorf("get user: %w", err)

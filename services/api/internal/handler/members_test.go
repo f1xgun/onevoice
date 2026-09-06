@@ -273,11 +273,35 @@ func newMembersHandlerForTest(
 		membershipRepo:  mr,
 		roleRepo:        rr,
 		userRepo:        ur,
+		invitationRepo:  &recordingInvitationRepo{},
 		businessService: &mockBusinessGetter{},
 		pool:            pool,
 		invalidator:     inv,
 		audit:           audit.Nop(),
 	}
+}
+
+// recordingInvitationRepo records the RevokeByCreatorInTx calls the member
+// endpoints make. The embedded nil interface panics loudly if any other
+// invitation method is ever reached from these handlers.
+type recordingInvitationRepo struct {
+	domain.InvitationRepository
+	calls   []revokedInvitationsCall
+	revoked int
+	err     error
+}
+
+type revokedInvitationsCall struct {
+	businessID uuid.UUID
+	creatorID  uuid.UUID
+}
+
+func (r *recordingInvitationRepo) RevokeByCreatorInTx(_ context.Context, _ pgx.Tx, businessID, creatorUserID uuid.UUID) (int64, error) {
+	r.calls = append(r.calls, revokedInvitationsCall{businessID: businessID, creatorID: creatorUserID})
+	if r.err != nil {
+		return 0, r.err
+	}
+	return int64(r.revoked), nil
 }
 
 // withChiParams injects chi URL params into a request context.
@@ -484,6 +508,77 @@ func TestMembersHandler_UpdateMemberRole_HappyPath(t *testing.T) {
 	inv.AssertExpectations(t)
 	mr.AssertExpectations(t)
 	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestMembersHandler_UpdateMemberRole_RevokesInvitationsOnLostInvitePermission
+// pins the invitation-revocation half of the demote path: a member who loses
+// members.invite must not keep handing out working invitation links, while a
+// member whose new role still carries it keeps their pending invitations.
+func TestMembersHandler_UpdateMemberRole_RevokesInvitationsOnLostInvitePermission(t *testing.T) {
+	tests := []struct {
+		name        string
+		newRolePerm []string
+		wantRevoke  bool
+	}{
+		{name: "new role without members.invite revokes", newRolePerm: []string{"members.read"}, wantRevoke: true},
+		{name: "new role keeping members.invite does not revoke", newRolePerm: []string{"members.invite"}, wantRevoke: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mr := &MockBusinessMembershipRepository{}
+			rr := &MockRoleRepository{}
+			inv := &MockCacheInvalidator{}
+			invitations := &recordingInvitationRepo{revoked: 2}
+			mockPool, err := pgxmock.NewPool()
+			require.NoError(t, err)
+
+			bizID := uuid.New()
+			actorID := uuid.New()
+			targetID := uuid.New()
+			newRoleID := uuid.New()
+			ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
+			now := time.Now().UTC()
+
+			mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+			mockPool.ExpectQuery("SELECT user_id, role_id").
+				WithArgs(pgxmock.AnyArg()).
+				WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
+					AddRow(actorID, ownerRoleID).
+					AddRow(targetID, newRoleID))
+			mockPool.ExpectCommit()
+
+			rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
+				ID: newRoleID, Name: "custom", Permissions: tt.newRolePerm,
+			}, nil)
+			mr.On("UpdateRoleInTx", mock.Anything, mock.Anything, bizID, targetID, newRoleID, actorID).Return(nil)
+			mr.On("GetByBusinessUser", mock.Anything, bizID, targetID).Return(&domain.BusinessMember{
+				BusinessID: bizID, UserID: targetID, RoleID: newRoleID, Status: "active", JoinedAt: now,
+			}, nil)
+			inv.On("InvalidateMember", bizID, targetID).Return()
+
+			h := newMembersHandlerForTest(mr, rr, &MockUserRepository{}, mockPool, inv)
+			h.invitationRepo = invitations
+
+			ctx := businessContextWith(context.Background(), bizID, actorID,
+				authz.PermMembersUpdateRole, authz.PermMembersInvite, authz.PermMembersRead)
+			body, _ := json.Marshal(map[string]interface{}{"role_id": newRoleID.String()})
+			req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader(body)).WithContext(ctx)
+			req = withChiParams(req, map[string]string{"userId": targetID.String()})
+			w := httptest.NewRecorder()
+			h.UpdateMemberRole(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+			if tt.wantRevoke {
+				require.Len(t, invitations.calls, 1)
+				assert.Equal(t, bizID, invitations.calls[0].businessID)
+				assert.Equal(t, targetID, invitations.calls[0].creatorID)
+			} else {
+				assert.Empty(t, invitations.calls)
+			}
+			require.NoError(t, mockPool.ExpectationsWereMet())
+		})
+	}
 }
 
 func TestMembersHandler_UpdateMemberRole_LastOwnerRefuses(t *testing.T) {
@@ -917,6 +1012,88 @@ func TestMembersHandler_RemoveMember_HappyPath_NonSelf(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
+// TestMembersHandler_RemoveMember_RevokesPendingInvitations pins that removing
+// a member kills the invitation links they handed out: otherwise an ex-member
+// keeps onboarding people into an organization they no longer belong to, until
+// the tokens expire up to 30 days later.
+func TestMembersHandler_RemoveMember_RevokesPendingInvitations(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	inv := &MockCacheInvalidator{}
+	invitations := &recordingInvitationRepo{revoked: 1}
+	mockPool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+
+	bizID := uuid.New()
+	actorID := uuid.New()
+	targetID := uuid.New()
+	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
+	nonOwnerRoleID := uuid.New()
+
+	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	mockPool.ExpectQuery("SELECT user_id, role_id").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
+			AddRow(actorID, ownerRoleID).
+			AddRow(targetID, nonOwnerRoleID))
+	mockPool.ExpectCommit()
+
+	mr.On("DeleteInTx", mock.Anything, mock.Anything, bizID, targetID).Return(nil)
+	inv.On("InvalidateMember", bizID, targetID).Return()
+
+	h := newMembersHandlerForTest(mr, &MockRoleRepository{}, &MockUserRepository{}, mockPool, inv)
+	h.invitationRepo = invitations
+
+	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersRemove)
+	req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
+	req = withChiParams(req, map[string]string{"userId": targetID.String()})
+	w := httptest.NewRecorder()
+	h.RemoveMember(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+	require.Len(t, invitations.calls, 1)
+	assert.Equal(t, bizID, invitations.calls[0].businessID)
+	assert.Equal(t, targetID, invitations.calls[0].creatorID)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestMembersHandler_RemoveMember_RevokeFailureRollsBack pins that a failed
+// revocation aborts the removal instead of committing a half-applied change.
+func TestMembersHandler_RemoveMember_RevokeFailureRollsBack(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	inv := &MockCacheInvalidator{}
+	invitations := &recordingInvitationRepo{err: errors.New("revoke failed")}
+	mockPool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+
+	bizID := uuid.New()
+	actorID := uuid.New()
+	targetID := uuid.New()
+	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
+
+	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	mockPool.ExpectQuery("SELECT user_id, role_id").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
+			AddRow(actorID, ownerRoleID).
+			AddRow(targetID, uuid.New()))
+	mockPool.ExpectRollback()
+
+	mr.On("DeleteInTx", mock.Anything, mock.Anything, bizID, targetID).Return(nil)
+
+	h := newMembersHandlerForTest(mr, &MockRoleRepository{}, &MockUserRepository{}, mockPool, inv)
+	h.invitationRepo = invitations
+
+	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersRemove)
+	req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
+	req = withChiParams(req, map[string]string{"userId": targetID.String()})
+	w := httptest.NewRecorder()
+	h.RemoveMember(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	inv.AssertNotCalled(t, "InvalidateMember", bizID, targetID)
+	require.NoError(t, mockPool.ExpectationsWereMet())
+}
+
 func TestMembersHandler_RemoveMember_LastOwnerRefuses(t *testing.T) {
 	mr := &MockBusinessMembershipRepository{}
 	rr := &MockRoleRepository{}
@@ -1026,34 +1203,38 @@ func TestMembersHandler_NewMembersHandler_NilChecks(t *testing.T) {
 	validMR := &MockBusinessMembershipRepository{}
 	validRR := &MockRoleRepository{}
 	validUR := &MockUserRepository{}
+	validIR := &MockInvitationRepository{}
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	validInv := &MockCacheInvalidator{}
 	validAudit := audit.Nop()
 	validBS := &mockBusinessGetter{}
 
-	_, err = NewMembersHandler(nil, validRR, validUR, validBS, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(nil, validRR, validUR, validIR, validBS, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, nil, validUR, validBS, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, nil, validUR, validIR, validBS, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, nil, validBS, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, nil, validIR, validBS, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, nil, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, validUR, nil, validBS, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, validBS, nil, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, validUR, validIR, nil, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, validBS, mockPool, nil, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, validUR, validIR, validBS, nil, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, validBS, mockPool, validInv, nil)
+	_, err = NewMembersHandler(validMR, validRR, validUR, validIR, validBS, mockPool, nil, validAudit)
 	assert.Error(t, err)
 
-	h, err := NewMembersHandler(validMR, validRR, validUR, validBS, mockPool, validInv, validAudit)
+	_, err = NewMembersHandler(validMR, validRR, validUR, validIR, validBS, mockPool, validInv, nil)
+	assert.Error(t, err)
+
+	h, err := NewMembersHandler(validMR, validRR, validUR, validIR, validBS, mockPool, validInv, validAudit)
 	require.NoError(t, err)
 	assert.NotNil(t, h)
 }
@@ -1071,7 +1252,7 @@ func TestMembersHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *testing
 	}
 	newHandler := func(t *testing.T, mr *MockBusinessMembershipRepository) *MembersHandler {
 		t.Helper()
-		h, err := NewMembersHandler(mr, &MockRoleRepository{}, &MockUserRepository{}, deletedBiz, mustPool(t), &MockCacheInvalidator{}, audit.Nop())
+		h, err := NewMembersHandler(mr, &MockRoleRepository{}, &MockUserRepository{}, &recordingInvitationRepo{}, deletedBiz, mustPool(t), &MockCacheInvalidator{}, audit.Nop())
 		require.NoError(t, err)
 		return h
 	}

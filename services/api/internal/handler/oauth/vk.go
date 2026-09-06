@@ -347,7 +347,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 		ParsedFormat: service.ParsedFormatOAuthCode,
 	})
 	if err != nil {
-		slog.Error("failed to connect VK community integration", "error", err)
+		slog.Warn("failed to connect VK community integration", "error", err)
 		http.Redirect(w, r, "/integrations?error="+connectErrorRedirectCode(err), http.StatusFound)
 		return
 	}

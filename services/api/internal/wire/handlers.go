@@ -247,7 +247,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		GoogleBusiness: cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "",
 	})
 
-	membersHandler, err := handler.NewMembersHandler(repos.BusinessMembership, repos.Role, repos.User, svcs.Business, h.PG, svcs.AuthzCache, svcs.AuditLogger)
+	membersHandler, err := handler.NewMembersHandler(repos.BusinessMembership, repos.Role, repos.User, repos.Invitation, svcs.Business, h.PG, svcs.AuthzCache, svcs.AuditLogger)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create members handler: %w", err)
 	}

@@ -66,6 +66,11 @@ func (m *MockInvitationRepository) CountPendingByBusinessInTx(ctx context.Contex
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockInvitationRepository) RevokeByCreatorInTx(ctx context.Context, tx pgx.Tx, businessID, creatorUserID uuid.UUID) (int64, error) {
+	args := m.Called(ctx, tx, businessID, creatorUserID)
+	return int64(args.Int(0)), args.Error(1)
+}
+
 func (m *MockInvitationRepository) Revoke(ctx context.Context, id, businessID uuid.UUID) error {
 	return m.Called(ctx, id, businessID).Error(0)
 }

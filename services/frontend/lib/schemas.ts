@@ -37,7 +37,7 @@ type ValidationTranslator = (
 export function createLoginSchema(t: ValidationTranslator) {
   const minChars = (count: number) => t('minChars', { count });
   return z.object({
-    email: z.string().email(t('email')).max(EMAIL_MAX_LEN),
+    email: z.string().trim().toLowerCase().email(t('email')).max(EMAIL_MAX_LEN),
     password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
   });
 }
@@ -52,7 +52,7 @@ export function createRegisterSchema(t: ValidationTranslator) {
         .string()
         .min(NAME_MIN_LEN, minChars(NAME_MIN_LEN))
         .max(NAME_MAX_LEN, maxChars(NAME_MAX_LEN)),
-      email: z.string().email(t('email')).max(EMAIL_MAX_LEN),
+      email: z.string().trim().toLowerCase().email(t('email')).max(EMAIL_MAX_LEN),
       password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
       confirmPassword: z.string(),
       acceptTosPrivacy: z.literal(true, { message: consentRequiredMessage }),

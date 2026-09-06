@@ -253,6 +253,12 @@ type InvitationRepository interface {
 	CountPendingByBusinessInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) (int, error)
 	// Revoke scopes by businessID — 404 on cross-tenant mismatch.
 	Revoke(ctx context.Context, id, businessID uuid.UUID) error
+	// RevokeByCreatorInTx revokes every still-pending invitation one member
+	// created in one business and returns the number of rows revoked. Shares the
+	// caller's tx so losing the invite authority (removal from the organization,
+	// or a role change that drops members.invite) and the revocation of the
+	// tokens issued under it commit together.
+	RevokeByCreatorInTx(ctx context.Context, tx pgx.Tx, businessID, creatorUserID uuid.UUID) (int64, error)
 	MarkAccepted(ctx context.Context, id, accepterUserID uuid.UUID) error
 	// MarkAcceptedInTx MUST share the tx with the membership INSERT for single-use atomicity.
 	MarkAcceptedInTx(ctx context.Context, tx pgx.Tx, id, accepterUserID uuid.UUID) error

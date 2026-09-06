@@ -1324,3 +1324,23 @@ func TestUserService_ChangePassword_WipesRefreshTokens(t *testing.T) {
 	require.NoError(t, gerr)
 	require.Equal(t, otherID.String(), val, "other user's refresh token must survive")
 }
+
+func TestUserService_NormalizesEmail(t *testing.T) {
+	redisClient, _ := setupRedis(t)
+	repo := &mockUserRepository{
+		createFunc: func(_ context.Context, user *domain.User) error {
+			require.Equal(t, "owner@example.com", user.Email)
+			return nil
+		},
+		getByEmailFunc: func(_ context.Context, email string) (*domain.User, error) {
+			require.Equal(t, "owner@example.com", email)
+			return nil, domain.ErrUserNotFound
+		},
+	}
+	svc, err := NewUserService(repo, redisClient, "test-secret-must-be-32bytes-ok!!")
+	require.NoError(t, err)
+	_, err = svc.Register(context.Background(), "  Owner@EXAMPLE.com  ", "Zx9!mK7-qP2w")
+	require.NoError(t, err)
+	_, _, _, err = svc.Login(context.Background(), "  OWNER@example.COM  ", "Zx9!mK7-qP2w")
+	require.ErrorIs(t, err, domain.ErrInvalidCredentials)
+}

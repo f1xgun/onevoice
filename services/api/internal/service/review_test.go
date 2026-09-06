@@ -160,7 +160,7 @@ func TestReply_ShortCircuitsWhenAlreadyReplied(t *testing.T) {
 	nc := &capturingRequester{}
 	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
 
-	require.NoError(t, svc.Reply(context.Background(), biz, "rev-1", "повторный ответ"))
+	require.ErrorIs(t, svc.Reply(context.Background(), biz, "rev-1", "повторный ответ"), domain.ErrReviewAlreadyAnswered)
 	require.Zero(t, nc.calls, "already-replied review must not re-dispatch to the platform")
 	require.Zero(t, repo.updateReplies, "already-replied review must not re-write status")
 }
@@ -184,7 +184,7 @@ func TestReply_ShortCircuitsWhenReplyTextPresent(t *testing.T) {
 	nc := &capturingRequester{}
 	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
 
-	require.NoError(t, svc.Reply(context.Background(), biz, "rev-9", "повторный ответ"))
+	require.ErrorIs(t, svc.Reply(context.Background(), biz, "rev-9", "повторный ответ"), domain.ErrReviewAlreadyAnswered)
 	require.Zero(t, nc.calls, "a review that already carries a reply must not re-dispatch a second public reply")
 	require.Zero(t, repo.updateReplies, "an already-answered review must not re-write status")
 }
@@ -632,4 +632,18 @@ func TestMetaString_NormalizesNumeric(t *testing.T) {
 	if _, ok := metaString(map[string]interface{}{"k": ""}, "k"); ok {
 		t.Error("empty string should return false")
 	}
+}
+
+func TestReply_FailedTextCanBeEdited(t *testing.T) {
+	biz := uuid.New()
+	review := &domain.Review{ID: "failed", BusinessID: biz.String(), Platform: a2a.AgentTelegram,
+		ExternalID: "-100_7", ReplyStatus: domain.ReviewReplyStatusError, ReplyText: "old text",
+		PlatformMeta: map[string]interface{}{"chat_id": float64(-100), "message_id": float64(7)}}
+	repo := &stubReviewRepo{review: review}
+	nc := &capturingRequester{}
+	svc := &reviewService{repo: repo, nc: nc, dispatchTimeout: time.Second}
+	require.NoError(t, svc.Reply(context.Background(), biz, review.ID, "corrected text"))
+	require.Equal(t, 1, nc.calls)
+	require.Equal(t, "corrected text", repo.lastReplyText)
+	require.Equal(t, domain.ReviewReplyStatusReplied, review.ReplyStatus)
 }

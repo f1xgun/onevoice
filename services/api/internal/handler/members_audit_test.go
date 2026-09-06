@@ -69,6 +69,7 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 		membershipRepo:  mr,
 		roleRepo:        rr,
 		userRepo:        ur,
+		invitationRepo:  &recordingInvitationRepo{},
 		businessService: &mockBusinessGetter{},
 		pool:            mockPool,
 		invalidator:     inv,

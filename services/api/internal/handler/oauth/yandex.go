@@ -108,7 +108,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 		BusinessID:   stateData.BusinessID,
 		ActorID:      stateData.UserID,
 		Platform:     a2a.AgentYandexBusiness,
-		ExternalID:   "default",
+		ExternalID:   "pending:" + stateData.BusinessID.String(),
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    &expiresAt,
@@ -117,7 +117,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 		ParsedFormat: service.ParsedFormatOAuthCode,
 	})
 	if err != nil {
-		slog.Error("failed to connect Yandex.Business integration", "error", err)
+		slog.Warn("failed to connect Yandex.Business integration", "error", err)
 		http.Redirect(w, r, "/integrations?error="+connectErrorRedirectCode(err), http.StatusFound)
 		return
 	}

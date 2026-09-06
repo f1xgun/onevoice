@@ -130,7 +130,7 @@ func (s *reviewService) resolveDraftTargets(ctx context.Context, businessID uuid
 			})
 			continue
 		}
-		if review.ReplyStatus == domain.ReviewReplyStatusReplied || review.ReplyText != "" {
+		if review.ReplyStatus == domain.ReviewReplyStatusReplied || (review.ReplyText != "" && review.ReplyStatus != domain.ReviewReplyStatusError) {
 			results = append(results, BatchItemResult{
 				ReviewID: id, Status: BatchItemStatusSkipped, Error: "already_answered",
 			})
@@ -182,7 +182,7 @@ func (s *reviewService) bulkApproveOne(ctx context.Context, businessID uuid.UUID
 	if review.BusinessID != businessID.String() {
 		return BatchItemResult{ReviewID: id, Status: BatchItemStatusSkipped, Error: "not_found"}
 	}
-	if review.ReplyStatus == domain.ReviewReplyStatusReplied || review.ReplyText != "" {
+	if review.ReplyStatus == domain.ReviewReplyStatusReplied || (review.ReplyText != "" && review.ReplyStatus != domain.ReviewReplyStatusError) {
 		return BatchItemResult{ReviewID: id, Status: BatchItemStatusSkipped, Error: "already_answered"}
 	}
 	if !isBulkApprovable(review) {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -46,6 +47,7 @@ type MembersHandler struct {
 	membershipRepo  domain.BusinessMembershipRepository
 	roleRepo        domain.RoleRepository
 	userRepo        domain.UserRepository
+	invitationRepo  domain.InvitationRepository
 	businessService businessGetter
 	pool            poolBeginner
 	invalidator     memberCacheInvalidator
@@ -63,6 +65,7 @@ func NewMembersHandler(
 	mr domain.BusinessMembershipRepository,
 	rr domain.RoleRepository,
 	ur domain.UserRepository,
+	ir domain.InvitationRepository,
 	bs businessGetter,
 	pool poolBeginner,
 	inv memberCacheInvalidator,
@@ -76,6 +79,9 @@ func NewMembersHandler(
 	}
 	if ur == nil {
 		return nil, fmt.Errorf("NewMembersHandler: userRepo cannot be nil")
+	}
+	if ir == nil {
+		return nil, fmt.Errorf("NewMembersHandler: invitationRepo cannot be nil")
 	}
 	if bs == nil {
 		return nil, fmt.Errorf("NewMembersHandler: businessService cannot be nil")
@@ -93,6 +99,7 @@ func NewMembersHandler(
 		membershipRepo:  mr,
 		roleRepo:        rr,
 		userRepo:        ur,
+		invitationRepo:  ir,
 		businessService: bs,
 		pool:            pool,
 		invalidator:     inv,
@@ -169,8 +176,10 @@ func (h *MembersHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 //  1. Open RepeatableRead tx
 //  2. EnsureOwnerExistsAfter (SELECT FOR UPDATE serializes concurrent demotes)
 //  3. repo.UpdateRole (sets role_changed_at + role_changed_by)
-//  4. tx.Commit
-//  5. cache.InvalidateMember — AFTER commit, never before
+//  4. invitationRepo.RevokeByCreatorInTx when the new role drops members.invite
+//     — pending tokens must not outlive the authority that issued them
+//  5. tx.Commit
+//  6. cache.InvalidateMember — AFTER commit, never before
 func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "", authz.PermMembersUpdateRole)
 	if !ok {
@@ -256,6 +265,13 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !slices.Contains(rolePerms, authz.PermMembersInvite) {
+		if _, revokeErr := h.invitationRepo.RevokeByCreatorInTx(r.Context(), tx, bc.BusinessID, targetUserID); revokeErr != nil {
+			writeAuthzInvariantError(r.Context(), w, "update_member_role.revoke_invitations", revokeErr)
+			return
+		}
+	}
+
 	if err := tx.Commit(r.Context()); err != nil {
 		writeAuthzInvariantError(r.Context(), w, "update_member_role.commit", err)
 		return
@@ -295,8 +311,11 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 //  1. Open RepeatableRead tx
 //  2. EnsureOwnerExistsAfter (SELECT FOR UPDATE serializes concurrent removes)
 //  3. repo.DeleteInTx (DELETE inside the same tx)
-//  4. tx.Commit
-//  5. cache.InvalidateMember — AFTER commit, never before
+//  4. invitationRepo.RevokeByCreatorInTx (the removed member's still-pending
+//     invitations die with their membership, as account and organization
+//     deletion already do)
+//  5. tx.Commit
+//  6. cache.InvalidateMember — AFTER commit, never before
 //
 // Returns 204 No Content on success.
 func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
@@ -352,6 +371,12 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	revoked, err := h.invitationRepo.RevokeByCreatorInTx(r.Context(), tx, bc.BusinessID, targetUserID)
+	if err != nil {
+		writeAuthzInvariantError(r.Context(), w, "remove_member.revoke_invitations", err)
+		return
+	}
+
 	if err := tx.Commit(r.Context()); err != nil {
 		writeAuthzInvariantError(r.Context(), w, "remove_member.commit", err)
 		return
@@ -367,6 +392,7 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		"actor_user_id", bc.UserID,
 		"target_user_id", targetUserID,
 		"self_removal", targetUserID == bc.UserID,
+		"invitations_revoked", revoked,
 	)
 
 	w.WriteHeader(http.StatusNoContent)

@@ -247,13 +247,8 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 		return domain.ErrReviewNotFound
 	}
 
-	// Already-answered short-circuit. Guard on ReplyText too, not only the
-	// status: a chat/LLM reply lands the public post and reconciles the stored
-	// review, but an out-of-band path (or a reconcile that set the text before a
-	// status write) can leave a non-empty reply on a still-"pending" row. Either
-	// signal of an existing reply must block a manual re-post.
-	if review.ReplyStatus == domain.ReviewReplyStatusReplied || review.ReplyText != "" {
-		return nil
+	if review.ReplyStatus == domain.ReviewReplyStatusReplied || (review.ReplyText != "" && review.ReplyStatus != domain.ReviewReplyStatusError) {
+		return domain.ErrReviewAlreadyAnswered
 	}
 
 	if err := s.gateBusiness(ctx, businessID); err != nil {

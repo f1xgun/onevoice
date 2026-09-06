@@ -406,6 +406,8 @@ type googleLocation struct {
 // collapses to the generic connect_failed the callbacks already used.
 func connectErrorRedirectCode(err error) string {
 	switch {
+	case errors.Is(err, domain.ErrIntegrationClaimedByOtherTenant):
+		return "already_connected"
 	case errors.Is(err, domain.ErrActorEmailNotVerified):
 		return "email_verification_required"
 	case errors.Is(err, domain.ErrActorPendingDeletion):
