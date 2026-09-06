@@ -27,7 +27,8 @@ Backed by Redis. Defaults surfaced as env vars and passed to `Setup` via a `Rate
 | Field | Env var | Why this budget |
 |---|---|---|
 | `Register` | `RATE_LIMIT_REGISTER` | Tightest — automated signup abuse is the primary cost of getting this wrong. |
-| `Login` | `RATE_LIMIT_LOGIN` | Looser than register to absorb retry storms after backend hiccups. Also reused for `/auth/refresh` and the public invitation preview (same threat model). |
+| `Login` | `RATE_LIMIT_LOGIN` | Looser than register to absorb retry storms after backend hiccups. Also reused for the public invitation preview (same threat model). |
+| `Refresh` | `RATE_LIMIT_REFRESH` | Separate per-IP budget for `/auth/refresh`. Each authenticated page load uses a refresh, so its higher limit accommodates tabs and users sharing an egress IP. |
 | `Chat` | `RATE_LIMIT_CHAT` | Per-user budget for `POST /chat/{conversationID}` (scope `chat`). |
 | `HITL` | `RATE_LIMIT_HITL` | Per-user budget for `/chat/{id}/resume` on its own scope (`hitl`), so this budget governs an independent bucket from `chat`. |
 | `Consents` | `RATE_LIMIT_CONSENTS` | Per-user budget for `/auth/consents` + `/users/me/consents/pdn/withdraw`. GET stays unthrottled. |
@@ -38,7 +39,7 @@ Backed by Redis. Defaults surfaced as env vars and passed to `Setup` via a `Rate
 
 - `POST /auth/register` — chi rate-limit `Register`.
 - `POST /auth/login` — chi rate-limit `Login`. When `lock != nil`, `middleware.LockoutMiddleware` is layered **before** the rate limit so a locked account returns `423` (with `retry_after_seconds`) rather than `429`. When `lock == nil` the legacy rate-limit-only path is used (graceful disable when Redis is unavailable at boot).
-- `POST /auth/refresh` — chi rate-limit `Login`.
+- `POST /auth/refresh` — chi rate-limit `Refresh`.
 - `POST /auth/password-reset/request` — no chi rate-limit wrapper. The handler does its own per-email Redis rate-limit inside the service so the timing-parity contract is enforced uniformly. A chi rate-limit here would short-circuit before the service runs and skew the unknown-email branch.
 - `POST /auth/password-reset/confirm` — no GET handler. The frontend renders the page off `?token=…` and the user must explicitly POST after clicking the reveal CTA — scanner-protection (Outlook Safe Links / Yandex 360 link prefetch cannot consume the token via GET).
 - `POST /auth/verify-email/confirm` — public (no JWT). The verify-email page is reachable when the user is logged out (e.g. clicks the link in another browser). Returns `204` with **no** `Set-Cookie` / session material. No GET handler — same scanner-protection as password-reset.

@@ -5,9 +5,16 @@ import type { ReactNode } from 'react';
 import messages from '@/messages/ru.json';
 
 const push = vi.fn();
+const replace = vi.fn();
+const refresh = vi.fn();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace, refresh }),
+}));
+
+const logoutMock = vi.fn(() => Promise.resolve());
+vi.mock('@/lib/hooks/useLogout', () => ({
+  useLogout: () => logoutMock,
 }));
 
 import OnboardingPage from '../page';
@@ -22,6 +29,8 @@ function wrap(node: ReactNode) {
 
 beforeEach(() => {
   push.mockReset();
+  replace.mockReset();
+  logoutMock.mockClear();
 });
 
 describe('OnboardingPage', () => {
@@ -70,5 +79,17 @@ describe('OnboardingPage', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Неверный формат ссылки')
     );
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it('offers a way out: logout revokes the session and routes to /login', async () => {
+    render(wrap(<OnboardingPage />));
+    fireEvent.click(screen.getByRole('button', { name: /Выйти/ }));
+    await waitFor(() => expect(logoutMock).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/login');
+  });
+
+  it('offers the language switcher so the page is not locale-locked', () => {
+    render(wrap(<OnboardingPage />));
+    expect(screen.getByRole('button', { name: 'Language' })).toBeInTheDocument();
   });
 });

@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { refreshAccessToken } from '@/lib/api/authFetch';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { HTTP_STATUS } from '@/lib/constants/httpStatus';
+import { Button } from '@/components/ui/button';
 import { trackEvent } from '@/lib/telemetry';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Sidebar } from '@/components/sidebar';
@@ -41,17 +44,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const tSidebar = useTranslations('sidebar');
+  const tSession = useTranslations('auth.session');
   const { setAuth } = useAuthStore();
   const [ready, setReady] = useState(false);
+  const [sessionError, setSessionError] = useState(false);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
   const isDesktop = useIsDesktop();
-  const isMounted = useRef(true);
 
   useEffect(() => {
-    isMounted.current = true;
     const controller = new AbortController();
 
+    setSessionError(false);
     const accessToken = useAuthStore.getState().accessToken;
-    if (accessToken) {
+    if (accessToken && sessionAttempt === 0) {
       setReady(true);
       // The login/register response carries only a minimal user (no
       // emailVerified / deletion / reconsent state). Hydrate the full
@@ -62,37 +67,42 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       api
         .get(API_PATHS.AUTH.ME, { signal: controller.signal })
         .then((res) => {
-          if (!isMounted.current) return;
+          if (controller.signal.aborted) return;
           setAuth(res.data, useAuthStore.getState().accessToken!);
         })
         .catch(() => {});
     } else {
-      api
-        .post('/auth/refresh', {}, { signal: controller.signal })
-        .then((res) => {
-          if (!isMounted.current) return;
-          useAuthStore.getState().setAccessToken(res.data.accessToken);
-          return api.get(API_PATHS.AUTH.ME, { signal: controller.signal });
-        })
-        .then((res) => {
-          if (!isMounted.current || !res) return;
+      async function restoreSession() {
+        try {
+          if (!accessToken) await refreshAccessToken();
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          if (status === HTTP_STATUS.UNAUTHORIZED) {
+            router.replace('/login');
+          } else {
+            setSessionError(true);
+          }
+          return;
+        }
+        if (controller.signal.aborted) return;
+        try {
+          const res = await api.get(API_PATHS.AUTH.ME, { signal: controller.signal });
+          if (controller.signal.aborted) return;
           setAuth(res.data, useAuthStore.getState().accessToken!);
           setReady(true);
-        })
-        .catch((_err: unknown) => {
-          if (controller.signal.aborted) return;
-          if (isMounted.current) {
-            router.replace('/login');
-          }
-        });
+        } catch {
+          if (!controller.signal.aborted) setSessionError(true);
+        }
+      }
+      void restoreSession();
     }
 
     return () => {
-      isMounted.current = false;
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // mount-only: reads auth state once on load
+  }, [sessionAttempt]);
 
   useEffect(() => {
     if (ready) {
@@ -110,6 +120,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     window.addEventListener('keydown', onKeydown);
     return () => window.removeEventListener('keydown', onKeydown);
   }, []);
+
+  if (sessionError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-sm text-ink-mid">{tSession('refreshFailed')}</p>
+        <Button type="button" onClick={() => setSessionAttempt((n) => n + 1)}>
+          {tSession('retry')}
+        </Button>
+      </div>
+    );
+  }
 
   if (!ready) {
     return null;

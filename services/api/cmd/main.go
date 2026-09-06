@@ -175,6 +175,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	rateLimits := router.RateLimits{
 		Register:    cfg.RateLimitRegister,
 		Login:       cfg.RateLimitLogin,
+		Refresh:     cfg.RateLimitRefresh,
 		Chat:        cfg.RateLimitChat,
 		HITL:        cfg.RateLimitHITL,
 		Consents:    cfg.RateLimitConsents,

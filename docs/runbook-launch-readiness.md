@@ -149,7 +149,7 @@ Phase 23-04 wires lockout + SmartCaptcha on `/auth/login`. Pre-deploy gate:
 - [ ] `TRUSTED_PROXY_CIDRS` matches the production load balancer's published IP ranges. If empty, `X-Forwarded-For` is NEVER trusted (default — fail-closed).
 - [ ] `SMARTCAPTCHA_SITE_KEY` + `SMARTCAPTCHA_SECRET_KEY` + `NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY` all set with non-placeholder values from the Yandex Cloud SmartCaptcha console. If any is empty, the captcha tier (4-9 failed attempts) silently becomes a no-op (boot warning logged) — TierLocked (10+) still gates brute force but the soft-block tier provides zero rate-limit gain.
 - [ ] Manual smoke test: 4 wrong-password attempts surface the captcha widget on /login; 10 wrong attempts trip 423 + `code:account_locked` + `Retry-After: <seconds>` header.
-- [ ] `RATE_LIMIT_REGISTER` (default 5/min) and `RATE_LIMIT_LOGIN` (default 10/min) set appropriately.
+- [ ] `RATE_LIMIT_REGISTER` (default 5/min), `RATE_LIMIT_LOGIN` (default 10/min) and `RATE_LIMIT_REFRESH` (default 60/min) set appropriately. Raise `RATE_LIMIT_REFRESH` when many users share one egress IP — each authenticated page load spends one refresh.
 
 ## 10. References
 
