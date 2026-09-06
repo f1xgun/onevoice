@@ -171,6 +171,8 @@ services:
       start_period: 30s
 
   frontend:
+    environment:
+      - LANDING_ENTRY_MODE=${LANDING_ENTRY_MODE:-hybrid}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:3000/"]
       interval: 30s

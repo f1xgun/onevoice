@@ -1374,7 +1374,9 @@
       "logoMark": "OV",
       "wordmark": "OneVoice",
       "pricing": "Pricing",
-      "waitlist": "Join the waitlist"
+      "waitlist": "Join the waitlist",
+      "register": "Register",
+      "start": "Start free"
     },
     "hero": {
       "kicker": "OneVoice",
@@ -1385,8 +1387,13 @@
       "body": "Telegram, VK, Yandex.Business — all in one inbox. OneVoice drafts replies, prepares posts for every channel, and keeps reviews in plain sight while you focus on your work.",
       "cta": "Join the waitlist",
       "secondary": "See how it works",
-      "betaBadge": "Closed beta · autumn 2026",
-      "betaNote": "Connect during the beta and the discounted Pro price stays locked in for a year."
+      "betaBadge": "Early access · onboarding in waves",
+      "betaNote": "Connect during the beta and the discounted Pro price stays locked in for a year. Registration is already open: try drafts today; during beta we connect channels together with you and respond within one business day.",
+      "accessLine": "Already have access?",
+      "login": "Log in",
+      "register": "Register",
+      "start": "Start free",
+      "audience": "For cafés, salons, workshops and clinics."
     },
     "preview": {
       "url": "onevoice.app/inbox",
@@ -1573,12 +1580,13 @@
           "features": {
             "0": "One organization",
             "1": "Monitoring across every channel: new reviews and data mismatches, with notifications",
-            "2": "About 10 AI actions a month: a post, a review reply, or a listing fix"
-          }
+            "2": "About 12 AI actions per month"
+          },
+          "note": "No card required. About 12 AI actions per month. During beta we connect channels together with you."
         },
         "pro": {
           "name": "Pro",
-          "price": "3,990–4,990 ₽",
+          "price": "3 990–4 990 ₽",
           "period": "per location, monthly",
           "betaTag": "Connect during the beta and your discounted price locks in for a year",
           "features": {
@@ -1598,6 +1606,12 @@
             "2": "For chains and agencies"
           }
         }
+      },
+      "actions": {
+        "start": "Start free",
+        "waitlist": "Join the waitlist",
+        "betaAccess": "Get beta access",
+        "contact": "Contact us"
       }
     },
     "faq": {
@@ -1658,7 +1672,8 @@
         "label": "Done",
         "title": "You're on the list",
         "body": "We'll write when your wave opens. In the meantime, follow our Telegram channel: we run it through OneVoice itself and show how everything works.",
-        "cta": "Open the Telegram channel"
+        "cta": "Open the Telegram channel",
+        "registerCta": "Prefer not to wait? Try it now"
       }
     },
     "channelVote": {

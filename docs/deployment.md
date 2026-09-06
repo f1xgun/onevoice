@@ -382,3 +382,12 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 - [ ] Health endpoint returns 200.
 - [ ] DB backup cron job installed on the host.
 - [ ] `REVIEW_DRAFT_ENABLED=false` unless LLM budget is intentional.
+
+### Landing entry deploy checklist
+
+- [ ] Verify `LANDING_ENTRY_MODE` (default `hybrid`), legal entity details, weekly
+      onboarding quota and rollback readiness using the
+      [founder runbook](runbook-founder-manual-actions.md#гибридный-вход-на-лендинге).
+      Apply mode changes with the existing frontend image and updated runtime
+      environment; no rebuild. See [frontend configuration](frontend-config.md)
+      for the distinction between a process restart and Compose recreation.

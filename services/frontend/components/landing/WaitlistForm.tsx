@@ -25,6 +25,7 @@ import { createWaitlistSchema, type WaitlistInput } from '@/lib/schemas';
 import { joinWaitlist, type WaitlistPayload } from '@/lib/api/waitlist';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { TELEGRAM_CHANNEL_URL } from '@/lib/constants/landing';
+import type { LandingEntryProps } from '@/lib/landing-entry';
 import { legalDocHref } from '@/lib/legal/routes';
 
 // Option values mirror the backend WaitlistRequest enums. Labels resolve from
@@ -32,7 +33,7 @@ import { legalDocHref } from '@/lib/legal/routes';
 const SPHERE_OPTIONS = ['cafe', 'beauty', 'services', 'retail', 'other'] as const;
 const PAIN_OPTIONS = ['reviews', 'posts', 'card'] as const;
 
-export function WaitlistForm() {
+export function WaitlistForm({ mode }: LandingEntryProps) {
   const t = useTranslations('landing.waitlist');
   const tValidation = useTranslations('validation');
   const schema = useMemo(() => createWaitlistSchema(tValidation), [tValidation]);
@@ -83,6 +84,13 @@ export function WaitlistForm() {
             </a>
           </Button>
         </div>
+        {mode !== 'waitlist_only' && (
+          <Button asChild variant="secondary" className="mt-4 h-auto whitespace-normal text-center">
+            <Link href="/register" data-cta="waitlist-success-register">
+              {t('success.registerCta')}
+            </Link>
+          </Button>
+        )}
       </div>
     );
   }
