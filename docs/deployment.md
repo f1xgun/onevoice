@@ -106,11 +106,14 @@ cp .env.example .env
 Open `.env` and fill in **every blank required field**. The file is the single source of truth — every section is annotated inline.
 
 > **How `.env` reaches the containers.** Compose reads `.env` only to interpolate
-> `${VAR}` references; nothing is injected automatically. A variable reaches a
-> service only if that service's `environment:` block in `docker-compose.yml`
-> names it. `make lint-compose-env` (part of `make lint-all` and CI) fails when a
-> service reads an env var compose does not pass, so a new setting cannot ship
-> without its plumbing.
+> `${VAR}` references; nothing is injected automatically. The base
+> `docker-compose.yml` passes variables through each service's `environment:`
+> mapping. `make lint-compose-env` (part of `make lint-all` and CI) checks detected,
+> non-ignored literal env reads in service Go sources against those mappings.
+> It excludes test files and shared packages, and does not cover dynamic or
+> indirect reads, other formatting, or other env-reading helpers. It does not
+> account for `env_file`, image defaults, or Compose overrides, so it is not a
+> complete env audit.
 
 Set `APP_ENV=production` for any real deployment: it switches on the fail-closed
 gates (LEGAL_* validation, LLM data-residency, mandatory internal mTLS and

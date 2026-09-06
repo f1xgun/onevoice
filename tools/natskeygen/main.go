@@ -28,8 +28,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/f1xgun/onevoice/pkg/natsauth"
 	"github.com/nats-io/nkeys"
+
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 )
 
 // File modes for the generated material.
@@ -190,7 +191,7 @@ func serviceKey(path string, refresh bool) (nkeys.KeyPair, error) {
 	if !refresh {
 		return nkeys.CreateUser()
 	}
-	seed, err := os.ReadFile(path)
+	seed, err := os.ReadFile(path) //nolint:gosec // The operator selects the seed directory via the CLI -out flag.
 	if err != nil {
 		return nil, fmt.Errorf("read existing seed %q: %w", path, err)
 	}
