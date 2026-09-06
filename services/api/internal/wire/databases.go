@@ -245,15 +245,17 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 
 	// Boot self-test: a single Encrypt call confirms SA binding is reachable
+	// AND that the primary KMS version resolves to a persistable key_version
 	// before the API serves traffic.
 	testCtx, testCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer testCancel()
-	if err := kmsSelfTest(testCtx, kmsClient); err != nil {
+	versionMap, versionErr := resolveKMSVersionMap(testCtx, kmsClient, cfg.TokenEncryptionKMSVersionMap, log)
+	if versionErr != nil {
 		h.Close()
-		return nil, err
+		return nil, versionErr
 	}
 
-	h.Envelope = crypto.NewEnvelope(kmsClient, legacyEnc, cfg.TokenEncryptionKMSKeyID, cfg.TokenEncryptionKMSVersionMap)
+	h.Envelope = crypto.NewEnvelope(kmsClient, legacyEnc, cfg.TokenEncryptionKMSKeyID, versionMap)
 	log.Info("kms client initialized", "key_id", cfg.TokenEncryptionKMSKeyID)
 
 	if cfg.NATSUrl != "" {
@@ -300,14 +302,63 @@ func resilientNATSOptions(log *slog.Logger) []natslib.Option {
 	return append(opts, authOpts...)
 }
 
-// kmsSelfTest performs a single Encrypt call against the KMS client to
-// confirm the service account binding is reachable before the API begins
-// serving traffic. It returns a wrapped error on failure and nil on success.
-func kmsSelfTest(ctx context.Context, kms crypto.KMSEncrypter) error {
-	if _, _, err := kms.Encrypt(ctx, []byte("ovv-boot-canary"), nil); err != nil {
-		return fmt.Errorf("wire: kms self-test failed (check SA kms.keys.encrypterDecrypter binding): %w", err)
+// defaultKMSKeyVersion is the key_version persisted for the KMS primary version
+// on a single-version deployment (TOKEN_ENCRYPTION_KMS_VERSION_MAP left empty,
+// as .env.example documents). cmd/rekey's minimum --target-version is 1, so the
+// derived mapping is also the version a first legacy → envelope rekey targets.
+const defaultKMSKeyVersion int16 = 1
+
+// resolveKMSVersionMap performs the boot self-test — a single Encrypt call that
+// confirms the service-account binding is reachable — and returns the version
+// map the Envelope must be constructed with.
+//
+// The Encrypt response carries the KMS primary version ID, i.e. exactly the
+// version every later EncryptToken/EncryptForRow call resolves against. Envelope
+// fails closed on an unmapped version (crypto.ErrUnmappedKMSVersion), so a
+// version missing from the map turns every integration write into a 500 while
+// the API still boots green. Resolving it here removes that gap:
+//
+//   - configured map already covers the primary version → used as-is;
+//   - configured map non-empty but missing it → boot fails with the version ID
+//     the operator must add;
+//   - no map configured (documented single-version setup) → the primary version
+//     is auto-derived to defaultKMSKeyVersion.
+//
+// An empty version ID (adapters that do not surface one) needs no mapping —
+// crypto.Envelope already resolves it to key_version 0.
+func resolveKMSVersionMap(
+	ctx context.Context,
+	kms crypto.KMSEncrypter,
+	configured map[string]int16,
+	log *slog.Logger,
+) (map[string]int16, error) {
+	_, versionID, err := kms.Encrypt(ctx, []byte("ovv-boot-canary"), nil)
+	if err != nil {
+		return nil, fmt.Errorf("wire: kms self-test failed (check SA kms.keys.encrypterDecrypter binding): %w", err)
 	}
-	return nil
+
+	resolved := make(map[string]int16, len(configured)+1)
+	for id, version := range configured {
+		resolved[id] = version
+	}
+	if versionID == "" {
+		return resolved, nil
+	}
+	if _, ok := resolved[versionID]; ok {
+		return resolved, nil
+	}
+	if len(resolved) > 0 {
+		return nil, fmt.Errorf(
+			"wire: KMS primary version %q is missing from TOKEN_ENCRYPTION_KMS_VERSION_MAP — add %q=<int16> (or clear the variable on a single-version setup); every integration write would fail with %w",
+			versionID, versionID, crypto.ErrUnmappedKMSVersion,
+		)
+	}
+	resolved[versionID] = defaultKMSKeyVersion
+	log.Info("kms version map derived from primary version",
+		"version_id", versionID,
+		"key_version", defaultKMSKeyVersion,
+	)
+	return resolved, nil
 }
 
 // runOrphanReconcile sweeps stale pending_tool_calls batches after startup
