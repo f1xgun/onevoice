@@ -329,6 +329,7 @@
   },
   "chat": {
     "heading": "Chats",
+    "fallbackDate": "Chat from {date}",
     "newConversation": "New chat",
     "noConversations": "No chats",
     "newConversationCta": "Start a new chat with the AI assistant",
@@ -712,6 +713,10 @@
             "name": "Reply to Google review",
             "description": "Replies to a customer review in Google Business Profile."
           }
+        },
+        "get_review_stats": {
+          "name": "Review statistics",
+          "description": "Summarizes organization reviews: counts, response rate, average rating and recent activity."
         },
         "generate_image": {
           "name": "Generate image",

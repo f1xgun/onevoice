@@ -67,3 +67,9 @@ Defence-in-depth: both methods return `domain.ErrInvalidScope` immediately when 
 - [docs/architecture.md](../../architecture.md)
 - [docs/services/conversation.md](../../services/conversation.md) — service-layer composition (`MoveToProject`, `OpenChat`).
 - [docs/services/titler.md](../../services/titler.md) — handler-level rename grace window and sovereign-rename contract.
+
+An empty title passed to `UpdateTitleIfPending` is the terminal fallback marker.
+The atomic write persists both `title: ""` and `title_status: "auto"`; no
+localized text or historical rewrite is needed. Nonempty model titles use the
+same generated status. Search title projections preserve title status and
+creation time so clients can localize fallback display without altering storage.

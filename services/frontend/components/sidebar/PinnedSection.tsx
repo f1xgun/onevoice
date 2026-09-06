@@ -5,6 +5,7 @@ import type { RefObject } from 'react';
 import Link from 'next/link';
 import { Bookmark, ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { cn } from '@/lib/utils';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
 import { ProjectChip } from '@/components/chat/ProjectChip';
@@ -46,7 +47,7 @@ export function PinnedSection({
   onNavigate,
 }: Props) {
   const tSide = useTranslations('sidebar');
-  const tChat = useTranslations('chat');
+  const getDisplayTitle = useConversationDisplayTitle();
   const [collapsed, setCollapsed] = useState(false);
 
   const count = conversations.length;
@@ -98,7 +99,7 @@ export function PinnedSection({
                       : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                   )}
                 >
-                  <span className="flex-1 truncate">{conv.title || tChat('newConversation')}</span>
+                  <span className="flex-1 truncate">{getDisplayTitle(conv)}</span>
                 </Link>
                 {/* Only chats with a real project get the mini chip.
                     Sibling of the row Link (not nested) to avoid <a in a>. */}
@@ -112,7 +113,7 @@ export function PinnedSection({
                     <button
                       type="button"
                       aria-label={tSide('chatRowMenuAria', {
-                        title: conv.title || tChat('newConversation'),
+                        title: getDisplayTitle(conv),
                       })}
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition-opacity hover:bg-gray-700 hover:text-white focus-visible:opacity-100 group-hover/row:opacity-100"
                     >

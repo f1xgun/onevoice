@@ -1,3 +1,5 @@
+import type { TitleStatus } from '@/lib/conversations';
+
 /** search result type, mirrors backend service.SearchResult.
  *
  * Backend: `services/api/internal/service/search.go SearchResult` (camelCase JSON,
@@ -9,6 +11,8 @@
  * is NEVER carried in the request body.
  */
 export interface SearchResult {
+  titleStatus?: TitleStatus;
+  createdAt?: string;
   conversationId: string;
   /** Empty string when this row matched only on message content, no title hit. */
   title: string;

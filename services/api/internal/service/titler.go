@@ -122,7 +122,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"duration_ms", time.Since(metricStart).Milliseconds(),
 			"error", err,
 		)
-		t.settleFallback(ctx, businessID, conversationID, promptLen, tag, "llm_error")
+		t.settleFallback(ctx, businessID, conversationID, promptLen, "llm_error")
 		return
 	}
 
@@ -137,12 +137,12 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"rejected_by", "empty_response",
 			"duration_ms", time.Since(metricStart).Milliseconds(),
 		)
-		t.settleFallback(ctx, businessID, conversationID, promptLen, tag, "empty_response")
+		t.settleFallback(ctx, businessID, conversationID, promptLen, "empty_response")
 		return
 	}
 
 	if class, hit := security.ContainsPIIClass(title); hit {
-		terminalTitle := untitledChatLocalized(time.Now(), tag)
+		terminalTitle := ""
 		slog.WarnContext(ctx, "auto-title: pii rejected",
 			"conversation_id", conversationID,
 			"business_id", businessID,
@@ -214,15 +214,15 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 	recordAttempt("success", "ok")
 }
 
-// settleFallback writes the localized "Untitled chat" fallback via the same
+// settleFallback writes an empty title with the generated status as a language-neutral fallback via the same
 // atomic UpdateTitleIfPending used by the PII-reject path, flipping the row off
 // title_status=auto_pending so the chat-turn fire-gate stops re-spawning (and
 // re-billing) the titler on every subsequent turn after a transient failure.
 // outcome is the originating failure reason ("llm_error" | "empty_response")
 // used for the metric label; on a successful settle the recorded outcome
 // becomes that reason, on a no-op/error it records the settle-write result.
-func (t *Titler) settleFallback(ctx context.Context, businessID, conversationID string, promptLen int, tag language.Tag, outcome string) {
-	fallbackTitle := untitledChatLocalized(time.Now(), tag)
+func (t *Titler) settleFallback(ctx context.Context, businessID, conversationID string, promptLen int, outcome string) {
+	fallbackTitle := ""
 	if writeErr := t.repo.UpdateTitleIfPending(ctx, conversationID, fallbackTitle); writeErr != nil {
 		if errors.Is(writeErr, domain.ErrConversationNotFound) {
 			slog.InfoContext(ctx, "auto-title: fallback no-op (manual rename or deleted)",
@@ -260,32 +260,4 @@ func sanitizeTitle(raw string) string {
 		s = string(runes[:titleMaxChars])
 	}
 	return s
-}
-
-// untitledChatRussian returns the RU terminal-fallback title (kept for test compatibility).
-// See docs/services/titler.md.
-func untitledChatRussian(t time.Time) string {
-	months := [12]string{
-		"января", "февраля", "марта", "апреля", "мая", "июня",
-		"июля", "августа", "сентября", "октября", "ноября", "декабря",
-	}
-	return fmt.Sprintf("Без названия %d %s", t.Day(), months[t.Month()-1])
-}
-
-// untitledChatEnglish returns the EN terminal-fallback title (e.g. "Untitled chat April 26").
-func untitledChatEnglish(t time.Time) string {
-	months := [12]string{
-		"January", "February", "March", "April", "May", "June",
-		"July", "August", "September", "October", "November", "December",
-	}
-	return fmt.Sprintf("Untitled chat %s %d", months[t.Month()-1], t.Day())
-}
-
-// untitledChatLocalized dispatches to the per-locale terminal-fallback.
-// See docs/services/titler.md.
-func untitledChatLocalized(t time.Time, tag language.Tag) string {
-	if tag == language.English {
-		return untitledChatEnglish(t)
-	}
-	return untitledChatRussian(t)
 }

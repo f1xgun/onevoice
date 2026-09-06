@@ -19,6 +19,8 @@ const (
 
 // SearchResult is the per-conversation row returned by Searcher.Search. JSON tags drive GET /api/v1/search.
 type SearchResult struct {
+	TitleStatus    string     `json:"titleStatus,omitempty"`
+	CreatedAt      *time.Time `json:"createdAt,omitempty"`
 	ConversationID string     `json:"conversationId"`
 	Title          string     `json:"title,omitempty"`
 	ProjectID      *string    `json:"projectId,omitempty"`
@@ -112,6 +114,8 @@ func mergeAndRank(
 		byID[t.ID] = &SearchResult{
 			ConversationID: t.ID,
 			Title:          t.Title,
+			TitleStatus:    t.TitleStatus,
+			CreatedAt:      &t.CreatedAt,
 			ProjectID:      t.ProjectID,
 			Score:          t.Score * titleW,
 			LastMessageAt:  t.LastMessageAt,

@@ -1,0 +1,202 @@
+[
+  {
+    "name": "generate_image",
+    "platform": "internal",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "get_review_stats",
+    "platform": "internal",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "google_business__get_reviews",
+    "platform": "google_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "google_business__reply_review",
+    "platform": "google_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "telegram__get_reviews",
+    "platform": "telegram",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "telegram__reply_to_comment",
+    "platform": "telegram",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "telegram__send_channel_photo",
+    "platform": "telegram",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "telegram__send_channel_post",
+    "platform": "telegram",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "telegram__send_notification",
+    "platform": "telegram",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__delete_comment",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__get_comments",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__get_community_info",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__get_wall_posts",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__post_photo",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__publish_post",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__reply_comment",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__schedule_post",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "vk__update_group_info",
+    "platform": "vk",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "yandex_business__create_post",
+    "platform": "yandex_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "yandex_business__get_info",
+    "platform": "yandex_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "yandex_business__get_reviews",
+    "platform": "yandex_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "yandex_business__reply_review",
+    "platform": "yandex_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "yandex_business__update_hours",
+    "platform": "yandex_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "yandex_business__update_info",
+    "platform": "yandex_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  },
+  {
+    "name": "yandex_business__upload_photo",
+    "platform": "yandex_business",
+    "floor": "manual",
+    "editableFields": [],
+    "displayName": "Русское название",
+    "userDescription": "Русское описание"
+  }
+]

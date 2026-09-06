@@ -313,3 +313,24 @@ func TestSearcher_LogShape_NoQueryText(t *testing.T) {
 	assert.NotContains(t, logs, "query=конфиденциальныйпоиск42",
 		"query text leaked into logs")
 }
+
+func TestMergeAndRank_PreservesTitleDisplayMetadata(t *testing.T) {
+	createdAt := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct{ title, status string }{
+		{"", domain.TitleStatusAuto},
+		{"Без названия 6 сентября", domain.TitleStatusAuto},
+		{"Без названия 6 сентября", domain.TitleStatusManual},
+		{"Model title", domain.TitleStatusAuto},
+	} {
+		t.Run(tc.status+"/"+tc.title, func(t *testing.T) {
+			results := mergeAndRank([]domain.ConversationTitleHit{{
+				ID: "conversation", Title: tc.title, TitleStatus: tc.status, CreatedAt: createdAt,
+			}}, nil, titleHitWeight, messageHitWeight, 20, nil)
+			require.Len(t, results, 1)
+			assert.Equal(t, tc.title, results[0].Title)
+			assert.Equal(t, tc.status, results[0].TitleStatus)
+			require.NotNil(t, results[0].CreatedAt)
+			assert.Equal(t, createdAt, *results[0].CreatedAt)
+		})
+	}
+}

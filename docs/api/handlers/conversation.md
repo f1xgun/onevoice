@@ -224,3 +224,22 @@ opaque shape. Repo errors are logged at ERROR with `error`,
 (auto-attached by the slog middleware); they are NEVER surfaced to the
 client because a `pgx`/`mongo` error message would disclose SQL/Mongo
 shape and schema metadata to a probing caller.
+
+### Fallback title read contract
+
+Conversation reads expose the existing `title`, `titleStatus`, and `createdAt`
+fields. A settled fallback is stored as `title: ""` with `titleStatus: "auto"`.
+This language-neutral marker is written by the same conditional update as model
+titles, so manual renames win races and failed generation does not repeat.
+Clients render the fallback from `createdAt` in their current locale (UTC date):
+«Чат от 6 сентября» / “Chat from 6 September”. Pending titles remain “New chat”.
+
+Stored historical titles are not migrated or rewritten. At display time only,
+clients recognize the complete generated shapes `Без названия D <RU month>`,
+`Untitled chat D <RU month>`, and `Untitled chat <EN month> D`, with valid
+calendar days and exact month names. Manual titles bypass this detection.
+All other user and model titles are displayed verbatim. Historical generated
+titles have no separate fallback provenance, so exact shape collisions among
+non-manual titles cannot be distinguished. Search title hits also expose
+`titleStatus` and `createdAt`; message-only hits retain their existing empty-title
+contract.

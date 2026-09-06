@@ -604,17 +604,20 @@ func TestUpdateTitleIfPending(t *testing.T) {
 		initialStatus   string
 		wantSuccess     bool
 		wantStatusAfter string
+		title           string
 	}{
-		{"success: status=auto_pending", domain.TitleStatusAutoPending, true, domain.TitleStatusAuto},
-		{"success: status=null/empty (legacy row)", "", true, domain.TitleStatusAuto},
-		{"no-op: status=manual (race lost)", domain.TitleStatusManual, false, domain.TitleStatusManual},
-		{"no-op: status=auto (already terminal)", domain.TitleStatusAuto, false, domain.TitleStatusAuto},
+		{"success: status=auto_pending", domain.TitleStatusAutoPending, true, domain.TitleStatusAuto, "Generated Title"},
+		{"success: status=null/empty (legacy row)", "", true, domain.TitleStatusAuto, "Generated Title"},
+		{"no-op: status=manual (race lost)", domain.TitleStatusManual, false, domain.TitleStatusManual, "Generated Title"},
+		{"no-op: status=auto (already terminal)", domain.TitleStatusAuto, false, domain.TitleStatusAuto, "Generated Title"},
+		{"empty fallback marker", domain.TitleStatusAutoPending, true, domain.TitleStatusAuto, ""},
+		{"fallback preserves manual title", domain.TitleStatusManual, false, domain.TitleStatusManual, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			id := insertConvWithStatus(t, db, c.initialStatus)
 
-			err := repo.UpdateTitleIfPending(ctx, id, "Generated Title")
+			err := repo.UpdateTitleIfPending(ctx, id, c.title)
 			if c.wantSuccess {
 				require.NoError(t, err, "want success, got err=%v", err)
 			} else {
@@ -627,7 +630,7 @@ func TestUpdateTitleIfPending(t *testing.T) {
 			assert.Equal(t, c.wantStatusAfter, got.TitleStatus,
 				"title_status mismatch")
 			if c.wantSuccess {
-				assert.Equal(t, "Generated Title", got.Title,
+				assert.Equal(t, c.title, got.Title,
 					"title was not updated on success path")
 			} else {
 				assert.Equal(t, "seed", got.Title,

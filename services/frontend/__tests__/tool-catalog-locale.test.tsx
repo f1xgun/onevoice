@@ -4,30 +4,18 @@ import { IntlClientProvider } from '@/components/IntlClientProvider';
 import { ToolApprovalToggle } from '@/app/(app)/settings/tools/ToolApprovalToggle';
 import en from '@/messages/en.json';
 import ru from '@/messages/ru.json';
+import catalog from './fixtures/tool-catalog.json';
+
+// Tool names snapshot services/orchestrator/internal/wire/tools*.go registrations.
+// Values resolve through pkg/tools/constants.go, independently of translations.
 
 vi.unmock('next-intl');
 
-const catalog = en.agentTasks.displayName.tools;
-const tools = Object.entries(catalog).flatMap(([platform, entries]) =>
-  'name' in entries ? [platform] : Object.keys(entries).map((action) => `${platform}__${action}`)
-);
-
 describe('tool catalog locale', () => {
-  it.each(tools)('localizes the name, description and approval label for %s', (name) => {
+  it.each(catalog)('localizes the name, description and approval label for $name', (tool) => {
     const { container, rerender } = render(
       <IntlClientProvider locale="en" messages={en}>
-        <ToolApprovalToggle
-          tool={{
-            name,
-            platform: 'telegram',
-            floor: 'manual',
-            editableFields: [],
-            displayName: 'Русское название',
-            userDescription: 'Русское описание',
-          }}
-          value="manual"
-          onChange={vi.fn()}
-        />
+        <ToolApprovalToggle tool={{ ...tool, floor: 'manual' }} value="manual" onChange={vi.fn()} />
       </IntlClientProvider>
     );
     expect(container.textContent).not.toMatch(/[А-Яа-яЁё]/);
@@ -36,14 +24,12 @@ describe('tool catalog locale', () => {
     expect(container.querySelectorAll('p')).toHaveLength(2);
     rerender(
       <IntlClientProvider locale="ru" messages={ru}>
-        <ToolApprovalToggle
-          tool={{ name, platform: 'telegram', floor: 'manual', editableFields: [] }}
-          value="manual"
-          onChange={vi.fn()}
-        />
+        <ToolApprovalToggle tool={{ ...tool, floor: 'manual' }} value="manual" onChange={vi.fn()} />
       </IntlClientProvider>
     );
     expect(container.textContent).toMatch(/[А-Яа-яЁё]/);
+    expect(screen.queryByText(tool.displayName)).not.toBeInTheDocument();
+    expect(screen.queryByText(tool.userDescription)).not.toBeInTheDocument();
   });
 
   it('retains server copy for an unknown tool', () => {

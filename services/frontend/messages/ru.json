@@ -329,6 +329,7 @@
   },
   "chat": {
     "heading": "Чаты",
+    "fallbackDate": "Чат от {date}",
     "newConversation": "Новый чат",
     "noConversations": "Нет чатов",
     "newConversationCta": "Начните новый чат с ИИ-ассистентом",
@@ -712,6 +713,10 @@
             "name": "Ответить на отзыв Google",
             "description": "Отвечает на отзыв клиента в Google Business Profile."
           }
+        },
+        "get_review_stats": {
+          "name": "Статистика по отзывам",
+          "description": "Считает сводные показатели по отзывам организации: количество, долю ответов, средний рейтинг и недавнюю активность."
         },
         "generate_image": {
           "name": "Сгенерировать изображение",

@@ -4,6 +4,7 @@ import { memo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bookmark, MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { useBusinessStore } from '@/lib/stores/business';
 import { cn } from '@/lib/utils';
 import {
@@ -55,15 +56,14 @@ interface ChatHeaderProps {
  */
 function useConversationTitle(conversationId: string): string {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  const tChat = useTranslations('chat');
-  const fallback = tChat('newConversation');
+  const getDisplayTitle = useConversationDisplayTitle();
   const { data } = useQuery<Conversation[], Error, string>({
     queryKey: conversationsQueryKey(activeBusinessId),
     queryFn: () => listConversations(activeBusinessId!),
     select: (list) => {
       const conv = list.find((c) => c.id === conversationId);
       if (!conv) return '';
-      return conv.title === '' || conv.titleStatus === 'auto_pending' ? fallback : conv.title;
+      return getDisplayTitle(conv);
     },
     enabled: !!conversationId && !!activeBusinessId,
   });
