@@ -933,6 +933,81 @@ func TestBusinessService_ListMembershipsByUser(t *testing.T) {
 		assert.Contains(t, statuses, "suspended")
 	})
 
+	t.Run("membership whose organization is soft-deleted is skipped", func(t *testing.T) {
+		userID := uuid.New()
+		liveID := uuid.New()
+		deletedID := uuid.New()
+		roleID := uuid.New()
+
+		members := []domain.BusinessMember{
+			{BusinessID: deletedID, UserID: userID, RoleID: roleID, Status: "active"},
+			{BusinessID: liveID, UserID: userID, RoleID: roleID, Status: "active"},
+		}
+		mbrRepo := &listByUserMock{members: members}
+		bizRepo := &mockBusinessRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Business, error) {
+				if id == deletedID {
+					return nil, domain.ErrBusinessNotFound
+				}
+				return &domain.Business{ID: id, Name: "Live Biz"}, nil
+			},
+		}
+		roleRepo := &mockRoleRepository{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Role, error) {
+				return &domain.Role{ID: id, Name: "Owner"}, nil
+			},
+		}
+
+		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, newTestPool(t), audit.Nop())
+		result, err := svc.ListMembershipsByUser(ctx, userID)
+
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, liveID, result[0].BusinessID)
+	})
+
+	t.Run("every organization soft-deleted returns an empty slice", func(t *testing.T) {
+		userID := uuid.New()
+		deletedID := uuid.New()
+
+		mbrRepo := &listByUserMock{members: []domain.BusinessMember{
+			{BusinessID: deletedID, UserID: userID, RoleID: uuid.New(), Status: "active"},
+		}}
+		bizRepo := &mockBusinessRepository{
+			getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+				return nil, domain.ErrBusinessNotFound
+			},
+		}
+
+		svc := NewBusinessService(bizRepo, mbrRepo, &mockRoleRepository{}, newTestPool(t), audit.Nop())
+		result, err := svc.ListMembershipsByUser(ctx, userID)
+
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Empty(t, result)
+	})
+
+	t.Run("non-not-found hydrate error still propagates", func(t *testing.T) {
+		userID := uuid.New()
+		bizID := uuid.New()
+		repoErr := fmt.Errorf("db exploded")
+
+		mbrRepo := &listByUserMock{members: []domain.BusinessMember{
+			{BusinessID: bizID, UserID: userID, RoleID: uuid.New(), Status: "active"},
+		}}
+		bizRepo := &mockBusinessRepository{
+			getByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+				return nil, repoErr
+			},
+		}
+
+		svc := NewBusinessService(bizRepo, mbrRepo, &mockRoleRepository{}, newTestPool(t), audit.Nop())
+		result, err := svc.ListMembershipsByUser(ctx, userID)
+
+		assert.Nil(t, result)
+		assert.ErrorIs(t, err, repoErr)
+	})
+
 	t.Run("repo error from ListByUser propagates wrapped", func(t *testing.T) {
 		repoErr := fmt.Errorf("db error")
 		mbrRepo := &listByUserMock{members: nil, err: repoErr}

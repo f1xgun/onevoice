@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -159,6 +160,12 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 
 // ListMembershipsByUser returns memberships hydrated with business + role names.
 // N+1 is acceptable for v2.0 (<10 memberships typical). See docs/services/business.md.
+//
+// A membership whose organization is no longer readable — soft-deleted inside
+// its 30-day deletion grace window, or already erased — is skipped instead of
+// failing the whole call: one pending-deletion organization must never lock
+// every member out of their remaining organizations (the list feeds the
+// app-wide organization guard).
 func (s *businessService) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipSummary, error) {
 	members, err := s.membershipRepo.ListByUser(ctx, userID)
 	if err != nil {
@@ -171,6 +178,13 @@ func (s *businessService) ListMembershipsByUser(ctx context.Context, userID uuid
 	for _, m := range members {
 		biz, err := s.repo.GetByID(ctx, m.BusinessID)
 		if err != nil {
+			if errors.Is(err, domain.ErrBusinessNotFound) {
+				slog.InfoContext(ctx, "membership skipped: organization not readable",
+					"user_id", userID,
+					"business_id", m.BusinessID,
+				)
+				continue
+			}
 			return nil, fmt.Errorf("hydrate business %s: %w", m.BusinessID, err)
 		}
 		role, err := s.roleRepo.GetByID(ctx, m.RoleID)
