@@ -34,7 +34,7 @@ const SPHERE_OPTIONS = ['cafe', 'beauty', 'services', 'retail', 'other'] as cons
 const PAIN_OPTIONS = ['reviews', 'posts', 'card'] as const;
 
 interface WaitlistFormProps extends Partial<LandingEntryProps> {
-  source?: string;
+  source?: WaitlistPayload['source'];
   plan?: 'pro';
   submitLabel?: string;
 }

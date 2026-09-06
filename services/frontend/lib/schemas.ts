@@ -73,8 +73,8 @@ export function createWaitlistSchema(t: ValidationTranslator) {
   const consentRequiredMessage = t('consentRequired');
   return z.object({
     email: z.string().email(t('email')).max(WAITLIST_EMAIL_MAX_LEN),
-    sphere: z.string().optional(),
-    pain: z.string().optional(),
+    sphere: z.enum(['cafe', 'beauty', 'services', 'retail', 'other']).optional(),
+    pain: z.enum(['reviews', 'posts', 'card']).optional(),
     consent: z.literal(true, { message: consentRequiredMessage }),
   });
 }

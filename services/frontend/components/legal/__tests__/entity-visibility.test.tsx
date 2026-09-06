@@ -19,6 +19,7 @@ describe('legal entity visibility', () => {
     { NEXT_PUBLIC_LEGAL_ENTITY_NAME: 'ООО Пример' },
     { ...valid, NEXT_PUBLIC_LEGAL_ADDRESS: '   ' },
     { ...valid, NEXT_PUBLIC_LEGAL_INN: 'TBD' },
+    ...Object.keys(valid).map((key) => ({ ...valid, [key]: 'N/A' })),
   ])('hides the entire incomplete entity while retaining document links', (config) => {
     for (const key of Object.keys(valid)) vi.stubEnv(key, '');
     for (const [key, value] of Object.entries(config)) vi.stubEnv(key, value);

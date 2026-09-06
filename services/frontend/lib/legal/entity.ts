@@ -20,6 +20,6 @@ export function loadLegalEntity(): LegalEntity {
 export function isPlaceholder(entity: LegalEntity): boolean {
   return Object.values(entity).some((value) => {
     const trimmed = value.trim();
-    return !trimmed || /^(?:—|-|tbd)$/i.test(trimmed) || /\[|будет/i.test(trimmed);
+    return !trimmed || /^(?:—|-|tbd|n\/a)$/i.test(trimmed) || /\[|будет/i.test(trimmed);
   });
 }

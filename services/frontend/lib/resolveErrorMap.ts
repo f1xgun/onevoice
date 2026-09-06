@@ -256,36 +256,21 @@ export function isBusinessPlanLimitError(err: unknown): boolean {
 }
 
 export function createMapTelegramConnectError(t: TranslateFn): (err: unknown) => string {
+  const reasonKeys: Record<string, string> = {
+    unreachable: 'unreachable',
+    rate_limited: 'rateLimited',
+    forbidden: 'noAccess',
+    api_rejected: 'channelNotFound',
+    not_admin: 'adminRequired',
+    no_post_rights: 'adminRequired',
+    already_connected: 'alreadyConnected',
+  };
   return (err) => {
-    const response = (err as AxiosError<{ code?: string; error?: string }> | undefined)?.response;
-    const code = response?.data?.code ?? response?.data?.error;
-    if (
-      response?.status === HTTP_STATUS.TOO_MANY_REQUESTS ||
-      code === 'telegram_rate_limited' ||
-      code === 'rate_limit_exceeded'
-    )
-      return t('rateLimited');
-    if (
-      !response ||
-      response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR ||
-      code === 'telegram_unreachable'
-    )
-      return t('unreachable');
-    if (
-      code === 'telegram_channel_not_found' ||
-      code === 'channel_not_found' ||
-      response.status === HTTP_STATUS.BAD_REQUEST
-    )
-      return t('channelNotFound');
-    if (
-      code === 'telegram_bot_not_admin' ||
-      code === 'telegram_not_admin' ||
-      code === 'telegram_no_post_rights' ||
-      response.status === HTTP_STATUS.CONFLICT
-    )
-      return t('adminRequired');
-    if (code === 'telegram_forbidden' || response.status === HTTP_STATUS.FORBIDDEN)
-      return t('noAccess');
+    const response = (err as AxiosError<{ reason?: string }> | undefined)?.response;
+    const reason = response?.data?.reason;
+    if (reason) return t(Object.hasOwn(reasonKeys, reason) ? reasonKeys[reason] : 'failed');
+    if (!response || response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) return t('unreachable');
+    if (response.status === HTTP_STATUS.TOO_MANY_REQUESTS) return t('rateLimited');
     return t('failed');
   };
 }

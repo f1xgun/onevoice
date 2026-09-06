@@ -98,7 +98,7 @@ export default function NewBusinessPage() {
           {isBusinessPlanLimitError(mutation.error) && (
             <div role="alert" className="space-y-3 rounded-md border border-line p-4">
               <p>{tNewPage('freeLimit')}</p>
-              <ProRequest source="business_limit" />
+              <ProRequest source="business-limit" />
             </div>
           )}
           <form

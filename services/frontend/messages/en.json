@@ -1234,7 +1234,8 @@
       "noAccess": "Channel access denied. Check your permissions and add the bot as an administrator with permission to post.",
       "unreachable": "Could not reach Telegram. Try later — bot access has not been checked.",
       "rateLimited": "Telegram is temporarily limiting requests. Wait before reconnecting.",
-      "failed": "Could not connect the channel. Try again later."
+      "failed": "Could not connect the channel. Try again later.",
+      "alreadyConnected": "This channel is already connected to another organization."
     }
   },
   "gettingStarted": {
@@ -2108,7 +2109,8 @@
       "pro": {
         "title": "Pro",
         "price": "3,990–4,990 ₽ per month per location",
-        "cta": "Request Pro"
+        "cta": "Request Pro",
+        "description": "Leave your email so we can contact you about Pro."
       }
     }
   },

@@ -4,12 +4,13 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 // Public marketing-landing capture client. Both endpoints are unauthenticated
 // and return 204 with no body, so these resolve to void.
 
+/** Request fields derived from WaitlistRequest in docs/api/spec/openapi.yaml. */
 export interface WaitlistPayload {
   email: string;
-  sphere?: string;
-  pain?: string;
+  sphere?: 'cafe' | 'beauty' | 'services' | 'retail' | 'other';
+  pain?: 'reviews' | 'posts' | 'card';
   consent: boolean;
-  source?: string;
+  source?: 'landing' | 'billing' | 'business-limit';
   plan?: 'pro';
 }
 
