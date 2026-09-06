@@ -94,8 +94,8 @@ type ConnectHandler struct {
 // NewConnectHandler constructs a ConnectHandler. nil integration/business deps
 // panic (matches NewOAuthHandler's contract); ownerLink may be nil (the /start
 // owner-link handshake is then unconfigured and its mint endpoint returns 404). A
-// nil httpClient defaults to a 10-second timeout client (used by VK + Telegram
-// API probes).
+// nil httpClient defaults to a 10-second timeout client. Clients without a
+// custom transport use IPv4 for VK and Telegram API probes.
 func NewConnectHandler(
 	integrationService ConnectIntegrationService,
 	businessService BusinessService,
@@ -110,13 +110,12 @@ func NewConnectHandler(
 		panic("connect.NewConnectHandler: businessService cannot be nil")
 	}
 	if httpClient == nil {
-		// Pin IPv4: api.telegram.org publishes AAAA records and Yandex Cloud
-		// VMs have no IPv6 route, so a dual-stack dial can hang on the dead v6
-		// address until timeout.
-		httpClient = &http.Client{
-			Timeout:   10 * time.Second,
-			Transport: &http.Transport{DialContext: netdial.TCP4DialContext},
-		}
+		httpClient = &http.Client{Timeout: 10 * time.Second}
+	}
+	if httpClient.Transport == nil {
+		client := *httpClient
+		client.Transport = &http.Transport{DialContext: netdial.TCP4DialContext}
+		httpClient = &client
 	}
 	return &ConnectHandler{
 		integrationService: integrationService,

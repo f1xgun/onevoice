@@ -372,3 +372,32 @@ func TestInvitationRepo_CreateCommitsAfterRemovalCannotBeAccepted(t *testing.T) 
 		})
 	}
 }
+
+func TestInvitationRepo_DetachedTerminalRole(t *testing.T) {
+	for _, state := range []string{"accepted", "revoked", "expired"} {
+		t.Run(state, func(t *testing.T) {
+			pool, repo := newInvitationRepoMock(t)
+			now := time.Now().UTC()
+			expiry := now.Add(time.Hour)
+			var accepted, revoked *time.Time
+			switch state {
+			case "accepted":
+				accepted = &now
+			case "revoked":
+				revoked = &now
+			case "expired":
+				expiry = now.Add(-time.Hour)
+			}
+			pool.ExpectQuery(`SELECT .+ FROM invitations WHERE token_hash`).WithArgs("hash").WillReturnRows(pool.NewRows([]string{
+				"id", "business_id", "role_id", "token_hash", "expires_at", "accepted_at", "accepted_by", "revoked_at", "created_by", "created_at",
+			}).AddRow(uuid.New(), uuid.New(), nil, "hash", expiry, accepted, (*uuid.UUID)(nil), revoked, uuid.New(), now))
+			inv, err := repo.GetByTokenHash(context.Background(), "hash")
+			require.NoError(t, err)
+			require.Equal(t, uuid.Nil, inv.RoleID)
+			require.Equal(t, accepted, inv.AcceptedAt)
+			require.Equal(t, revoked, inv.RevokedAt)
+			require.Equal(t, expiry, inv.ExpiresAt)
+			require.NoError(t, pool.ExpectationsWereMet())
+		})
+	}
+}

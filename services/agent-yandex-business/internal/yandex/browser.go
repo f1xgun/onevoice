@@ -218,7 +218,11 @@ func withRetry(ctx context.Context, maxAttempts int, fn func() error) error {
 			return lastErr
 		}
 		if i < maxAttempts-1 {
-			time.Sleep(time.Duration(1<<i) * time.Second)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(1<<i) * time.Second):
+			}
 		}
 	}
 	return fmt.Errorf("all %d attempts failed: %w", maxAttempts, lastErr)

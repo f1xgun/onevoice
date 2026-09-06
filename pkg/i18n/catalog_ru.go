@@ -15,6 +15,7 @@ var ru = map[string]string{
 
 	// Yandex OAuth/connect handler (services/api/internal/handler/oauth/yandex_connect.go).
 	"oauth.yandex.invalid_body":         "Некорректное тело запроса",
+	"oauth.yandex.session_expired":      "Сессия Яндекса истекла — скопируйте cookies заново и повторите подключение",
 	"oauth.yandex.list_orgs_failed":     "Не удалось получить список организаций — попробуйте ещё раз",
 	"oauth.yandex.missing_sessionid2":   "Не нашли часть данных для входа — без неё могут не работать ответы на отзывы и загрузка фото. Скопируйте cookies заново целиком.",
 	"oauth.yandex.missing_yandex_login": "Не нашли логин Яндекса — без него вход может сбрасываться. Добавьте его при копировании cookies.",

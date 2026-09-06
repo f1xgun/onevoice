@@ -73,10 +73,7 @@ type IntegrationHandler struct {
 // soft-deleted (erasure-pending) organization, which the RequireBusinessAccess
 // middleware does not filter.
 //
-// auditLogger receives the integration.disconnected
-// event emitted from DeleteIntegration. Connected + token_rotated are emitted
-// from the service layer (one call site per action — ). nil-safe via
-// audit.Nop so existing handler tests that pass nil still work.
+// Integration audit events are emitted by the service layer.
 func NewIntegrationHandler(integrationService IntegrationService, businessService BusinessService, auditLogger audit.Logger) (*IntegrationHandler, error) {
 	if integrationService == nil {
 		return nil, fmt.Errorf("NewIntegrationHandler: integrationService cannot be nil")
@@ -177,8 +174,6 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-
-	audit.LogIntegrationDisconnected(r.Context(), h.audit, bc.BusinessID, bc.UserID, integrationID, target.Platform)
 
 	writeJSON(w, http.StatusNoContent, nil)
 }

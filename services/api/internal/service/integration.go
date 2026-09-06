@@ -741,6 +741,10 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		}
 	}
 
+	if integration.Status != domain.IntegrationStatusActive {
+		return nil, domain.ErrTokenExpired
+	}
+
 	if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
 		if len(integration.EncryptedRefreshToken) == 0 || s.refresher == nil || !s.refresherSupports(integration.Platform) {
 			return nil, domain.ErrTokenExpired

@@ -142,6 +142,12 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 		return
 	}
 
+	if req.Deadline != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, *req.Deadline)
+		defer cancel()
+	}
+
 	if req.RequestID != "" {
 		ctx = logger.WithCorrelationID(ctx, req.RequestID)
 	}

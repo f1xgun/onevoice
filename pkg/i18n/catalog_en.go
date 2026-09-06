@@ -14,6 +14,7 @@ var en = map[string]string{
 
 	// Yandex OAuth/connect handler.
 	"oauth.yandex.invalid_body":         "Invalid request body",
+	"oauth.yandex.session_expired":      "Your Yandex session has expired — copy fresh cookies and reconnect",
 	"oauth.yandex.list_orgs_failed":     "Couldn't fetch the list of organizations — please try again",
 	"oauth.yandex.missing_sessionid2":   "Some sign-in data is missing — replies to reviews and photo uploads may not work without it. Copy the cookies again in full.",
 	"oauth.yandex.missing_yandex_login": "The Yandex login is missing — sign-in may keep dropping without it. Include it when you copy the cookies.",

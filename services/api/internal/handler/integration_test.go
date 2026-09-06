@@ -288,7 +288,8 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID, userID).Return(nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, audit.Nop())
+	rec := &capturingAuditLogger{}
+	h, err := NewIntegrationHandler(mockIntegrationService, &fakeIntegrationBusinessService{}, rec)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -308,6 +309,9 @@ func TestDeleteIntegration_Success(t *testing.T) {
 		t.Errorf("expected status 204, got %d", rr.Code)
 	}
 
+	if len(rec.entries) != 0 {
+		t.Fatalf("handler emitted duplicate disconnect audit: %v", rec.entries)
+	}
 	mockIntegrationService.AssertExpectations(t)
 	mockIntegrationService.AssertCalled(t, "Delete", mock.Anything, integrationID, userID)
 }

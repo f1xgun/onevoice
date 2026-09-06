@@ -2524,3 +2524,26 @@ func TestGetDecryptedToken_RefresherIsPlatformGated(t *testing.T) {
 		assert.Contains(t, seen, googleRefresh)
 	})
 }
+
+func TestGetDecryptedToken_RejectsInactiveExactMatch(t *testing.T) {
+	for _, status := range []string{domain.IntegrationStatusTokenExpired, "disabled"} {
+		t.Run(status, func(t *testing.T) {
+			repo := &mockIntegrationRepository{
+				getByBusinessPlatformExternalFunc: func(context.Context, uuid.UUID, string, string) (*domain.Integration, error) {
+					return &domain.Integration{ID: uuid.New(), Status: status, EncryptedAccessToken: []byte("invalid ciphertext")}, nil
+				},
+				listByBusinessAndPlatformFunc: func(context.Context, uuid.UUID, string) ([]domain.Integration, error) {
+					t.Fatal("known inactive credential must not fall back to another integration")
+					return nil, nil
+				},
+			}
+			rec := &recordingSyncLogger{}
+			svc := NewIntegrationService(repo, testEnvelope(t, testEncryptor(t)), nil, nil, rec)
+			token, err := svc.GetDecryptedToken(context.Background(), uuid.New(), "telegram", "channel", "test")
+			require.ErrorIs(t, err, domain.ErrTokenExpired)
+			require.Nil(t, token)
+			require.Empty(t, rec.syncCalls)
+			require.Empty(t, rec.asyncCalls)
+		})
+	}
+}

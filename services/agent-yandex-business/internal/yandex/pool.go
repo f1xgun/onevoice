@@ -45,12 +45,13 @@ type pooledContext struct {
 	// credential hashes differently belongs to a different account, so the
 	// stale context is evicted and rebuilt instead of being served.
 	credHash string
-	mu       sync.Mutex // serializes page access for this business
+	pageSlot chan struct{}
+	users    int
 	// busy guards the LRU/idle eviction loops against tearing down a context a
 	// caller is acquiring or using. It is set true at the moment of acquisition
 	// in getOrCreateContext — before the context is reachable for use — so the
 	// publish-then-acquire window can never present an acquired context as free,
-	// and cleared by WithPage's defer once the page work completes.
+	// and cleared when the last active or waiting WithPage call returns.
 	busy atomic.Bool
 }
 
@@ -114,7 +115,7 @@ type BrowserPool struct {
 	// store is what makes len(contexts) <= maxContexts a HARD invariant: no number
 	// of concurrent in-flight builds can push the map past the cap, because the
 	// check and the store that could violate it are atomic with respect to each
-	// other. Lock ordering: commitMu is always released before any pc.mu / p.mu is
+	// other. Lock ordering: commitMu is always released before any pageSlot / p.mu is
 	// taken, so the two pool mutexes never nest. Chromium teardown (Close) is run
 	// AFTER releasing commitMu so a slow eviction never blocks the pool.
 	commitMu sync.Mutex
@@ -306,6 +307,10 @@ func (p *BrowserPool) cacheHit(businessID, wantHash string) (*pooledContext, boo
 		return nil, false
 	}
 	if pc.credHash == wantHash {
+		if pc.pageSlot == nil {
+			pc.pageSlot = make(chan struct{}, 1)
+		}
+		pc.users++
 		pc.busy.Store(true)
 		pc.touch()
 		p.commitMu.Unlock()
@@ -344,7 +349,7 @@ func (p *BrowserPool) buildAndCommit(businessID, cookiesJSON, wantHash string) (
 		}
 	}
 
-	fresh := &pooledContext{ctx: bCtx, cookies: "", credHash: wantHash}
+	fresh := &pooledContext{ctx: bCtx, cookies: "", credHash: wantHash, pageSlot: make(chan struct{}, 1), users: 1}
 	fresh.busy.Store(true)
 	fresh.touch()
 
@@ -358,6 +363,10 @@ func (p *BrowserPool) buildAndCommit(businessID, cookiesJSON, wantHash string) (
 			closeEvicted(victim)
 			return nil, true, nil
 		}
+		if existing.pageSlot == nil {
+			existing.pageSlot = make(chan struct{}, 1)
+		}
+		existing.users++
 		existing.busy.Store(true)
 		existing.touch()
 		p.commitMu.Unlock()
@@ -522,6 +531,9 @@ func (p *BrowserPool) anyFree() bool {
 
 // WithPage acquires a page in the business's browser context, executes fn, then closes the page.
 func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON string, fn func(page playwright.Page) error) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("acquire page: %w", err)
+	}
 	if p.closed.Load() {
 		return fmt.Errorf("browser pool is closed")
 	}
@@ -536,12 +548,21 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 		return err
 	}
 
-	pc.mu.Lock()
-	pc.busy.Store(true)
 	defer func() {
-		pc.busy.Store(false)
-		pc.mu.Unlock()
+		p.commitMu.Lock()
+		pc.users--
+		pc.busy.Store(pc.users > 0)
+		p.commitMu.Unlock()
 	}()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("acquire page: %w", ctx.Err())
+	case pc.pageSlot <- struct{}{}:
+	}
+	defer func() { <-pc.pageSlot }()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("acquire page: %w", err)
+	}
 	pc.touch()
 
 	page, err := pc.ctx.NewPage()
@@ -561,10 +582,10 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 
 // EvictContext removes and closes the browser context for the given business.
 //
-// It deliberately ignores the busy flag and does NOT take pc.mu: revoke and
+// It deliberately ignores the busy flag and does NOT acquire pageSlot: revoke and
 // credential rotation need the underlying session torn down IMMEDIATELY rather
 // than after the in-flight page work drains, so a leaked or rotated session is
-// never served again. Closing a context another goroutine holds under pc.mu is
+// never served again. Closing a context another goroutine holds with pageSlot acquired is
 // safe here because playwright-go returns a retryable "context closed" error
 // (not a panic) on the now-dead context, which withRetry absorbs and the next
 // attempt rebuilds — the security win of immediate teardown outweighs one
