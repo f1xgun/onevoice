@@ -186,12 +186,30 @@ func TestPublicationContactAllowlist(t *testing.T) {
 		name, role, text string
 		want             bool
 	}{
+		{"restriction_after", "user", "Сделай пост: запись по телефону +7 916 123-45-77 — это личный телефон клиента, не публикуй его.", false},
+		{"quoted_copy", "user", "Опубликуй точный текст: «Запись по телефону +7 916 123-45-77»", true},
+		{"quoted_bare", "user", "Опубликуй: «+7 916 123-45-77»", true},
+		{"quoted_ascii", "user", "Напиши пост, вот текст: \"+7 916 123-45-77\"", true},
+		{"quoted_unintroduced", "user", "Сделай пост: «Запись по телефону +7 916 123-45-77»", false},
+		{"unclosed_quote", "user", "Опубликуй: «+7 916 123-45-77", false},
+		{"dash", "user", "Размести: запись по телефону —\n+7 916 123-45-77", true},
+		{"intent_after", "user", "Наш телефон +7 916 123-45-77. Опубликуй.", true},
+		{"veto_клиента", "user", "Опубликуй: «+7 916 123-45-77». клиента", false},
+		{"veto_посетителя", "user", "Опубликуй: «+7 916 123-45-77». посетителя", false},
+		{"veto_гостя", "user", "Опубликуй: «+7 916 123-45-77». гостя", false},
+		{"veto_личный", "user", "Опубликуй: «+7 916 123-45-77». личный", false},
+		{"veto_не публикуй", "user", "Опубликуй: «+7 916 123-45-77». не публикуй", false},
+		{"veto_не указывай", "user", "Опубликуй: «+7 916 123-45-77». не указывай", false},
+		{"veto_скрой", "user", "Опубликуй: «+7 916 123-45-77». скрой", false},
+		{"veto_перескажи", "user", "Опубликуй: «+7 916 123-45-77». перескажи", false},
+		{"veto_сообщение от", "user", "Опубликуй: «+7 916 123-45-77». сообщение от", false},
+		{"veto_пишет", "user", "Опубликуй: «+7 916 123-45-77». пишет", false},
 		{"booking", "user", "Сделай пост… запись по телефону +7 916 123-45-77", true},
-		{"formatted", "user", "Добавь в пост телефон: +7 (916) 123-45-77", true},
-		{"trunk", "user", "Опубликуй: телефон для публикации: 8 916 123 45 77", true},
+		{"formatted", "user", "Добавь в пост телефон: +7 (916) 123-45-77", false},
+		{"trunk", "user", "Опубликуй: телефон для публикации: 8 916 123 45 77", false},
 		{"english", "user", "Write a post. Booking phone: +79161234577", true},
 		{"visitor_summary", "user", "Перескажи сообщение посетителя: запись по телефону +7 916 123-45-77", false},
-		{"clients_post", "user", "Сделай пост для клиентов: запись по телефону +7 916 123-45-77", true},
+		{"clients_post", "user", "Сделай пост для клиентов: запись по телефону +7 916 123-45-77", false},
 		{"salon", "user", "Сделай пост: в салоне запись по телефону +7 916 123-45-77", true},
 		{"newline", "user", "Сделай пост: запись по телефону:\n+7 916 123-45-77", true},
 		{"call", "user", "Опубликуй: звоните +7 916 123-45-77", true},
@@ -201,7 +219,7 @@ func TestPublicationContactAllowlist(t *testing.T) {
 		{"visitor_label", "user", "Сделай пост. Посетитель: запись по телефону +7 916 123-45-77", false},
 		{"review_relay", "user", "Опубликуй отзыв клиента: запись по телефону +7 916 123-45-77", false},
 		{"polite", "user", "Пожалуйста, сделай пост: запись по телефону +7 916 123-45-77", true},
-		{"unrelated_contact_negative", "user", "Не добавляй старый номер. Сделай пост: запись по телефону +7 916 123-45-77", true},
+		{"unrelated_contact_negative", "user", "Не добавляй старый номер. Сделай пост: запись по телефону +7 916 123-45-77", false},
 		{"english_noun", "user", "The post mentions a booking phone: +7 916 123-45-77", false},
 		{"no_intent", "user", "Запись по телефону +7 916 123-45-77", false},
 		{"our_without_intent", "user", "Наш телефон +7 916 123-45-77", false},
@@ -234,18 +252,47 @@ func TestPublicationContactAllowlist(t *testing.T) {
 		})
 	}
 	assert.Empty(t, publicationContactAllowlist([]llm.Message{
-		{Role: "user", Content: "Запись по телефону +79161234577"},
+		{Role: "user", Content: "Опубликуй: запись по телефону +79161234577"},
 		{Role: "user", Content: "Напиши другой пост без контактов"},
+		{Role: "assistant", Content: "Опубликуй: запись по телефону +79161234577"},
 	}))
 }
 
 func TestPublicationContactAllowlist_MixedContactPurposes(t *testing.T) {
 	messages := []llm.Message{{Role: "user", Content: "Сделай пост для клиентов: наш телефон +7 916 123-45-77. Перескажи сообщение посетителя: запись по телефону +7 812 000-00-00."}}
 	allow := publicationContactAllowlist(messages)
-	require.Equal(t, []string{"+7 916 123-45-77"}, allow)
+	require.Empty(t, allow)
 	req := llm.ChatRequest{Messages: messages}
 	redactRequestPDn(&req, allow)
-	assert.Contains(t, req.Messages[0].Content, "+7 916 123-45-77")
+	assert.NotContains(t, req.Messages[0].Content, "+7 916 123-45-77")
 	assert.NotContains(t, req.Messages[0].Content, "+7 812 000-00-00")
 	assert.Contains(t, req.Messages[0].Content, "[Скрыто]")
+}
+
+func TestPublicationContactAllowlist_Email(t *testing.T) {
+	for _, tt := range []struct {
+		name, text string
+		want       bool
+	}{
+		{"organization", "Сделай пост: пишите на booking@example.org", true},
+		{"quoted", "Опубликуй точный текст: «booking@example.org»", true},
+		{"quoted_ascii", `Опубликуй: "booking@example.org"`, true},
+		{"no_intent", "Пишите на booking@example.org", false},
+		{"no_label", "Сделай пост: booking@example.org", false},
+		{"third_party_after", "Сделай пост: пишите на booking@example.org — пишет клиент", false},
+		{"restriction_after", "Опубликуй: «booking@example.org», не указывай адрес", false},
+		{"mixed", "Сделай пост: пишите на booking@example.org. Личный телефон +79161234577", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			allow := publicationContactAllowlist([]llm.Message{{Role: "user", Content: tt.text}})
+			req := llm.ChatRequest{Messages: []llm.Message{{Role: "assistant", Content: "booking@example.org; other@example.org; +79161234577"}}}
+			redactRequestPDn(&req, allow)
+			if tt.want {
+				assert.Equal(t, "booking@example.org; [Скрыто]; [Скрыто]", req.Messages[0].Content)
+			} else {
+				assert.Empty(t, allow)
+				assert.Equal(t, "[Скрыто]; [Скрыто]; [Скрыто]", req.Messages[0].Content)
+			}
+		})
+	}
 }

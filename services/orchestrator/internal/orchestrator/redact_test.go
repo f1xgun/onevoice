@@ -201,7 +201,7 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 			rec := toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 				dispatched.Add(1)
 				executedArgs = args
-				return map[string]interface{}{"ok": true}, nil
+				return map[string]interface{}{"text": args["text"]}, nil
 			})
 			reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, rec)
 			repo := newMockPendingRepo()
@@ -235,7 +235,7 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 			assert.Contains(t, snapshot.Messages[0].Content, "+7 916 123-45-77")
 			batch.Calls[0].Verdict = verdict
 			if verdict == "edit" {
-				batch.Calls[0].EditedArgs = map[string]interface{}{"text": "Запись: +7 (843) 555-12-34; +78120000000"}
+				batch.Calls[0].EditedArgs = map[string]interface{}{"text": "Запись: +7 916 123-45-88; +78120000000"}
 			}
 
 			capLLM := &captureLLM{}
@@ -267,7 +267,7 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 				require.Len(t, results, 1)
 				assert.Equal(t, "contact-call", results[0].ToolCallID)
 				assert.Empty(t, results[0].ToolError)
-				assert.Equal(t, map[string]interface{}{"ok": true}, results[0].ToolResult)
+				assert.Equal(t, map[string]interface{}{"text": executedArgs["text"]}, results[0].ToolResult)
 			}
 
 			req := capLLM.firstRequest()
@@ -277,6 +277,13 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 			require.Len(t, req.Messages[1].ToolCalls, 1)
 			assert.Contains(t, req.Messages[1].ToolCalls[0].Function.Arguments, "8 (916) 123-45-77")
 			assert.NotContains(t, req.Messages[1].ToolCalls[0].Function.Arguments, "+78120000000")
+			if verdict == "edit" {
+				require.Len(t, req.Messages, 3)
+				assert.JSONEq(t, `{"text":"Запись: [Скрыто]; [Скрыто]"}`, req.Messages[2].Content)
+			} else if verdict == "approve" {
+				require.Len(t, req.Messages, 3)
+				assert.JSONEq(t, `{"text":"8 (916) 123-45-77; [Скрыто]"}`, req.Messages[2].Content)
+			}
 			require.Len(t, req.SystemBlocks, 2)
 			assert.Contains(t, req.SystemBlocks[1].Text, "+7 (843) 555-12-34")
 		})

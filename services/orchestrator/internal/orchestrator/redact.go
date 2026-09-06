@@ -80,34 +80,36 @@ func businessContactAllowlist(ctx prompt.BusinessContext) []string {
 const contactWordStart = `(?:^|[^\p{L}\p{N}_])`
 const contactWordEnd = `(?:$|[^\p{L}\p{N}_])`
 
-var publicationContact = regexp.MustCompile(`(?i)` + contactWordStart + `(?:запись\s+по\s+телефону|звоните(?:\s+по(?:\s+телефону)?)?|заказ(?:ы)?\s+по(?:\s+телефону)?|наш\s+телефон|телефон\s+для\s+(?:записи|заказов|публикации)|(?:укажи|добавь)\s+в\s+(?:пост|публикацию)\s+телефон|booking\s+phone|phone\s+for\s+(?:bookings|orders|publication))[\s:—-]*((?:\+7|8)[ \-(]*\d{3}[ \-)]*\d{3}[ \-]*\d{2}[ \-]*\d{2})` + contactWordEnd)
+var publicationContact = regexp.MustCompile(`(?i)` + contactWordStart + `((?:\+7|8)[ \-(]*\d{3}[ \-)]*\d{3}[ \-]*\d{2}[ \-]*\d{2}|[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,})` + contactWordEnd)
+var organizationContactLabel = regexp.MustCompile(`(?i)` + contactWordStart + `(?:запись\s+по\s+телефону|звоните(?:\s+по(?:\s+телефону)?)?|заказ(?:ы)?\s+по(?:\s+телефону)?|наш\s+телефон|пишите\s+на|booking\s+phone)[\s:—–-]*$`)
 var publicationIntent = regexp.MustCompile(`(?i)(?:^|[.!?;:\n])\s*(?:(?:пожалуйста|please)[,\s]+)?(?:(?:сделай|напиши|подготовь|составь)\s+(?:пост|публикацию|ответ)|(?:добавь|укажи)\s+в\s+(?:пост|публикацию|ответ)|опубликуй|размести|ответь|(?:write|make|draft)\s+(?:a\s+)?(?:post|reply)|publish|post|reply)` + contactWordEnd)
-var relayedContactContext = regexp.MustCompile(`(?i)` + contactWordStart + `(?:перескажи|перешли|процитируй|(?:посетитель|клиент|сотрудник)\s*:|цитата|цитату|(?:сообщение|отзыв)\s+(?:посетителя|клиента|сотрудника)|(?:посетитель|клиент|сотрудник|он|она)\s+(?:написал[аи]?|сообщил[аи]?|сказал[аи]?)|summarize|forward|quote|(?:visitor|customer)\s+(?:message|said|wrote))` + contactWordEnd)
-var privateContactContext = regexp.MustCompile(`(?i)` + contactWordStart + `(?:личный|чужой|телефон\s+(?:клиента|посетителя|сотрудника)|private|personal)` + contactWordEnd)
-var negatedContactContext = regexp.MustCompile(`(?i)` + contactWordStart + `(?:не|нельзя|do\s+not|don't)\s+(?:добав\p{L}*|указ\p{L}*|публик\p{L}*|опублик\p{L}*|размещ\p{L}*|размест\p{L}*|звон\p{L}*|запись|наш|телефон|сделай|напиши|подготовь|составь|ответь|publish|post|reply|write|add|include)` + contactWordEnd)
+var restrictedContactContext = regexp.MustCompile(`(?i)` + contactWordStart + `(?:клиент\p{L}*|посетител\p{L}*|гост\p{L}*|сотрудник\p{L}*|личн\p{L}*|чужой|перескажи|перешли|процитируй|скрой|пишет|написал\p{L}*|сообщение\s+от|не\s+(?:публикуй|опубликуй|указывай|добав\p{L}*|сделай|напиши|размещай|размести|ответь)|private|personal|customer|visitor|summarize|forward|quote|do\s+not|don't)` + contactWordEnd)
 var quotedContactText = regexp.MustCompile("(?s)«[^»]*(?:»|$)|\"[^\"]*(?:\"|$)|`[^`]*(?:`|$)|“[^”]*(?:”|$)|<[^>]*(?:>|$)")
+var publicationQuoteIntro = regexp.MustCompile(`(?i)` + contactWordStart + `(?:опубликуй|точный\s+текст|вот\s+текст)[\s:—–-]*$`)
 
 func publicationContactAllowlist(messages []llm.Message) []string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role != "user" {
 			continue
 		}
-		text := quotedContactText.ReplaceAllString(messages[i].Content, " [quoted] ")
+		text := messages[i].Content
+		if restrictedContactContext.MatchString(text) || !publicationIntent.MatchString(quotedContactText.ReplaceAllString(text, " [quoted] ")) {
+			return nil
+		}
+		quotes := quotedContactText.FindAllStringIndex(text, -1)
 		var allow []string
 		for _, match := range publicationContact.FindAllStringSubmatchIndex(text, -1) {
-			prefix := text[:match[2]]
-			if relayedContactContext.MatchString(prefix) {
-				continue
+			authorized := organizationContactLabel.MatchString(text[:match[2]])
+			for _, quote := range quotes {
+				if match[2] >= quote[0] && match[3] <= quote[1] {
+					copy := text[quote[0]:quote[1]]
+					authorized = ((strings.HasPrefix(copy, "«") && strings.HasSuffix(copy, "»")) || (strings.HasPrefix(copy, `"`) && strings.HasSuffix(copy, `"`) && len(copy) > 1)) && publicationQuoteIntro.MatchString(text[:quote[0]])
+					break
+				}
 			}
-			intent := publicationIntent.FindStringIndex(prefix)
-			if intent == nil {
-				continue
+			if authorized {
+				allow = append(allow, text[match[2]:match[3]])
 			}
-			clause := prefix[strings.LastIndexAny(prefix, ".!?;")+1:]
-			if privateContactContext.MatchString(clause) || negatedContactContext.MatchString(clause) {
-				continue
-			}
-			allow = append(allow, text[match[2]:match[3]])
 		}
 		return allow
 	}
