@@ -68,14 +68,17 @@ export function RoleChangeDialog({
           <DialogDescription className="text-sm text-ink-mid">{memberName}</DialogDescription>
         </DialogHeader>
         <div className="mt-6 flex flex-col gap-2">
-          <Label htmlFor="role-select" className="text-xs font-medium text-ink-mid">
+          <Label htmlFor="role-select" className="text-meta font-medium text-ink">
             {tTeam('invite.fields.role')}
           </Label>
           <Select value={selectedId} onValueChange={setSelectedId}>
-            <SelectTrigger id="role-select">
+            <SelectTrigger
+              id="role-select"
+              className="h-auto min-h-11 border-control bg-paper-raised text-reading"
+            >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="border-control bg-card text-ink shadow-overlay">
               {roles.map((r) => (
                 <SelectItem key={r.id} value={r.id}>
                   {getRoleLabel(r.name)}

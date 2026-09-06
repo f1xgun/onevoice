@@ -10,6 +10,7 @@ import {
   AppDialog as DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/design-system/AppDialog';
 
 interface Props {
@@ -37,17 +38,18 @@ export function TelegramConnectModal({ open, onClose }: Props) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{tIntegrations('telegramConnectModalTitle')}</DialogTitle>
+          <DialogDescription>{tIntegrations('telegramStep1Intro')}</DialogDescription>
         </DialogHeader>
 
         {step === 1 && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">{tIntegrations('telegramStep1Intro')}</p>
-            <ol className="list-inside list-decimal space-y-2 text-sm text-gray-600">
+            <p className="text-sm text-ink-soft">{tIntegrations('telegramStep1Intro')}</p>
+            <ol className="list-inside list-decimal space-y-2 text-sm text-ink-soft">
               <li>{tIntegrations('telegramStep1Item1')}</li>
               <li>{tIntegrations('telegramStep1Item2')}</li>
               <li>
                 {tIntegrations('telegramStep1Item3Prefix')}{' '}
-                <code className="rounded bg-gray-100 px-1">{tIntegrations('telegramBot')}</code>
+                <code className="rounded bg-paper-sunken px-1">{tIntegrations('telegramBot')}</code>
               </li>
               <li>{tIntegrations('telegramStep1Item4')}</li>
             </ol>
@@ -59,16 +61,20 @@ export function TelegramConnectModal({ open, onClose }: Props) {
 
         {step === 2 && (
           <form onSubmit={handleSubmit(handleConnect)} className="space-y-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-ink-soft">
               {tIntegrations('telegramStep2IntroBefore')}{' '}
-              <code className="rounded bg-gray-100 px-1">
+              <code className="rounded bg-paper-sunken px-1">
                 {tIntegrations('telegramExampleChannel')}
               </code>{' '}
               {tIntegrations('telegramStep2IntroOr')}{' '}
-              <code className="rounded bg-gray-100 px-1">-1001234567890</code>
+              <code className="rounded bg-paper-sunken px-1">-1001234567890</code>
               {tIntegrations('telegramStep2IntroAfter')}
             </p>
+            <label htmlFor="telegram-channel" className="block text-meta font-medium">
+              {tIntegrations('telegramStep2Placeholder')}
+            </label>
             <Input
+              id="telegram-channel"
               placeholder={tIntegrations('telegramStep2Placeholder')}
               aria-label={tIntegrations('telegramStep2Placeholder')}
               aria-invalid={!!error}

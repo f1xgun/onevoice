@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { Controller, type Control, type ControllerRenderProps } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
 
-import { Field } from '@/components/ui/field';
+import { AppField as Field } from '@/components/design-system/AppField';
 import { AppInput as Input } from '@/components/design-system/AppInput';
 import {
   Select,
@@ -46,6 +46,7 @@ export function CategoryField({ control, error }: CategoryFieldProps) {
         render={({ field }) => (
           <CategoryControl
             field={field}
+            error={error}
             presets={presets}
             placeholder={tProfileForm('categoryPlaceholder')}
             otherLabel={tCategories(OTHER_CATEGORY)}
@@ -67,6 +68,7 @@ interface CategoryControlProps {
   categoryAria: string;
   customPlaceholder: string;
   customAria: string;
+  error?: string;
 }
 
 function CategoryControl({
@@ -77,6 +79,7 @@ function CategoryControl({
   categoryAria,
   customPlaceholder,
   customAria,
+  error,
 }: CategoryControlProps) {
   const value = field.value ?? '';
   const isPreset = presets.some((p) => p.value === value);
@@ -102,13 +105,16 @@ function CategoryControl({
       <Select value={selectValue} onValueChange={handleSelect}>
         <SelectTrigger
           id="category"
+          className="h-auto min-h-11 border-control bg-paper-raised text-reading"
+          aria-invalid={!!error}
+          aria-describedby={error ? 'category-description' : undefined}
           aria-label={categoryAria}
           onBlur={field.onBlur}
           ref={field.ref}
         >
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="border-control bg-card text-ink shadow-overlay">
           {presets.map((c) => (
             <SelectItem key={c.value} value={c.value}>
               {c.label}
@@ -119,6 +125,8 @@ function CategoryControl({
       </Select>
       {isOther && (
         <Input
+          aria-invalid={!!error}
+          aria-describedby={error ? 'category-description' : undefined}
           value={value}
           onChange={(e) => field.onChange(e.target.value)}
           onBlur={field.onBlur}

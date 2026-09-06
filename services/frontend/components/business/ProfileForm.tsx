@@ -21,8 +21,10 @@ import { createBusinessSchema, type BusinessInput } from '@/lib/schemas';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { Field } from '@/components/ui/field';
-import { AppInput as Input } from '@/components/design-system/AppInput';
+import { AppField as Field } from '@/components/design-system/AppField';
+import { StatusLine } from '@/components/design-system/StatusLine';
+import { Check, AlertTriangle } from 'lucide-react';
+import { AppInput as Input, AppTextarea } from '@/components/design-system/AppInput';
 import { CategoryField } from '@/components/business/CategoryField';
 import type { Business } from '@/types/business';
 
@@ -53,16 +55,16 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   useEffect(() => {
     if (!defaultValues) return;
     setLogoUrl(defaultValues.logoUrl ?? '');
-    if (isDirty) return; // user is mid-edit — don't clobber their typed values
-    reset(defaultValues);
-  }, [defaultValues, reset, isDirty]);
+    reset(defaultValues, { keepDirtyValues: true });
+  }, [defaultValues, reset]);
 
   const mutation = useMutation({
     mutationFn: (data: BusinessInput) => {
       if (!activeBusinessId) return Promise.reject(new Error('No active business'));
       return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.ROOT, data);
     },
-    onSuccess: () => {
+    onSuccess: (_response, values) => {
+      reset(values);
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
       toast.success(tProfileForm('saved'));
     },
@@ -93,7 +95,13 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   }
 
   return (
-    <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="flex flex-col gap-5">
+    <form
+      onChange={() => {
+        if (!mutation.isPending) mutation.reset();
+      }}
+      onSubmit={handleSubmit((d) => mutation.mutate(d))}
+      className="flex flex-col gap-5"
+    >
       {/* Logo */}
       <div className="flex items-center gap-5">
         <button
@@ -126,7 +134,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-ink">{tProfileForm('logoLabel')}</div>
           <p className="mt-0.5 text-[13px] text-ink-soft">{tProfileForm('logoHint')}</p>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <Button
               type="button"
               variant="secondary"
@@ -166,7 +174,12 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           required
           error={errors.name?.message}
         >
-          <Input id="name" {...register('name')} placeholder={tProfileForm('namePlaceholder')} />
+          <Input
+            disabled={mutation.isPending}
+            id="name"
+            {...register('name')}
+            placeholder={tProfileForm('namePlaceholder')}
+          />
         </Field>
 
         <CategoryField control={control} error={errors.category?.message} />
@@ -178,6 +191,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           className="md:col-span-2"
         >
           <Input
+            disabled={mutation.isPending}
             id="address"
             {...register('address')}
             placeholder={tProfileForm('addressPlaceholder')}
@@ -185,7 +199,12 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         </Field>
 
         <Field htmlFor="phone" label={tProfileForm('fields.phone')} error={errors.phone?.message}>
-          <Input id="phone" {...register('phone')} placeholder="+79001234567" />
+          <Input
+            disabled={mutation.isPending}
+            id="phone"
+            {...register('phone')}
+            placeholder="+79001234567"
+          />
         </Field>
 
         <Field
@@ -193,7 +212,12 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           label={tProfileForm('fields.website')}
           error={errors.website?.message}
         >
-          <Input id="website" {...register('website')} placeholder="https://example.com" />
+          <Input
+            disabled={mutation.isPending}
+            id="website"
+            {...register('website')}
+            placeholder="https://example.com"
+          />
         </Field>
 
         <Field
@@ -203,16 +227,38 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           hint={tProfileForm('descriptionHint')}
           className="md:col-span-2"
         >
-          <textarea
+          <AppTextarea
+            disabled={mutation.isPending}
             id="description"
             {...register('description')}
             rows={4}
             placeholder={tProfileForm('descriptionPlaceholder')}
-            className="flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
           />
         </Field>
       </div>
 
+      {mutation.isSuccess && (
+        <StatusLine role="status" tone="success" icon={Check} text={tProfileForm('saved')} />
+      )}
+      {mutation.isError && (
+        <StatusLine
+          role="alert"
+          tone="danger"
+          icon={AlertTriangle}
+          text={tProfileForm('saveError')}
+        />
+      )}
+      {logoMutation.isSuccess && (
+        <StatusLine role="status" tone="success" icon={Check} text={tProfileForm('logoUpdated')} />
+      )}
+      {logoMutation.isError && (
+        <StatusLine
+          role="alert"
+          tone="danger"
+          icon={AlertTriangle}
+          text={tProfileForm('logoUploadError')}
+        />
+      )}
       {editPerm.isError && <PermissionLoadError onRetry={editPerm.refetch} />}
 
       <div className="flex items-center justify-end pt-1">

@@ -40,7 +40,7 @@ export default function ChatListPage() {
 
   const {
     data: conversations = [],
-    isLoading,
+    isPending: isLoading,
     isError,
     refetch,
   } = useQuery<Conversation[]>({
@@ -122,8 +122,11 @@ export default function ChatListPage() {
       ) : isError ? (
         <ListLoadError onRetry={() => void refetch()} />
       ) : conversations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-ink-soft">
-          <MessageCircle size={48} className="mb-4 opacity-40" />
+        <div
+          role="status"
+          className="flex flex-col items-center justify-center py-12 text-center text-ink-soft"
+        >
+          <MessageCircle size={48} className="mb-4" />
           <p className="text-lg">{tChat('noConversations')}</p>
           <p className="mt-1 text-sm">{tChat('newConversationCta')}</p>
         </div>

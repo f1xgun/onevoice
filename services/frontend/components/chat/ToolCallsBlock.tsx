@@ -1,20 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { ToolCard } from './ToolCard';
 import type { ToolCall } from '@/types/chat';
-import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
+import { PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
 
 function PlatformBadge({ name }: { name: string }) {
   const platform = getPlatform(name);
-  const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   return (
-    <span
-      className="rounded px-1.5 py-0.5 text-xs font-bold text-paper"
-      style={{ backgroundColor: color }}
-    >
+    <span className="rounded bg-paper-raised px-2 py-1 text-meta text-ink">
       {PLATFORM_LABELS[platform] ?? platform.toUpperCase()}
     </span>
   );
@@ -22,6 +18,7 @@ function PlatformBadge({ name }: { name: string }) {
 
 export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
   const tCalls = useTranslations('chat.toolCalls');
+  const contentId = useId();
   const [expanded, setExpanded] = useState(false);
 
   const doneCount = toolCalls.filter((t) => t.status === 'done').length;
@@ -38,8 +35,10 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
     <div className="mt-2 overflow-hidden rounded-md border border-line bg-paper-raised">
       <button
         type="button"
+        aria-expanded={expanded}
+        aria-controls={contentId}
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center gap-2 bg-paper-sunken px-3 py-2 text-left text-sm text-ink-mid transition-colors hover:bg-paper-well"
+        className="flex min-h-11 w-full flex-wrap items-center gap-2 bg-paper-sunken px-3 py-2 text-left text-sm text-ink-mid transition-colors hover:bg-paper-well"
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>
@@ -47,15 +46,15 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
             ? tCalls('hideActions', { count: toolCalls.length })
             : tCalls('showActions', { count: toolCalls.length })}
         </span>
-        <span className="ml-1 font-mono text-[11px] text-[var(--ov-success)]">
+        <span className="ml-1 text-meta text-ink-soft">
           {tCalls('doneCount', { done: doneCount, total: toolCalls.length })}
         </span>
         {failCount > 0 && (
-          <span className="ml-1 font-mono text-[11px] text-[var(--ov-danger)]">
+          <span className="ml-1 text-meta text-danger">
             {tCalls('failCount', { failed: failCount })}
           </span>
         )}
-        <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex flex-wrap gap-1">
           {platforms.map((p) => (
             <PlatformBadge key={p} name={p + '__x'} />
           ))}
@@ -63,7 +62,7 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
       </button>
 
       {expanded && (
-        <div className="space-y-2 p-2">
+        <div id={contentId} className="space-y-2 p-2">
           {toolCalls.map((tool) => (
             <ToolCard key={tool.id} tool={tool} />
           ))}

@@ -38,7 +38,11 @@ export function ThemeSwitcher({ className, side = 'bottom', align = 'end' }: The
           <SunMoon size={18} aria-hidden />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side={side} align={align} className="min-w-[9rem]">
+      <DropdownMenuContent
+        side={side}
+        align={align}
+        className="min-w-[9rem] max-w-[calc(100vw-2rem)] border-control bg-card text-ink shadow-overlay"
+      >
         <DropdownMenuRadioGroup
           value={active}
           onValueChange={(value) => {

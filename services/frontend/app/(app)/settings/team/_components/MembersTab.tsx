@@ -171,7 +171,10 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
                             <MoreHorizontal size={16} aria-hidden />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent
+                          className="max-w-[calc(100vw-2rem)] border-control bg-card text-ink shadow-overlay"
+                          align="end"
+                        >
                           {canUpdateRole && !showSelf && (
                             <DropdownMenuItem onSelect={() => setRoleChange(m)}>
                               {tActions('changeRole')}
