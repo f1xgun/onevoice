@@ -9,6 +9,7 @@ export interface BusinessSummary {
   role: { id: string; name: string };
   status: 'active' | 'suspended';
   joined_at: string;
+  deletion_pending_until?: string;
 }
 
 export const BUSINESS_LIST_QUERY_KEY = ['businesses'] as const;

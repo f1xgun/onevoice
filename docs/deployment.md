@@ -10,11 +10,11 @@ End-to-end playbook for getting OneVoice running on a fresh Linux VM (Yandex Clo
 
 ## Choose a deployment mode
 
-| Mode | When to pick it | HTTPS? | OAuth (VK/Yandex)? | Custom domain? |
-|---|---|---|---|---|
-| **A — HTTP on bare IP** | Quick demo, only Telegram bot needed | No | No (providers reject IP-based redirect URIs) | No |
-| **B — HTTPS via `<ip>.nip.io`** | Demo with full functionality, no domain to buy | Yes (real Let's Encrypt cert) | Yes | No |
-| **C — HTTPS with your own domain** | Production / staging | Yes | Yes | Yes |
+| Mode                               | When to pick it                                | HTTPS?                        | OAuth (VK/Yandex)?                           | Custom domain? |
+| ---------------------------------- | ---------------------------------------------- | ----------------------------- | -------------------------------------------- | -------------- |
+| **A — HTTP on bare IP**            | Quick demo, only Telegram bot needed           | No                            | No (providers reject IP-based redirect URIs) | No             |
+| **B — HTTPS via `<ip>.nip.io`**    | Demo with full functionality, no domain to buy | Yes (real Let's Encrypt cert) | Yes                                          | No             |
+| **C — HTTPS with your own domain** | Production / staging                           | Yes                           | Yes                                          | Yes            |
 
 You can start in mode A and move to B/C later — only the `.env` and one bootstrap command change.
 
@@ -22,25 +22,25 @@ You can start in mode A and move to B/C later — only the `.env` and one bootst
 
 ## 0. Prerequisites
 
-| Requirement | Notes |
-|---|---|
-| Linux VM | Ubuntu 22.04 LTS / Debian 12. **4 vCPU / 8 GB RAM minimum** — Yandex.Business agent runs Playwright + Chromium; on 2 vCPU / 4 GB it OOM-kills. |
-| Public IPv4 | Static for modes B / C (so the IP and DNS don't desync). Ephemeral is OK for mode A. |
-| DNS | Mode A: none. Mode B: none (`nip.io` resolves automatically). Mode C: one A record pointing your domain at the VM. |
-| Inbound firewall | `22` (SSH), `80`, `443`. All others closed. |
-| Docker | Engine ≥ 24, Compose plugin v2 (`docker compose`, not the old hyphenated form). |
-| Git | For cloning the repo. |
+| Requirement      | Notes                                                                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux VM         | Ubuntu 22.04 LTS / Debian 12. **4 vCPU / 8 GB RAM minimum** — Yandex.Business agent runs Playwright + Chromium; on 2 vCPU / 4 GB it OOM-kills. |
+| Public IPv4      | Static for modes B / C (so the IP and DNS don't desync). Ephemeral is OK for mode A.                                                           |
+| DNS              | Mode A: none. Mode B: none (`nip.io` resolves automatically). Mode C: one A record pointing your domain at the VM.                             |
+| Inbound firewall | `22` (SSH), `80`, `443`. All others closed.                                                                                                    |
+| Docker           | Engine ≥ 24, Compose plugin v2 (`docker compose`, not the old hyphenated form).                                                                |
+| Git              | For cloning the repo.                                                                                                                          |
 
 ### 0a. Yandex Cloud specifics
 
-| What | Where |
-|---|---|
-| **Static IP** | Console → Compute → VM → Network interfaces → Public IP → reserve. Without this, stopping the VM gives you a new IP after start. |
+| What                                        | Where                                                                                                                                                                   |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Static IP**                               | Console → Compute → VM → Network interfaces → Public IP → reserve. Without this, stopping the VM gives you a new IP after start.                                        |
 | **Security group** (this is the main thing) | VPC → Security groups → attach to the VM's network interface. The VM-internal `ufw` runs **after** the SG filters traffic — opening ports in `ufw` alone is not enough. |
-| Security group ingress rules | TCP `22` from `<your IP>/32`, TCP `80` from `0.0.0.0/0`, TCP `443` from `0.0.0.0/0`. ICMP from `0.0.0.0/0` is optional (lets the VM be pinged). |
-| Image | Ubuntu 22.04 LTS (`ubuntu-2204-lts`). |
-| SSH user | Whatever username you put in the cloud-init SSH key block — usually `ubuntu` or `yc-user`. There is no `root` login by default. |
-| Boot disk | Network SSD, 30 GB (Docker images + 2 DBs eat ~10 GB). |
+| Security group ingress rules                | TCP `22` from `<your IP>/32`, TCP `80` from `0.0.0.0/0`, TCP `443` from `0.0.0.0/0`. ICMP from `0.0.0.0/0` is optional (lets the VM be pinged).                         |
+| Image                                       | Ubuntu 22.04 LTS (`ubuntu-2204-lts`).                                                                                                                                   |
+| SSH user                                    | Whatever username you put in the cloud-init SSH key block — usually `ubuntu` or `yc-user`. There is no `root` login by default.                                         |
+| Boot disk                                   | Network SSD, 30 GB (Docker images + 2 DBs eat ~10 GB).                                                                                                                  |
 
 ### Provision the VM
 
@@ -116,7 +116,7 @@ Open `.env` and fill in **every blank required field**. The file is the single s
 > complete env audit.
 
 Set `APP_ENV=production` for any real deployment: it switches on the fail-closed
-gates (LEGAL_* validation, LLM data-residency, mandatory internal mTLS and
+gates (LEGAL\_\* validation, LLM data-residency, mandatory internal mTLS and
 orchestrator secret). The production overlay refuses to start without `APP_ENV`
 and `PUBLIC_URL`.
 
@@ -132,13 +132,13 @@ openssl rand -base64 24     # POSTGRES_PASSWORD (REQUIRED — compose aborts if 
 
 ### Required values from external services
 
-| Variable | Where to get it |
-|---|---|
-| `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | At least one. From the provider's console. |
-| `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/BotFather) → `/newbot`. |
-| `VK_CLIENT_ID`, `VK_CLIENT_SECRET`, `VK_SERVICE_KEY` | [vk.com/dev → My apps](https://vk.com/dev). Modes B / C only. |
-| `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET` | [oauth.yandex.ru](https://oauth.yandex.ru/). Modes B / C only. |
-| `GOOGLE_*` | Only if you intend to enable the unverified Google Business agent. |
+| Variable                                                      | Where to get it                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | At least one. From the provider's console.                         |
+| `TELEGRAM_BOT_TOKEN`                                          | [@BotFather](https://t.me/BotFather) → `/newbot`.                  |
+| `VK_CLIENT_ID`, `VK_CLIENT_SECRET`, `VK_SERVICE_KEY`          | [vk.com/dev → My apps](https://vk.com/dev). Modes B / C only.      |
+| `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET`                    | [oauth.yandex.ru](https://oauth.yandex.ru/). Modes B / C only.     |
+| `GOOGLE_*`                                                    | Only if you intend to enable the unverified Google Business agent. |
 
 ### Mode-specific values
 
@@ -318,20 +318,24 @@ A 502 from the first three means an upstream container isn't healthy — `docker
 ## 5. Operational tasks
 
 > Replace the compose command prefix with the right one for your mode:
+>
 > - **Mode A:** `docker compose`
 > - **Modes B / C:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml`
 
 ### Tail logs
+
 ```bash
 <compose> logs -f --tail=200 api
 ```
 
 ### Restart one service
+
 ```bash
 <compose> restart api
 ```
 
 ### Apply a code update
+
 ```bash
 git pull --ff-only
 <compose> build --pull
@@ -340,17 +344,23 @@ git pull --ff-only
 ```
 
 ### Database backups
+
 PostgreSQL:
+
 ```bash
 docker exec onevoice-postgres pg_dump -U postgres onevoice | gzip > backup-$(date +%F).sql.gz
 ```
+
 MongoDB:
+
 ```bash
 docker exec onevoice-mongodb mongodump --archive --gzip --db=onevoice > mongo-$(date +%F).archive.gz
 ```
+
 Schedule both via cron on the host.
 
 ### TLS renewals (modes B / C)
+
 The `certbot` container loops `certbot renew` every 12 h and `nginx` reloads every 6 h, so renewals roll out automatically. Verify:
 
 ```bash
@@ -358,7 +368,9 @@ The `certbot` container loops `certbot renew` every 12 h and `nginx` reloads eve
 ```
 
 ### Enable the Google Business agent (unverified)
+
 Off by default. To start it:
+
 ```bash
 <compose> --profile google up -d
 ```
@@ -380,20 +392,20 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 
 ## 7. Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `api` container loops with `JWT_SECRET is required` | `.env` missing or compose run from a directory without it | Run from `/opt/onevoice` (the repo root). |
-| `api` exits with `ENCRYPTION_KEY must be exactly 32 bytes` | Generated with `rand -base64 32` (44 chars) or `rand -hex 32` (64 chars) | Use `openssl rand -hex 16` exactly. |
-| Login redirects back to login (mode A) | `SECURE_COOKIES=true` forced with a plain-http `PUBLIC_URL` → browser refuses to store the cookie | Unset `SECURE_COOKIES` (it then follows the PUBLIC_URL scheme) or set it to `false`. |
-| `nginx` exits with `cannot load certificate ... no such file` | Cert volume empty | Re-run `./scripts/init-letsencrypt.sh`. |
-| Certbot returns `DNS problem: NXDOMAIN` | DNS not propagated, or in mode B the IP fragment is misspelled (dashes, not dots) | Mode B uses dashes: `203-0-113-10.nip.io`, not `203.0.113.10.nip.io`. |
-| Certbot returns `too many certificates already issued` | Hit Let's Encrypt's 5/week prod limit | Set `CERTBOT_STAGING=1` and iterate; flip to 0 only when you're confident. |
-| OAuth callback returns 400 `invalid redirect_uri` | Provider dashboard has the localhost dev URI | Update the redirect URI in the VK / Yandex dashboard to match `.env`. |
-| OAuth callback rejected even though URIs match (mode A) | VK / Yandex don't accept bare-IP redirect URIs | Move to mode B (free nip.io HTTPS) or mode C. |
-| Chat returns 503 from orchestrator | `LLM_MODEL` set but no provider key | Check at least one of `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is populated. |
-| Image upload fails with `connect: connection refused` | MinIO never reached healthy | `docker logs onevoice-minio`; common cause is leftover lock files in the named volume — `docker volume rm onevoice_minio_data` and recreate. |
-| Yandex.Business agent times out on every action | Yandex blocked the Playwright fingerprint | Check `/tmp/rpa-screenshots/` on the host (mounted volume). |
-| External access works locally on the VM but not over the internet (YC) | Security group not attached to the VM's NIC, or its ingress rules don't include 80/443 | YC web console → VM → Network interfaces → Security groups. |
+| Symptom                                                                | Likely cause                                                                                      | Fix                                                                                                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api` container loops with `JWT_SECRET is required`                    | `.env` missing or compose run from a directory without it                                         | Run from `/opt/onevoice` (the repo root).                                                                                                    |
+| `api` exits with `ENCRYPTION_KEY must be exactly 32 bytes`             | Generated with `rand -base64 32` (44 chars) or `rand -hex 32` (64 chars)                          | Use `openssl rand -hex 16` exactly.                                                                                                          |
+| Login redirects back to login (mode A)                                 | `SECURE_COOKIES=true` forced with a plain-http `PUBLIC_URL` → browser refuses to store the cookie | Unset `SECURE_COOKIES` (it then follows the PUBLIC_URL scheme) or set it to `false`.                                                         |
+| `nginx` exits with `cannot load certificate ... no such file`          | Cert volume empty                                                                                 | Re-run `./scripts/init-letsencrypt.sh`.                                                                                                      |
+| Certbot returns `DNS problem: NXDOMAIN`                                | DNS not propagated, or in mode B the IP fragment is misspelled (dashes, not dots)                 | Mode B uses dashes: `203-0-113-10.nip.io`, not `203.0.113.10.nip.io`.                                                                        |
+| Certbot returns `too many certificates already issued`                 | Hit Let's Encrypt's 5/week prod limit                                                             | Set `CERTBOT_STAGING=1` and iterate; flip to 0 only when you're confident.                                                                   |
+| OAuth callback returns 400 `invalid redirect_uri`                      | Provider dashboard has the localhost dev URI                                                      | Update the redirect URI in the VK / Yandex dashboard to match `.env`.                                                                        |
+| OAuth callback rejected even though URIs match (mode A)                | VK / Yandex don't accept bare-IP redirect URIs                                                    | Move to mode B (free nip.io HTTPS) or mode C.                                                                                                |
+| Chat returns 503 from orchestrator                                     | `LLM_MODEL` set but no provider key                                                               | Check at least one of `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is populated.                                            |
+| Image upload fails with `connect: connection refused`                  | MinIO never reached healthy                                                                       | `docker logs onevoice-minio`; common cause is leftover lock files in the named volume — `docker volume rm onevoice_minio_data` and recreate. |
+| Yandex.Business agent times out on every action                        | Yandex blocked the Playwright fingerprint                                                         | Check `/tmp/rpa-screenshots/` on the host (mounted volume).                                                                                  |
+| External access works locally on the VM but not over the internet (YC) | Security group not attached to the VM's NIC, or its ingress rules don't include 80/443            | YC web console → VM → Network interfaces → Security groups.                                                                                  |
 
 ---
 
@@ -422,3 +434,14 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
       Apply mode changes with the existing frontend image and updated runtime
       environment; no rebuild. See [frontend configuration](frontend-config.md)
       for the distinction between a process restart and Compose recreation.
+
+### Canonical-email pre-migration check
+
+Before applying `migrations/postgres/000037_users_email_canonical.up.sql`
+(API migration copy `000036`), run `scripts/report-email-collisions.sql` with
+`psql -X -v ON_ERROR_STOP=1` against the target database. Any returned row blocks
+this upgrade. Reconcile each group using the approved, audited procedure in
+[the founder manual-actions runbook](runbook-founder-manual-actions.md#canonical-email-collisions-before-upgrade),
+then rerun the report until empty while account writes remain paused. Pending
+account deletion does not remove the collision. Keep the migration's lock and
+abort-on-collision guard; never automatically merge or delete accounts.

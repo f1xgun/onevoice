@@ -874,3 +874,7 @@ func TestToolsRegistryCache_FetchAndCache(t *testing.T) {
 		t.Errorf("Has should return false for unregistered tool")
 	}
 }
+
+func (s *stubBusinessRepo) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	return s.GetByID(ctx, id)
+}

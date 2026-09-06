@@ -287,6 +287,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // ListPending handles GET /api/v1/businesses/{id}/invitations.
 // See docs/api/handlers/invitations.md.
+// ListPending includes inviters in their account deletion grace window.
 func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
@@ -306,9 +307,6 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 			writeAuthzInvariantError(r.Context(), w, "list_pending.role_lookup", err)
 			return
 		}
-		// Deletion-aware read, mirroring ListMembers: the inviter may be inside
-		// their account-deletion grace window, and an active-only lookup would
-		// fail the whole pending list.
 		user, err := h.userRepo.GetByIDIncludingDeleted(r.Context(), inv.CreatedBy)
 		if err != nil {
 			writeAuthzInvariantError(r.Context(), w, "list_pending.user_lookup", err)

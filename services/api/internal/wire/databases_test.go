@@ -59,14 +59,14 @@ type stubKMS struct {
 	err       error
 }
 
-func (s stubKMS) Encrypt(_ context.Context, _, _ []byte) ([]byte, string, error) {
+func (s stubKMS) Encrypt(_ context.Context, _, _ []byte) (data []byte, version string, err error) {
 	if s.err != nil {
 		return nil, "", s.err
 	}
 	return []byte("wrapped"), s.versionID, nil
 }
 
-func (s stubKMS) Decrypt(_ context.Context, _, _ []byte) ([]byte, string, error) {
+func (s stubKMS) Decrypt(_ context.Context, _, _ []byte) (data []byte, version string, err error) {
 	return []byte("plain"), s.versionID, nil
 }
 

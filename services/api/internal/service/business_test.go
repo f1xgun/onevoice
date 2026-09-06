@@ -19,6 +19,7 @@ import (
 
 // Mock BusinessRepository
 type mockBusinessRepository struct {
+	getIncludingDeletedFunc func(context.Context, uuid.UUID) (*domain.Business, error)
 	createFunc              func(ctx context.Context, business *domain.Business) error
 	createInTxFunc          func(ctx context.Context, tx pgx.Tx, business *domain.Business) error
 	getByIDFunc             func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
@@ -53,6 +54,13 @@ func (m *mockBusinessRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 		return m.getByIDFunc(ctx, id)
 	}
 	return nil, domain.ErrBusinessNotFound
+}
+
+func (m *mockBusinessRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	if m.getIncludingDeletedFunc != nil {
+		return m.getIncludingDeletedFunc(ctx, id)
+	}
+	return m.GetByID(ctx, id)
 }
 
 func (m *mockBusinessRepository) Update(ctx context.Context, business *domain.Business) error {
@@ -933,7 +941,7 @@ func TestBusinessService_ListMembershipsByUser(t *testing.T) {
 		assert.Contains(t, statuses, "suspended")
 	})
 
-	t.Run("membership whose organization is soft-deleted is skipped", func(t *testing.T) {
+	t.Run("membership whose organization is erased is skipped", func(t *testing.T) {
 		userID := uuid.New()
 		liveID := uuid.New()
 		deletedID := uuid.New()
@@ -966,7 +974,7 @@ func TestBusinessService_ListMembershipsByUser(t *testing.T) {
 		assert.Equal(t, liveID, result[0].BusinessID)
 	})
 
-	t.Run("every organization soft-deleted returns an empty slice", func(t *testing.T) {
+	t.Run("every organization erased returns an empty slice", func(t *testing.T) {
 		userID := uuid.New()
 		deletedID := uuid.New()
 
@@ -1039,3 +1047,32 @@ func (m *listByUserMock) ListByUser(_ context.Context, _ uuid.UUID) ([]domain.Bu
 // _ ensures expectAnyBusinessExec stays exported-from-test-file for future
 // dual-write tests that need a permissive INSERT INTO businesses match.
 var _ = expectAnyBusinessExec
+
+func TestListMembershipsDeletionDeadline(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		t.Run(fmt.Sprint(pending), func(t *testing.T) {
+			id, userID, roleID := uuid.New(), uuid.New(), uuid.New()
+			requested := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+			biz := &domain.Business{ID: id, Name: "Organization"}
+			if pending {
+				biz.DeletedAt = &requested
+				biz.DeletionRequestedAt = &requested
+			}
+			repo := &mockBusinessRepository{getIncludingDeletedFunc: func(context.Context, uuid.UUID) (*domain.Business, error) { return biz, nil }}
+			memberships := &listByUserMock{members: []domain.BusinessMember{{BusinessID: id, UserID: userID, RoleID: roleID, Status: "active"}}}
+			roles := &mockRoleRepository{getByIDFunc: func(context.Context, uuid.UUID) (*domain.Role, error) {
+				return &domain.Role{ID: roleID, Name: "Owner"}, nil
+			}}
+			svc := NewBusinessService(repo, memberships, roles, newTestPool(t), audit.Nop())
+			got, err := svc.ListMembershipsByUser(context.Background(), userID)
+			require.NoError(t, err)
+			require.Len(t, got, 1)
+			if pending {
+				require.NotNil(t, got[0].DeletionPendingUntil)
+				require.Equal(t, requested.AddDate(0, 0, 30), *got[0].DeletionPendingUntil)
+			} else {
+				require.Nil(t, got[0].DeletionPendingUntil)
+			}
+		})
+	}
+}

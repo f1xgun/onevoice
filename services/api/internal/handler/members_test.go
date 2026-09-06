@@ -22,6 +22,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // --- Mock repositories ---
@@ -270,14 +271,8 @@ func newMembersHandlerForTest(
 	inv memberCacheInvalidator,
 ) *MembersHandler {
 	return &MembersHandler{
-		membershipRepo:  mr,
-		roleRepo:        rr,
-		userRepo:        ur,
-		invitationRepo:  &recordingInvitationRepo{},
+		mutations:       service.NewMemberMutationService(mr, rr, ur, &recordingInvitationRepo{}, pool, inv, audit.Nop()),
 		businessService: &mockBusinessGetter{},
-		pool:            pool,
-		invalidator:     inv,
-		audit:           audit.Nop(),
 	}
 }
 
@@ -541,11 +536,11 @@ func TestMembersHandler_UpdateMemberRole_RevokesInvitationsOnLostInvitePermissio
 			now := time.Now().UTC()
 
 			mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-			mockPool.ExpectQuery("SELECT user_id, role_id").
+			mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 				WithArgs(pgxmock.AnyArg()).
-				WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-					AddRow(actorID, ownerRoleID).
-					AddRow(targetID, newRoleID))
+				WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+					AddRow(actorID, ownerRoleID, false).
+					AddRow(targetID, newRoleID, false))
 			mockPool.ExpectCommit()
 
 			rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
@@ -558,7 +553,7 @@ func TestMembersHandler_UpdateMemberRole_RevokesInvitationsOnLostInvitePermissio
 			inv.On("InvalidateMember", bizID, targetID).Return()
 
 			h := newMembersHandlerForTest(mr, rr, &MockUserRepository{}, mockPool, inv)
-			h.invitationRepo = invitations
+			h.mutations = service.NewMemberMutationService(mr, rr, &MockUserRepository{}, invitations, mockPool, inv, audit.Nop())
 
 			ctx := businessContextWith(context.Background(), bizID, actorID,
 				authz.PermMembersUpdateRole, authz.PermMembersInvite, authz.PermMembersRead)
@@ -1030,18 +1025,18 @@ func TestMembersHandler_RemoveMember_RevokesPendingInvitations(t *testing.T) {
 	nonOwnerRoleID := uuid.New()
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID).
-			AddRow(targetID, nonOwnerRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(actorID, ownerRoleID, false).
+			AddRow(targetID, nonOwnerRoleID, false))
 	mockPool.ExpectCommit()
 
 	mr.On("DeleteInTx", mock.Anything, mock.Anything, bizID, targetID).Return(nil)
 	inv.On("InvalidateMember", bizID, targetID).Return()
 
 	h := newMembersHandlerForTest(mr, &MockRoleRepository{}, &MockUserRepository{}, mockPool, inv)
-	h.invitationRepo = invitations
+	h.mutations = service.NewMemberMutationService(mr, &MockRoleRepository{}, &MockUserRepository{}, invitations, mockPool, inv, audit.Nop())
 
 	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersRemove)
 	req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)
@@ -1071,17 +1066,17 @@ func TestMembersHandler_RemoveMember_RevokeFailureRollsBack(t *testing.T) {
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID).
-			AddRow(targetID, uuid.New()))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(actorID, ownerRoleID, false).
+			AddRow(targetID, uuid.New(), false))
 	mockPool.ExpectRollback()
 
 	mr.On("DeleteInTx", mock.Anything, mock.Anything, bizID, targetID).Return(nil)
 
 	h := newMembersHandlerForTest(mr, &MockRoleRepository{}, &MockUserRepository{}, mockPool, inv)
-	h.invitationRepo = invitations
+	h.mutations = service.NewMemberMutationService(mr, &MockRoleRepository{}, &MockUserRepository{}, invitations, mockPool, inv, audit.Nop())
 
 	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersRemove)
 	req := httptest.NewRequest(http.MethodDelete, "/", http.NoBody).WithContext(ctx)

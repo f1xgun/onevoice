@@ -511,11 +511,13 @@ type BusinessMembershipRoleRef struct {
 
 // BusinessMembershipSummary defines model for BusinessMembershipSummary.
 type BusinessMembershipSummary struct {
-	Id       openapi_types.UUID        `json:"id" validate:"required,uuid"`
-	JoinedAt time.Time                 `json:"joined_at" validate:"required"`
-	Name     string                    `json:"name" validate:"required"`
-	Role     BusinessMembershipRoleRef `json:"role"`
-	Status   string                    `json:"status" validate:"required"`
+	// DeletionPendingUntil Present for pending-deletion organizations, including the last organization. Restore via POST /businesses/{id}/restore before this deadline; ordinary organization reads remain unavailable.
+	DeletionPendingUntil *time.Time                `json:"deletion_pending_until,omitempty"`
+	Id                   openapi_types.UUID        `json:"id" validate:"required,uuid"`
+	JoinedAt             time.Time                 `json:"joined_at" validate:"required"`
+	Name                 string                    `json:"name" validate:"required"`
+	Role                 BusinessMembershipRoleRef `json:"role"`
+	Status               string                    `json:"status" validate:"required"`
 }
 
 // ChangePasswordRequest defines model for ChangePasswordRequest.

@@ -83,6 +83,7 @@ func (h *DBHandles) Close() {
 }
 
 // BootstrapDatabases connects every backing store and runs blocking startup invariants.
+// Its Encrypt self-test verifies KMS access and a persistable primary key version.
 // See docs/api/wire-databases.md for ordering, timeouts, and failure-mode contract.
 func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Config) (*DBHandles, error) {
 	h := &DBHandles{}
@@ -244,9 +245,6 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 		return nil, fmt.Errorf("wire: kms client: %w", kmsErr)
 	}
 
-	// Boot self-test: a single Encrypt call confirms SA binding is reachable
-	// AND that the primary KMS version resolves to a persistable key_version
-	// before the API serves traffic.
 	testCtx, testCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer testCancel()
 	versionMap, versionErr := resolveKMSVersionMap(testCtx, kmsClient, cfg.TokenEncryptionKMSVersionMap, log)

@@ -344,6 +344,40 @@ describe('BusinessRequiredGuard', () => {
     expect(getByRole('status')).toBeTruthy();
   });
 
+  it.each([
+    ['/settings', true],
+    ['/settings/account', true],
+    ['/settings/privacy', true],
+    ['/settings/team', false],
+    ['/chat', false],
+  ])('pending-only organizations preserve restoration on %s', (path, accountScoped) => {
+    usePathnameMock.mockReturnValue(path);
+    storeActiveBusinessId = 'biz-1';
+    useBusinessListMock.mockReturnValue({
+      data: [
+        {
+          id: 'biz-1',
+          name: 'Organization',
+          deletion_pending_until: '2026-10-06T12:00:00Z',
+        },
+      ],
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    const { queryByText, getByRole } = render(
+      <Wrapper>
+        <BusinessRequiredGuard>
+          <div>protected</div>
+        </BusinessRequiredGuard>
+      </Wrapper>
+    );
+    expect(getByRole('alert')).toBeTruthy();
+    expect(getByRole('button')).toBeTruthy();
+    expect(Boolean(queryByText('protected'))).toBe(accountScoped);
+    expect(setActiveMock).toHaveBeenCalledWith(null);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
   it('Test 9: error state renders retry UI with a retry button (not a spinner)', async () => {
     usePathnameMock.mockReturnValue('/chat');
     const refetchMock = vi.fn().mockResolvedValue(undefined);

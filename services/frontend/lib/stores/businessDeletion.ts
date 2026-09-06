@@ -3,13 +3,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-/**
- * Records an organization that was just soft-deleted so a grace banner can
- * offer a Restore action. Soft-deleted organizations are invisible to reads
- * (GetByID filters deleted_at IS NULL), so the deletion state cannot be
- * re-derived from the server — this client-side signal bridges the gap during
- * the grace window. Cleared on restore or when dismissed.
- */
+/** Records a just-deleted organization until the server list refreshes. */
 export interface PendingBusinessDeletion {
   id: string;
   name: string;

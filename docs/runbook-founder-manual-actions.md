@@ -98,7 +98,7 @@
 - [ ] VM в Yandex Cloud (ru-central1), security group, DNS на домен, TLS (`scripts/init-letsencrypt.sh`).
 - [ ] Секреты: `JWT_SECRET`, `ENCRYPTION_KEY`, `POSTGRES_PASSWORD`, `MONGO_ROOT_USERNAME/PASSWORD`, `REDIS_PASSWORD`, `MINIO_ROOT_USER/PASSWORD`, `ORCHESTRATOR_INTERNAL_SECRET`, `A2A_PAYLOAD_KEY` (32 байта, одинаковый на api и agent-yandex-business), `TELEGRAM_APPROVAL_HMAC_SECRET`. Генерировать `openssl rand -base64 32`, хранить в менеджере секретов, не в git.
 - [ ] `make mtls-certs` (или прод-CA по `infra/mtls/README.md`) и `make nats-creds` — nkey-сиды сервисов и ACL шины (`infra/nats/README.md`).
-- [ ] `APP_ENV=production` — включает все fail-closed проверки (LEGAL_*, ORCHESTRATOR_INTERNAL_SECRET, Redis, RF-only LLM).
+- [ ] `APP_ENV=production` — включает все fail-closed проверки (LEGAL\_\*, ORCHESTRATOR_INTERNAL_SECRET, Redis, RF-only LLM).
 - [ ] `LEGAL_*` и `NEXT_PUBLIC_LEGAL_*` = реальные реквизиты из §1, дословно как в РКН-записи.
 - [ ] Бэкапы: контейнер бэкапов с доступом к KMS и бакету; провести восстановление по `docs/runbook-restore.md` один раз до запуска.
 - [ ] Наблюдаемость: Grafana-дашборды (в т. ч. «Product / North-Star»), алерты — `docs/runbook/observability.md`.
@@ -125,3 +125,112 @@
       пересоздания frontend с прежним образом: обычный `restart` сохраняет старое
       окружение. Порядок и проверка — [frontend config](frontend-config.md).
       Проверить отсутствие `/register` на лендинге; существующие аккаунты сохраняются.
+
+## Canonical-email collisions before upgrade
+
+Before PostgreSQL migration `000037_users_email_canonical` (API test-copy
+`000036_users_email_canonical`), run the read-only report from the release checkout:
+
+```sh
+docker compose exec -T postgres psql -X -U postgres -d onevoice \
+  < scripts/report-email-collisions.sql
+```
+
+The report includes **all accounts**, including accounts pending deletion, grouped
+by `lower(btrim(email))`, exactly as the migration does. `business_count` counts
+memberships, including suspended memberships and pending-deletion organizations.
+`last_login` is the latest retained `auth.login_success` audit event; NULL means
+unknown, not proof that the account was never used. Restrict report access as it
+contains account identifiers and email addresses; never commit production output.
+
+1. Take a verified backup and pause account writes through the deployment
+   maintenance procedure. Run the report before applying migrations. A nonempty
+   report blocks deployment; do not bypass or remove the migration collision guard.
+2. For each group, identify the legitimate mailbox holder through independent
+   identity verification and review memberships, ownership, billing and retained
+   audit history. The mailbox holder's approved account keeps the address.
+   Creation date, recent login, or organization count alone must never decide
+   ownership. If the same person owns both accounts, they explicitly select the
+   account to keep. If ownership is disputed, leave the group unchanged and keep
+   deployment blocked. Never rename or delete `demo-owner@onevoice.local`.
+3. Obtain approval from the other account's holder for a distinct replacement
+   address they control. Record operator identity, approval reference, keeper and
+   renamed UUIDs, old and new addresses, reason, and membership review in the
+   restricted change record. No memberships, organizations, credentials, or OAuth
+   identities are merged or transferred by this procedure.
+4. In an interactive `psql -X -v ON_ERROR_STOP=1` session, set these variables to
+   the reviewed values. Do not use example UUIDs. Execute the transaction below
+   for **one approved account at a time**. The operator must be an existing user
+   so the audit foreign key resolves. The target address must be unique after
+   canonicalization; the account must subsequently verify its replacement email.
+
+```sql
+\prompt 'Keeper user UUID: ' keeper_id
+\prompt 'Account to rename UUID: ' renamed_id
+\prompt 'Exact existing address of renamed account: ' old_email
+\prompt 'Approved replacement address: ' new_email
+\prompt 'Operator user UUID: ' operator_id
+\prompt 'Approval reference and reason: ' reason
+BEGIN;
+LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE;
+WITH changed AS (
+    UPDATE users u
+    SET email = lower(btrim(:'new_email')),
+        email_verified = false, email_verified_at = NULL, updated_at = now()
+    WHERE u.id = :'renamed_id'::uuid
+      AND u.email = :'old_email'
+      AND u.id <> :'keeper_id'::uuid
+      AND lower(btrim(u.email)) <> 'demo-owner@onevoice.local'
+      AND lower(btrim(:'new_email')) <> 'demo-owner@onevoice.local'
+      AND btrim(:'new_email') <> ''
+      AND btrim(:'reason') <> ''
+      AND EXISTS (
+          SELECT 1 FROM users k WHERE k.id = :'keeper_id'::uuid
+          AND lower(btrim(k.email)) = lower(btrim(u.email))
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM users n
+          WHERE lower(btrim(n.email)) = lower(btrim(:'new_email'))
+      )
+    RETURNING u.id, u.email
+), audited AS (
+    INSERT INTO audit_logs (user_id, action, resource, details, user_email_at_event)
+    SELECT :'operator_id'::uuid, 'admin.email_collision_reconciled',
+           'users/' || c.id::text,
+           jsonb_build_object('keeper_id', :'keeper_id', 'renamed_id', c.id,
+                              'old_email', :'old_email', 'new_email', c.email,
+                              'reason', :'reason'),
+           (SELECT email FROM users WHERE id = :'operator_id'::uuid)
+    FROM changed c
+    RETURNING id
+)
+SELECT count(*) = 1 AS reconciliation_ok FROM audited \gset
+\if :reconciliation_ok
+    COMMIT;
+\else
+    ROLLBACK;
+    \echo 'No account changed. Recheck identifiers, collision and replacement address.'
+\endif
+```
+
+Any SQL error requires `ROLLBACK` before retrying. An audit failure rolls back the
+rename with it. Retain the audit event ID from the restricted operator review.
+Re-run the report after each transaction. If the other account is to be deleted,
+first resolve its address as above, then use the existing consent-based account
+removal workflow, including ownership checks and grace period. Soft deletion
+alone does **not** resolve a collision; do not directly delete a users row or
+bypass ownership checks. No account is automatically renamed, merged or deleted.
+
+5. Once the report has zero rows, apply the normal migrations with writes still
+   paused. The migration locks and checks again, so a concurrent collision fails
+   closed. If the migration was already marked dirty by a failed attempt, inspect
+   the schema and migration transaction outcome before following the migration
+   tool's recovery procedure; never force the failed version as successfully
+   applied. Confirm the unique index exists and retrying the report returns zero
+   rows before reopening writes. Notify affected holders through their verified
+   contact channels and complete replacement-email verification.
+
+The report regression runner `scripts/test-email-collisions.py` uses only CTE
+fixtures inside a read-only transaction. It checks case/space collisions,
+soft-deleted accounts, audit-derived last login, membership counts, and the
+post-reconciliation zero-collision condition without changing stored accounts.

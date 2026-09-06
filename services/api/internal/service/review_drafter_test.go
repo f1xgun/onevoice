@@ -532,3 +532,7 @@ func TestDraftReviewByID_ClampsYandexDraft(t *testing.T) {
 
 // Compile-time guard: fakeDraftClient implements DraftReplyClient.
 var _ DraftReplyClient = (*fakeDraftClient)(nil)
+
+func (m *fakeBusinessRepo) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	return m.GetByID(ctx, id)
+}

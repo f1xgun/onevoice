@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/audit"
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/audit"
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 type normalizedResetRepo struct {

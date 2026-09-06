@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 func TestAuthEmailNormalizedBeforeValidation(t *testing.T) {

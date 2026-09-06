@@ -34,6 +34,7 @@ type BusinessRepository interface {
 	// CreateInTx dual-writes businesses + business_members atomically via caller tx.
 	CreateInTx(ctx context.Context, tx pgx.Tx, business *Business) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Business, error)
+	GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*Business, error)
 	// Update writes the editable business profile columns (name, category,
 	// address, phone, website, description) only. It does NOT write logo_url
 	// nor the settings JSONB. logo_url is persisted via the targeted

@@ -23,7 +23,6 @@ import { VoiceProfileSection } from '@/components/business/VoiceProfileSection';
 import { AISummaryRail } from '@/components/business/AISummaryRail';
 import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { DangerZone } from '@/components/business/DangerZone';
-import { BusinessDeletionGraceBanner } from '@/components/business/BusinessDeletionGraceBanner';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -107,7 +106,6 @@ export default function BusinessPage() {
 
   return (
     <>
-      <BusinessDeletionGraceBanner />
       <PageHeader title={title} sub={sub} />
 
       <div className="px-4 sm:px-12">

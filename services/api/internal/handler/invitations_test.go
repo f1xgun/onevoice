@@ -887,3 +887,7 @@ func TestInvitationsHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *tes
 		f.invRepo.AssertNotCalled(t, "Revoke", mock.Anything, mock.Anything, mock.Anything)
 	})
 }
+
+func (m *MockBusinessRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	return m.GetByID(ctx, id)
+}
