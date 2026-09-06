@@ -88,6 +88,12 @@ populate `RunState` without juggling a long return list. Legacy V1
 snapshots leave most fields zero — the `Legacy` flag tells the caller to
 expect a leading system message in `Messages` instead.
 
+`PDnAllowlist` (`pdn_allowlist`) is hydrated so the resumed turn exempts
+the same business-owned contact values from the outbound personal-data
+scrub as the paused one. Snapshots written before the field existed decode
+to nil — the resumed turn then redacts without an allowlist, which is the
+old, safe behaviour.
+
 Accumulated token counts (`AccumulatedInputTokens`,
 `AccumulatedOutputTokens`) are hydrated so the per-conversation cap
 continues to measure from the pre-pause budget. Legacy V1/V2 snapshots

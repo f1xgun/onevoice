@@ -144,15 +144,19 @@ When `len(manualCalls) > 0`:
     "messages": [...],
     "system_platform": "...",
     "system_business": "...",
+    "pdn_allowlist": ["+7 (843) 555-12-34"],
     "accumulated_input_tokens": 12345,
     "accumulated_output_tokens": 678}
    ```
    The `accumulated_*` fields use `omitempty` so pre-cap snapshots stay
    byte-identical; legacy batches hydrate at 0 (correct — pre-cap turns
-   weren't subject to the cap). On marshal failure (only theoretical for
-   `llm.Message` + strings) we fall back to `{"v":2,"messages":[]}` and
-   log — Resume will then emit `corrupt snapshot` if it ever loads such
-   a batch.
+   weren't subject to the cap). `pdn_allowlist` (also `omitempty`) carries
+   the business's own contact values so a resumed turn scrubs outbound
+   personal data exactly like the paused one — see *Business-owned contact
+   allowlist* in `docs/orchestrator/config.md`. On marshal failure (only
+   theoretical for `llm.Message` + strings) we fall back to
+   `{"v":2,"messages":[]}` and log — Resume will then emit `corrupt
+   snapshot` if it ever loads such a batch.
 4. Build `PendingCall[]` from `manualCalls`. JSON args fall back to
    `{"raw": <original-string>}` on unmarshal failure. `FloorAtPause` is
    the constant `ToolFloorManual` — only manual-floor calls reach this

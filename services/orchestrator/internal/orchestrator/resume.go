@@ -77,6 +77,7 @@ type snapshotDecoded struct {
 	Messages                []llm.Message
 	SystemPlatform          string
 	SystemBusiness          string
+	PDnAllowlist            []string
 	AccumulatedInputTokens  int
 	AccumulatedOutputTokens int
 	Legacy                  bool
@@ -105,6 +106,7 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 		out.Messages = env.Messages
 		out.SystemPlatform = env.SystemPlatform
 		out.SystemBusiness = env.SystemBusiness
+		out.PDnAllowlist = env.PDnAllowlist
 		out.AccumulatedInputTokens = env.AccumulatedInputTokens
 		out.AccumulatedOutputTokens = env.AccumulatedOutputTokens
 		return out, nil
@@ -157,6 +159,7 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		Messages:                 snap.Messages,
 		SystemPlatform:           snap.SystemPlatform,
 		SystemBusiness:           snap.SystemBusiness,
+		PDnAllowlist:             snap.PDnAllowlist,
 		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,

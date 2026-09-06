@@ -83,9 +83,17 @@ The redaction chokepoint lives in `internal/orchestrator/redact.go` (`applyOutbo
 
 - conversation **history** message content (untrusted review/DM bodies the LLM is fed back),
 - **tool-call arguments and tool-result** content,
-- the **per-business** prompt block (block 2) — owner phone/email/card patterns.
+- the **per-business** prompt block (block 2) — third-party phone/email/card patterns.
 
 It never touches block 1 (the locale-fixed platform prefix that anchors the provider cache prefix), and it works on a copy so the persisted HITL pause snapshot keeps the original, un-redacted bytes for the approval card and audit. `RedactPII` matches email / RU phone / IBAN / RU passport / INN / Luhn-valid card numbers; it does **not** recognize free-form physical addresses or person names, so the business `Адрес` line is preserved (lower-risk owner data, frequently load-bearing for the assistant). Set `ALLOW_TRANSBORDER_LLM=true` only with a documented legal basis for transborder transfer, or when inference is pinned to RU / self-hosted endpoints.
+
+#### Business-owned contact allowlist
+
+The scrub is not a blanket pattern match: the business's **own registered contact fields** (`BusinessContext.Phone`, `BusinessContext.Website`) are exempt. They are entered by the owner, rendered on the business's public profile, and routinely load-bearing (a post that must carry the order line, a review reply that points a customer at the shop) — redacting them breaks the product without protecting anyone's personal data. Third-party contacts anywhere else, including in the same sentence, are still redacted.
+
+`redact.go:businessContactAllowlist` derives the list from the `RunRequest`, `RunState.PDnAllowlist` carries it through the loop, and `pkg/security.RedactPIIExcept` applies it on every scrubbed surface (history content, tool-call arguments, block 2). Matching is format-insensitive — lowercased, punctuation-stripped, with the Russian trunk prefix `8` folded onto `7` — so `+7 (843) 555-12-34`, `8 843 555-12-34` and `+78435551234` are one value. The allowlist is persisted on the HITL pause snapshot (`pdn_allowlist`, `omitempty`) so a resumed turn scrubs exactly like the paused one; legacy snapshots without the field simply fall back to allowlist-free redaction.
+
+The `/internal/draft-reply` ingress has no registered contact fields on its request body, so it redacts without an allowlist.
 
 The same `ALLOW_TRANSBORDER_LLM` knob also gates the second outbound LLM ingress — the standalone `/internal/draft-reply` handler (`internal/handler/draft_reply.go`), which sends review text + few-shot examples + the business block to the LLM. `wire/handlers.go` wires `NewDraftReplyHandler(..., !cfg.AllowTransborderLLM)`, so the flag is all-or-nothing across both ingresses: when `false` (default) the handler scrubs every outbound message via `redactDraftMessages` (the same `RedactPII`) before the provider call. The third ingress, the API auto-titler, redacts unconditionally regardless of this flag (see `docs/services/titler.md`).
 

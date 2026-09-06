@@ -2,6 +2,7 @@ package security
 
 import (
 	"regexp"
+	"strings"
 	"unicode"
 )
 
@@ -72,10 +73,27 @@ var piiClasses = []piiClass{
 // RedactPII replaces every PII match in s with the placeholder "[Скрыто]".
 // Idempotent. Safe on empty string. UTF-8 / Cyrillic preserved.
 func RedactPII(s string) string {
+	return RedactPIIExcept(s, nil)
+}
+
+// RedactPIIExcept behaves like RedactPII but preserves every match whose value
+// is listed in allow. It exists for values that are PII-shaped yet are not
+// third-party personal data — a business's OWN registered contact phone or
+// e-mail, which it publishes on its public profile and which the assistant
+// legitimately has to reproduce.
+//
+// Comparison is format-insensitive: both sides are folded by normalizePIIValue,
+// so "+7 (843) 555-12-34", "8 843 555 12 34" and "+78435551234" are one value.
+// A nil or empty allow makes this exactly RedactPII.
+func RedactPIIExcept(s string, allow []string) string {
+	allowed := normalizedAllowSet(allow)
 	out := s
 	for _, c := range piiClasses {
 		out = c.pattern.ReplaceAllStringFunc(out, func(match string) string {
 			if c.extra != nil && !c.extra(match) {
+				return match
+			}
+			if allowed[normalizePIIValue(match)] {
 				return match
 			}
 			return redactionToken
@@ -83,6 +101,50 @@ func RedactPII(s string) string {
 	}
 	return out
 }
+
+// normalizedAllowSet folds allow into a lookup set, dropping entries that
+// normalize to the empty string. Returns nil for an empty input — lookups on a
+// nil map are legal and always miss, so the caller needs no branch.
+func normalizedAllowSet(allow []string) map[string]bool {
+	if len(allow) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(allow))
+	for _, v := range allow {
+		if key := normalizePIIValue(v); key != "" {
+			set[key] = true
+		}
+	}
+	return set
+}
+
+// normalizePIIValue folds a PII-shaped value to a comparison key: lowercased,
+// with every non-alphanumeric rune dropped. An 11-digit all-numeric result that
+// starts with the Russian trunk prefix 8 is rewritten to the 7 country-code form
+// so both national and E.164 spellings of one phone number collapse together.
+func normalizePIIValue(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	digitsOnly := true
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case unicode.IsDigit(r):
+			b.WriteRune(r)
+		case unicode.IsLetter(r):
+			digitsOnly = false
+			b.WriteRune(r)
+		}
+	}
+	key := b.String()
+	if digitsOnly && len(key) == ruPhoneDigits && key[0] == '8' {
+		return "7" + key[1:]
+	}
+	return key
+}
+
+// ruPhoneDigits is the digit count of a full Russian phone number (country code
+// or trunk prefix + 10 subscriber digits).
+const ruPhoneDigits = 11
 
 // ContainsPII reports whether s contains any PII pattern. Convenience wrapper
 // over ContainsPIIClass.
