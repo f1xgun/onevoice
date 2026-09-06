@@ -306,7 +306,10 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 			writeAuthzInvariantError(r.Context(), w, "list_pending.role_lookup", err)
 			return
 		}
-		user, err := h.userRepo.GetByID(r.Context(), inv.CreatedBy)
+		// Deletion-aware read, mirroring ListMembers: the inviter may be inside
+		// their account-deletion grace window, and an active-only lookup would
+		// fail the whole pending list.
+		user, err := h.userRepo.GetByIDIncludingDeleted(r.Context(), inv.CreatedBy)
 		if err != nil {
 			writeAuthzInvariantError(r.Context(), w, "list_pending.user_lookup", err)
 			return

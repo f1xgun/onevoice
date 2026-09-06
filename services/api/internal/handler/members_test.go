@@ -346,6 +346,64 @@ func TestMembersHandler_ListMembers_HappyPath(t *testing.T) {
 	rr.AssertExpectations(t)
 }
 
+// pendingDeletionUserRepo mimics the repository split for a member inside their
+// 30-day account-deletion grace window: the active-only read reports
+// ErrUserNotFound while the deletion-aware read still returns the row.
+type pendingDeletionUserRepo struct {
+	*MockUserRepository
+	pending *domain.User
+}
+
+func (r *pendingDeletionUserRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.User, error) {
+	return nil, domain.ErrUserNotFound
+}
+
+func (r *pendingDeletionUserRepo) GetByIDIncludingDeleted(_ context.Context, id uuid.UUID) (*domain.User, error) {
+	if r.pending != nil && r.pending.ID == id {
+		return r.pending, nil
+	}
+	return nil, domain.ErrUserNotFound
+}
+
+// TestMembersHandler_ListMembers_MemberPendingDeletion is the regression for a
+// member whose account deletion is pending: the team list must still render for
+// the whole organization instead of collapsing to 500.
+func TestMembersHandler_ListMembers_MemberPendingDeletion(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	rr := &MockRoleRepository{}
+
+	bizID := uuid.New()
+	leavingID := uuid.New()
+	roleID := uuid.New()
+	now := time.Now().UTC()
+
+	ur := &pendingDeletionUserRepo{
+		MockUserRepository: &MockUserRepository{},
+		pending:            &domain.User{ID: leavingID, Email: "leaving@example.com"},
+	}
+
+	mr.On("ListByBusiness", mock.Anything, bizID).Return([]domain.BusinessMember{
+		{BusinessID: bizID, UserID: leavingID, RoleID: roleID, Status: "active", JoinedAt: now},
+	}, nil)
+	rr.On("GetByID", mock.Anything, roleID).Return(&domain.Role{ID: roleID, Name: "viewer", Permissions: []string{"members.read"}}, nil).Once()
+
+	h := newMembersHandlerForTest(mr, rr, ur, nil, nil)
+
+	ctx := businessContextWith(context.Background(), bizID, uuid.New(), authz.PermMembersRead)
+	req := httptest.NewRequest(http.MethodGet, "/businesses/"+bizID.String()+"/members", http.NoBody).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ListMembers(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body, 1)
+	assert.Equal(t, leavingID.String(), body[0]["user"].(map[string]any)["id"])
+
+	mr.AssertExpectations(t)
+	rr.AssertExpectations(t)
+}
+
 func TestMembersHandler_ListMembers_Forbidden(t *testing.T) {
 	h := newMembersHandlerForTest(&MockBusinessMembershipRepository{}, &MockRoleRepository{}, &MockUserRepository{}, nil, nil)
 

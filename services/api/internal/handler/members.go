@@ -142,7 +142,11 @@ func (h *MembersHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]openapi.Member, 0, len(members))
 	for _, m := range members {
-		user, err := h.userRepo.GetByID(r.Context(), m.UserID)
+		// Deletion-aware read: a member who started account deletion is still a
+		// member for the whole 30-day grace window, and the active-only GetByID
+		// would fail the team list for the entire organization until they
+		// restore or the erasure lands.
+		user, err := h.userRepo.GetByIDIncludingDeleted(r.Context(), m.UserID)
 		if err != nil {
 			writeAuthzInvariantError(r.Context(), w, "list_members.user_lookup", err)
 			return

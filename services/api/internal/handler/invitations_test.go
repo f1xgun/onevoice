@@ -436,6 +436,33 @@ func TestInvitationsHandler_ListPending_HappyPath_NoRawTokens(t *testing.T) {
 	require.Contains(t, body, "alice@example.com")
 }
 
+// TestInvitationsHandler_ListPending_InviterPendingDeletion mirrors the members
+// list regression: an inviter inside their account-deletion grace window must
+// not fail the pending-invitation list for the whole organization.
+func TestInvitationsHandler_ListPending_InviterPendingDeletion(t *testing.T) {
+	f := newInvitationFixture(t)
+	bizID := uuid.New()
+	userID := uuid.New()
+	roleID := uuid.New()
+	inviterID := uuid.New()
+
+	f.handler.userRepo = &pendingDeletionUserRepo{
+		MockUserRepository: &MockUserRepository{},
+		pending:            &domain.User{ID: inviterID, Email: "leaving@example.com"},
+	}
+	f.invRepo.On("ListPendingByBusiness", mock.Anything, bizID).Return([]domain.Invitation{
+		{ID: uuid.New(), BusinessID: bizID, RoleID: roleID, TokenHash: "secret-hash", ExpiresAt: f.now.Add(time.Hour), CreatedBy: inviterID, CreatedAt: f.now},
+	}, nil)
+	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{ID: roleID, Name: "editor"}, nil)
+
+	req := requestWithBC(http.MethodGet, "/x", "", ownerBC(bizID, userID))
+	w := httptest.NewRecorder()
+	f.handler.ListPending(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+	require.Contains(t, w.Body.String(), "leaving@example.com")
+}
+
 // --- Tests: Revoke ---
 
 func TestInvitationsHandler_Revoke_204(t *testing.T) {
