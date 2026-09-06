@@ -90,6 +90,18 @@ cp .env.example .env
 
 Open `.env` and fill in **every blank required field**. The file is the single source of truth — every section is annotated inline.
 
+> **How `.env` reaches the containers.** Compose reads `.env` only to interpolate
+> `${VAR}` references; nothing is injected automatically. A variable reaches a
+> service only if that service's `environment:` block in `docker-compose.yml`
+> names it. `make lint-compose-env` (part of `make lint-all` and CI) fails when a
+> service reads an env var compose does not pass, so a new setting cannot ship
+> without its plumbing.
+
+Set `APP_ENV=production` for any real deployment: it switches on the fail-closed
+gates (LEGAL_* validation, LLM data-residency, mandatory internal mTLS and
+orchestrator secret). The production overlay refuses to start without `APP_ENV`
+and `PUBLIC_URL`.
+
 ### Required values you MUST generate
 
 ```bash

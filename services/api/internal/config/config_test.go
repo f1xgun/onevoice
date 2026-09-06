@@ -300,14 +300,35 @@ func TestLoad_HTTPTimeouts(t *testing.T) {
 
 func TestLoad_CORSAllowedOrigins(t *testing.T) {
 	cases := []struct {
-		name  string
-		value string
-		want  []string
+		name      string
+		value     string
+		publicURL string
+		appEnv    string
+		want      []string
 	}{
 		{
-			name:  "unset → dev default localhost:3000",
+			name:  "unset → public origin plus the dev origin",
 			value: "",
-			want:  []string{"http://localhost:3000"},
+			want:  []string{"http://localhost", "http://localhost:3000"},
+		},
+		{
+			name:      "unset behind a reverse proxy → that proxy's origin is allowed",
+			value:     "",
+			publicURL: "https://app.example.com",
+			want:      []string{"https://app.example.com", "http://localhost:3000"},
+		},
+		{
+			name:      "unset in production → public origin only",
+			value:     "",
+			publicURL: "https://app.example.com",
+			appEnv:    "production",
+			want:      []string{"https://app.example.com"},
+		},
+		{
+			name:      "unset with PUBLIC_URL equal to the dev origin → no duplicate",
+			value:     "",
+			publicURL: "http://localhost:3000",
+			want:      []string{"http://localhost:3000"},
 		},
 		{
 			name:  "single origin",
@@ -327,13 +348,20 @@ func TestLoad_CORSAllowedOrigins(t *testing.T) {
 		{
 			name:  "blank-only value falls back to default",
 			value: "  ,  ,",
-			want:  []string{"http://localhost:3000"},
+			want:  []string{"http://localhost", "http://localhost:3000"},
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			minTestEnv(t)
+			if c.appEnv == "production" {
+				setValidLegal(t)
+				t.Setenv("LLM_MODEL", "")
+				t.Setenv("TITLER_MODEL", "")
+			}
+			t.Setenv("APP_ENV", c.appEnv)
+			t.Setenv("PUBLIC_URL", c.publicURL)
 			t.Setenv("CORS_ALLOWED_ORIGINS", c.value)
 
 			cfg, err := config.Load()

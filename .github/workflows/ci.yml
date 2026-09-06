@@ -190,6 +190,12 @@ jobs:
       - name: No-inline-URL check (custom analyzer)
         run: make lint-urls
 
+      # .env is only interpolated by compose, never injected — an env var a
+      # service reads but its `environment:` block omits is dead in every
+      # compose deploy.
+      - name: Compose env propagation check
+        run: make lint-compose-env
+
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 

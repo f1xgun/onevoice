@@ -172,7 +172,12 @@ services:
       dockerfile: Dockerfile
     container_name: onevoice-api
     environment:
+      # APP_ENV drives every fail-closed production gate in config.Load()
+      # (LEGAL_* validation, LLM residency, internal mTLS, orchestrator secret).
+      # Without it the api boots as development whatever .env says.
+      APP_ENV: ${APP_ENV:-development}
       PORT: 8080
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
@@ -222,6 +227,63 @@ services:
       S3_BUCKET: ${S3_BUCKET:-onevoice}
       S3_USE_SSL: ${S3_USE_SSL:-false}
       S3_PUBLIC_URL_PREFIX: ${S3_PUBLIC_URL_PREFIX:-/media}
+      # Public reverse-proxy origin. Base of the verify-email / password-reset
+      # links, and the default CORS/CSRF allow-list entry.
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
+      # Allow-list for the handler-level Origin (CSRF) check on the erasure /
+      # consent / organisation-lifecycle endpoints. Empty = PUBLIC_URL (plus the
+      # Next.js dev origin outside production).
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      # Empty = derived from the PUBLIC_URL scheme (https ⇒ true). A Secure
+      # __Host- cookie is dropped by browsers on a plain-http origin.
+      SECURE_COOKIES: ${SECURE_COOKIES:-}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      # 152-ФЗ Art. 14 data-controller identity. Validated fail-closed when
+      # APP_ENV=production; LEGAL_ENFORCE=strict also refuses placeholders.
+      LEGAL_ENTITY_NAME: ${LEGAL_ENTITY_NAME:-}
+      LEGAL_INN: ${LEGAL_INN:-}
+      LEGAL_ADDRESS: ${LEGAL_ADDRESS:-}
+      LEGAL_EMAIL_PDN: ${LEGAL_EMAIL_PDN:-}
+      LEGAL_ENFORCE: ${LEGAL_ENFORCE:-}
+      # Signs the Telegram HITL inline approval callbacks. Must be identical on
+      # agent-telegram, or inline approvals are silently disabled.
+      TELEGRAM_APPROVAL_HMAC_SECRET: ${TELEGRAM_APPROVAL_HMAC_SECRET:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      SMARTCAPTCHA_SITE_KEY: ${SMARTCAPTCHA_SITE_KEY:-}
+      SMARTCAPTCHA_SECRET_KEY: ${SMARTCAPTCHA_SECRET_KEY:-}
+      SMARTCAPTCHA_FAIL_OPEN: ${SMARTCAPTCHA_FAIL_OPEN:-}
+      LOCKOUT_FAIL_THRESHOLD_CAPTCHA: ${LOCKOUT_FAIL_THRESHOLD_CAPTCHA:-}
+      LOCKOUT_FAIL_THRESHOLD_LOCK: ${LOCKOUT_FAIL_THRESHOLD_LOCK:-}
+      LOCKOUT_DURATION: ${LOCKOUT_DURATION:-}
+      # Shared representative Yandex ID + the org it manages (delegated access).
+      YANDEX_REP_LOGIN: ${YANDEX_REP_LOGIN:-}
+      YANDEX_SHARED_BUSINESS_ID: ${YANDEX_SHARED_BUSINESS_ID:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      # Lifts the production cross-border LLM gate; only with a filed legal basis.
+      ALLOW_TRANSBORDER_LLM: ${ALLOW_TRANSBORDER_LLM:-}
+      LLM_TIER: ${LLM_TIER:-}
+      MESSAGE_HISTORY_LIMIT: ${MESSAGE_HISTORY_LIMIT:-}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-}
+      ORCHESTRATOR_FETCH_TIMEOUT: ${ORCHESTRATOR_FETCH_TIMEOUT:-}
+      HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT:-}
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL:-}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-}
+      FEEDBACK_NOTIFY_EMAIL: ${FEEDBACK_NOTIFY_EMAIL:-}
+      SYNC_RECONCILE_ENABLED: ${SYNC_RECONCILE_ENABLED:-}
+      SYNC_RECONCILE_POLL_INTERVAL: ${SYNC_RECONCILE_POLL_INTERVAL:-}
+      CREDIT_GRANT_ENABLED: ${CREDIT_GRANT_ENABLED:-}
+      CREDIT_GRANT_POLL_INTERVAL: ${CREDIT_GRANT_POLL_INTERVAL:-}
+      OWNER_BRIEF_ENABLED: ${OWNER_BRIEF_ENABLED:-}
+      OWNER_BRIEF_MODEL: ${OWNER_BRIEF_MODEL:-}
+      OWNER_BRIEF_POLL_INTERVAL: ${OWNER_BRIEF_POLL_INTERVAL:-}
+      PRESENCE_HEALTH_SNAPSHOT_ENABLED: ${PRESENCE_HEALTH_SNAPSHOT_ENABLED:-}
+      PRESENCE_HEALTH_SNAPSHOT_POLL_INTERVAL: ${PRESENCE_HEALTH_SNAPSHOT_POLL_INTERVAL:-}
+      CONNECTION_HEALTH_ENABLED: ${CONNECTION_HEALTH_ENABLED:-}
+      CONNECTION_HEALTH_POLL_INTERVAL: ${CONNECTION_HEALTH_POLL_INTERVAL:-}
       # Auto-titler. TITLER_MODEL takes precedence; falls back to
       # LLM_MODEL when unset. At least one provider key must be present, or
       # the titler is left disabled and POST /conversations/{id}/regenerate-title
@@ -314,7 +376,12 @@ services:
       NATS_NKEY_SEED: /etc/nats/creds/agent-telegram.nk
       NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       API_INTERNAL_URL: https://api:8443
+      HEALTH_PORT: "8081"
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # Verifies the HMAC on inline approval callbacks. Must be identical to the
+      # api's TELEGRAM_APPROVAL_HMAC_SECRET, or approvals are silently disabled.
+      TELEGRAM_APPROVAL_HMAC_SECRET: ${TELEGRAM_APPROVAL_HMAC_SECRET:-}
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-telegram.crt
@@ -343,6 +410,7 @@ services:
       NATS_NKEY_SEED: /etc/nats/creds/agent-vk.nk
       NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       API_INTERNAL_URL: https://api:8443
+      HEALTH_PORT: "8082"
       VK_SERVICE_KEY: ${VK_SERVICE_KEY:-}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       ONEVOICE_MTLS_ENABLED: "true"
@@ -403,6 +471,7 @@ services:
       NATS_NKEY_SEED: /etc/nats/creds/agent-yandex-business.nk
       NATS_CA_PATH: /etc/onevoice/mtls/ca.crt
       API_INTERNAL_URL: https://api:8443
+      HEALTH_PORT: "8083"
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}@redis:6379/0
       # APP_ENV gates the boot-time PII warning when SCREENSHOT_MODE != off
       # (see cmd/main.go). Without propagation the production check was
@@ -416,6 +485,11 @@ services:
       # triage, or `full` for dev. See services/agent-yandex-business
       # /internal/yandex/browser.go for the enum.
       SCREENSHOT_MODE: ${SCREENSHOT_MODE:-off}
+      # Shared representative org id; must match the api's value.
+      YANDEX_SHARED_BUSINESS_ID: ${YANDEX_SHARED_BUSINESS_ID:-}
+      # Fail-closed RPA scope gate. Off by default so a too-tight allowlist
+      # cannot break the live RPA; set true once the allowlist is verified.
+      SCOPE_GATE_ENFORCE: ${SCOPE_GATE_ENFORCE:-}
       # Required shared key that decrypts the sealed A2A tool args (connect
       # cookies) the api sends over NATS. Must be identical to the api's
       # A2A_PAYLOAD_KEY, or the connect flow cannot decrypt the cookies.
@@ -513,6 +587,17 @@ services:
       LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR: ${LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR:-}
       LLM_LOCAL_FALLBACK_WINDOW: ${LLM_LOCAL_FALLBACK_WINDOW:-}
       MAX_ITERATIONS: 10
+      MAX_CONCURRENT_STREAMS: ${MAX_CONCURRENT_STREAMS:-}
+      # Per-tool-call budget. Must stay below the NATS allow_responses expiry
+      # emitted by tools/natskeygen, or a late agent reply is dropped by the bus.
+      TOOL_EXEC_TIMEOUT: ${TOOL_EXEC_TIMEOUT:-}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-}
+      HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT:-}
+      LLM_TIER: ${LLM_TIER:-}
+      # Lifts the production cross-border LLM gate; only with a filed legal basis.
+      ALLOW_TRANSBORDER_LLM: ${ALLOW_TRANSBORDER_LLM:-}
+      # Registers the dark, unverified Google Business tools. Off by default.
+      ENABLE_GOOGLE_BUSINESS: ${ENABLE_GOOGLE_BUSINESS:-}
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/orchestrator.crt

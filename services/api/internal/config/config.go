@@ -349,8 +349,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	appEnv := os.Getenv("APP_ENV")
+	publicURL := getEnv("PUBLIC_URL", defaultPublicURL)
+
 	cfg := &Config{
-		AppEnv:        os.Getenv("APP_ENV"),
+		AppEnv:        appEnv,
 		Port:          getEnv("PORT", "8080"),
 		PostgresHost:  getEnv("POSTGRES_HOST", "localhost"),
 		PostgresPort:  getEnv("POSTGRES_PORT", "5432"),
@@ -414,8 +417,8 @@ func Load() (*Config, error) {
 		S3UseSSL:          getEnv("S3_USE_SSL", "false") == envBoolTrue,
 		S3PublicURLPrefix: getEnv("S3_PUBLIC_URL_PREFIX", "/media"),
 
-		PublicURL:          getEnv("PUBLIC_URL", defaultPublicURL),
-		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{defaultCORSDevOrigin}),
+		PublicURL:          publicURL,
+		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", defaultCORSOrigins(publicURL, appEnv)),
 
 		HTTPReadTimeout:          getEnvDuration("HTTP_READ_TIMEOUT", defaultHTTPReadTimeout),
 		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", defaultHTTPReadHeaderTimeout),
@@ -772,7 +775,26 @@ func parseInternalACL() (map[string][]string, error) {
 // boot checks (legal validation, transactional email) share, so each gate uses
 // identical matching semantics (case-insensitive, whitespace-trimmed).
 func (c *Config) IsProduction() bool {
-	return strings.EqualFold(strings.TrimSpace(c.AppEnv), "production")
+	return isProductionEnv(c.AppEnv)
+}
+
+// isProductionEnv is IsProduction's value form, usable while Load is still
+// assembling the Config.
+func isProductionEnv(appEnv string) bool {
+	return strings.EqualFold(strings.TrimSpace(appEnv), "production")
+}
+
+// defaultCORSOrigins is the allow-list used when CORS_ALLOWED_ORIGINS is unset.
+// PublicURL is always included: it is the origin a browser sends behind the
+// reverse proxy, and the handler-level CSRF check on the erasure / consent /
+// organisation-lifecycle endpoints rejects everything outside this list. Outside
+// production the local Next.js dev server origin is allowed as well.
+func defaultCORSOrigins(publicURL, appEnv string) []string {
+	origins := []string{publicURL}
+	if !isProductionEnv(appEnv) && publicURL != defaultCORSDevOrigin {
+		origins = append(origins, defaultCORSDevOrigin)
+	}
+	return origins
 }
 
 // RequireInternalMTLS returns a fatal boot error when the internal listener —

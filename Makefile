@@ -1,5 +1,5 @@
 .PHONY: help build run test test-all test-frontend test-a11y test-coverage test-integration
-.PHONY: lint lint-rbac lint-urls lint-frontend lint-migrations lint-all fmt fmt-fix docs-check check-llm-defaults
+.PHONY: lint lint-rbac lint-urls lint-frontend lint-migrations lint-compose-env lint-all fmt fmt-fix docs-check check-llm-defaults
 .PHONY: check-legal-versions check-legal-versions-parity
 .PHONY: migrate-up migrate-down migrate-create db-seed verify-rbac-backfill
 .PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
@@ -146,7 +146,15 @@ check-llm-defaults: ## Verify LLM_MODEL / TITLER_MODEL / DRAFT_REPLY_MODEL defau
 	@echo "Checking LLM default models..."
 	@bash scripts/check-llm-defaults.sh
 
-lint-all: lint lint-rbac lint-urls lint-frontend lint-migrations check-legal-versions-parity check-llm-defaults docs-check lint-no-pprof ## Run all linters (Go + RBAC drift + URL check + frontend + migration parity + legal version parity + LLM defaults + docs)
+# Compose env-propagation guard. A var a service reads but docker-compose.yml
+# never lists in its environment: block is dead in every compose deploy (.env is
+# only interpolated, never injected). Wired into lint-all so a new env var
+# cannot ship without its compose plumbing.
+lint-compose-env: ## Verify every env var a service reads is passed by docker-compose.yml
+	@echo "Checking compose env propagation..."
+	@bash scripts/check-compose-env.sh
+
+lint-all: lint lint-rbac lint-urls lint-frontend lint-migrations lint-compose-env check-legal-versions-parity check-llm-defaults docs-check lint-no-pprof ## Run all linters (Go + RBAC drift + URL check + frontend + migration parity + compose env + legal version parity + LLM defaults + docs)
 
 docs-check: ## Fail if docs reference tool names absent from Go code
 	@./scripts/check-doc-tool-drift.sh
