@@ -430,6 +430,8 @@ func (r *conversationRepository) SearchTitles(
 		{{Key: "$limit", Value: int64(limit)}},
 		{{Key: "$project", Value: bson.M{
 			"title":           1,
+			"title_status":    1,
+			"created_at":      1,
 			"project_id":      1,
 			"user_id":         1,
 			"business_id":     1,

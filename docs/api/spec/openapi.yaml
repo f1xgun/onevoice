@@ -2211,6 +2211,7 @@ components:
           nullable: true
         title:
           type: string
+          description: Empty with titleStatus auto marks a settled fallback; localize from createdAt at display time.
         titleStatus:
           type: string
           enum:
@@ -2923,6 +2924,15 @@ components:
       - matchCount
       - score
       properties:
+        titleStatus:
+          type: string
+          enum: [auto_pending, auto, manual]
+          x-enum-varnames: [SearchTitleAutoPending, SearchTitleAuto, SearchTitleManual]
+          description: Present for title hits; manual titles must always be displayed verbatim.
+        createdAt:
+          type: string
+          format: date-time
+          description: Conversation creation time for display-time fallback localization.
         conversationId:
           type: string
         title:

@@ -101,3 +101,30 @@ describe('Schedule lost-update across independent Hours / Special Dates forms', 
     expect(payload.schedule).toEqual(INITIAL_HOURS);
   });
 });
+
+describe('schedule accessible labels', () => {
+  it('localizes weekly and special-date controls in English', () => {
+    (globalThis as unknown as { __setTestLocale: (locale: string) => void }).__setTestLocale('en');
+    const { container } = render(
+      <>
+        <HoursForm initialSchedule={INITIAL_HOURS} initialSpecialDates={[]} />
+        <SpecialDatesForm
+          initialSchedule={INITIAL_HOURS}
+          initialSpecialDates={[
+            { date: '2026-09-06', closed: false, open: '09:00', close: '18:00' },
+          ]}
+        />
+      </>,
+      { wrapper: wrapper(makeClient()) }
+    );
+    expect(screen.getByLabelText('Monday — opening time')).toBeInTheDocument();
+    expect(screen.getByLabelText('Monday — closing time')).toBeInTheDocument();
+    expect(screen.getByLabelText('6 September · 2026 — opening time')).toBeInTheDocument();
+    expect(screen.getByLabelText('6 September · 2026 — closing time')).toBeInTheDocument();
+    expect(screen.getByLabelText('6 September · 2026 — open')).toBeInTheDocument();
+    expect(screen.getByLabelText('Remove 6 September · 2026')).toBeInTheDocument();
+    for (const control of container.querySelectorAll('[aria-label]')) {
+      expect(control.getAttribute('aria-label')).not.toMatch(/[А-Яа-яЁё]/);
+    }
+  });
+});

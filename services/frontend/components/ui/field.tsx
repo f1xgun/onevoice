@@ -2,6 +2,7 @@ import { Label } from '@/components/ui/label';
 
 export function Field({
   label,
+  htmlFor,
   required,
   error,
   hint,
@@ -9,6 +10,7 @@ export function Field({
   children,
 }: {
   label: string;
+  htmlFor: string;
   required?: boolean;
   error?: string;
   hint?: string;
@@ -17,7 +19,7 @@ export function Field({
 }) {
   return (
     <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
-      <Label className="text-xs font-medium text-ink-mid">
+      <Label htmlFor={htmlFor} className="text-xs font-medium text-ink-mid">
         {label}
         {required && <span className="ml-1 text-ochre">*</span>}
       </Label>

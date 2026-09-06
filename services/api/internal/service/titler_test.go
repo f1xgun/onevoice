@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"golang.org/x/text/language"
 
@@ -131,7 +130,7 @@ func TestGenerateAndSave_Success(t *testing.T) {
 
 // TestGenerateAndSave_LLMError pins the no-re-fire invariant: a transient LLM
 // failure MUST still settle the row off title_status=auto_pending by writing
-// the localized "Untitled chat" fallback via UpdateTitleIfPending, so the
+// the language-neutral empty-title fallback via UpdateTitleIfPending, so the
 // chat-turn fire-gate stops re-spawning (re-billing) the titler every turn.
 func TestGenerateAndSave_LLMError(t *testing.T) {
 	captureLogs(t)
@@ -145,8 +144,8 @@ func TestGenerateAndSave_LLMError(t *testing.T) {
 	if len(repo.updateCalls) != 1 {
 		t.Fatalf("UpdateTitleIfPending must settle row off auto_pending on llm error; got %d calls, want 1", len(repo.updateCalls))
 	}
-	if !strings.HasPrefix(repo.updateCalls[0].Title, "Без названия ") {
-		t.Fatalf("fallback title got=%q want prefix %q", repo.updateCalls[0].Title, "Без названия ")
+	if repo.updateCalls[0].Title != "" {
+		t.Fatalf("fallback title got=%q want %q", repo.updateCalls[0].Title, "")
 	}
 }
 
@@ -165,8 +164,8 @@ func TestGenerateAndSave_EmptyResponse(t *testing.T) {
 	if len(repo.updateCalls) != 1 {
 		t.Fatalf("UpdateTitleIfPending must settle row off auto_pending on empty response; got %d calls, want 1", len(repo.updateCalls))
 	}
-	if !strings.HasPrefix(repo.updateCalls[0].Title, "Без названия ") {
-		t.Fatalf("fallback title got=%q want prefix %q", repo.updateCalls[0].Title, "Без названия ")
+	if repo.updateCalls[0].Title != "" {
+		t.Fatalf("fallback title got=%q want %q", repo.updateCalls[0].Title, "")
 	}
 }
 
@@ -182,8 +181,8 @@ func TestGenerateAndSave_PIIReject_Terminal(t *testing.T) {
 	if len(repo.updateCalls) != 1 {
 		t.Fatalf("expected exactly one Update call (terminal write); got %d", len(repo.updateCalls))
 	}
-	if !strings.HasPrefix(repo.updateCalls[0].Title, "Без названия ") {
-		t.Fatalf("terminal title got=%q want prefix %q", repo.updateCalls[0].Title, "Без названия ")
+	if repo.updateCalls[0].Title != "" {
+		t.Fatalf("terminal title got=%q want %q", repo.updateCalls[0].Title, "")
 	}
 	captured := buf.String()
 	if !strings.Contains(captured, "regex_class") {
@@ -415,19 +414,28 @@ func TestTitler_MalformedBusinessID_DegradesToNil(t *testing.T) {
 	}
 }
 
-func TestUntitledChatLocalized(t *testing.T) {
-	d := time.Date(2026, time.April, 26, 0, 0, 0, 0, time.UTC)
-	if got := untitledChatLocalized(d, language.Russian); got != "Без названия 26 апреля" {
-		t.Errorf("RU fallback got=%q", got)
-	}
-	if got := untitledChatLocalized(d, language.English); got != "Untitled chat April 26" {
-		t.Errorf("EN fallback got=%q", got)
-	}
-	if got := untitledChatLocalized(d, language.Tag{}); got != "Без названия 26 апреля" {
-		t.Errorf("zero-tag fallback got=%q", got)
-	}
-	if got := untitledChatLocalized(d, language.French); got != "Без названия 26 апреля" {
-		t.Errorf("unsupported-locale fallback got=%q", got)
+func TestTitler_PersistedTitleAcrossLocales(t *testing.T) {
+	for _, tag := range []language.Tag{language.Russian, language.English} {
+		for _, tc := range []struct {
+			name    string
+			content string
+			err     error
+			want    string
+		}{
+			{name: "provider failure", err: errors.New("unavailable")},
+			{name: "empty response"},
+			{name: "PII rejection", content: "user@example.com"},
+			{name: "model title", content: "Plan a post", want: "Plan a post"},
+		} {
+			t.Run(tag.String()+"/"+tc.name, func(t *testing.T) {
+				repo := &fakeConvRepo{}
+				titler := NewTitler(&fakeRouter{returnContent: tc.content, returnErr: tc.err}, repo, "test-model")
+				titler.GenerateAndSave(i18n.WithLocale(context.Background(), tag), "", "conversation", "help", "sure")
+				if len(repo.updateCalls) != 1 || repo.updateCalls[0].Title != tc.want {
+					t.Fatalf("persisted writes = %v, want title %q", repo.updateCalls, tc.want)
+				}
+			})
+		}
 	}
 }
 
@@ -459,7 +467,7 @@ func TestTitler_ReasoningBudgetRetry(t *testing.T) {
 			}
 			title := repo.updateCalls[0].Title
 			if truncated {
-				if !strings.HasPrefix(title, "Без названия ") {
+				if title != "" {
 					t.Fatalf("fallback: %q", title)
 				}
 			} else if title != "Кофейный цифровой помощник" {

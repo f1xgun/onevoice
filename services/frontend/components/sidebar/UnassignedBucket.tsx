@@ -13,6 +13,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
@@ -35,6 +36,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
   const tSide = useTranslations('sidebar');
   const tProjects = useTranslations('projects');
   const tChat = useTranslations('chat');
+  const getDisplayTitle = useConversationDisplayTitle();
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();
@@ -129,7 +131,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                   {pinned && (
                     <Bookmark size={10} className="shrink-0 text-yellow-400" aria-hidden />
                   )}
-                  <span className="flex-1 truncate">{conv.title}</span>
+                  <span className="flex-1 truncate">{getDisplayTitle(conv)}</span>
                 </Link>
                 <ChatRowMenu
                   conversation={conv}
@@ -138,7 +140,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                     <button
                       type="button"
                       aria-label={tSide('chatRowMenuAria', {
-                        title: conv.title || tChat('newConversation'),
+                        title: getDisplayTitle(conv),
                       })}
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
                     >

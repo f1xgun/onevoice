@@ -141,12 +141,12 @@ describe('ToolsPageClient — /settings/tools', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText(TELEGRAM_POST.name)).toBeInTheDocument();
+      expect(screen.getByText('Отправить пост')).toBeInTheDocument();
     });
-    expect(screen.getByText(TELEGRAM_PHOTO.name)).toBeInTheDocument();
-    expect(screen.getByText(YANDEX_REPLY.name)).toBeInTheDocument();
+    expect(screen.getByText('Отправить фото')).toBeInTheDocument();
+    expect(screen.getByText('Ответить на отзыв Яндекса')).toBeInTheDocument();
 
-    expect(screen.queryByText(VK_PUBLISH.name)).not.toBeInTheDocument();
+    expect(screen.queryByText('Опубликовать пост')).not.toBeInTheDocument();
   });
 
   it('renders forbidden-floor tools with the «Запрещено» badge and no switch', async () => {
@@ -154,14 +154,14 @@ describe('ToolsPageClient — /settings/tools', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText(GOOGLE_REPLY.name)).toBeInTheDocument();
+      expect(screen.getByText('Ответить на отзыв Google')).toBeInTheDocument();
     });
 
-    const forbiddenRow = screen.getByText(GOOGLE_REPLY.name).closest('div');
+    const forbiddenRow = screen.getByText('Ответить на отзыв Google').closest('div');
     expect(forbiddenRow).not.toBeNull();
     expect(screen.getByText('Запрещено')).toBeInTheDocument();
     expect(
-      screen.queryByLabelText(`Режим одобрения для ${GOOGLE_REPLY.name}`)
+      screen.queryByLabelText(`Режим одобрения для Ответить на отзыв Google`)
     ).not.toBeInTheDocument();
   });
 
@@ -173,7 +173,7 @@ describe('ToolsPageClient — /settings/tools', () => {
     expect(saveBtn).toBeDisabled();
 
     const radiogroup = await screen.findByRole('radiogroup', {
-      name: `Режим одобрения для ${TELEGRAM_POST.name}`,
+      name: `Режим одобрения для Отправить пост`,
     });
     const samBtn = within(radiogroup).getByRole('radio', { name: 'Автоматически' });
     await userEvent.click(samBtn);
@@ -188,11 +188,11 @@ describe('ToolsPageClient — /settings/tools', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText(TELEGRAM_POST.name)).toBeInTheDocument();
+      expect(screen.getByText('Отправить пост')).toBeInTheDocument();
     });
 
     const radiogroup = screen.getByRole('radiogroup', {
-      name: `Режим одобрения для ${TELEGRAM_POST.name}`,
+      name: `Режим одобрения для Отправить пост`,
     });
     await userEvent.click(within(radiogroup).getByRole('radio', { name: 'Автоматически' }));
 

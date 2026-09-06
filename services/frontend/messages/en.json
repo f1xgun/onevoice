@@ -329,6 +329,7 @@
   },
   "chat": {
     "heading": "Chats",
+    "fallbackDate": "Chat from {date}",
     "newConversation": "New chat",
     "noConversations": "No chats",
     "newConversationCta": "Start a new chat with the AI assistant",
@@ -615,83 +616,111 @@
       "tools": {
         "telegram": {
           "send_channel_post": {
-            "name": "Send post"
+            "name": "Send post",
+            "description": "Publishes a text message to a Telegram channel."
           },
           "send_channel_photo": {
-            "name": "Send photo"
+            "name": "Send photo",
+            "description": "Publishes a photo with a caption to a Telegram channel."
           },
           "send_notification": {
-            "name": "Owner notification"
+            "name": "Owner notification",
+            "description": "Sends a private notification to the organization owner in Telegram."
           },
           "get_reviews": {
-            "name": "Load reviews"
+            "name": "Load reviews",
+            "description": "Loads comments and reactions from a Telegram channel."
           },
           "reply_to_comment": {
-            "name": "Reply to comment"
+            "name": "Reply to comment",
+            "description": "Replies to a comment on a Telegram channel post."
           }
         },
         "vk": {
           "publish_post": {
-            "name": "Publish post"
+            "name": "Publish post",
+            "description": "Publishes a post to the VK community wall."
           },
           "post_photo": {
-            "name": "Publish photo"
+            "name": "Publish photo",
+            "description": "Publishes a photo to the VK community wall."
           },
           "schedule_post": {
-            "name": "Schedule post"
+            "name": "Schedule post",
+            "description": "Schedules a post on the VK community wall."
           },
           "update_group_info": {
-            "name": "Update community info"
+            "name": "Update community info",
+            "description": "Updates the VK community name, description and contacts."
           },
           "get_comments": {
-            "name": "Load comments"
+            "name": "Load comments",
+            "description": "Loads comments on a VK post."
           },
           "reply_comment": {
-            "name": "Reply to comment"
+            "name": "Reply to comment",
+            "description": "Replies to a VK comment."
           },
           "delete_comment": {
-            "name": "Delete comment"
+            "name": "Delete comment",
+            "description": "Deletes a comment under a VK post."
           },
           "get_community_info": {
-            "name": "Load community info"
+            "name": "Load community info",
+            "description": "Loads the VK community profile."
           },
           "get_wall_posts": {
-            "name": "Load wall posts"
+            "name": "Load wall posts",
+            "description": "Loads posts from the VK community wall."
           }
         },
         "yandex_business": {
           "get_info": {
-            "name": "Load profile"
+            "name": "Load profile",
+            "description": "Loads the organization profile from Yandex Business."
           },
           "update_hours": {
-            "name": "Update business hours"
+            "name": "Update business hours",
+            "description": "Updates organization opening hours in Yandex Business."
           },
           "update_info": {
-            "name": "Update organization info"
+            "name": "Update organization info",
+            "description": "Updates the organization description and phone number in Yandex Business."
           },
           "get_reviews": {
-            "name": "Load Yandex reviews"
+            "name": "Load Yandex reviews",
+            "description": "Loads customer reviews from Yandex Business."
           },
           "reply_review": {
-            "name": "Reply to Yandex review"
+            "name": "Reply to Yandex review",
+            "description": "Replies to a customer review in Yandex Business."
           },
           "upload_photo": {
-            "name": "Upload photo"
+            "name": "Upload photo",
+            "description": "Adds a photo to the organization profile gallery in Yandex Business."
           },
           "create_post": {
-            "name": "Publish Yandex Business post"
+            "name": "Publish Yandex Business post",
+            "description": "Publishes a post in Yandex Business."
           }
         },
         "google_business": {
           "get_reviews": {
-            "name": "Load Google reviews"
+            "name": "Load Google reviews",
+            "description": "Loads customer reviews from Google Business Profile."
           },
           "reply_review": {
-            "name": "Reply to Google review"
+            "name": "Reply to Google review",
+            "description": "Replies to a customer review in Google Business Profile."
           }
         },
+        "get_review_stats": {
+          "name": "Review statistics",
+          "description": "Summarizes organization reviews: counts, response rate, average rating and recent activity."
+        },
         "generate_image": {
-          "name": "Generate image"
+          "name": "Generate image",
+          "description": "Creates an image from a description."
         }
       }
     }
@@ -889,7 +918,11 @@
       "saveHours": "Save hours",
       "saveDates": "Save dates",
       "open": "open",
-      "closedShort": "closed"
+      "closedShort": "closed",
+      "openAria": "{label} — opening time",
+      "closeAria": "{label} — closing time",
+      "enabledAria": "{label} — open",
+      "removeAria": "Remove {label}"
     },
     "voiceTone": {
       "saved": "Voice saved",
@@ -2002,7 +2035,8 @@
       "billing": "Plan",
       "audit": "Activity log",
       "privacy": "Privacy",
-      "navAria": "Settings — sections"
+      "navAria": "Settings — sections",
+      "account": "Account"
     },
     "tools": {
       "title": "What the AI is allowed to do",
@@ -2036,7 +2070,7 @@
         "privacy": "Privacy Policy",
         "pdn": "Personal Data Processing Consent"
       },
-      "acceptedAt": "Effective from {acceptedAt} · version {version}",
+      "acceptedAt": "Accepted {acceptedAt} · version {version}",
       "openDoc": "Open document",
       "loading": "Loading consents…",
       "loadError": "Could not load consents. Please refresh the page.",

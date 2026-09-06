@@ -33,8 +33,12 @@ export function ToolApprovalToggle({
 }: ToolApprovalToggleProps) {
   const t = useTranslations('settings.toolApproval');
   const isForbidden = tool.floor === 'forbidden';
-  const label = toolLabel(tool);
-  const userDesc = toolUserDescription(tool);
+  const tCatalog = useTranslations('agentTasks.displayName.tools');
+  const key = tool.name.replace('__', '.');
+  const label = tCatalog.has(`${key}.name`) ? tCatalog(`${key}.name`) : toolLabel(tool);
+  const userDesc = tCatalog.has(`${key}.description`)
+    ? tCatalog(`${key}.description`)
+    : toolUserDescription(tool);
 
   return (
     <div className="flex flex-col items-stretch gap-3 rounded-md border border-line-soft bg-paper px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">

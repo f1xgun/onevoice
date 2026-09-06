@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { Button } from '@/components/ui/button';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
@@ -39,7 +40,7 @@ export function ConversationItem({
   onRegenerateTitle: () => void;
 }) {
   const tRow = useTranslations('chat.rowMenu');
-  const tChat = useTranslations('chat');
+  const getDisplayTitle = useConversationDisplayTitle();
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conv.title);
@@ -62,10 +63,7 @@ export function ConversationItem({
     setEditing(false);
   };
 
-  const displayTitle =
-    conv.title === '' || conv.titleStatus === 'auto_pending'
-      ? tChat('newConversation')
-      : conv.title;
+  const displayTitle = getDisplayTitle(conv);
 
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-line p-4 transition-colors hover:bg-paper-sunken">

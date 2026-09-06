@@ -323,6 +323,13 @@ const (
 	ToolResult SSEEventToolResultType = "tool_result"
 )
 
+// Defines values for SearchResultTitleStatus.
+const (
+	SearchTitleAuto        SearchResultTitleStatus = "auto"
+	SearchTitleAutoPending SearchResultTitleStatus = "auto_pending"
+	SearchTitleManual      SearchResultTitleStatus = "manual"
+)
+
 // Defines values for SoleOwnerResponseCode.
 const (
 	SoleOwnerOfBusinesses SoleOwnerResponseCode = "sole_owner_of_businesses"
@@ -687,16 +694,18 @@ type ConsentRequiredResponseCode string
 
 // Conversation defines model for Conversation.
 type Conversation struct {
-	BusinessId    openapi_types.UUID      `json:"businessId" validate:"required,uuid"`
-	CreatedAt     time.Time               `json:"createdAt" validate:"required"`
-	Id            string                  `json:"id" validate:"required"`
-	LastMessageAt *time.Time              `json:"lastMessageAt"`
-	PinnedAt      *time.Time              `json:"pinnedAt"`
-	ProjectId     *string                 `json:"projectId"`
-	Title         string                  `json:"title" validate:"required"`
-	TitleStatus   ConversationTitleStatus `json:"titleStatus" validate:"required,oneof=auto_pending auto manual"`
-	UpdatedAt     time.Time               `json:"updatedAt" validate:"required"`
-	UserId        openapi_types.UUID      `json:"userId" validate:"required,uuid"`
+	BusinessId    openapi_types.UUID `json:"businessId" validate:"required,uuid"`
+	CreatedAt     time.Time          `json:"createdAt" validate:"required"`
+	Id            string             `json:"id" validate:"required"`
+	LastMessageAt *time.Time         `json:"lastMessageAt"`
+	PinnedAt      *time.Time         `json:"pinnedAt"`
+	ProjectId     *string            `json:"projectId"`
+
+	// Title Empty with titleStatus auto marks a settled fallback; localize from createdAt at display time.
+	Title       string                  `json:"title" validate:"required"`
+	TitleStatus ConversationTitleStatus `json:"titleStatus" validate:"required,oneof=auto_pending auto manual"`
+	UpdatedAt   time.Time               `json:"updatedAt" validate:"required"`
+	UserId      openapi_types.UUID      `json:"userId" validate:"required,uuid"`
 }
 
 // ConversationTitleStatus defines model for Conversation.TitleStatus.
@@ -1633,16 +1642,25 @@ type SSEEventToolResultType string
 
 // SearchResult defines model for SearchResult.
 type SearchResult struct {
-	ConversationId string     `json:"conversationId" validate:"required"`
-	LastMessageAt  *time.Time `json:"lastMessageAt"`
-	Marks          *[][]int   `json:"marks,omitempty"`
-	MatchCount     int        `json:"matchCount" validate:"required"`
-	ProjectId      *string    `json:"projectId"`
-	Score          float64    `json:"score" validate:"required"`
-	Snippet        *string    `json:"snippet,omitempty"`
-	Title          *string    `json:"title,omitempty"`
-	TopMessageId   *string    `json:"topMessageId,omitempty"`
+	ConversationId string `json:"conversationId" validate:"required"`
+
+	// CreatedAt Conversation creation time for display-time fallback localization.
+	CreatedAt     *time.Time `json:"createdAt,omitempty"`
+	LastMessageAt *time.Time `json:"lastMessageAt"`
+	Marks         *[][]int   `json:"marks,omitempty"`
+	MatchCount    int        `json:"matchCount" validate:"required"`
+	ProjectId     *string    `json:"projectId"`
+	Score         float64    `json:"score" validate:"required"`
+	Snippet       *string    `json:"snippet,omitempty"`
+	Title         *string    `json:"title,omitempty"`
+
+	// TitleStatus Present for title hits; manual titles must always be displayed verbatim.
+	TitleStatus  *SearchResultTitleStatus `json:"titleStatus,omitempty" validate:"omitempty,oneof=auto_pending auto manual"`
+	TopMessageId *string                  `json:"topMessageId,omitempty"`
 }
+
+// SearchResultTitleStatus Present for title hits; manual titles must always be displayed verbatim.
+type SearchResultTitleStatus string
 
 // SoleOwnerBusinessEntry defines model for SoleOwnerBusinessEntry.
 type SoleOwnerBusinessEntry struct {

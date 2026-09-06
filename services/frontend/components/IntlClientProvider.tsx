@@ -3,6 +3,7 @@
 import { NextIntlClientProvider } from 'next-intl';
 import type { AbstractIntlMessages } from 'next-intl';
 import type { ReactNode } from 'react';
+import { DEFAULT_TIME_ZONE } from '@/lib/i18n/timeZone';
 import { intlMessageFallback, onIntlError } from '@/lib/i18n/fallback';
 
 interface IntlClientProviderProps {
@@ -18,6 +19,7 @@ export function IntlClientProvider({ locale, messages, children }: IntlClientPro
   return (
     <NextIntlClientProvider
       locale={locale}
+      timeZone={DEFAULT_TIME_ZONE}
       messages={messages}
       onError={onIntlError}
       getMessageFallback={intlMessageFallback}

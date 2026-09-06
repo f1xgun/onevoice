@@ -283,6 +283,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
             placeholder={tChat('messagePlaceholder')}
+            aria-label={tChat('messagePlaceholder')}
             disabled={composerDisabled}
             className="flex-1 border-0 bg-paper text-ink shadow-none focus:border-0 focus:ring-0"
           />

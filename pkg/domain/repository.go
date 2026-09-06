@@ -360,6 +360,8 @@ type ConversationRepository interface {
 
 // ConversationTitleHit is the per-row projection from SearchTitles.
 type ConversationTitleHit struct {
+	TitleStatus   string     `bson:"title_status"`
+	CreatedAt     time.Time  `bson:"created_at"`
 	ID            string     `bson:"_id"`
 	Title         string     `bson:"title"`
 	ProjectID     *string    `bson:"project_id"`

@@ -33,12 +33,12 @@ This is the SINGLE SOURCE OF TRUTH for the LLM-call seam. Callers reference `*se
 2. Build a `llm.ChatRequest` with `Model = t.model`, `Tier = "background"`, and NO Tools (titler MUST NOT tool-call).
 3. Call `t.router.Chat`. On error → log + `recordAttempt` + return; status stays `auto_pending` so the next complete turn re-fires.
 4. `sanitizeTitle` the response. If empty → log + `recordAttempt` + return.
-5. `security.ContainsPIIClass` on the cleaned title. On match → write the terminal "Untitled chat &lt;day&gt; &lt;month&gt;" Russian short form via `UpdateTitleIfPending` under the SAME atomic guard so a manual rename mid-flight still wins.
+5. `security.ContainsPIIClass` on the cleaned title. On match → write the language-neutral empty-title marker via `UpdateTitleIfPending` under the SAME atomic guard so a manual rename mid-flight still wins.
 6. Otherwise call `UpdateTitleIfPending` with the cleaned title. `ErrConversationNotFound` → manual rename won the race (INFO-level).
 
 ### Context-handling contract
 
-Caller MUST pass a long-lived `ctx`. The request `ctx` from `chat_proxy.go` is unsafe — see `chat_proxy.go`'s `persistCtx` pattern. Locale resolved from request context (set by `middleware.Locale` earlier in the chain) drives the cheap-model system prompt AND the PII-reject terminal fallback. `ctx` carries the request's `Accept-Language` all the way here because `chat_proxy` spawns the titler with a detached-but-correlated `ctx` that includes the i18n key.
+Caller MUST pass a long-lived `ctx`. The request `ctx` from `chat_proxy.go` is unsafe — see `chat_proxy.go`'s `persistCtx` pattern. Locale resolved from request context (set by `middleware.Locale` earlier in the chain) drives the cheap-model system prompt. `ctx` carries the request's `Accept-Language` all the way here because `chat_proxy` spawns the titler with a detached-but-correlated `ctx` that includes the i18n key.
 
 ### Logging discipline
 
@@ -58,14 +58,17 @@ The PII-terminal fallback path is also written under the SAME atomic guard so a 
 
 ## Post-hoc PII gate
 
-After sanitization, `security.ContainsPIIClass` checks the cleaned title. On match the service writes the terminal localized "Untitled chat …" fallback (still under the conditional write) and logs WARN with the `regex_class`. The "Untitled chat" prefix stays English in both branches because it's the universally-recognized empty-state marker the FE renders as a placeholder (matches the frontend i18n key `chats.untitledFallback` shape).
+After sanitization, `security.ContainsPIIClass` checks the cleaned title. On
+match the service writes an empty title under the conditional write and logs
+WARN with the `regex_class`. Provider errors and empty responses settle the same
+way. The repository atomically sets `title_status: "auto"`, making the empty title
+an explicit, language-neutral fallback marker. Clients localize it at display
+time from `createdAt`; existing stored titles are never rewritten. See
+[the conversation read contract](../api/handlers/conversation.md#fallback-title-read-contract).
 
 ## Helpers
 
 - `sanitizeTitle(raw)` strips quotes, trailing punctuation, and surrounding whitespace from `raw`, then caps the result at `titleMaxChars` RUNES (not bytes — Russian runes are multi-byte; bounding by `len()` would cut titles mid-codepoint). The cheap-model system prompt already says "Без кавычек и точек в конце"; this helper is the post-hoc safety net for instruction-following slips.
-- `untitledChatRussian(t)` returns the terminal-fallback title in Russian short form, e.g. "Untitled chat 26 апреля". Go's `time.Format` is English-only for month names; the Russian genitive month name is looked up from a fixed 12-element table. Kept for direct-call test compatibility; new code calls `untitledChatLocalized`.
-- `untitledChatEnglish(t)` returns the terminal-fallback title in English short form, e.g. "Untitled chat April 26". Day after the month so the reader doesn't have to mentally swap the order vs the RU form.
-- `untitledChatLocalized(t, tag)` dispatches to the per-locale fallback.
 
 ## Cross-references
 

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { format, parseISO } from 'date-fns';
 import type { ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -78,7 +79,7 @@ interface Props {
 
 export function SearchResultRow({ result, onSelect }: Props) {
   const tSide = useTranslations('sidebar');
-  const tChat = useTranslations('chat');
+  const getDisplayTitle = useConversationDisplayTitle();
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const href = result.topMessageId
     ? `/chat/${result.conversationId}?highlight=${encodeURIComponent(result.topMessageId)}`
@@ -96,7 +97,7 @@ export function SearchResultRow({ result, onSelect }: Props) {
           data-roving-item="true"
           className="flex flex-1 items-center gap-2 truncate text-sm text-ink"
         >
-          <span className="flex-1 truncate">{result.title || tChat('newConversation')}</span>
+          <span className="flex-1 truncate">{getDisplayTitle(result)}</span>
         </Link>
         {result.projectId && <ProjectChip projectId={result.projectId} size="xs" />}
         {dateLabel && <span className="shrink-0 text-xs text-ink-faint">{dateLabel}</span>}

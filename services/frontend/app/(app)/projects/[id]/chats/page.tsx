@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Bookmark, Plus, Settings } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { format, type Locale as DateFnsLocale } from 'date-fns';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -139,11 +140,7 @@ export default function ProjectChatsPage() {
             <ul className="divide-y divide-line-soft">
               {chats.map((chat) => (
                 <li key={chat.id}>
-                  <ChatRow
-                    chat={chat}
-                    fallbackTitle={tChat('newConversation')}
-                    dateFnsLocale={dateFnsLocale}
-                  />
+                  <ChatRow chat={chat} dateFnsLocale={dateFnsLocale} />
                 </li>
               ))}
             </ul>
@@ -154,16 +151,9 @@ export default function ProjectChatsPage() {
   );
 }
 
-function ChatRow({
-  chat,
-  fallbackTitle,
-  dateFnsLocale,
-}: {
-  chat: Conversation;
-  fallbackTitle: string;
-  dateFnsLocale: DateFnsLocale;
-}) {
-  const title = chat.title?.trim() || fallbackTitle;
+function ChatRow({ chat, dateFnsLocale }: { chat: Conversation; dateFnsLocale: DateFnsLocale }) {
+  const getDisplayTitle = useConversationDisplayTitle();
+  const title = getDisplayTitle(chat);
   const ts = chat.lastMessageAt ?? chat.updatedAt ?? chat.createdAt;
   const when = format(new Date(ts), 'd MMM · HH:mm', { locale: dateFnsLocale });
   const pinned = chat.pinnedAt != null;
