@@ -379,3 +379,44 @@ func TestConnectVK_TokenPermissionsRateLimited_HealthUnknown(t *testing.T) {
 		t.Fatalf("expected fail-soft unknown on rate-limit, got %+v", res)
 	}
 }
+
+func TestConnectVK_Paste_ClaimedByOtherTenant(t *testing.T) {
+	vkServer := newVKAPIMock(t, vkMockOpts{
+		communityID:         236912172,
+		communityName:       "OneVoice",
+		communityScreenName: "club236912172",
+		scopes:              []string{"wall", "manage", "messages"},
+	})
+	defer vkServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockIntegration := new(MockConnectIntegrationService)
+	mockBusiness := new(MockBusinessService)
+
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
+		method, _ := p.Metadata["input_method"].(string)
+		gname, _ := p.Metadata["community_name"].(string)
+		return p.Platform == "vk" &&
+			p.ExternalID == "236912172" &&
+			method == "paste" &&
+			gname == "OneVoice"
+	})).Return(nil, domain.ErrIntegrationClaimedByOtherTenant)
+
+	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewConnectHandler(mockIntegration, mockBusiness, nil, cfg, vkServer.Client())
+
+	body := `{"access_token": "vk1.a.PASTED_COMMUNITY_TOKEN"}`
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
+}

@@ -890,6 +890,10 @@ components:
           $ref: '#/components/schemas/BusinessMembershipRoleRef'
         status:
           type: string
+        deletion_pending_until:
+          type: string
+          format: date-time
+          description: Present for pending-deletion organizations, including the last organization. Restore via POST /businesses/{id}/restore before this deadline; ordinary organization reads remain unavailable.
         joined_at:
           type: string
           format: date-time

@@ -8,9 +8,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // businessContext extracts the per-request BusinessContext, writing a 500
@@ -69,6 +72,16 @@ func decodeAndValidate[T any](w http.ResponseWriter, r *http.Request, decodeErrC
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, decodeErrCode)
 		return req, false
+	}
+	switch value := any(&req).(type) {
+	case *openapi.RegisterRequest:
+		value.Email = openapi_types.Email(domain.NormalizeEmail(string(value.Email)))
+	case *openapi.LoginRequest:
+		value.Email = openapi_types.Email(domain.NormalizeEmail(string(value.Email)))
+	case *openapi.RequestPasswordResetRequest:
+		value.Email = openapi_types.Email(domain.NormalizeEmail(string(value.Email)))
+	case *openapi.EmailBeforeVerifyRequest:
+		value.NewEmail = openapi_types.Email(domain.NormalizeEmail(string(value.NewEmail)))
 	}
 	if err := validate.Struct(req); err != nil {
 		writeValidationError(w, r, err)

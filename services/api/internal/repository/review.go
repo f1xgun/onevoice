@@ -322,6 +322,10 @@ func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, reply
 		},
 	}
 
+	if replyStatus == domain.ReviewReplyStatusError {
+		delete(update, "$unset")
+	}
+
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
 	if err != nil {
 		return fmt.Errorf("update review reply: %w", err)
@@ -427,7 +431,7 @@ func (r *reviewRepository) ListPendingWithoutDraft(ctx context.Context, business
 
 	f := bson.M{
 		"business_id":  businessID,
-		"reply_status": domain.ReviewReplyStatusPending,
+		"reply_status": bson.M{"$in": []string{domain.ReviewReplyStatusPending, domain.ReviewReplyStatusError}},
 		"$or": []bson.M{
 			{"draft_status": bson.M{"$exists": false}},
 			{"draft_status": ""},

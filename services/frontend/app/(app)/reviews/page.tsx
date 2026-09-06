@@ -384,7 +384,9 @@ export default function ReviewsPage() {
                 review={review}
                 onSendDraft={() => sendDraftAsIs(review)}
                 onEdit={() => openReply(review, review.draftReply ?? '')}
-                onWriteOwn={() => openReply(review, '')}
+                onWriteOwn={() =>
+                  openReply(review, review.replyStatus === 'error' ? (review.replyText ?? '') : '')
+                }
                 onRetry={() => retryMutation.mutate(review.id)}
                 isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
                 isRetrying={retryMutation.isPending && retryMutation.variables === review.id}
@@ -504,11 +506,12 @@ function ReviewCard({
   const badge = statusBadge[status];
 
   const draftReady =
-    status === 'pending' &&
+    (status === 'pending' || status === 'error') &&
     review.draftStatus === 'ready' &&
     !!review.draftReply &&
     review.draftReply.trim().length > 0;
-  const draftGenerating = status === 'pending' && review.draftStatus === 'generating';
+  const draftGenerating =
+    (status === 'pending' || status === 'error') && review.draftStatus === 'generating';
   const hasSentReply = status === 'replied' && !!review.replyText;
   const hasFailedReply = status === 'error' && !!review.replyText;
 
@@ -550,9 +553,12 @@ function ReviewCard({
           <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
           <p className="mt-2 text-xs text-ink-soft">{tReviews('failedReply.explanation')}</p>
           {canReply && (
-            <div className="mt-3">
+            <div className="mt-3 flex gap-2">
               <Button variant="primary" size="sm" onClick={onRetry} disabled={isRetrying}>
                 {isRetrying ? tReviews('sending') : tReviews('failedReply.retry')}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onWriteOwn} disabled={isRetrying}>
+                {tReviews('aiSample.edit')}
               </Button>
             </div>
           )}
@@ -594,7 +600,7 @@ function ReviewCard({
 
       {/* No-draft fallback: covers draft_status ∈ {"", "failed"} and any
           unexpected value. The operator can always author a reply by hand. */}
-      {status === 'pending' && !draftReady && !draftGenerating && (
+      {(status === 'pending' || status === 'error') && !draftReady && !draftGenerating && (
         <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
           <span className="text-sm text-ink-mid">
             {review.draftStatus === 'failed'

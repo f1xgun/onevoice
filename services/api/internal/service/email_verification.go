@@ -188,6 +188,7 @@ func (s *EmailVerificationService) IsTokenExpired(ctx context.Context, plaintext
 // races to the same sentinel via UpdateEmailInTx).
 // - oldEmail (first return) for the handler to write on the audit row.
 func (s *EmailVerificationService) ChangeEmailBeforeVerify(ctx context.Context, userID uuid.UUID, newEmail string) (oldEmail string, err error) {
+	newEmail = domain.NormalizeEmail(newEmail)
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return "", err

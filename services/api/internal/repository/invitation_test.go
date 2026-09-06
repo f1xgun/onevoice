@@ -239,7 +239,7 @@ func TestInvitationRepo_MarkAcceptedInTx_Wins(t *testing.T) {
 
 	mock.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	mock.ExpectExec(`UPDATE invitations SET accepted_at`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), domain.SystemRoleOwnerID).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectCommit()
 
@@ -260,7 +260,7 @@ func TestInvitationRepo_MarkAcceptedInTx_LosesRace_AlreadyAccepted(t *testing.T)
 
 	mock.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	mock.ExpectExec(`UPDATE invitations SET accepted_at`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), domain.SystemRoleOwnerID).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 	mock.ExpectQuery(`SELECT accepted_at, revoked_at, expires_at FROM invitations WHERE`).
 		WithArgs(pgxmock.AnyArg()).
@@ -285,7 +285,7 @@ func TestInvitationRepo_MarkAcceptedInTx_LosesRace_Expired(t *testing.T) {
 
 	mock.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	mock.ExpectExec(`UPDATE invitations SET accepted_at`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), domain.SystemRoleOwnerID).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 	mock.ExpectQuery(`SELECT accepted_at, revoked_at, expires_at FROM invitations WHERE`).
 		WithArgs(pgxmock.AnyArg()).
@@ -299,4 +299,76 @@ func TestInvitationRepo_MarkAcceptedInTx_LosesRace_Expired(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, domain.ErrInvitationExpired))
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+type delayedInvitationInsertTx struct {
+	pgx.Tx
+	started chan struct{}
+	resume  chan struct{}
+}
+
+func (tx delayedInvitationInsertTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	close(tx.started)
+	select {
+	case <-tx.resume:
+		return tx.Tx.Exec(ctx, sql, args...)
+	case <-ctx.Done():
+		return pgconn.CommandTag{}, ctx.Err()
+	}
+}
+
+func TestInvitationRepo_CreateCommitsAfterRemovalCannotBeAccepted(t *testing.T) {
+	for _, change := range []string{"removed", "demoted"} {
+		t.Run(change, func(t *testing.T) {
+			pool, repo := newInvitationRepoMock(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			inv := &domain.Invitation{ID: uuid.New(), BusinessID: uuid.New(), CreatedBy: uuid.New(), RoleID: uuid.New(), ExpiresAt: time.Now().Add(time.Hour)}
+			pool.ExpectBegin()
+			tx, err := pool.Begin(ctx)
+			require.NoError(t, err)
+			delayed := delayedInvitationInsertTx{Tx: tx, started: make(chan struct{}), resume: make(chan struct{})}
+			result := make(chan error, 1)
+			go func() { result <- repo.CreateInTx(ctx, delayed, inv) }()
+			<-delayed.started
+
+			removalPool, removalRepo := newInvitationRepoMock(t)
+			removalPool.ExpectBegin()
+			removalTx, err := removalPool.Begin(ctx)
+			require.NoError(t, err)
+			members := NewBusinessMembershipRepository(removalPool)
+			if change == "removed" {
+				removalPool.ExpectExec("DELETE FROM business_members").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+				require.NoError(t, members.DeleteInTx(ctx, removalTx, inv.BusinessID, inv.CreatedBy))
+			} else {
+				removalPool.ExpectExec("UPDATE business_members SET").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				require.NoError(t, members.UpdateRoleInTx(ctx, removalTx, inv.BusinessID, inv.CreatedBy, uuid.New(), uuid.New()))
+			}
+			removalPool.ExpectExec("UPDATE invitations SET revoked_at").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+				WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+			count, err := removalRepo.RevokeByCreatorInTx(ctx, removalTx, inv.BusinessID, inv.CreatedBy)
+			require.NoError(t, err)
+			require.Zero(t, count)
+			removalPool.ExpectCommit()
+			require.NoError(t, removalTx.Commit(ctx))
+			require.NoError(t, removalPool.ExpectationsWereMet())
+			pool.ExpectExec("INSERT INTO invitations").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+			close(delayed.resume)
+			require.NoError(t, <-result)
+			pool.ExpectCommit()
+			require.NoError(t, tx.Commit(ctx))
+			pool.ExpectBegin()
+			tx, err = pool.Begin(ctx)
+			require.NoError(t, err)
+
+			pool.ExpectExec(`UPDATE invitations SET accepted_at.*EXISTS.*m.business_id = invitations.business_id.*m.user_id = invitations.created_by.*m.status = 'active'.*creator_role.permissions @> '\["members.invite"\]'::jsonb.*m.role_id = \$5 OR creator_role.permissions @> invited_role.permissions.*FOR SHARE OF m, creator_role, invited_role`).
+				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), domain.SystemRoleOwnerID).
+				WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+			pool.ExpectQuery("SELECT accepted_at, revoked_at, expires_at FROM invitations").WithArgs(inv.ID.String()).
+				WillReturnRows(pool.NewRows([]string{"accepted_at", "revoked_at", "expires_at"}).
+					AddRow(nil, nil, inv.ExpiresAt))
+			require.ErrorIs(t, repo.MarkAcceptedInTx(ctx, tx, inv.ID, uuid.New()), domain.ErrInvitationRevoked)
+			require.NoError(t, pool.ExpectationsWereMet())
+		})
+	}
 }

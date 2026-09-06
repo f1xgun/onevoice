@@ -249,6 +249,31 @@ func (r *invitationRepository) Revoke(ctx context.Context, id, businessID uuid.U
 	return nil
 }
 
+// RevokeByCreatorInTx — see domain.InvitationRepository docstring. Runs inside
+// the caller's tx so the revocation commits atomically with the membership
+// change that caused it.
+func (r *invitationRepository) RevokeByCreatorInTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	businessID, creatorUserID uuid.UUID,
+) (int64, error) {
+	sql, args, err := r.sb.
+		Update("invitations").
+		Set("revoked_at", time.Now().UTC()).
+		Where(squirrel.Eq{"business_id": businessID, "created_by": creatorUserID}).
+		Where("accepted_at IS NULL").
+		Where("revoked_at IS NULL").
+		ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("build revoke by creator: %w", err)
+	}
+	tag, err := tx.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, fmt.Errorf("revoke invitations by creator: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // MarkAccepted — pool-based. Provided for interface completeness; the handler
 // uses MarkAcceptedInTx inside the accept tx.
 func (r *invitationRepository) MarkAccepted(ctx context.Context, id, accepterUserID uuid.UUID) error {
@@ -267,7 +292,9 @@ func (r *invitationRepository) MarkAccepted(ctx context.Context, id, accepterUse
 	return nil
 }
 
-// MarkAcceptedInTx — race-safe single-use guarantee.
+// MarkAcceptedInTx enforces single use and current creator authority.
+// Membership and role share locks prevent concurrent removal or demotion
+// from committing between the authority check and acceptance.
 //
 // The conditional UPDATE matches at most one row whose state is
 // (accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now).
@@ -302,6 +329,17 @@ func (r *invitationRepository) buildMarkAcceptedSQL(id, accepterUserID uuid.UUID
 		Where("accepted_at IS NULL").
 		Where("revoked_at IS NULL").
 		Where(squirrel.Gt{"expires_at": now}).
+		Where(`EXISTS (
+            SELECT 1 FROM business_members m
+            JOIN roles creator_role ON creator_role.id = m.role_id
+            JOIN roles invited_role ON invited_role.id = invitations.role_id
+            WHERE m.business_id = invitations.business_id
+              AND m.user_id = invitations.created_by
+              AND m.status = 'active'
+              AND creator_role.permissions @> '["members.invite"]'::jsonb
+              AND (m.role_id = ? OR creator_role.permissions @> invited_role.permissions)
+            FOR SHARE OF m, creator_role, invited_role
+        )`, domain.SystemRoleOwnerID).
 		ToSql()
 	if err != nil {
 		return "", nil, fmt.Errorf("build mark accepted: %w", err)
@@ -352,6 +390,6 @@ func (r *invitationRepository) classifyTerminalState(ctx context.Context, tx pgx
 	case !expiresAt.After(now):
 		return domain.ErrInvitationExpired
 	default:
-		return fmt.Errorf("invitation %s: classify saw pending row after RowsAffected=0", id)
+		return domain.ErrInvitationRevoked
 	}
 }

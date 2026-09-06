@@ -19,6 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // TestMembersHandler_AuditRoleGranted_OnHappyPathCommit verifies that PATCH
@@ -66,13 +67,8 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 	auditLog.expect(1)
 
 	h := &MembersHandler{
-		membershipRepo:  mr,
-		roleRepo:        rr,
-		userRepo:        ur,
+		mutations:       service.NewMemberMutationService(mr, rr, ur, &recordingInvitationRepo{}, mockPool, inv, auditLog),
 		businessService: &mockBusinessGetter{},
-		pool:            mockPool,
-		invalidator:     inv,
-		audit:           auditLog,
 	}
 
 	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersUpdateRole)

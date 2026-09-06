@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,13 +65,16 @@ func TestNewKMSClient_DualVersionsCSVIgnored(t *testing.T) {
 
 func TestKMSSelfTestFailFast(t *testing.T) {
 	synthetic := errors.New("kms: connection refused")
-	err := kmsSelfTest(context.Background(), &errKMS{err: synthetic})
+	logger := slog.New(slog.NewTextHandler(noopWriter{}, nil))
+	_, err := resolveKMSVersionMap(context.Background(), &errKMS{err: synthetic}, nil, logger)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, synthetic)
 	assert.Contains(t, err.Error(), "kms self-test failed")
 }
 
 func TestKMSSelfTestSucceeds(t *testing.T) {
-	err := kmsSelfTest(context.Background(), &okKMS{})
+	logger := slog.New(slog.NewTextHandler(noopWriter{}, nil))
+	versionMap, err := resolveKMSVersionMap(context.Background(), &okKMS{}, nil, logger)
 	require.NoError(t, err)
+	assert.Equal(t, map[string]int16{"1": defaultKMSKeyVersion}, versionMap)
 }

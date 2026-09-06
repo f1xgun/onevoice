@@ -287,6 +287,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // ListPending handles GET /api/v1/businesses/{id}/invitations.
 // See docs/api/handlers/invitations.md.
+// ListPending includes inviters in their account deletion grace window.
 func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "", authz.PermMembersInvite)
 	if !ok {
@@ -306,7 +307,7 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 			writeAuthzInvariantError(r.Context(), w, "list_pending.role_lookup", err)
 			return
 		}
-		user, err := h.userRepo.GetByID(r.Context(), inv.CreatedBy)
+		user, err := h.userRepo.GetByIDIncludingDeleted(r.Context(), inv.CreatedBy)
 		if err != nil {
 			writeAuthzInvariantError(r.Context(), w, "list_pending.user_lookup", err)
 			return
@@ -457,6 +458,11 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.invitationRepo.MarkAcceptedInTx(r.Context(), tx, inv.ID, userID); err != nil {
+		writeInvitationStateError(w, err)
+		return
+	}
+
 	now := h.now().UTC()
 	createdAt := inv.CreatedAt
 	createdBy := inv.CreatedBy
@@ -475,11 +481,6 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeAuthzInvariantError(r.Context(), w, "accept.insert_member", err)
-		return
-	}
-
-	if err := h.invitationRepo.MarkAcceptedInTx(r.Context(), tx, inv.ID, userID); err != nil {
-		writeInvitationStateError(w, err)
 		return
 	}
 

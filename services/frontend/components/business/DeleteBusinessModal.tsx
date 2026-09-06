@@ -38,7 +38,7 @@ interface DeleteBusinessModalProps {
  * Confirmation modal for organization deletion. Mirrors DeleteConfirmModal but
  * gates on typing the organization name (organizations are not password-gated).
  * On 204: clears the active business, routes to another membership if one
- * exists, else /onboarding.
+ * exists, or keeps the restoration screen reachable for the last organization.
  */
 export function DeleteBusinessModal({
   open,
@@ -84,7 +84,8 @@ export function DeleteBusinessModal({
       const next = otherBusinessIds[0] ?? null;
       setActive(next);
       await queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
-      router.push(next ? '/business' : '/onboarding');
+      onOpenChange(false);
+      router.push('/business');
     } catch (e) {
       const err = e as BusinessDeletionError;
       setSubmitting(false);

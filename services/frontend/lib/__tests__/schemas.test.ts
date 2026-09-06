@@ -34,3 +34,18 @@ describe('registerSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+it('normalizes account emails before validating login and registration', () => {
+  const email = '  Owner@Example.COM  ';
+  expect(loginSchema.parse({ email, password: 'password123' }).email).toBe('owner@example.com');
+  expect(
+    registerSchema.parse({
+      name: 'Owner',
+      email,
+      password: 'password123',
+      confirmPassword: 'password123',
+      acceptTosPrivacy: true,
+      acceptPdn: true,
+    }).email
+  ).toBe('owner@example.com');
+});

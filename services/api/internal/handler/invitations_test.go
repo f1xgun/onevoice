@@ -66,6 +66,11 @@ func (m *MockInvitationRepository) CountPendingByBusinessInTx(ctx context.Contex
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockInvitationRepository) RevokeByCreatorInTx(ctx context.Context, tx pgx.Tx, businessID, creatorUserID uuid.UUID) (int64, error) {
+	args := m.Called(ctx, tx, businessID, creatorUserID)
+	return int64(args.Int(0)), args.Error(1)
+}
+
 func (m *MockInvitationRepository) Revoke(ctx context.Context, id, businessID uuid.UUID) error {
 	return m.Called(ctx, id, businessID).Error(0)
 }
@@ -434,6 +439,33 @@ func TestInvitationsHandler_ListPending_HappyPath_NoRawTokens(t *testing.T) {
 	require.NotContains(t, body, "secret-hash", "response must NOT include token_hash")
 	require.NotContains(t, body, "\"token\"", "response must NOT include raw token")
 	require.Contains(t, body, "alice@example.com")
+}
+
+// TestInvitationsHandler_ListPending_InviterPendingDeletion mirrors the members
+// list regression: an inviter inside their account-deletion grace window must
+// not fail the pending-invitation list for the whole organization.
+func TestInvitationsHandler_ListPending_InviterPendingDeletion(t *testing.T) {
+	f := newInvitationFixture(t)
+	bizID := uuid.New()
+	userID := uuid.New()
+	roleID := uuid.New()
+	inviterID := uuid.New()
+
+	f.handler.userRepo = &pendingDeletionUserRepo{
+		MockUserRepository: &MockUserRepository{},
+		pending:            &domain.User{ID: inviterID, Email: "leaving@example.com"},
+	}
+	f.invRepo.On("ListPendingByBusiness", mock.Anything, bizID).Return([]domain.Invitation{
+		{ID: uuid.New(), BusinessID: bizID, RoleID: roleID, TokenHash: "secret-hash", ExpiresAt: f.now.Add(time.Hour), CreatedBy: inviterID, CreatedAt: f.now},
+	}, nil)
+	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{ID: roleID, Name: "editor"}, nil)
+
+	req := requestWithBC(http.MethodGet, "/x", "", ownerBC(bizID, userID))
+	w := httptest.NewRecorder()
+	f.handler.ListPending(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+	require.Contains(t, w.Body.String(), "leaving@example.com")
 }
 
 // --- Tests: Revoke ---
@@ -854,4 +886,33 @@ func TestInvitationsHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *tes
 		require.Contains(t, w.Body.String(), "business not found")
 		f.invRepo.AssertNotCalled(t, "Revoke", mock.Anything, mock.Anything, mock.Anything)
 	})
+}
+
+func (m *MockBusinessRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	return m.GetByID(ctx, id)
+}
+
+func TestInvitationsHandler_AcceptRemovedCreatorsOwnLinkCannotRestoreAuthority(t *testing.T) {
+	f := newInvitationFixture(t)
+	userID, businessID, invitationID := uuid.New(), uuid.New(), uuid.New()
+	f.mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	f.invRepo.On("GetByTokenHash", mock.Anything, mock.Anything).Return(&domain.Invitation{
+		ID: invitationID, BusinessID: businessID, RoleID: uuid.New(),
+		CreatedBy: userID, ExpiresAt: f.now.Add(time.Hour),
+	}, nil)
+	f.memRepo.On("GetByBusinessUser", mock.Anything, businessID, userID).
+		Return(nil, domain.ErrMembershipNotFound)
+	f.invRepo.On("MarkAcceptedInTx", mock.Anything, mock.Anything, invitationID, userID).
+		Run(func(mock.Arguments) {
+			f.memRepo.AssertNotCalled(t, "Insert", mock.Anything, mock.Anything, mock.Anything)
+		}).Return(domain.ErrInvitationRevoked)
+	f.mockPool.ExpectRollback()
+	req := httptest.NewRequest(http.MethodPost, "/accept", http.NoBody)
+	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = withChiParams(req, map[string]string{"token": "old-invitation"})
+	response := httptest.NewRecorder()
+	f.handler.Accept(response, req)
+	require.Equal(t, http.StatusGone, response.Code)
+	f.memRepo.AssertNotCalled(t, "Insert", mock.Anything, mock.Anything, mock.Anything)
+	require.NoError(t, f.mockPool.ExpectationsWereMet())
 }

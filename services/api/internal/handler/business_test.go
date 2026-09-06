@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1535,4 +1536,34 @@ func TestBusinessHandler_BodyAndFieldLimits(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		mockSvc.AssertNotCalled(t, "UpdateSettingsKeys")
 	})
+}
+
+func TestListUserBusinessesIncludesRestorationDeadline(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		t.Run(strconv.FormatBool(pending), func(t *testing.T) {
+			userID, businessID := uuid.New(), uuid.New()
+			deadline := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+			summary := service.MembershipSummary{BusinessID: businessID, BusinessName: "Organization", Status: "active"}
+			if pending {
+				summary.DeletionPendingUntil = &deadline
+			}
+			svc := new(MockBusinessService)
+			svc.On("ListMembershipsByUser", mock.Anything, userID).Return([]service.MembershipSummary{summary}, nil)
+			h, err := NewBusinessHandler(svc, nil, nil)
+			require.NoError(t, err)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/businesses", http.NoBody)
+			req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+			w := httptest.NewRecorder()
+			h.ListUserBusinesses(w, req)
+			require.Equal(t, http.StatusOK, w.Code)
+			var got []map[string]interface{}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+			require.Len(t, got, 1)
+			if pending {
+				require.Equal(t, deadline.Format(time.RFC3339), got[0]["deletion_pending_until"])
+			} else {
+				require.NotContains(t, got[0], "deletion_pending_until")
+			}
+		})
+	}
 }

@@ -7,22 +7,28 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { localeToIntlTag } from '@/lib/i18n/locales';
 import { cn } from '@/lib/utils';
-import { useBusinessDeletionStore } from '@/lib/stores/businessDeletion';
+import {
+  useBusinessDeletionStore,
+  type PendingBusinessDeletion,
+} from '@/lib/stores/businessDeletion';
 import { restoreBusiness, type BusinessDeletionError } from '@/lib/api/business-deletion';
 
 const HTTP_GONE = 410;
 
-/**
- * Grace banner shown while a just-deleted organization is inside its 30-day
- * grace window. Mirrors the account DeletionGraceBanner. Reads the pending
- * deletion from the client-side store (soft-deleted orgs are invisible to
- * reads). «Отменить удаление» fires POST /businesses/{id}/restore; on 204 the
- * pending signal clears and the banner unmounts.
- */
-export function BusinessDeletionGraceBanner() {
+interface BusinessDeletionGraceBannerProps {
+  pendingDeletion?: PendingBusinessDeletion;
+  onRestored?: () => Promise<unknown>;
+}
+
+/** Offers restoration for server-listed or just-deleted organizations. */
+export function BusinessDeletionGraceBanner({
+  pendingDeletion,
+  onRestored,
+}: BusinessDeletionGraceBannerProps = {}) {
   const t = useTranslations('business.deletion');
   const locale = useLocale();
-  const pending = useBusinessDeletionStore((s) => s.pending);
+  const storedPending = useBusinessDeletionStore((s) => s.pending);
+  const pending = pendingDeletion ?? storedPending;
   const clear = useBusinessDeletionStore((s) => s.clear);
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,11 +46,15 @@ export function BusinessDeletionGraceBanner() {
       await restoreBusiness(pending.id);
       toast.success(t('restoreSuccessToast'));
       clear();
+      await onRestored?.();
+      setSubmitting(false);
     } catch (e) {
       const err = e as BusinessDeletionError;
       if (err.code === 'deletion_too_old' || err.status === HTTP_GONE) {
         toast.error(t('errors.tooOld'));
         clear();
+        await onRestored?.();
+        setSubmitting(false);
         return;
       }
       toast.error(

@@ -140,8 +140,9 @@ func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, 
 // GET /api/v1/businesses.
 func domainMembershipToOpenAPI(m service.MembershipSummary) openapi.BusinessMembershipSummary {
 	return openapi.BusinessMembershipSummary{
-		Id:   m.BusinessID,
-		Name: m.BusinessName,
+		DeletionPendingUntil: m.DeletionPendingUntil,
+		Id:                   m.BusinessID,
+		Name:                 m.BusinessName,
 		Role: openapi.BusinessMembershipRoleRef{
 			Id:   m.RoleID,
 			Name: m.RoleName,

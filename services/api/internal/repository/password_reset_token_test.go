@@ -42,13 +42,13 @@ func TestPasswordResetTokenRepository_Insert_RoundTrip(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec(`INSERT INTO password_reset_tokens`).
-		WithArgs(userID, hash, expiresAt).
+		WithArgs(userID, "owner@example.test", hash, expiresAt).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
 
 	tx, err := mock.Begin(ctx)
 	require.NoError(t, err)
-	require.NoError(t, repo.Insert(ctx, tx, userID, hash, expiresAt))
+	require.NoError(t, repo.Insert(ctx, tx, userID, "owner@example.test", hash, expiresAt))
 	require.NoError(t, tx.Commit(ctx))
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -65,12 +65,12 @@ func TestPasswordResetTokenRepository_Insert_DuplicateHashFails(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec(`INSERT INTO password_reset_tokens`).
-		WithArgs(userID, hash, expiresAt).
+		WithArgs(userID, "owner@example.test", hash, expiresAt).
 		WillReturnError(&pgconn.PgError{Code: "23505", Message: "duplicate key value violates unique constraint"})
 
 	tx, err := mock.Begin(ctx)
 	require.NoError(t, err)
-	err = repo.Insert(ctx, tx, userID, hash, expiresAt)
+	err = repo.Insert(ctx, tx, userID, "owner@example.test", hash, expiresAt)
 	require.ErrorIs(t, err, domain.ErrResetTokenCollision)
 }
 

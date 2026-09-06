@@ -406,6 +406,8 @@ type googleLocation struct {
 // collapses to the generic connect_failed the callbacks already used.
 func connectErrorRedirectCode(err error) string {
 	switch {
+	case errors.Is(err, domain.ErrIntegrationClaimedByOtherTenant):
+		return "already_connected"
 	case errors.Is(err, domain.ErrActorEmailNotVerified):
 		return "email_verification_required"
 	case errors.Is(err, domain.ErrActorPendingDeletion):
@@ -441,6 +443,6 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 // message as the JSON `error` field. Mirrors handler.writeJSONErrorKey —
 // duplicated locally to avoid a circular import once package handler
 // imports this oauth sub-package.
-func writeJSONErrorKey(w http.ResponseWriter, r *http.Request, status int, key string, args ...any) {
-	writeJSON(w, status, openapi.ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
+func writeJSONErrorKey(w http.ResponseWriter, r *http.Request, status int, key string) {
+	writeJSON(w, status, openapi.ErrorResponse{Error: i18n.Tr(r.Context(), key)})
 }

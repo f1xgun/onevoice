@@ -4,6 +4,7 @@
     "description": "A platform that automates digital presence for small businesses"
   },
   "businessGuard": {
+    "pendingOwnerRestore": "{name} is scheduled for deletion. Only an owner can restore the organization.",
     "loadFailed": "Couldn't load the list of organizations",
     "retry": "Try again",
     "loading": "Loading"
@@ -1207,6 +1208,7 @@
       "closeAria": "Dismiss warning"
     },
     "oauthErrors": {
+      "alreadyConnected": "This integration is already connected to another organization",
       "missingParams": "Couldn't sign in: missing parameters",
       "invalidState": "Couldn't sign in: session expired",
       "tokenExchange": "Couldn't exchange the token",

@@ -186,6 +186,7 @@ func TestYandexCallback_GateRejectionRedirects(t *testing.T) {
 		connError error
 		wantParam string
 	}{
+		{"claimed", domain.ErrIntegrationClaimedByOtherTenant, "error=already_connected"},
 		{"unverified", domain.ErrActorEmailNotVerified, "error=email_verification_required"},
 		{"pending_deletion", domain.ErrActorPendingDeletion, "error=account_pending_deletion"},
 	}

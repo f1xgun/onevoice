@@ -82,7 +82,9 @@ func (r *EmailVerificationTokenRepository) Insert(
 	return nil
 }
 
-// ConsumeAtomic is the canonical single-statement atomic consume
+// ConsumeAtomic locks the account and requires its current address to match
+// the token address until the caller commits the password or verification change.
+// It is the canonical single-statement atomic consume
 // (PITFALLS §1.3). Zero rows returned = either expired, already consumed,
 // or never existed — all surface as ErrVerifyTokenInvalid (callers MUST
 // NOT branch on which: PITFALLS §1.1).
@@ -100,12 +102,21 @@ func (r *EmailVerificationTokenRepository) ConsumeAtomic(
 	tokenHash []byte,
 ) (uuid.UUID, string, error) {
 	const q = `
-		UPDATE email_verification_tokens
-		   SET consumed_at = NOW()
-		 WHERE token_hash = $1
-		   AND consumed_at IS NULL
-		   AND expires_at > NOW()
-		RETURNING user_id, email`
+        WITH locked_user AS (
+            SELECT u.id, u.email FROM users u
+            JOIN email_verification_tokens t ON t.user_id = u.id
+            WHERE t.token_hash = $1
+            FOR UPDATE OF u
+        )
+        UPDATE email_verification_tokens t
+           SET consumed_at = NOW()
+          FROM locked_user u
+         WHERE t.token_hash = $1
+           AND t.consumed_at IS NULL
+           AND t.expires_at > NOW()
+           AND t.user_id = u.id
+           AND t.email = u.email
+        RETURNING t.user_id, t.email`
 	var userID uuid.UUID
 	var email string
 	if err := tx.QueryRow(ctx, q, tokenHash).Scan(&userID, &email); err != nil {

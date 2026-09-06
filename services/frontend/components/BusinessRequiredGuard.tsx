@@ -5,7 +5,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { useBusinessStore } from '@/lib/stores/business';
+import { BusinessDeletionGraceBanner } from '@/components/business/BusinessDeletionGraceBanner';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
+
+const OWNER_ROLE_ID = '00000000-0000-0000-0000-000000000001';
 
 // `/business/new` is the create-org page — reaching it with zero businesses
 // is the legitimate entry from /onboarding, so we must not bounce back.
@@ -46,9 +49,10 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
       }
       return;
     }
-    const validIds = new Set(businesses.map((b) => b.id));
+    const available = businesses.filter((b) => !b.deletion_pending_until);
+    const validIds = new Set(available.map((b) => b.id));
     if (!activeBusinessId || !validIds.has(activeBusinessId)) {
-      setActive(businesses[0].id);
+      setActive(available[0]?.id ?? null);
     }
   }, [businesses, activeBusinessId, setActive, router, isBypass, isAccountScoped]);
 
@@ -71,7 +75,41 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  if (isLoading || (!activeBusinessId && !(isAccountScoped && hasNoBusiness))) {
+  const pending = businesses?.filter((b) => b.deletion_pending_until) ?? [];
+  const restoration = pending.map((b) =>
+    b.role.id === OWNER_ROLE_ID ? (
+      <BusinessDeletionGraceBanner
+        key={b.id}
+        pendingDeletion={{
+          id: b.id,
+          name: b.name,
+          scheduledDeletionAt: b.deletion_pending_until!,
+        }}
+        onRestored={refetch}
+      />
+    ) : (
+      <p key={b.id} role="status" className="p-4 text-sm text-muted-foreground">
+        {t('pendingOwnerRestore', { name: b.name })}
+      </p>
+    )
+  );
+
+  if (!isLoading && businesses?.length && pending.length === businesses.length) {
+    return (
+      <>
+        {restoration}
+        {isAccountScoped && children}
+      </>
+    );
+  }
+
+  const activeIsAvailable = businesses?.some(
+    (b) => b.id === activeBusinessId && !b.deletion_pending_until
+  );
+  if (
+    isLoading ||
+    ((!activeBusinessId || !activeIsAvailable) && !(isAccountScoped && hasNoBusiness))
+  ) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div
@@ -83,5 +121,10 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {restoration}
+      {children}
+    </>
+  );
 }

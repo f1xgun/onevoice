@@ -281,6 +281,10 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.reviewService.Reply(r.Context(), bc.BusinessID, id, req.ReplyText); err != nil {
+		if errors.Is(err, domain.ErrReviewAlreadyAnswered) {
+			writeJSONCodeError(w, http.StatusConflict, "already_answered")
+			return
+		}
 		if errors.Is(err, domain.ErrReviewNotFound) {
 			writeJSONError(w, http.StatusNotFound, "review not found")
 			return

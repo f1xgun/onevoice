@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,12 +16,13 @@ import (
 
 // MembershipSummary is the read-model returned by ListMembershipsByUser. See docs/services/business.md.
 type MembershipSummary struct {
-	BusinessID   uuid.UUID
-	BusinessName string
-	RoleID       uuid.UUID
-	RoleName     string
-	Status       string
-	JoinedAt     time.Time
+	BusinessID           uuid.UUID
+	BusinessName         string
+	RoleID               uuid.UUID
+	RoleName             string
+	Status               string
+	JoinedAt             time.Time
+	DeletionPendingUntil *time.Time
 }
 
 // BusinessService defines the interface for business profile management.
@@ -159,6 +161,8 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 
 // ListMembershipsByUser returns memberships hydrated with business + role names.
 // N+1 is acceptable for v2.0 (<10 memberships typical). See docs/services/business.md.
+//
+// Pending organizations include their restoration deadline; erased organizations are skipped.
 func (s *businessService) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipSummary, error) {
 	members, err := s.membershipRepo.ListByUser(ctx, userID)
 	if err != nil {
@@ -169,21 +173,34 @@ func (s *businessService) ListMembershipsByUser(ctx context.Context, userID uuid
 	}
 	out := make([]MembershipSummary, 0, len(members))
 	for _, m := range members {
-		biz, err := s.repo.GetByID(ctx, m.BusinessID)
+		biz, err := s.repo.GetByIDIncludingDeleted(ctx, m.BusinessID)
 		if err != nil {
+			if errors.Is(err, domain.ErrBusinessNotFound) {
+				slog.InfoContext(ctx, "membership skipped: organization not readable",
+					"user_id", userID,
+					"business_id", m.BusinessID,
+				)
+				continue
+			}
 			return nil, fmt.Errorf("hydrate business %s: %w", m.BusinessID, err)
 		}
 		role, err := s.roleRepo.GetByID(ctx, m.RoleID)
 		if err != nil {
 			return nil, fmt.Errorf("hydrate role %s: %w", m.RoleID, err)
 		}
+		var deadline *time.Time
+		if biz.DeletedAt != nil && biz.DeletionRequestedAt != nil && biz.DeletionCanceledAt == nil {
+			until := biz.DeletionRequestedAt.Add(time.Duration(deletionGraceDays) * 24 * time.Hour)
+			deadline = &until
+		}
 		out = append(out, MembershipSummary{
-			BusinessID:   biz.ID,
-			BusinessName: biz.Name,
-			RoleID:       role.ID,
-			RoleName:     role.Name,
-			Status:       m.Status,
-			JoinedAt:     m.JoinedAt,
+			DeletionPendingUntil: deadline,
+			BusinessID:           biz.ID,
+			BusinessName:         biz.Name,
+			RoleID:               role.ID,
+			RoleName:             role.Name,
+			Status:               m.Status,
+			JoinedAt:             m.JoinedAt,
 		})
 	}
 	return out, nil

@@ -670,3 +670,23 @@ func TestReviewRepository_ClaimDraftForGenerating_AtomicSingleWinner(t *testing.
 		require.False(t, claimed, "a row that already has a 'ready' draft must not be re-claimed")
 	})
 }
+
+func TestReviewRepository_FailedReplyPreservesDraft(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	review := &domain.Review{ID: "failed-draft", BusinessID: uuid.NewString(), Platform: "telegram",
+		ExternalID: "-100_7", ReplyStatus: domain.ReviewReplyStatusPending,
+		DraftReply: "saved draft", DraftStatus: domain.ReviewDraftStatusReady}
+	_, err := db.Collection("reviews").InsertOne(ctx, review)
+	require.NoError(t, err)
+	require.NoError(t, repo.UpdateReply(ctx, review.ID, "attempt", domain.ReviewReplyStatusError, nil))
+	got, err := repo.GetByID(ctx, review.ID)
+	require.NoError(t, err)
+	require.Equal(t, review.DraftReply, got.DraftReply)
+	require.Equal(t, domain.ReviewDraftStatusReady, got.DraftStatus)
+	require.NoError(t, repo.UpdateReply(ctx, review.ID, "edited", domain.ReviewReplyStatusReplied, nil))
+	got, err = repo.GetByID(ctx, review.ID)
+	require.NoError(t, err)
+	require.Empty(t, got.DraftReply)
+}

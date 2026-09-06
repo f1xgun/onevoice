@@ -94,6 +94,7 @@ func NewPasswordResetService(
 // RequestReset issues a reset token and sends the recovery email. Always returns nil (no enumeration).
 // See docs/services/password-reset.md for the full lifecycle.
 func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clientIP, userAgent string) error {
+	emailAddr = domain.NormalizeEmail(emailAddr)
 	rateLimited := s.bumpRateLimit(ctx, emailAddr)
 
 	user, err := s.userRepo.GetByEmail(ctx, emailAddr)
@@ -148,7 +149,7 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		slog.ErrorContext(ctx, "password reset: invalidate prior tokens", "error", err)
 		return nil
 	}
-	if err := s.tokenRepo.Insert(ctx, tx, user.ID, hash, expiresAt); err != nil {
+	if err := s.tokenRepo.Insert(ctx, tx, user.ID, user.Email, hash, expiresAt); err != nil {
 		slog.ErrorContext(ctx, "password reset: insert token", "error", err)
 		return nil
 	}

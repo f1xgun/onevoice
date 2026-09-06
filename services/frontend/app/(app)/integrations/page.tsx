@@ -139,6 +139,7 @@ export default function IntegrationsPage() {
         invalid_state: 'invalidState',
         token_exchange: 'tokenExchange',
         connect_failed: 'connectFailed',
+        already_connected: 'alreadyConnected',
         no_community_token: 'noCommunityToken',
         internal: 'internal',
         no_refresh_token: 'noRefreshToken',

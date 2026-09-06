@@ -1123,3 +1123,7 @@ func TestResolve_NormalBody_Succeeds(t *testing.T) {
 		t.Fatalf("resolvingWinners = %d, want 1", got)
 	}
 }
+
+func (s *fakeBusinessRepoHITL) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	return s.GetByID(ctx, id)
+}
