@@ -55,7 +55,9 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
-  const borderLeftColor = tool.status === 'rejected' ? 'hsl(var(--destructive))' : color;
+  const decisionUnavailable = tool.rejectReason === 'decision_unavailable';
+  const borderLeftColor =
+    tool.status === 'rejected' && !decisionUnavailable ? 'hsl(var(--destructive))' : color;
 
   const policyReasonKey = tool.rejectReason
     ? POLICY_REJECT_REASON_KEYS[tool.rejectReason]
@@ -130,8 +132,15 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
           </Badge>
         )}
         {tool.status === 'rejected' && (
-          <Badge tone="danger" className="text-destructive">
-            {policyReasonKey ? tCard('rejectedByPolicyBadge') : tCard('rejectedBadge')}
+          <Badge
+            tone={decisionUnavailable ? 'neutral' : 'danger'}
+            className={decisionUnavailable ? undefined : 'text-destructive'}
+          >
+            {decisionUnavailable
+              ? tCard('decisionUnavailableBadge')
+              : policyReasonKey
+                ? tCard('rejectedByPolicyBadge')
+                : tCard('rejectedBadge')}
           </Badge>
         )}
         {tool.status === 'expired' && <Badge tone="warning">{tCard('expiredBadge')}</Badge>}
@@ -152,9 +161,11 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
       )}
       {tool.status === 'rejected' && tool.rejectReason && (
         <p className="text-xs italic text-muted-foreground">
-          {policyReasonKey
-            ? tCard(policyReasonKey)
-            : tCard('rejectedReason', { reason: tool.rejectReason })}
+          {decisionUnavailable
+            ? tCard('decisionUnavailableReason')
+            : policyReasonKey
+              ? tCard(policyReasonKey)
+              : tCard('rejectedReason', { reason: tool.rejectReason })}
         </p>
       )}
       {tool.status === 'aborted' && (

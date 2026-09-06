@@ -249,3 +249,29 @@ export function useMapRoleError(): (err: unknown) => string {
   const t = useTranslations('roles.errors') as TranslateFn;
   return useMemo(() => createMapRoleError(t), [t]);
 }
+
+export function isBusinessPlanLimitError(err: unknown): boolean {
+  const data = (err as AxiosError<{ code?: string; error?: string }> | undefined)?.response?.data;
+  return data?.code === 'plan_limit_businesses' || data?.error === 'plan_limit_businesses';
+}
+
+export function createMapTelegramConnectError(t: TranslateFn): (err: unknown) => string {
+  const reasonKeys: Record<string, string> = {
+    unreachable: 'unreachable',
+    rate_limited: 'rateLimited',
+    forbidden: 'noAccess',
+    api_rejected: 'channelNotFound',
+    not_admin: 'adminRequired',
+    no_post_rights: 'adminRequired',
+    already_connected: 'alreadyConnected',
+  };
+  return (err) => {
+    const response = (err as AxiosError<{ reason?: string }> | undefined)?.response;
+    const reason = response?.data?.reason;
+    if (reason) return t(Object.hasOwn(reasonKeys, reason) ? reasonKeys[reason] : 'failed');
+    if (response?.status === HTTP_STATUS.CONFLICT) return t('alreadyConnected');
+    if (!response || response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) return t('unreachable');
+    if (response.status === HTTP_STATUS.TOO_MANY_REQUESTS) return t('rateLimited');
+    return t('failed');
+  };
+}

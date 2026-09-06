@@ -3,6 +3,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
+import { ProRequest } from '@/components/billing/ProRequest';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +46,7 @@ function Gauge({ value, max, label }: { value: number; max: number; label: strin
 function SummaryCards({ summary }: { summary: BillingSummary }) {
   const t = useTranslations('settings.billing');
   const { plan, credits, usage_this_month, daily_spend } = summary;
+  const isFree = plan.code.toLowerCase() === 'free';
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -91,33 +93,48 @@ function SummaryCards({ summary }: { summary: BillingSummary }) {
         <CardContent>
           <dl className="grid grid-cols-3 gap-4">
             <Stat label={t('usage.actions')} value={usage_this_month.actions} />
-            <Stat label={t('usage.spend')} value={formatUsd(usage_this_month.spend_usd)} />
+            {!isFree && (
+              <Stat label={t('usage.spend')} value={formatUsd(usage_this_month.spend_usd)} />
+            )}
             <Stat label={t('usage.images')} value={usage_this_month.images} />
           </dl>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('daily.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <dl className="grid grid-cols-2 gap-4">
-            <Stat label={t('daily.today')} value={formatUsd(daily_spend.today_usd)} />
-            <Stat
-              label={t('daily.cap')}
-              value={daily_spend.cap_usd < 0 ? t('unlimited') : formatUsd(daily_spend.cap_usd)}
-            />
-          </dl>
-          {daily_spend.cap_usd > 0 ? (
-            <Gauge
-              value={daily_spend.today_usd}
-              max={daily_spend.cap_usd}
-              label={t('daily.gaugeLabel')}
-            />
-          ) : null}
-        </CardContent>
-      </Card>
+      {!isFree && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('daily.title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <dl className="grid grid-cols-2 gap-4">
+              <Stat label={t('daily.today')} value={formatUsd(daily_spend.today_usd)} />
+              <Stat
+                label={t('daily.cap')}
+                value={daily_spend.cap_usd < 0 ? t('unlimited') : formatUsd(daily_spend.cap_usd)}
+              />
+            </dl>
+            {daily_spend.cap_usd > 0 ? (
+              <Gauge
+                value={daily_spend.today_usd}
+                max={daily_spend.cap_usd}
+                label={t('daily.gaugeLabel')}
+              />
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+      {isFree && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('pro.title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p>{t('pro.price')}</p>
+            <ProRequest source="billing" />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

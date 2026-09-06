@@ -1,12 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { AxiosError } from 'axios';
 import { createTranslator } from 'next-intl';
 import ruMessages from '@/messages/ru.json';
+import enMessages from '@/messages/en.json';
 import {
   createMapEmailVerificationError,
   createMapInviteError,
   createMapMemberError,
   createMapRoleError,
+  createMapTelegramConnectError,
   createResolveErrorMap,
   isEmailVerificationRequiredError,
 } from '../resolveErrorMap';
@@ -299,5 +301,49 @@ describe('email verification gate (412)', () => {
     );
     expect(mapVerify(gateErr(500, { error: 'internal' }))).toBeNull();
     expect(mapVerify(undefined)).toBeNull();
+  });
+});
+
+const { createTranslator: createRealTranslator } = await vi.importActual<{
+  createTranslator: typeof createTranslator;
+}>('next-intl');
+
+describe.each([
+  {
+    locale: 'ru',
+    messages: ruMessages,
+    expected:
+      'Этот канал уже подключён к другой организации. Отключите его от неё или выберите другой канал.',
+  },
+  {
+    locale: 'en',
+    messages: enMessages,
+    expected:
+      'This channel is already connected to another organization. Disconnect it from that organization or choose another channel.',
+  },
+])('Telegram connect errors ($locale)', ({ locale, messages, expected }) => {
+  const t = createRealTranslator({ locale, messages, namespace: 'integrations.telegramErrors' });
+  const mapError = createMapTelegramConnectError(t as (key: string) => string);
+
+  it.each([
+    { error: 'Этот канал уже подключён к другой организации' },
+    { error: 'This channel is already connected to another organization' },
+    { reason: 'already_connected' },
+    {},
+  ])('maps a connect conflict with body %j to actionable localized copy', (body) => {
+    const message = mapError(axiosErr(409, body));
+    expect(message).toBe(expected);
+    expect(message).not.toBe(t('failed'));
+  });
+
+  it.each(['not_admin', 'no_post_rights'])(
+    'preserves the explicit %s reason on a conflict',
+    (reason) => {
+      expect(mapError(axiosErr(409, { reason }))).toBe(t('adminRequired'));
+    }
+  );
+
+  it('does not interpret other status codes as an existing connection', () => {
+    expect(mapError(axiosErr(400, { error: 'unknown error' }))).toBe(t('failed'));
   });
 });

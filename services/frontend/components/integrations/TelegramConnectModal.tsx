@@ -1,12 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { toast } from 'sonner';
-import { bizApi } from '@/lib/api/business-api';
-import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
-import { useBusinessStore } from '@/lib/stores/business';
-import { extractApiErrorCode, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
+
+import { useTelegramConnectForm } from '@/hooks/useTelegramConnectForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -19,37 +15,17 @@ interface Props {
 export function TelegramConnectModal({ open, onClose }: Props) {
   const tIntegrations = useTranslations('integrations');
   const tCommon = useTranslations('common');
-  const mapVerifyError = useMapEmailVerificationError();
-  const [step, setStep] = useState(1);
-  const [channelId, setChannelId] = useState('');
-  const [loading, setLoading] = useState(false);
-  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-
-  const handleConnect = async () => {
-    if (!channelId.trim() || !activeBusinessId) return;
-    const connectPath = INTEGRATION_ENDPOINTS.telegram?.connect;
-    if (!connectPath) return;
-    setLoading(true);
-    try {
-      await bizApi(activeBusinessId).post(connectPath, {
-        channel_id: channelId.trim(),
-      });
-      toast.success(tIntegrations('telegramConnected'));
-      handleClose();
-    } catch (err: unknown) {
-      toast.error(
-        mapVerifyError(err) ?? extractApiErrorCode(err) ?? tIntegrations('telegramConnectFail')
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClose = () => {
-    setStep(1);
-    setChannelId('');
-    onClose();
-  };
+  const {
+    step,
+    setStep,
+    register,
+    handleSubmit,
+    channelId,
+    loading,
+    error,
+    handleConnect,
+    handleClose,
+  } = useTelegramConnectForm(onClose);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
@@ -77,7 +53,7 @@ export function TelegramConnectModal({ open, onClose }: Props) {
         )}
 
         {step === 2 && (
-          <div className="space-y-4">
+          <form onSubmit={handleSubmit(handleConnect)} className="space-y-4">
             <p className="text-sm text-gray-600">
               {tIntegrations('telegramStep2IntroBefore')}{' '}
               <code className="rounded bg-gray-100 px-1">
@@ -89,22 +65,25 @@ export function TelegramConnectModal({ open, onClose }: Props) {
             </p>
             <Input
               placeholder={tIntegrations('telegramStep2Placeholder')}
-              value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
+              aria-label={tIntegrations('telegramStep2Placeholder')}
+              aria-invalid={!!error}
+              aria-describedby={error ? 'telegram-connect-error' : undefined}
+              {...register('channelId')}
             />
+            {error && (
+              <p id="telegram-connect-error" role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
+              <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
                 {tCommon('back')}
               </Button>
-              <Button
-                onClick={handleConnect}
-                disabled={!channelId.trim() || loading}
-                className="flex-1"
-              >
+              <Button type="submit" disabled={!channelId.trim() || loading} className="flex-1">
                 {loading ? tIntegrations('telegramChecking') : tIntegrations('telegramSubmit')}
               </Button>
             </div>
-          </div>
+          </form>
         )}
       </DialogContent>
     </Dialog>

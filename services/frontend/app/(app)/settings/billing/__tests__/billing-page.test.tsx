@@ -113,7 +113,7 @@ describe('BillingPage', () => {
       })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('progressbar', { name: 'Использовано кредитов из начисленных' })
+      screen.getByRole('progressbar', { name: 'Использовано ИИ-действий из месячного пула' })
     ).toBeInTheDocument();
   });
 
@@ -131,10 +131,42 @@ describe('BillingPage', () => {
     expect(screen.getAllByText('Безлимит').length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText('-1')).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('progressbar', { name: 'Использовано кредитов из начисленных' })
+      screen.queryByRole('progressbar', { name: 'Использовано ИИ-действий из месячного пула' })
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('progressbar', { name: 'Расход за сегодня относительно дневного лимита' })
     ).toBeInTheDocument();
   });
 });
+
+it.each(['ru', 'en'] as const)(
+  'shows the fresh Free monthly pool without monetary usage in %s',
+  async (locale) => {
+    (globalThis as unknown as { __setTestLocale: (locale: 'ru' | 'en') => void }).__setTestLocale(
+      locale
+    );
+    mockedGetSummary.mockResolvedValue({
+      plan: { code: 'free', name: 'Free', monthly_credits: 100 },
+      credits: { granted: 100, used: 0, remaining: 100, overage: 0 },
+      usage_this_month: { actions: 0, spend_usd: 12.34, images: 0 },
+      daily_spend: { today_usd: 1.5, cap_usd: 5 },
+    });
+    renderPage();
+    expect(await screen.findByText('Free')).toBeInTheDocument();
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/кредит|credits/i)).not.toBeInTheDocument();
+    expect(screen.getByText(locale === 'ru' ? 'ИИ-действия' : 'AI actions')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '100');
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    expect(
+      screen.getByText(
+        locale === 'ru'
+          ? '3 990–4 990 ₽ в месяц за локацию'
+          : '3,990–4,990 ₽ per month per location'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: locale === 'ru' ? 'Оставить заявку' : 'Request Pro' })
+    ).toBeInTheDocument();
+  }
+);

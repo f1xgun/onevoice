@@ -1,16 +1,5 @@
-// Surface A/C/contact: 152-ФЗ Art. 14 §3 data controller
-// block. Renders the legal entity's reqisites (наименование, ИНН,
-// юридический адрес, e-mail для запросов по ПДн) read from
-// NEXT_PUBLIC_LEGAL_* envs via loadLegalEntity.
-//
-// Mounted by the page-level Server Components conditionally on
-// frontmatter `showsController: true`. Marked 'use client' because
-// isPlaceholder emits a console.warn in development which
-// requires a browser context.
-
 'use client';
 
-import { useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { isPlaceholder, loadLegalEntity } from '@/lib/legal/entity';
 
@@ -18,14 +7,7 @@ export function DataControllerBlock() {
   const t = useTranslations('legal.shared');
   const entity = loadLegalEntity();
 
-  useEffect(() => {
-    if (isPlaceholder(entity)) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[legal] entity placeholders are still in use — set NEXT_PUBLIC_LEGAL_* env vars before staging deploy'
-      );
-    }
-  }, [entity]);
+  if (isPlaceholder(entity)) return null;
 
   return (
     <section

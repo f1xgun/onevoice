@@ -8,7 +8,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { loadLegalEntity } from '@/lib/legal/entity';
+import { isPlaceholder, loadLegalEntity } from '@/lib/legal/entity';
 
 export function Footer() {
   const t = useTranslations('footer');
@@ -43,20 +43,22 @@ export function Footer() {
           {t('links.consent')}
         </Link>
       </nav>
-      <div className="flex flex-col gap-1 text-[12px] leading-[1.4] md:items-end md:text-right">
-        <span>{t('copyright', { year, entityName: entity.name })}</span>
-        {entity.emailPdn && entity.emailPdn !== '—' ? (
-          <a
-            href={`mailto:${entity.emailPdn}`}
-            aria-label={t('contactAria', { email: entity.emailPdn })}
-            className="hover:text-[var(--ov-ink)] hover:underline hover:underline-offset-2"
-          >
-            {t('contact', { email: entity.emailPdn })}
-          </a>
-        ) : (
-          <span>{t('contact', { email: '—' })}</span>
-        )}
-      </div>
+      {!isPlaceholder(entity) && (
+        <div className="flex flex-col gap-1 text-[12px] leading-[1.4] md:items-end md:text-right">
+          <span>{t('copyright', { year, entityName: entity.name })}</span>
+          {entity.emailPdn && entity.emailPdn !== '—' ? (
+            <a
+              href={`mailto:${entity.emailPdn}`}
+              aria-label={t('contactAria', { email: entity.emailPdn })}
+              className="hover:text-[var(--ov-ink)] hover:underline hover:underline-offset-2"
+            >
+              {t('contact', { email: entity.emailPdn })}
+            </a>
+          ) : (
+            <span>{t('contact', { email: '—' })}</span>
+          )}
+        </div>
+      )}
     </footer>
   );
 }

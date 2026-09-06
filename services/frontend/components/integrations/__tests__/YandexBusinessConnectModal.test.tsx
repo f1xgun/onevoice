@@ -70,22 +70,33 @@ describe('YandexBusinessConnectModal — method routing', () => {
     expect(screen.queryByText('Зачем нужны cookies?')).not.toBeInTheDocument();
   });
 
-  it('falls back to cookie paste when delegated access is not provisioned', async () => {
+  it('shows a disabled delegated connection when unavailable', async () => {
     configUnavailable();
     renderModal();
-
-    expect(await screen.findByText('Зачем нужны cookies?')).toBeInTheDocument();
-    expect(screen.queryByText(/Дайте OneVoice доступ/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Подключение Яндекс.Бизнеса готовится/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Подключить$/ })).toBeDisabled();
+    expect(screen.getByText(/Мы не запрашиваем пароли и cookies/)).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cookie-Editor|Подключить через cookies/)).not.toBeInTheDocument();
+    expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it('lets the user switch from delegated to the cookie paste fallback', async () => {
+  it('never offers cookie or extension entry points when available', async () => {
     configAvailable();
-    const user = userEvent.setup();
     renderModal();
-
     await screen.findByText(/Дайте OneVoice доступ/);
-    await user.click(screen.getByText('Подключить через cookies (для опытных)'));
-    expect(await screen.findByText('Зачем нужны cookies?')).toBeInTheDocument();
+    expect(screen.queryByText(/Cookie-Editor|Подключить через cookies/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Мы не запрашиваем пароли и cookies/)).toBeInTheDocument();
+  });
+
+  it('shows config verification errors inline without retrying', async () => {
+    apiGet.mockRejectedValue({
+      response: { status: 412, data: { code: 'email_verification_required' } },
+    });
+    renderModal();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Подтвердите email');
+    expect(apiGet).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /^Подключить$/ })).toBeDisabled();
   });
 });
 
@@ -138,3 +149,32 @@ describe('YandexBusinessConnectModal — delegated connect', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+it.each(['connect', 'verify', 'retry'])(
+  'explains 412 at %s inline and stops repeat attempts',
+  async (step) => {
+    configAvailable();
+    const gate = { response: { status: 412, data: { code: 'email_verification_required' } } };
+    if (step !== 'connect') apiPost.mockResolvedValueOnce({ data: { externalId: '123' } });
+    if (step === 'retry') apiPost.mockResolvedValueOnce({ data: { access_verified: false } });
+    apiPost.mockRejectedValue(gate);
+    const user = userEvent.setup();
+    const { onClose } = renderModal();
+    await user.type(
+      await screen.findByLabelText('Ссылка на вашу организацию в Яндекс.Картах'),
+      '123'
+    );
+    await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
+    if (step === 'retry')
+      await user.click(await screen.findByRole('button', { name: 'Проверить снова' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Подтвердите email');
+    expect(
+      screen.getByRole('button', { name: step === 'retry' ? 'Проверить снова' : /^Подключить$/ })
+    ).toBeDisabled();
+    expect(onClose).not.toHaveBeenCalled();
+    if (step !== 'retry')
+      expect(screen.getByLabelText('Ссылка на вашу организацию в Яндекс.Картах')).toHaveValue(
+        '123'
+      );
+  }
+);

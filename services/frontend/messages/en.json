@@ -427,7 +427,9 @@
       "errorNotFound": "Channel not found. Check that it's still connected and accessible.",
       "errorMedia": "Couldn't upload the image — the file may be too large or the platform rejected it.",
       "errorFallback": "The action couldn't be completed. Please try again in a moment.",
-      "errorDetailsLabel": "Details"
+      "errorDetailsLabel": "Details",
+      "decisionUnavailableBadge": "Approval needed",
+      "decisionUnavailableReason": "Decision not found — please approve again"
     },
     "streamError": {
       "maxIterations": "Could not complete the request — the task was too complex. Try rephrasing it or breaking it into smaller steps.",
@@ -842,7 +844,8 @@
       "submit": "Create",
       "submitting": "Creating…",
       "createdToast": "Organization \"{name}\" created",
-      "createError": "Couldn't create the organization"
+      "createError": "Couldn't create the organization",
+      "freeLimit": "Free includes one organization. To manage several, request Pro."
     },
     "sections": {
       "profile": {
@@ -1221,8 +1224,12 @@
         "unverifiedBody": "Make sure you added the representative in the «Access» section and that the link points to your organization. Then check again.",
         "retry": "Check again",
         "done": "Done",
-        "connectFailed": "Couldn't connect the organization"
-      }
+        "connectFailed": "Couldn't connect the organization",
+        "verifyFailed": "Could not verify access. Try again later."
+      },
+      "preparing": "Yandex.Business connection is being prepared: access delegation will be available in the coming days.",
+      "security": "We never ask for passwords or cookies. Revoke access in one click in your Yandex account.",
+      "configFailed": "Could not load connection settings. Try opening this dialog later."
     },
     "googleLocation": {
       "title": "Pick a location",
@@ -1253,6 +1260,15 @@
       "emailVerificationRequired": "Verify your email first to connect channels.",
       "accountPendingDeletion": "Your account is pending deletion. Restore it to connect channels.",
       "fallback": "Couldn't connect: {error}"
+    },
+    "telegramErrors": {
+      "channelNotFound": "Channel not found. Check its @name or ID and add the bot as an administrator with permission to post.",
+      "adminRequired": "Add the bot as a channel administrator with permission to post, then reconnect.",
+      "noAccess": "Channel access denied. Check your permissions and add the bot as an administrator with permission to post.",
+      "unreachable": "Could not reach Telegram. Try later — bot access has not been checked.",
+      "rateLimited": "Telegram is temporarily limiting requests. Wait before reconnecting.",
+      "failed": "Could not connect the channel. Try again later.",
+      "alreadyConnected": "This channel is already connected to another organization. Disconnect it from that organization or choose another channel."
     }
   },
   "gettingStarted": {
@@ -2093,20 +2109,20 @@
     },
     "billing": {
       "title": "Plan & usage",
-      "subtitle": "Your plan, credits, and the organization's spend this month.",
+      "subtitle": "Your organization’s plan and AI actions for the current month.",
       "unlimited": "Unlimited",
       "plan": {
         "title": "Plan",
         "name": "Name",
-        "monthlyCredits": "Monthly credits"
+        "monthlyCredits": "AI actions per month"
       },
       "credits": {
-        "title": "Credits",
+        "title": "AI actions",
         "granted": "Granted",
         "used": "Used",
         "remaining": "Remaining",
         "overage": "Overage",
-        "gaugeLabel": "Credits used out of granted"
+        "gaugeLabel": "AI actions used from the monthly pool"
       },
       "usage": {
         "title": "Usage this month",
@@ -2123,6 +2139,12 @@
       "errors": {
         "forbidden": "You don't have access to the plan and usage section.",
         "loadFailed": "Couldn't load billing data. Please refresh the page."
+      },
+      "pro": {
+        "title": "Pro",
+        "price": "3,990–4,990 ₽ per month per location",
+        "cta": "Request Pro",
+        "description": "Leave your email so we can contact you about Pro."
       }
     }
   },
