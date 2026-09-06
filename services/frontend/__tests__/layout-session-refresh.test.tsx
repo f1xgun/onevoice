@@ -116,6 +116,7 @@ describe('AppLayout mount-time session refresh', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useAuthStore.getState().logout();
+    window.history.replaceState({}, '', '/settings/privacy?section=consents');
     refreshAccessTokenMock.mockReset();
     vi.mocked(api.get).mockReset();
     vi.mocked(api.get).mockResolvedValue({ data: { id: 'u1' } });
@@ -146,7 +147,9 @@ describe('AppLayout mount-time session refresh', () => {
     renderLayout();
 
     await waitFor(() => {
-      expect(replaceMock).toHaveBeenCalledWith('/login');
+      expect(replaceMock).toHaveBeenCalledWith(
+        '/login?next=%2Fsettings%2Fprivacy%3Fsection%3Dconsents'
+      );
     });
     expect(screen.queryByText('Повторить попытку')).toBeNull();
   });

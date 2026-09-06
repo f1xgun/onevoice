@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { safeNextPath, nextParamFrom, resolvePostAuthRedirect } from '../postAuthRedirect';
+import {
+  safeNextPath,
+  nextParamFrom,
+  resolvePostAuthRedirect,
+  loginRedirectPath,
+} from '../postAuthRedirect';
 
 describe('safeNextPath', () => {
   it('falls back to /chat for null / undefined / empty', () => {
@@ -51,5 +56,19 @@ describe('resolvePostAuthRedirect', () => {
     expect(resolvePostAuthRedirect('?next=/invite/abc123')).toBe('/invite/abc123');
     expect(resolvePostAuthRedirect('?next=//evil.com')).toBe('/chat');
     expect(resolvePostAuthRedirect('')).toBe('/chat');
+  });
+});
+
+describe('loginRedirectPath', () => {
+  it.each(['/chat/shared?message=one&view=full', '/settings/privacy', '/invite/token'])(
+    'round trips %s through login',
+    (path) => {
+      const [pathname, query] = path.split('?');
+      const target = loginRedirectPath({ pathname, search: query ? `?${query}` : '' });
+      expect(resolvePostAuthRedirect(target.slice(target.indexOf('?')))).toBe(path);
+    }
+  );
+  it('does not create an authentication redirect loop', () => {
+    expect(loginRedirectPath({ pathname: '/login', search: '' })).toBe('/login?next=%2Fchat');
   });
 });

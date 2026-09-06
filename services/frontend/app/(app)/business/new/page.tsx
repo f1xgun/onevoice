@@ -96,7 +96,12 @@ export default function NewBusinessPage() {
             className="flex flex-col gap-5 px-6 py-5"
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field label={tProfileForm('fields.name')} required error={errors.name?.message}>
+              <Field
+                htmlFor="name"
+                label={tProfileForm('fields.name')}
+                required
+                error={errors.name?.message}
+              >
                 <Input
                   id="name"
                   {...register('name')}
@@ -107,6 +112,7 @@ export default function NewBusinessPage() {
               <CategoryField control={control} error={errors.category?.message} />
 
               <Field
+                htmlFor="address"
                 label={tProfileForm('fields.address')}
                 error={errors.address?.message}
                 className="md:col-span-2"
@@ -118,15 +124,24 @@ export default function NewBusinessPage() {
                 />
               </Field>
 
-              <Field label={tProfileForm('fields.phone')} error={errors.phone?.message}>
+              <Field
+                htmlFor="phone"
+                label={tProfileForm('fields.phone')}
+                error={errors.phone?.message}
+              >
                 <Input id="phone" {...register('phone')} placeholder="+79001234567" />
               </Field>
 
-              <Field label={tProfileForm('fields.website')} error={errors.website?.message}>
+              <Field
+                htmlFor="website"
+                label={tProfileForm('fields.website')}
+                error={errors.website?.message}
+              >
                 <Input id="website" {...register('website')} placeholder="https://example.com" />
               </Field>
 
               <Field
+                htmlFor="description"
                 label={tProfileForm('fields.description')}
                 error={errors.description?.message}
                 hint={tProfileForm('descriptionHint')}

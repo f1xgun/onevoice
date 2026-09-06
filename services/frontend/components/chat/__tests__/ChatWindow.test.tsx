@@ -81,6 +81,16 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
     vi.restoreAllMocks();
   });
 
+  it('gives the message composer an accessible name', async () => {
+    mockGetMessages({ messages: [], pendingApprovals: [] });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    expect(await screen.findByRole('textbox', { name: 'Напишите сообщение…' })).toBeInTheDocument();
+  });
+
   it('Invariant 5: card hydrates from GET /messages.pendingApprovals on mount', async () => {
     mockGetMessages({ messages: [], pendingApprovals: [singleCallBatch] });
     render(

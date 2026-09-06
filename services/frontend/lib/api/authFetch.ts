@@ -19,6 +19,7 @@
 // spurious logout.
 
 import axios from 'axios';
+import { loginRedirectPath } from '@/lib/postAuthRedirect';
 import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from '@/lib/auth';
@@ -63,7 +64,7 @@ export function refreshAccessToken(): Promise<string> {
       if (status === HTTP_STATUS.UNAUTHORIZED) {
         useAuthStore.getState().logout();
         if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
+          window.location.href = loginRedirectPath(window.location);
         }
       }
       throw err;

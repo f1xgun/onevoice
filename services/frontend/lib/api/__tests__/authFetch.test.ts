@@ -24,7 +24,7 @@ vi.mock('@/lib/auth', () => ({
   },
 }));
 
-import { authFetch } from '../authFetch';
+import { authFetch, refreshAccessToken } from '../authFetch';
 
 function resp(status: number, body?: unknown): Response {
   return {
@@ -158,3 +158,14 @@ describe('authFetch', () => {
     expect(axiosH.post).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each(['/settings/privacy', '/chat/shared-id'])(
+  'preserves %s and its query on refresh expiry',
+  async (pathname) => {
+    const location = { pathname, search: '?message=123&view=full', href: '' };
+    vi.stubGlobal('location', location);
+    axiosH.post.mockRejectedValueOnce({ response: { status: 401 } });
+    await expect(refreshAccessToken()).rejects.toEqual({ response: { status: 401 } });
+    expect(location.href).toBe(`/login?next=${encodeURIComponent(pathname + location.search)}`);
+  }
+);

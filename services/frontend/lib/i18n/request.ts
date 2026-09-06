@@ -1,5 +1,6 @@
 import { cookies, headers } from 'next/headers';
 import { getRequestConfig } from 'next-intl/server';
+import { DEFAULT_TIME_ZONE } from '@/lib/i18n/timeZone';
 import { isLocale, LOCALE_COOKIE, parseAcceptLanguage, type Locale } from './locales';
 import { intlMessageFallback, onIntlError } from './fallback';
 
@@ -26,6 +27,7 @@ export default getRequestConfig(async () => {
   const messages = (await import(`../../messages/${locale}.json`)).default;
   return {
     locale,
+    timeZone: DEFAULT_TIME_ZONE,
     messages,
     onError: onIntlError,
     getMessageFallback: intlMessageFallback,

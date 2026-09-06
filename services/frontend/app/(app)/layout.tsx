@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { loginRedirectPath } from '@/lib/postAuthRedirect';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { refreshAccessToken } from '@/lib/api/authFetch';
@@ -79,7 +80,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           if (controller.signal.aborted) return;
           const status = (err as { response?: { status?: number } })?.response?.status;
           if (status === HTTP_STATUS.UNAUTHORIZED) {
-            router.replace('/login');
+            router.replace(loginRedirectPath(window.location));
           } else {
             setSessionError(true);
           }

@@ -205,14 +205,14 @@ function DayRow({
           value={day.open}
           onChange={(v) => onChange({ open: v })}
           disabled={!open}
-          ariaLabel={`${label} — открытие`}
+          ariaLabel={tSchedule('openAria', { label })}
         />
         <span className="text-ink-soft">—</span>
         <TimeBox
           value={day.close}
           onChange={(v) => onChange({ close: v })}
           disabled={!open}
-          ariaLabel={`${label} — закрытие`}
+          ariaLabel={tSchedule('closeAria', { label })}
         />
       </div>
     </div>
@@ -371,7 +371,7 @@ function SpecialDateRow({
               close: checked ? (date.close ?? '18:00') : undefined,
             })
           }
-          aria-label={`${formatted} — открыто`}
+          aria-label={tSchedule('enabledAria', { label: formatted })}
         />
       </div>
 
@@ -379,7 +379,7 @@ function SpecialDateRow({
         <div className="flex items-center gap-2">
           <input
             type="time"
-            aria-label={`${formatted} — открытие`}
+            aria-label={tSchedule('openAria', { label: formatted })}
             value={date.open ?? '10:00'}
             onChange={(e) => onChange({ open: e.target.value })}
             className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2"
@@ -388,7 +388,7 @@ function SpecialDateRow({
           <span className="text-ink-soft">—</span>
           <input
             type="time"
-            aria-label={`${formatted} — закрытие`}
+            aria-label={tSchedule('closeAria', { label: formatted })}
             value={date.close ?? '18:00'}
             onChange={(e) => onChange({ close: e.target.value })}
             className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2"
@@ -404,7 +404,7 @@ function SpecialDateRow({
         variant="ghost"
         size="icon"
         onClick={onRemove}
-        aria-label={`Удалить ${formatted}`}
+        aria-label={tSchedule('removeAria', { label: formatted })}
       >
         <X className="h-4 w-4" aria-hidden />
       </Button>

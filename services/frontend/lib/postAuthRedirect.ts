@@ -34,3 +34,7 @@ export function nextParamFrom(search: string): string | null {
 export function resolvePostAuthRedirect(search: string): string {
   return safeNextPath(nextParamFrom(search));
 }
+
+export function loginRedirectPath(location: { pathname: string; search: string }): string {
+  return `/login?next=${encodeURIComponent(safeNextPath(location.pathname + location.search))}`;
+}

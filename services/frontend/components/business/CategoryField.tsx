@@ -39,7 +39,7 @@ export function CategoryField({ control, error }: CategoryFieldProps) {
   const presets = PRESET_CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) }));
 
   return (
-    <Field label={tProfileForm('fields.category')} required error={error}>
+    <Field htmlFor="category" label={tProfileForm('fields.category')} required error={error}>
       <Controller
         control={control}
         name="category"

@@ -10,6 +10,7 @@ const TABS = [
   { href: '/settings/billing', labelKey: 'billing', perm: 'billing.read' },
   { href: '/settings/audit', labelKey: 'audit' },
   { href: '/settings/privacy', labelKey: 'privacy' },
+  { href: '/settings/account', labelKey: 'account' },
 ] as const;
 
 // Server component (no 'use client' directive) — pulls request-scoped
