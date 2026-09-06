@@ -458,6 +458,11 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.invitationRepo.MarkAcceptedInTx(r.Context(), tx, inv.ID, userID); err != nil {
+		writeInvitationStateError(w, err)
+		return
+	}
+
 	now := h.now().UTC()
 	createdAt := inv.CreatedAt
 	createdBy := inv.CreatedBy
@@ -476,11 +481,6 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeAuthzInvariantError(r.Context(), w, "accept.insert_member", err)
-		return
-	}
-
-	if err := h.invitationRepo.MarkAcceptedInTx(r.Context(), tx, inv.ID, userID); err != nil {
-		writeInvitationStateError(w, err)
 		return
 	}
 

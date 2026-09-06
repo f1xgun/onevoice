@@ -30,7 +30,7 @@ it('restores the last organization after delete and reload with empty client sto
       {
         id: 'org-1',
         name: 'Organization',
-        role: { id: 'owner', name: 'Owner' },
+        role: { id: '00000000-0000-0000-0000-000000000001', name: 'Owner' },
         status: 'active',
         joined_at: '2026-09-01T00:00:00Z',
         ...(pending ? { deletion_pending_until: '2026-10-06T12:00:00Z' } : {}),
@@ -81,4 +81,37 @@ it('restores the last organization after delete and reload with empty client sto
     credentials: 'include',
   });
   expect(useBusinessStore.getState().activeBusinessId).toBe('org-1');
+});
+
+it.each([
+  ['00000000-0000-0000-0000-000000000002', 'admin'],
+  ['00000000-0000-0000-0000-000000000003', 'editor'],
+  ['custom-role', 'owner'],
+])('explains pending deletion without restoration for role %s', async (id, name) => {
+  vi.mocked(api.get).mockResolvedValue({
+    data: [
+      {
+        id: 'org-1',
+        name: 'Organization',
+        role: { id, name },
+        status: 'active',
+        joined_at: '2026-09-01T00:00:00Z',
+        deletion_pending_until: '2026-10-06T12:00:00Z',
+      },
+    ],
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <BusinessRequiredGuard>
+        <div>protected</div>
+      </BusinessRequiredGuard>
+    </QueryClientProvider>
+  );
+  await screen.findByText(
+    'Организация «Organization» ожидает удаления. Восстановить её может только владелец.'
+  );
+  expect(screen.queryByRole('button')).toBeNull();
+  expect(screen.queryByText('protected')).toBeNull();
+  expect(authFetch).not.toHaveBeenCalled();
 });

@@ -8,6 +8,8 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { BusinessDeletionGraceBanner } from '@/components/business/BusinessDeletionGraceBanner';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
 
+const OWNER_ROLE_ID = '00000000-0000-0000-0000-000000000001';
+
 // `/business/new` is the create-org page — reaching it with zero businesses
 // is the legitimate entry from /onboarding, so we must not bounce back.
 const BYPASS_PATHS = ['/login', '/register', '/onboarding', '/business/new'];
@@ -74,17 +76,23 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   }
 
   const pending = businesses?.filter((b) => b.deletion_pending_until) ?? [];
-  const restoration = pending.map((b) => (
-    <BusinessDeletionGraceBanner
-      key={b.id}
-      pendingDeletion={{
-        id: b.id,
-        name: b.name,
-        scheduledDeletionAt: b.deletion_pending_until!,
-      }}
-      onRestored={refetch}
-    />
-  ));
+  const restoration = pending.map((b) =>
+    b.role.id === OWNER_ROLE_ID ? (
+      <BusinessDeletionGraceBanner
+        key={b.id}
+        pendingDeletion={{
+          id: b.id,
+          name: b.name,
+          scheduledDeletionAt: b.deletion_pending_until!,
+        }}
+        onRestored={refetch}
+      />
+    ) : (
+      <p key={b.id} role="status" className="p-4 text-sm text-muted-foreground">
+        {t('pendingOwnerRestore', { name: b.name })}
+      </p>
+    )
+  );
 
   if (!isLoading && businesses?.length && pending.length === businesses.length) {
     return (

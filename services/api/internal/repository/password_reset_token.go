@@ -66,13 +66,14 @@ func (r *PasswordResetTokenRepository) Insert(
 	ctx context.Context,
 	tx pgx.Tx,
 	userID uuid.UUID,
+	email string,
 	tokenHash []byte,
 	expiresAt time.Time,
 ) error {
 	sqlStr, args, err := r.psql.
 		Insert("password_reset_tokens").
-		Columns("user_id", "token_hash", "expires_at").
-		Values(userID, tokenHash, expiresAt).
+		Columns("user_id", "email", "token_hash", "expires_at").
+		Values(userID, email, tokenHash, expiresAt).
 		ToSql()
 	if err != nil {
 		return err
@@ -87,7 +88,9 @@ func (r *PasswordResetTokenRepository) Insert(
 	return nil
 }
 
-// ConsumeAtomic is the canonical single-statement atomic consume. PITFALLS §1.3.
+// ConsumeAtomic locks the account and requires its current address to match
+// the token address until the caller commits the password or verification change.
+// It is the canonical single-statement atomic consume. PITFALLS §1.3.
 // Zero rows returned = either expired, already consumed, or never existed —
 // all surface as ErrResetTokenInvalid (callers MUST NOT branch on which:
 // PITFALLS §1.1).
@@ -102,12 +105,21 @@ func (r *PasswordResetTokenRepository) ConsumeAtomic(
 	tokenHash []byte,
 ) (uuid.UUID, error) {
 	const q = `
-		UPDATE password_reset_tokens
-		   SET consumed_at = NOW()
-		 WHERE token_hash = $1
-		   AND consumed_at IS NULL
-		   AND expires_at > NOW()
-		RETURNING user_id`
+        WITH locked_user AS (
+            SELECT u.id, u.email FROM users u
+            JOIN password_reset_tokens t ON t.user_id = u.id
+            WHERE t.token_hash = $1
+            FOR UPDATE OF u
+        )
+        UPDATE password_reset_tokens t
+           SET consumed_at = NOW()
+          FROM locked_user u
+         WHERE t.token_hash = $1
+           AND t.consumed_at IS NULL
+           AND t.expires_at > NOW()
+           AND t.user_id = u.id
+           AND t.email = u.email
+        RETURNING t.user_id`
 	var userID uuid.UUID
 	if err := tx.QueryRow(ctx, q, tokenHash).Scan(&userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -358,6 +358,7 @@ describe('BusinessRequiredGuard', () => {
         {
           id: 'biz-1',
           name: 'Organization',
+          role: { id: '00000000-0000-0000-0000-000000000001', name: 'owner' },
           deletion_pending_until: '2026-10-06T12:00:00Z',
         },
       ],

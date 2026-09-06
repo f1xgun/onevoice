@@ -4,6 +4,7 @@
     "description": "A platform that automates digital presence for small businesses"
   },
   "businessGuard": {
+    "pendingOwnerRestore": "{name} is scheduled for deletion. Only an owner can restore the organization.",
     "loadFailed": "Couldn't load the list of organizations",
     "retry": "Try again",
     "loading": "Loading"

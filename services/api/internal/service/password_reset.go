@@ -149,7 +149,7 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 		slog.ErrorContext(ctx, "password reset: invalidate prior tokens", "error", err)
 		return nil
 	}
-	if err := s.tokenRepo.Insert(ctx, tx, user.ID, hash, expiresAt); err != nil {
+	if err := s.tokenRepo.Insert(ctx, tx, user.ID, user.Email, hash, expiresAt); err != nil {
 		slog.ErrorContext(ctx, "password reset: insert token", "error", err)
 		return nil
 	}

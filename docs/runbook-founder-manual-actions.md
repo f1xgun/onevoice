@@ -163,6 +163,8 @@ contains account identifiers and email addresses; never commit production output
    for **one approved account at a time**. The operator must be an existing user
    so the audit foreign key resolves. The target address must be unique after
    canonicalization; the account must subsequently verify its replacement email.
+   Invalidate all outstanding password-reset and email-verification links in the
+   same transaction, so the old mailbox cannot control the renamed account.
 
 ```sql
 \prompt 'Keeper user UUID: ' keeper_id
@@ -193,6 +195,12 @@ WITH changed AS (
           WHERE lower(btrim(n.email)) = lower(btrim(:'new_email'))
       )
     RETURNING u.id, u.email
+), reset_tokens_invalidated AS (
+    UPDATE password_reset_tokens SET consumed_at = now()
+    WHERE user_id IN (SELECT id FROM changed) AND consumed_at IS NULL
+), verification_tokens_invalidated AS (
+    UPDATE email_verification_tokens SET consumed_at = now()
+    WHERE user_id IN (SELECT id FROM changed) AND consumed_at IS NULL
 ), audited AS (
     INSERT INTO audit_logs (user_id, action, resource, details, user_email_at_event)
     SELECT :'operator_id'::uuid, 'admin.email_collision_reconciled',

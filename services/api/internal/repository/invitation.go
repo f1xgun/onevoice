@@ -292,7 +292,9 @@ func (r *invitationRepository) MarkAccepted(ctx context.Context, id, accepterUse
 	return nil
 }
 
-// MarkAcceptedInTx — race-safe single-use guarantee.
+// MarkAcceptedInTx enforces single use and current creator authority.
+// Membership and role share locks prevent concurrent removal or demotion
+// from committing between the authority check and acceptance.
 //
 // The conditional UPDATE matches at most one row whose state is
 // (accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now).
@@ -327,6 +329,17 @@ func (r *invitationRepository) buildMarkAcceptedSQL(id, accepterUserID uuid.UUID
 		Where("accepted_at IS NULL").
 		Where("revoked_at IS NULL").
 		Where(squirrel.Gt{"expires_at": now}).
+		Where(`EXISTS (
+            SELECT 1 FROM business_members m
+            JOIN roles creator_role ON creator_role.id = m.role_id
+            JOIN roles invited_role ON invited_role.id = invitations.role_id
+            WHERE m.business_id = invitations.business_id
+              AND m.user_id = invitations.created_by
+              AND m.status = 'active'
+              AND creator_role.permissions @> '["members.invite"]'::jsonb
+              AND (m.role_id = ? OR creator_role.permissions @> invited_role.permissions)
+            FOR SHARE OF m, creator_role, invited_role
+        )`, domain.SystemRoleOwnerID).
 		ToSql()
 	if err != nil {
 		return "", nil, fmt.Errorf("build mark accepted: %w", err)
@@ -377,6 +390,6 @@ func (r *invitationRepository) classifyTerminalState(ctx context.Context, tx pgx
 	case !expiresAt.After(now):
 		return domain.ErrInvitationExpired
 	default:
-		return fmt.Errorf("invitation %s: classify saw pending row after RowsAffected=0", id)
+		return domain.ErrInvitationRevoked
 	}
 }

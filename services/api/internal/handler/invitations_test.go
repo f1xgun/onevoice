@@ -891,3 +891,28 @@ func TestInvitationsHandler_WriteEndpoints_SoftDeletedBusiness_Returns404(t *tes
 func (m *MockBusinessRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	return m.GetByID(ctx, id)
 }
+
+func TestInvitationsHandler_AcceptRemovedCreatorsOwnLinkCannotRestoreAuthority(t *testing.T) {
+	f := newInvitationFixture(t)
+	userID, businessID, invitationID := uuid.New(), uuid.New(), uuid.New()
+	f.mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	f.invRepo.On("GetByTokenHash", mock.Anything, mock.Anything).Return(&domain.Invitation{
+		ID: invitationID, BusinessID: businessID, RoleID: uuid.New(),
+		CreatedBy: userID, ExpiresAt: f.now.Add(time.Hour),
+	}, nil)
+	f.memRepo.On("GetByBusinessUser", mock.Anything, businessID, userID).
+		Return(nil, domain.ErrMembershipNotFound)
+	f.invRepo.On("MarkAcceptedInTx", mock.Anything, mock.Anything, invitationID, userID).
+		Run(func(mock.Arguments) {
+			f.memRepo.AssertNotCalled(t, "Insert", mock.Anything, mock.Anything, mock.Anything)
+		}).Return(domain.ErrInvitationRevoked)
+	f.mockPool.ExpectRollback()
+	req := httptest.NewRequest(http.MethodPost, "/accept", http.NoBody)
+	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = withChiParams(req, map[string]string{"token": "old-invitation"})
+	response := httptest.NewRecorder()
+	f.handler.Accept(response, req)
+	require.Equal(t, http.StatusGone, response.Code)
+	f.memRepo.AssertNotCalled(t, "Insert", mock.Anything, mock.Anything, mock.Anything)
+	require.NoError(t, f.mockPool.ExpectationsWereMet())
+}
