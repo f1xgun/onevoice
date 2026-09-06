@@ -176,7 +176,10 @@ describe('ToolsPageClient — /settings/tools', () => {
       name: `Режим одобрения для Отправить пост`,
     });
     const samBtn = within(radiogroup).getByRole('radio', { name: 'Автоматически' });
-    await userEvent.click(samBtn);
+    within(radiogroup).getByRole('radio', { checked: true }).focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(samBtn).toHaveFocus();
+    expect(samBtn).toHaveAttribute('aria-checked', 'true');
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Сохранить/ })).toBeEnabled();

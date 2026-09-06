@@ -19,7 +19,6 @@ import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { FormError } from '@/components/ui/form-error';
-import { MonoLabel } from '@/components/ui/mono-label';
 import { SmartCaptcha, type SmartCaptchaHandle } from '@/components/auth/SmartCaptcha';
 
 // HTTP 423 Locked — same status the LockoutMiddleware short-circuits with.
@@ -118,7 +117,6 @@ export default function LoginPage() {
       eyebrow={tLogin('eyebrow')}
       title={tLogin('title')}
       description={tLogin('description')}
-      aside={<LoginEditorial />}
     >
       {lockedRetrySeconds !== null ? (
         <div
@@ -139,34 +137,42 @@ export default function LoginPage() {
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email" className="text-xs font-medium text-ink-mid">
+            <Label htmlFor="email" className="text-meta font-medium text-ink">
               {tLogin('emailLabel')}
             </Label>
             <Input
               id="email"
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? 'email-error' : undefined}
               type="email"
               placeholder="vy@example.com"
               autoComplete="email"
               {...register('email')}
             />
             {errors.email && (
-              <p className="text-sm text-[var(--ov-danger)]">{errors.email.message}</p>
+              <p id="email-error" role="alert" className="text-meta text-danger">
+                {errors.email.message}
+              </p>
             )}
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password" className="text-xs font-medium text-ink-mid">
+            <Label htmlFor="password" className="text-meta font-medium text-ink">
               {tLogin('passwordLabel')}
             </Label>
             <Input
               id="password"
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? 'password-error' : undefined}
               type="password"
               placeholder="••••••••"
               autoComplete="current-password"
               {...register('password')}
             />
             {errors.password && (
-              <p className="text-sm text-[var(--ov-danger)]">{errors.password.message}</p>
+              <p id="password-error" role="alert" className="text-meta text-danger">
+                {errors.password.message}
+              </p>
             )}
             <Link
               href="/auth/password-reset"
@@ -199,20 +205,5 @@ export default function LoginPage() {
         </form>
       )}
     </AuthShell>
-  );
-}
-
-function LoginEditorial() {
-  const t = useTranslations('auth.login.illustration');
-  return (
-    <>
-      <MonoLabel>{t('label')}</MonoLabel>
-
-      <p className="m-0 my-auto text-[34px] font-medium leading-[1.2] tracking-[-0.02em] text-ink">
-        {t('body')}
-      </p>
-
-      <p className="text-sm leading-relaxed text-ink-soft">{t('note')}</p>
-    </>
   );
 }

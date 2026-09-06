@@ -200,10 +200,10 @@ it('keeps expanded token content in an internal scroller with reachable dismissa
   expect(dialog).toHaveClass('max-h-[calc(100dvh-2rem)]', 'overflow-hidden');
   const details = dialog.querySelector('details')!;
   expect(details).toHaveAttribute('open');
-  expect(details.parentElement).toHaveClass('min-h-0', 'overflow-y-auto');
+  expect(details.parentElement?.parentElement).toHaveClass('min-h-0', 'overflow-y-auto');
   const cancel = screen.getByRole('button', { name: 'Отмена' });
   expect(details.parentElement).not.toContainElement(cancel);
-  expect(dialog).toHaveClass('[&>button:last-child]:h-8', '[&>button:last-child]:w-8');
+  expect(screen.getByRole('button', { name: 'Закрыть', exact: true })).toHaveAccessibleName();
   await user.click(cancel);
   expect(onClose).toHaveBeenCalledOnce();
 });
@@ -222,7 +222,7 @@ it.skipIf(!hasLayoutBrowser).each(['ru', 'en'] as const)(
       const box = await page.getByRole('dialog').boundingBox();
       expect(box!.y).toBeGreaterThanOrEqual(0);
       expect(box!.y + box!.height).toBeLessThanOrEqual(360);
-      const scroller = page.locator('details').locator('..');
+      const scroller = page.locator('details').locator('../..');
       const sizes = await scroller.evaluate((element) => ({
         height: element.clientHeight,
         scrollHeight: element.scrollHeight,

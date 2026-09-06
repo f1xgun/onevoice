@@ -49,7 +49,11 @@ export function RoleActionsMenu({ role, businessId, allRoles = [] }: RoleActions
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent
+          className="max-w-[calc(100vw-2rem)] border-control bg-card text-ink shadow-overlay"
+          align="end"
+          onClick={(e) => e.stopPropagation()}
+        >
           {canCreate && (
             <DropdownMenuItem asChild>
               <Link

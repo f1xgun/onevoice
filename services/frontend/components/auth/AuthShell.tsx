@@ -1,44 +1,42 @@
-// components/auth/AuthShell.tsx — Two-pane Linen auth layout.
-// Form on the left, editorial visual on the right. Per
-// design_handoff_onevoice 2/mocks/mock-auth.jsx (Login + Register).
-//
-// On md+ the grid is 1fr 1fr; on smaller viewports the editorial
-// pane collapses and only the form column shows. Both panes get the
-// same calm paper background, only the right one is paper-sunken.
-
 import * as React from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
-import { MonoLabel } from '@/components/ui/mono-label';
+import { cn } from '@/lib/utils';
 
 export interface AuthShellProps {
-  /** mono caption above the headline ("Вход", "Создание аккаунта", …). */
+  /** Caption above the headline. */
   eyebrow: React.ReactNode;
-  /** Big graphite headline ("С возвращением.", "Расскажите о бизнесе.", …). */
+  /** Page headline. */
   title: React.ReactNode;
   /** Supporting copy below the headline, in ink-mid. */
   description: React.ReactNode;
   /** The form itself + its inline footer (register/login link, etc.). */
   children: React.ReactNode;
   /** Right-side editorial visual (quote, stat cards, preview). Hidden on mobile. */
-  aside: React.ReactNode;
+  aside?: React.ReactNode;
 }
 
 export function AuthShell({ eyebrow, title, description, children, aside }: AuthShellProps) {
   const tShell = useTranslations('auth.shell');
   return (
-    <div className="relative grid min-h-screen grid-cols-1 bg-background md:grid-cols-2">
-      {/* Pre-login locale toggle. Anchored top-right so it doesn't fight
-          the editorial column on md+ but stays reachable on mobile (where
-          the editorial pane collapses). z-10 keeps it above the form. */}
+    <div
+      className={cn(
+        'relative grid min-h-dvh min-w-0 scroll-py-24 grid-cols-1 bg-background',
+        aside && 'md:grid-cols-2'
+      )}
+    >
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1">
         <ThemeSwitcher />
         <LanguageSwitcher />
       </div>
-      {/* Form column */}
-      <div className="flex flex-col px-6 py-10 sm:px-12 md:px-16 md:py-12 lg:px-20">
+      <div
+        className={cn(
+          'flex min-w-0 flex-col gap-8 px-4 py-6 sm:px-8',
+          !aside && 'mx-auto w-full max-w-lg'
+        )}
+      >
         <Link
           href="/"
           className="inline-flex items-center gap-2.5 self-start"
@@ -52,27 +50,25 @@ export function AuthShell({ eyebrow, title, description, children, aside }: Auth
           </span>
         </Link>
 
-        <div className="my-auto flex w-full max-w-[420px] flex-col">
-          <MonoLabel className="mb-2">{eyebrow}</MonoLabel>
-          <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.02em] text-ink">
-            {title}
-          </h1>
-          <p className="mt-2 text-[15px] leading-[1.55] text-ink-mid">{description}</p>
+        <div className="my-auto flex w-full min-w-0 flex-col py-8">
+          <p className="mb-2 text-meta text-ink-soft">{eyebrow}</p>
+          <h1 className="text-page-title text-ink">{title}</h1>
+          <p className="mt-2 text-reading text-ink-mid">{description}</p>
           <div className="mt-8">{children}</div>
         </div>
 
-        <MonoLabel className="mt-auto pt-8 text-ink-soft">
+        <p className="mt-auto text-meta text-ink-soft">
           {tShell('footer', { year: new Date().getFullYear() })}
-        </MonoLabel>
+        </p>
       </div>
-
-      {/* Editorial column — hidden below md per spec. paper-sunken backdrop, line border on the inside edge. */}
-      <aside
-        aria-label={tShell('illustrationAria')}
-        className="hidden border-l border-line bg-paper-sunken px-12 py-12 md:flex md:flex-col md:justify-between lg:px-16"
-      >
-        {aside}
-      </aside>
+      {aside && (
+        <aside
+          aria-label={tShell('illustrationAria')}
+          className="hidden border-l border-line bg-paper-sunken px-12 py-12 md:flex md:flex-col md:justify-between lg:px-16"
+        >
+          {aside}
+        </aside>
+      )}
     </div>
   );
 }

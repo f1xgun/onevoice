@@ -55,7 +55,10 @@ export function SectionHelp({ section, className }: SectionHelpProps) {
             {t('reopen')}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="text-sm">
+        <PopoverContent
+          align="start"
+          className="max-w-[calc(100vw-2rem)] border-control bg-card text-meta text-ink shadow-overlay"
+        >
           <p className="font-medium text-ink">{title}</p>
           <p className="mt-1 text-ink-mid">{body}</p>
         </PopoverContent>
@@ -81,7 +84,7 @@ export function SectionHelp({ section, className }: SectionHelpProps) {
           size="sm"
           onClick={handleDismiss}
           aria-label={t('dismissAria')}
-          className="shrink-0"
+          className="shrink-0 self-start"
         >
           <X className="h-4 w-4" />
         </Button>

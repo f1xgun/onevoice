@@ -59,6 +59,7 @@ describe('InviteModal', () => {
       )
     );
     expect(screen.getByText('Пригласить участника')).toBeInTheDocument();
+    for (const select of screen.getAllByRole('combobox')) expect(select).toHaveAccessibleName();
     expect(screen.getByRole('button', { name: /Создать ссылку/ })).toBeInTheDocument();
   });
 

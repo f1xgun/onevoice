@@ -1,5 +1,8 @@
 'use client';
 
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -15,10 +18,13 @@ import {
   AppDialog as DialogContent,
   DialogDescription,
   DialogHeader,
+  DialogFooter,
   DialogTitle,
 } from '@/components/design-system/AppDialog';
 import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { extractApiErrorCode, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
+
+const TOKEN_ERROR_ID = 'vk-token-error';
 
 interface Props {
   open: boolean;
@@ -52,7 +58,17 @@ export function VKCommunityModal({ open, onClose }: Props) {
   const tVk = useTranslations('integrations.vkCommunity');
   const tIntegrations = useTranslations('integrations');
   const qc = useQueryClient();
-  const [token, setToken] = useState('');
+  const {
+    register,
+    watch,
+    reset,
+    handleSubmit: submitForm,
+  } = useForm<{ token: string }>({
+    resolver: zodResolver(z.object({ token: z.string().trim().min(1) })),
+    defaultValues: { token: '' },
+  });
+  const token = watch('token');
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [authorizing, setAuthorizing] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -60,7 +76,8 @@ export function VKCommunityModal({ open, onClose }: Props) {
   const mapVerifyError = useMapEmailVerificationError();
 
   function handleClose() {
-    setToken('');
+    reset({ token: '' });
+    setError(null);
     setSubmitting(false);
     setAuthorizing(false);
     setPasteOpen(false);
@@ -86,9 +103,9 @@ export function VKCommunityModal({ open, onClose }: Props) {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = token.trim();
+  async function handleSubmit(values: { token: string }) {
+    const trimmed = values.token.trim();
+    setError(null);
     if (!trimmed || !activeBusinessId) return;
     const connectPath = INTEGRATION_ENDPOINTS.vk?.connect;
     if (!connectPath) return;
@@ -100,12 +117,14 @@ export function VKCommunityModal({ open, onClose }: Props) {
       );
       toast.success(tVk('connected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
-      setToken('');
+      reset({ token: '' });
+      setError(null);
       setSubmitting(false);
       onClose();
       return data;
     } catch (err: unknown) {
       const msg = mapVerifyError(err) ?? extractApiErrorCode(err) ?? tVk('connectFailed');
+      setError(msg);
       toast.error(msg);
       setSubmitting(false);
     }
@@ -113,13 +132,13 @@ export function VKCommunityModal({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden [&>button:last-child]:flex [&>button:last-child]:h-8 [&>button:last-child]:w-8 [&>button:last-child]:items-center [&>button:last-child]:justify-center">
+      <DialogContent>
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{tVk('title')}</DialogTitle>
           <DialogDescription>{tVk('authorizeIntro')}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain break-words">
+        <div className="space-y-4 break-words">
           <Button type="button" onClick={handleAuthorize} disabled={authorizing} className="w-full">
             {authorizing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
             {authorizing ? tVk('authorizing') : tVk('authorize')}
@@ -134,7 +153,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
               {tVk('pasteFallback')}
             </summary>
 
-            <form onSubmit={handleSubmit} className="space-y-4 px-4 pb-4">
+            <form onSubmit={submitForm(handleSubmit)} className="space-y-4 px-4 pb-4">
               <div className="space-y-2 rounded-md border border-line-soft bg-paper px-4 py-3 text-sm text-ink-mid">
                 <p className="font-medium text-ink">{tVk('tokenIntro')}</p>
                 <ol className="ml-4 list-decimal space-y-1">
@@ -168,8 +187,9 @@ export function VKCommunityModal({ open, onClose }: Props) {
                 <Textarea
                   id="vk-community-token"
                   spellCheck={false}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
+                  {...register('token')}
+                  aria-invalid={!!error}
+                  aria-describedby={error ? TOKEN_ERROR_ID : undefined}
                   placeholder={tVk('tokenPlaceholder')}
                   rows={3}
                   className="font-mono text-xs"
@@ -178,6 +198,11 @@ export function VKCommunityModal({ open, onClose }: Props) {
                 <p className="text-xs text-ink-soft">{tVk('tokenFooter')}</p>
               </div>
 
+              {error && (
+                <p id={TOKEN_ERROR_ID} role="alert" className="text-meta text-danger">
+                  {error}
+                </p>
+              )}
               <Button type="submit" disabled={submitting || !token.trim()} className="w-full">
                 {submitting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {submitting ? tVk('connecting') : tVk('connect')}
@@ -186,7 +211,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
           </details>
         </div>
 
-        <div className="flex shrink-0 pt-2">
+        <DialogFooter>
           <Button
             type="button"
             variant="outline"
@@ -196,7 +221,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
           >
             {tVk('cancel')}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -407,16 +407,16 @@
     "toolCalls": {
       "showActions": "Show actions ({count})",
       "hideActions": "Hide actions ({count})",
-      "doneCount": "✓ {done}/{total}",
+      "doneCount": "Completed {done} of {total}",
       "failCount": "{failed} failed"
     },
     "toolCard": {
       "running": "Running",
       "done": "Done",
       "error": "Error",
-      "aborted": "Aborted",
-      "abortedTooltip": "Aborted — no result was returned",
-      "abortedNote": "Aborted — no result was returned",
+      "aborted": "Outcome unknown",
+      "abortedTooltip": "No result received — execution could not be verified",
+      "abortedNote": "Execution could not be verified. Check the platform before repeating the action.",
       "rejectedBadge": "Rejected by user",
       "rejectedReason": "Reason: {reason}",
       "rejectedByPolicyBadge": "Blocked by policy",

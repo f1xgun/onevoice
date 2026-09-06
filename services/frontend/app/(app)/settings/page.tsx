@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronRight, ShieldCheck } from 'lucide-react';
+import { ChevronRight, ShieldCheck, Check, AlertTriangle } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,9 +14,17 @@ import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { AppInput as Input } from '@/components/design-system/AppInput';
+import { StatusLine } from '@/components/design-system/StatusLine';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
+
+const FIELD_ERROR_IDS = {
+  currentPassword: 'currentPassword-error',
+  newPassword: 'newPassword-error',
+  confirmPassword: 'confirmPassword-error',
+  name: 'account-name-error',
+};
 
 const NEW_PASSWORD_MIN_LEN = 8;
 // Mirror the backend UpdateProfileRequest constraint (min=2,max=100).
@@ -77,7 +85,7 @@ export default function SettingsPage() {
     <>
       <PageHeader title={tSettings('title')} sub={tSettings('sub')} />
 
-      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex flex-col gap-6">
           {/* Account */}
           <section className="rounded-lg border border-line bg-paper-raised">
@@ -102,21 +110,29 @@ export default function SettingsPage() {
               </h2>
             </header>
             <form
+              onChange={() => {
+                if (!mutation.isPending) mutation.reset();
+              }}
               onSubmit={handleSubmit((d) => mutation.mutate(d))}
               className="flex flex-col gap-4 px-6 py-5"
             >
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="currentPassword" className="text-xs font-medium text-ink-mid">
+                <Label htmlFor="currentPassword" className="text-meta font-medium text-ink">
                   {tSettings('currentPassword')}
                 </Label>
                 <Input
+                  disabled={mutation.isPending}
                   id="currentPassword"
+                  aria-invalid={!!errors.currentPassword}
+                  aria-describedby={
+                    errors.currentPassword ? FIELD_ERROR_IDS.currentPassword : undefined
+                  }
                   type="password"
                   autoComplete="current-password"
                   {...register('currentPassword')}
                 />
                 {errors.currentPassword && (
-                  <p className="text-sm text-[var(--ov-danger)]">
+                  <p id="currentPassword-error" role="alert" className="text-meta text-danger">
                     {errors.currentPassword.message}
                   </p>
                 )}
@@ -124,37 +140,63 @@ export default function SettingsPage() {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="newPassword" className="text-xs font-medium text-ink-mid">
+                  <Label htmlFor="newPassword" className="text-meta font-medium text-ink">
                     {tSettings('newPassword')}
                   </Label>
                   <Input
+                    disabled={mutation.isPending}
                     id="newPassword"
+                    aria-invalid={!!errors.newPassword}
+                    aria-describedby={errors.newPassword ? FIELD_ERROR_IDS.newPassword : undefined}
                     type="password"
                     autoComplete="new-password"
                     {...register('newPassword')}
                   />
                   {errors.newPassword && (
-                    <p className="text-sm text-[var(--ov-danger)]">{errors.newPassword.message}</p>
+                    <p id="newPassword-error" role="alert" className="text-meta text-danger">
+                      {errors.newPassword.message}
+                    </p>
                   )}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="confirmPassword" className="text-xs font-medium text-ink-mid">
+                  <Label htmlFor="confirmPassword" className="text-meta font-medium text-ink">
                     {tSettings('confirmPassword')}
                   </Label>
                   <Input
+                    disabled={mutation.isPending}
                     id="confirmPassword"
+                    aria-invalid={!!errors.confirmPassword}
+                    aria-describedby={
+                      errors.confirmPassword ? FIELD_ERROR_IDS.confirmPassword : undefined
+                    }
                     type="password"
                     autoComplete="new-password"
                     {...register('confirmPassword')}
                   />
                   {errors.confirmPassword && (
-                    <p className="text-sm text-[var(--ov-danger)]">
+                    <p id="confirmPassword-error" role="alert" className="text-meta text-danger">
                       {errors.confirmPassword.message}
                     </p>
                   )}
                 </div>
               </div>
 
+              {mutation.isSuccess && (
+                <StatusLine
+                  role="status"
+                  tone="success"
+                  icon={Check}
+                  text={tSettings('passwordChanged')}
+                />
+              )}
+              {mutation.isError && (
+                <StatusLine
+                  role="alert"
+                  tone="danger"
+                  icon={AlertTriangle}
+                  text={tSettings('passwordChangeError')}
+                />
+              )}
               <div>
                 <Button type="submit" disabled={isSubmitting || mutation.isPending}>
                   {isSubmitting || mutation.isPending
@@ -245,23 +287,47 @@ function AccountNameForm() {
   const busy = isSubmitting || mutation.isPending;
 
   return (
-    <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="flex flex-col gap-1.5">
+    <form
+      onChange={() => {
+        if (!mutation.isPending) mutation.reset();
+      }}
+      onSubmit={handleSubmit((d) => mutation.mutate(d))}
+      className="flex flex-col gap-1.5"
+    >
       <Label htmlFor="account-name">
         <MonoLabel>{tSettings('nameLabel')}</MonoLabel>
       </Label>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Input
+          disabled={mutation.isPending}
           id="account-name"
+          aria-invalid={!!errors.name}
+          aria-describedby={errors.name ? FIELD_ERROR_IDS.name : undefined}
           autoComplete="name"
           placeholder={tSettings('namePlaceholder')}
-          className="flex-1"
+          className="min-w-0 flex-1"
           {...register('name')}
         />
         <Button type="submit" size="sm" disabled={!isDirty || busy}>
           {busy ? tSettings('submitting') : tSettings('saveName')}
         </Button>
       </div>
-      {errors.name && <p className="text-sm text-[var(--ov-danger)]">{errors.name.message}</p>}
+      {mutation.isSuccess && (
+        <StatusLine role="status" tone="success" icon={Check} text={tSettings('nameSaved')} />
+      )}
+      {mutation.isError && (
+        <StatusLine
+          role="alert"
+          tone="danger"
+          icon={AlertTriangle}
+          text={tSettings('nameSaveError')}
+        />
+      )}
+      {errors.name && (
+        <p id="account-name-error" role="alert" className="text-meta text-danger">
+          {errors.name.message}
+        </p>
+      )}
     </form>
   );
 }

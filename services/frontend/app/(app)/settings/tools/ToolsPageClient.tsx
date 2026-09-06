@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Check, AlertTriangle } from 'lucide-react';
+import { StatusLine } from '@/components/design-system/StatusLine';
 import { toast } from 'sonner';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -69,11 +71,8 @@ export function ToolsPageClient() {
     [manualTools, savedApprovals]
   );
 
-  const [draft, setDraft] = useState<Record<string, ToolApprovalValue>>(initialDraft);
-
-  useEffect(() => {
-    setDraft(initialDraft);
-  }, [initialDraft]);
+  const [draftState, setDraftState] = useState({ source: initialDraft, values: initialDraft });
+  const draft = draftState.source === initialDraft ? draftState.values : initialDraft;
 
   const buckets = useMemo(() => groupByPlatform(tools ?? []), [tools]);
   const platforms = TOOL_PLATFORM_ORDER.filter((p) =>
@@ -85,7 +84,7 @@ export function ToolsPageClient() {
   const dirty = !sameDraft(draft, initialDraft);
 
   function updateTool(toolName: string, value: ToolApprovalValue) {
-    setDraft((prev) => ({ ...prev, [toolName]: value }));
+    setDraftState({ source: initialDraft, values: { ...draft, [toolName]: value } });
   }
 
   function handleSave() {
@@ -105,15 +104,7 @@ export function ToolsPageClient() {
 
   return (
     <>
-      <PageHeader
-        title={tTools('title')}
-        sub={tTools('sub')}
-        actions={
-          <Button type="button" onClick={handleSave} disabled={!dirty || updateMutation.isPending}>
-            {updateMutation.isPending ? tTools('saving') : tTools('save')}
-          </Button>
-        }
-      />
+      <PageHeader title={tTools('title')} sub={tTools('sub')} />
 
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-6 px-4 pb-10 sm:px-12 sm:pb-16">
         {dirty && (
@@ -131,7 +122,7 @@ export function ToolsPageClient() {
         )}
 
         {loadError && !isLoading && (
-          <div className="rounded-md border border-[oklch(0.85_0.08_25)] bg-[var(--ov-danger-soft)] p-4 text-sm text-[var(--ov-danger)]">
+          <div className="rounded-md border border-danger bg-[var(--ov-danger-soft)] p-4 text-sm text-[var(--ov-danger)]">
             {tTools('loadError')}
           </div>
         )}
@@ -174,6 +165,23 @@ export function ToolsPageClient() {
               );
             })}
           </>
+        )}
+        {updateMutation.isSuccess && !dirty && (
+          <StatusLine role="status" tone="success" icon={Check} text={tTools('saveSuccess')} />
+        )}
+        {updateMutation.isError && (
+          <StatusLine role="alert" tone="danger" icon={AlertTriangle} text={tTools('saveError')} />
+        )}
+        {!isLoading && !loadError && (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={!dirty || updateMutation.isPending}
+            >
+              {updateMutation.isPending ? tTools('saving') : tTools('save')}
+            </Button>
+          </div>
         )}
       </div>
     </>
