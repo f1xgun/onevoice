@@ -20,7 +20,10 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
 import { WaitlistForm } from '@/components/landing/WaitlistForm';
 import { ChannelVote } from '@/components/landing/ChannelVote';
-import { TELEGRAM_CHANNEL_URL } from '@/lib/constants/landing';
+import { CONTACT_HREF, TELEGRAM_CHANNEL_URL } from '@/lib/constants/landing';
+import { LandingInteractions } from '@/components/landing/LandingInteractions';
+import { parseLandingEntryMode, pricingCta } from '@/lib/landing-entry';
+import type { LandingEntryProps } from '@/lib/landing-entry';
 import { legalDocHref } from '@/lib/legal/routes';
 
 // ─── Local helpers ────────────────────────────────────────────────────
@@ -36,10 +39,13 @@ const NAV_HREFS = ['#features', '#channels', '#pricing'] as const;
 
 // ─── Page ─────────────────────────────────────────────────────────────
 
+export const dynamic = 'force-dynamic';
+
 export default function LandingPage() {
+  const mode = parseLandingEntryMode(process.env.LANDING_ENTRY_MODE);
   return (
-    <div className="min-h-screen bg-paper text-ink">
-      <SiteNav />
+    <div className="min-h-screen bg-paper pb-[calc(5rem+env(safe-area-inset-bottom))] text-ink md:pb-0">
+      <SiteNav mode={mode} />
       {/* tabIndex={-1}: makes <main> programmatically focusable so the
           SkipLink in app/layout.tsx can actually transfer keyboard focus
           here. focus-visible:outline-ink (keyboard-only) gives a brief
@@ -49,24 +55,25 @@ export default function LandingPage() {
         tabIndex={-1}
         className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       >
-        <Hero />
+        <Hero mode={mode} />
         <Belief />
         <Features />
         <HowItWorks />
         <Platforms />
-        <Pricing />
+        <Pricing mode={mode} />
         <Faq />
         <Quote />
-        <Waitlist />
+        <Waitlist mode={mode} />
       </main>
       <SiteFooter />
+      <LandingInteractions mode={mode} />
     </div>
   );
 }
 
 // ─── Nav ──────────────────────────────────────────────────────────────
 
-function SiteNav() {
+function SiteNav({ mode }: LandingEntryProps) {
   const tNav = useTranslations('landing.nav');
   const navLabels: Record<(typeof NAV_HREFS)[number], string> = {
     '#features': tNav('features'),
@@ -75,13 +82,16 @@ function SiteNav() {
   };
   return (
     <header className="bg-paper/85 sticky top-0 z-10 border-b border-line-soft backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-[1180px] items-center gap-8 px-6 sm:px-12">
+      <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2 sm:px-12 lg:flex-nowrap">
         <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
           <span className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md bg-ink text-[11px] font-semibold text-paper">
             {tNav('logoMark')}
           </span>
           {tNav('wordmark')}
         </Link>
+        <a href="#pricing" className="ml-auto text-sm text-ink md:hidden">
+          {tNav('pricing')}
+        </a>
         <nav className="hidden items-center gap-6 text-sm text-ink-mid md:flex">
           {NAV_HREFS.map((href) => (
             <a key={href} href={href} className="transition-colors hover:text-ink">
@@ -89,13 +99,29 @@ function SiteNav() {
             </a>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <LanguageSwitcher />
-          <Link href="/login" className="text-sm text-ink-mid transition-colors hover:text-ink">
+        <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
+          <Link
+            href="/login"
+            data-cta="nav-login"
+            className="text-sm text-ink-mid transition-colors hover:text-ink"
+          >
             {tNav('login')}
           </Link>
+          {mode !== 'waitlist_only' && (
+            <Link href="/register" data-cta="nav-register" className="text-sm text-ink">
+              {tNav('register')}
+            </Link>
+          )}
           <Button asChild size="sm" variant="primary">
-            <a href="#waitlist">{tNav('waitlist')}</a>
+            <a
+              href={mode === 'open' ? '/register' : '#waitlist'}
+              data-cta={mode === 'open' ? 'nav-register' : 'nav-waitlist'}
+            >
+              {tNav(mode === 'open' ? 'start' : 'waitlist')}
+            </a>
           </Button>
         </div>
       </div>
@@ -105,17 +131,17 @@ function SiteNav() {
 
 // ─── Hero ─────────────────────────────────────────────────────────────
 
-function Hero() {
+function Hero({ mode }: LandingEntryProps) {
   const tHero = useTranslations('landing.hero');
   return (
-    <section className="border-b border-line-soft">
-      <div className="mx-auto grid w-full max-w-[1180px] items-center gap-16 px-6 py-20 sm:px-12 md:py-28 lg:grid-cols-[1.1fr_0.9fr]">
+    <section id="hero" className="border-b border-line-soft">
+      <div className="mx-auto grid w-full max-w-[1180px] items-center gap-10 px-6 py-6 sm:px-12 md:py-28 lg:grid-cols-[1.1fr_0.9fr]">
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <MonoLabel>{tHero('kicker')}</MonoLabel>
             <Badge tone="accent">{tHero('betaBadge')}</Badge>
           </div>
-          <h1 className="mt-5 text-pretty text-[44px] font-medium leading-[1.04] tracking-[-0.025em] sm:text-[56px] lg:text-[64px]">
+          <h1 className="mt-5 text-pretty text-[36px] font-medium leading-[1.04] tracking-[-0.025em] sm:text-[56px] lg:text-[64px]">
             {tHero('headlineLine1')}
             <br />
             {tHero('headlineLine2Prefix')}
@@ -124,13 +150,17 @@ function Hero() {
             </span>
             {tHero('headlinePunctuation')}
           </h1>
-          <p className="mt-6 max-w-[520px] text-[17px] leading-relaxed text-ink-mid sm:text-lg">
+          <p className="mt-4 max-w-[520px] text-[15px] leading-relaxed text-ink-mid sm:text-lg">
             {tHero('body')}
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <p className="mt-3 text-sm text-ink">{tHero('audience')}</p>
+          <div className="mt-5 flex flex-wrap gap-3">
             <Button asChild size="lg" variant="primary">
-              <a href="#waitlist">
-                {tHero('cta')}
+              <a
+                href={mode === 'open' ? '/register' : '#waitlist'}
+                data-cta={mode === 'open' ? 'hero-register' : 'hero-waitlist'}
+              >
+                {tHero(mode === 'open' ? 'start' : 'cta')}
                 <ArrowRight aria-hidden />
               </a>
             </Button>
@@ -138,6 +168,18 @@ function Hero() {
               <a href="#features">{tHero('secondary')}</a>
             </Button>
           </div>
+          {mode !== 'waitlist_only' && (
+            <p className="mt-4 text-sm text-ink">
+              {tHero('accessLine')}{' '}
+              <Link href="/login" data-cta="hero-login" className="underline">
+                {tHero('login')}
+              </Link>
+              {' · '}
+              <Link href="/register" data-cta="hero-register" className="underline">
+                {tHero('register')}
+              </Link>
+            </p>
+          )}
           <p className="mt-4 max-w-[460px] text-[13px] leading-relaxed text-ink-soft">
             {tHero('betaNote')}
           </p>
@@ -253,7 +295,7 @@ function Features() {
   ];
 
   return (
-    <section id="features" className="border-b border-line-soft">
+    <section id="features" className="scroll-mt-28 border-b border-line-soft">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-24 sm:px-12">
         <MonoLabel>{tF('kicker')}</MonoLabel>
         <h2 className="mt-3 max-w-[720px] text-[32px] font-medium leading-tight tracking-[-0.015em] sm:text-[40px]">
@@ -335,14 +377,14 @@ function SampleDraft() {
         <div className="bg-ochre-soft/60 rounded-md border border-ochre-soft px-3.5 py-3 text-[13px] text-ink">
           {tS('answer')}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="primary">
-              {tS('send')}
+            <Button asChild size="sm" variant="primary">
+              <span>{tS('send')}</span>
             </Button>
-            <Button size="sm" variant="secondary">
-              {tS('fix')}
+            <Button asChild size="sm" variant="secondary">
+              <span>{tS('fix')}</span>
             </Button>
-            <Button size="sm" variant="ghost">
-              {tS('tryAgain')}
+            <Button asChild size="sm" variant="ghost">
+              <span>{tS('tryAgain')}</span>
             </Button>
           </div>
         </div>
@@ -371,8 +413,8 @@ function SamplePosts() {
             {tS('scheduledTime')}
           </span>
           <span className="ml-auto">
-            <Button size="sm" variant="primary">
-              {tS('schedule')}
+            <Button asChild size="sm" variant="primary">
+              <span>{tS('schedule')}</span>
             </Button>
           </span>
         </div>
@@ -517,10 +559,10 @@ const PRICING_TIERS: Array<{
   { key: 'enterprise', featureCount: 3, highlight: false, hasBetaTag: false },
 ];
 
-function Pricing() {
+function Pricing({ mode }: LandingEntryProps) {
   const t = useTranslations('landing.pricing');
   return (
-    <section id="pricing" className="border-b border-line-soft bg-paper-sunken">
+    <section id="pricing" className="scroll-mt-28 border-b border-line-soft bg-paper-sunken">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-24 sm:px-12">
         <MonoLabel>{t('kicker')}</MonoLabel>
         <h2 className="mt-3 max-w-[720px] text-[28px] font-medium leading-tight tracking-[-0.015em] sm:text-[36px]">
@@ -529,46 +571,60 @@ function Pricing() {
         <p className="mt-3 max-w-[640px] text-[16px] leading-relaxed text-ink-mid">{t('body')}</p>
 
         <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {PRICING_TIERS.map((tier) => (
-            <div
-              key={tier.key}
-              className={`flex flex-col rounded-xl border bg-paper-raised p-6 sm:p-7 ${
-                tier.highlight ? 'border-ochre shadow-ov-3' : 'border-line'
-              }`}
-            >
-              <MonoLabel tone={tier.highlight ? 'ochre' : undefined}>
-                {t(`tiers.${tier.key}.name`)}
-              </MonoLabel>
-              <div className="mt-3 flex items-baseline gap-1.5">
-                <span className="text-[30px] font-medium tracking-[-0.02em] sm:text-[34px]">
-                  {t(`tiers.${tier.key}.price`)}
-                </span>
-                <span className="text-[14px] text-ink-mid">{t(`tiers.${tier.key}.period`)}</span>
+          {PRICING_TIERS.map((tier) => {
+            const cta = pricingCta(tier.key, mode);
+            return (
+              <div
+                key={tier.key}
+                className={`flex min-w-0 flex-col rounded-xl border bg-paper-raised p-5 sm:p-6 ${
+                  tier.highlight ? 'border-ochre shadow-ov-3' : 'border-line'
+                }`}
+              >
+                <MonoLabel tone={tier.highlight ? 'ochre' : undefined}>
+                  {t(`tiers.${tier.key}.name`)}
+                </MonoLabel>
+                <div className="mt-3 flex flex-wrap items-baseline gap-1.5">
+                  <span className="whitespace-nowrap text-[26px] font-medium tracking-[-0.02em] xl:text-[30px]">
+                    {t(`tiers.${tier.key}.price`)}
+                  </span>
+                  <span className="text-[14px] text-ink-mid">{t(`tiers.${tier.key}.period`)}</span>
+                </div>
+                {tier.hasBetaTag && (
+                  <p className="bg-ochre-soft/50 mt-3 rounded-md border border-ochre-soft px-3 py-2 text-[13px] leading-snug text-ochre-ink">
+                    {t(`tiers.${tier.key}.betaTag`)}
+                    {mode === 'open' && (
+                      <a
+                        href="#waitlist"
+                        data-cta="pricing-pro-waitlist"
+                        className="mt-2 block underline"
+                      >
+                        {t('actions.waitlist')}
+                      </a>
+                    )}
+                  </p>
+                )}
+                <ul className="mt-5 flex flex-1 flex-col gap-2.5 text-[14px] text-ink-mid">
+                  {Array.from({ length: tier.featureCount }).map((_, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-ochre-deep" aria-hidden />
+                      {t(`tiers.${tier.key}.features.${i}`)}
+                    </li>
+                  ))}
+                </ul>
+                <Button asChild variant={cta.variant} className="mt-6">
+                  <a href={cta.href} data-cta={cta.tracking}>
+                    {t(`actions.${cta.label}`)}
+                  </a>
+                </Button>
+                {tier.key === 'free' && (
+                  <p className="mt-3 text-sm text-ink-mid">{t('tiers.free.note')}</p>
+                )}
               </div>
-              {tier.hasBetaTag && (
-                <p className="bg-ochre-soft/50 mt-3 rounded-md border border-ochre-soft px-3 py-2 text-[13px] leading-snug text-ochre-ink">
-                  {t(`tiers.${tier.key}.betaTag`)}
-                </p>
-              )}
-              <ul className="mt-5 flex flex-1 flex-col gap-2.5 text-[14px] text-ink-mid">
-                {Array.from({ length: tier.featureCount }).map((_, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <Check className="mt-0.5 size-4 shrink-0 text-ochre-deep" aria-hidden />
-                    {t(`tiers.${tier.key}.features.${i}`)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-10 flex flex-col gap-4">
-          <Button asChild size="lg" variant="primary" className="self-start">
-            <a href="#waitlist">
-              {t('cta')}
-              <ArrowRight aria-hidden />
-            </a>
-          </Button>
           <p className="max-w-[640px] text-[13px] leading-relaxed text-ink-soft">
             {t('compareNote')}
           </p>
@@ -612,10 +668,10 @@ function Faq() {
 
 // ─── Waitlist ─────────────────────────────────────────────────────────
 
-function Waitlist() {
+function Waitlist({ mode }: LandingEntryProps) {
   const t = useTranslations('landing.waitlist');
   return (
-    <section id="waitlist" className="border-b border-line-soft bg-paper-sunken">
+    <section id="waitlist" className="scroll-mt-28 border-b border-line-soft bg-paper-sunken">
       <div className="mx-auto grid w-full max-w-[1180px] items-start gap-12 px-6 py-24 sm:px-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
         <div>
           <MonoLabel>{t('kicker')}</MonoLabel>
@@ -624,7 +680,7 @@ function Waitlist() {
           </h2>
           <p className="mt-5 max-w-[480px] text-[16px] leading-relaxed text-ink-mid">{t('body')}</p>
         </div>
-        <WaitlistForm />
+        <WaitlistForm mode={mode} />
       </div>
     </section>
   );
@@ -656,7 +712,7 @@ function SiteFooter() {
           <Link href={legalDocHref('privacy')} className="transition-colors hover:text-ink">
             {tFooter('privacy')}
           </Link>
-          <a href="mailto:hello@onevoice.app" className="transition-colors hover:text-ink">
+          <a href={CONTACT_HREF} className="transition-colors hover:text-ink">
             {tFooter('contacts')}
           </a>
         </div>

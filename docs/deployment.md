@@ -383,3 +383,12 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 - [ ] **Yandex delegated access — mandatory readiness check:** complete the representative provisioning in the [founder runbook, §6](runbook-founder-manual-actions.md#6-площадки-боты-и-приложения-12-дня) before enabling connection. Confirm `YANDEX_REP_LOGIN` and `YANDEX_SHARED_BUSINESS_ID` match between `api` and `agent-yandex-business`, and confirm the shared-session seed succeeded through the existing mTLS-only `POST /internal/v1/yandex/shared-session` endpoint. Then, as an owner/admin of the organization, check `GET /api/v1/businesses/{businessId}/integrations/yandex_business/delegated-config`: expect HTTP 200, `available: true`, and `rep_login` matching the configured representative. This response checks configuration only; it does not prove the session was seeded or remains valid. If provisioning is incomplete, keep delegated connection unavailable and verify that the UI clearly reports it as unavailable without offering customer cookie entry. Do not mark delegated access ready until provisioning and these checks pass.
 - [ ] DB backup cron job installed on the host.
 - [ ] `REVIEW_DRAFT_ENABLED=false` unless LLM budget is intentional.
+
+### Landing entry deploy checklist
+
+- [ ] Verify `LANDING_ENTRY_MODE` (default `hybrid`), legal entity details, weekly
+      onboarding quota and rollback readiness using the
+      [founder runbook](runbook-founder-manual-actions.md#гибридный-вход-на-лендинге).
+      Apply mode changes with the existing frontend image and updated runtime
+      environment; no rebuild. See [frontend configuration](frontend-config.md)
+      for the distinction between a process restart and Compose recreation.

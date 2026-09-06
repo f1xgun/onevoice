@@ -3,3 +3,5 @@
 // swapped for the real channel without touching code.
 export const TELEGRAM_CHANNEL_URL: string =
   process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL || 'https://t.me/onevoice';
+
+export const CONTACT_HREF = 'mailto:hello@onevoice.app' as const;
