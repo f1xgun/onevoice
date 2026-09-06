@@ -264,6 +264,86 @@ describe('BusinessRequiredGuard', () => {
     expect(setActiveMock).toHaveBeenCalledWith('biz-1');
   });
 
+  it.each([['/settings'], ['/settings/'], ['/settings/account'], ['/settings/privacy']])(
+    'Test 10: businesses=[] keeps the account-scoped route %s reachable',
+    async (path) => {
+      usePathnameMock.mockReturnValue(path);
+      useBusinessListMock.mockReturnValue({ data: [], isLoading: false });
+      storeActiveBusinessId = null;
+
+      const { getByText } = render(
+        <Wrapper>
+          <BusinessRequiredGuard>
+            <div>protected</div>
+          </BusinessRequiredGuard>
+        </Wrapper>
+      );
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(getByText('protected')).toBeTruthy();
+    }
+  );
+
+  it.each([['/settings/team'], ['/settings/roles'], ['/settings/billing'], ['/settings/audit']])(
+    'Test 11: businesses=[] still redirects the organization tab %s to /onboarding',
+    async (path) => {
+      usePathnameMock.mockReturnValue(path);
+      useBusinessListMock.mockReturnValue({ data: [], isLoading: false });
+      storeActiveBusinessId = null;
+
+      render(
+        <Wrapper>
+          <BusinessRequiredGuard>
+            <div>protected</div>
+          </BusinessRequiredGuard>
+        </Wrapper>
+      );
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(mockReplace).toHaveBeenCalledWith('/onboarding');
+    }
+  );
+
+  it('Test 12: an account-scoped route with memberships still resolves an active business', async () => {
+    usePathnameMock.mockReturnValue('/settings/account');
+    storeActiveBusinessId = null;
+    useBusinessListMock.mockReturnValue({
+      data: [
+        {
+          id: 'biz-1',
+          name: 'Business 1',
+          role: { id: 'r1', name: 'owner' },
+          status: 'active',
+          joined_at: '2024-01-01',
+        },
+      ],
+      isLoading: false,
+    });
+
+    const { queryByText, getByRole } = render(
+      <Wrapper>
+        <BusinessRequiredGuard>
+          <div>protected</div>
+        </BusinessRequiredGuard>
+      </Wrapper>
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(setActiveMock).toHaveBeenCalledWith('biz-1');
+    expect(queryByText('protected')).toBeNull();
+    expect(getByRole('status')).toBeTruthy();
+  });
+
   it('Test 9: error state renders retry UI with a retry button (not a spinner)', async () => {
     usePathnameMock.mockReturnValue('/chat');
     const refetchMock = vi.fn().mockResolvedValue(undefined);

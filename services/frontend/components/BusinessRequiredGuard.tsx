@@ -11,6 +11,18 @@ import { useBusinessList } from '@/lib/hooks/useBusinessList';
 // is the legitimate entry from /onboarding, so we must not bounce back.
 const BYPASS_PATHS = ['/login', '/register', '/onboarding', '/business/new'];
 
+// Routes scoped to the person rather than to an organization: the profile +
+// password form, the account-deletion danger zone and the consent-withdrawal
+// panel. Somebody who has no organization (just registered, or left their
+// last one) must still be able to reach them — otherwise the only way out of
+// the product is clearing cookies. Matched exactly, so the organization tabs
+// under /settings (team, roles, billing, audit, tools) stay gated.
+const ACCOUNT_SCOPED_PATHS = ['/settings', '/settings/account', '/settings/privacy'];
+
+function normalizePath(pathname: string): string {
+  return pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+}
+
 export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() ?? '';
@@ -19,6 +31,8 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   const setActive = useBusinessStore((s) => s.setActive);
   const { data: businesses, isLoading, error, refetch } = useBusinessList();
   const isBypass = BYPASS_PATHS.some((p) => pathname.startsWith(p));
+  const isAccountScoped = ACCOUNT_SCOPED_PATHS.includes(normalizePath(pathname));
+  const hasNoBusiness = businesses?.length === 0;
 
   useEffect(() => {
     if (isBypass) return;
@@ -27,14 +41,16 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
       if (activeBusinessId !== null) {
         setActive(null);
       }
-      router.replace('/onboarding');
+      if (!isAccountScoped) {
+        router.replace('/onboarding');
+      }
       return;
     }
     const validIds = new Set(businesses.map((b) => b.id));
     if (!activeBusinessId || !validIds.has(activeBusinessId)) {
       setActive(businesses[0].id);
     }
-  }, [businesses, activeBusinessId, setActive, router, isBypass]);
+  }, [businesses, activeBusinessId, setActive, router, isBypass, isAccountScoped]);
 
   if (isBypass) {
     return <>{children}</>;
@@ -55,7 +71,7 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  if (isLoading || !activeBusinessId) {
+  if (isLoading || (!activeBusinessId && !(isAccountScoped && hasNoBusiness))) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div

@@ -6,11 +6,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
-import { Plus, Link2 } from 'lucide-react';
+import { Plus, Link2, LogOut } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { useLogout } from '@/lib/hooks/useLogout';
 
 const TOKEN_REGEX = /^[A-Za-z0-9_-]{43}$/;
 
@@ -29,6 +31,8 @@ export default function OnboardingPage() {
   const tOnboarding = useTranslations('onboarding');
   const tCreateOrg = useTranslations('onboarding.createOrg');
   const tHaveInvite = useTranslations('onboarding.haveInvite');
+  const tNav = useTranslations('nav');
+  const logout = useLogout();
 
   const schema = makeSchema(tHaveInvite('errors.invalidFormat'));
 
@@ -44,9 +48,31 @@ export default function OnboardingPage() {
     router.push(`/invite/${data.token}`);
   };
 
+  async function handleLogout() {
+    await logout();
+    router.replace('/login');
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-12">
       <div className="w-full max-w-2xl">
+        {/* Escape hatch: this page is the landing spot for anybody without an
+            organization, and it is otherwise a dead end — no nav rail mounts
+            here, so without these controls signing out or switching language
+            would require clearing cookies. */}
+        <div className="mb-4 flex items-center justify-end gap-1">
+          <LanguageSwitcher />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleLogout()}
+            className="gap-2 text-ink-mid"
+          >
+            <LogOut size={16} aria-hidden />
+            {tNav('logout')}
+          </Button>
+        </div>
         <header className="mb-6 text-center">
           <h1 className="text-2xl font-medium tracking-tight text-ink">{tOnboarding('title')}</h1>
           <p className="mt-2 text-sm text-ink-mid">{tOnboarding('sub')}</p>
