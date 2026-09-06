@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync/atomic"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/security"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -87,7 +89,7 @@ func TestStepRun_KeepsBusinessOwnContactUnderRedaction(t *testing.T) {
 	require.Len(t, req.SystemBlocks, 2)
 	assert.Contains(t, req.SystemBlocks[1].Text, "+7 (843) 555-12-34",
 		"the business block must still carry the business's own contact phone")
-	assert.NotContains(t, req.SystemBlocks[1].Text, "[Скрыто]")
+	assert.NotContains(t, req.SystemBlocks[1].Text, "Телефон: [Скрыто]")
 }
 
 // TestStepRun_PassesPDnWhenRedactionDisabled is the regression guard that the
@@ -192,7 +194,7 @@ func TestResume_PDnAllowlistSurvivesPauseRoundTrip(t *testing.T) {
 	}
 }
 
-func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
+func TestResume_UnregisteredContactsRemainRedacted(t *testing.T) {
 	for _, verdict := range []string{"approve", "edit", "reject"} {
 		t.Run(verdict, func(t *testing.T) {
 			ctx := context.Background()
@@ -230,7 +232,7 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 				Messages     []llm.Message `json:"messages"`
 			}
 			require.NoError(t, json.Unmarshal(batch.ModelMessages, &snapshot))
-			assert.Equal(t, []string{"+7 (843) 555-12-34", "ab.com", "+7 916 123-45-77"}, snapshot.PDnAllowlist)
+			assert.Equal(t, []string{"+7 (843) 555-12-34", "ab.com"}, snapshot.PDnAllowlist)
 			require.NotEmpty(t, snapshot.Messages)
 			assert.Contains(t, snapshot.Messages[0].Content, "+7 916 123-45-77")
 			batch.Calls[0].Verdict = verdict
@@ -273,19 +275,120 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 			req := capLLM.firstRequest()
 			require.NotNil(t, req)
 			require.NotEmpty(t, req.Messages)
-			assert.Equal(t, "Сделай пост: запись по телефону +7 916 123-45-77", req.Messages[0].Content)
+			assert.Equal(t, "Сделай пост: запись по телефону [Скрыто]", req.Messages[0].Content)
 			require.Len(t, req.Messages[1].ToolCalls, 1)
-			assert.Contains(t, req.Messages[1].ToolCalls[0].Function.Arguments, "8 (916) 123-45-77")
+			assert.JSONEq(t, `{"text":"[Скрыто]; [Скрыто]"}`, req.Messages[1].ToolCalls[0].Function.Arguments)
 			assert.NotContains(t, req.Messages[1].ToolCalls[0].Function.Arguments, "+78120000000")
-			if verdict == "edit" {
+			switch verdict {
+			case "edit":
 				require.Len(t, req.Messages, 3)
 				assert.JSONEq(t, `{"text":"Запись: [Скрыто]; [Скрыто]"}`, req.Messages[2].Content)
-			} else if verdict == "approve" {
+			case "approve":
 				require.Len(t, req.Messages, 3)
-				assert.JSONEq(t, `{"text":"8 (916) 123-45-77; [Скрыто]"}`, req.Messages[2].Content)
+				assert.JSONEq(t, `{"text":"[Скрыто]; [Скрыто]"}`, req.Messages[2].Content)
 			}
 			require.Len(t, req.SystemBlocks, 2)
 			assert.Contains(t, req.SystemBlocks[1].Text, "+7 (843) 555-12-34")
+		})
+	}
+}
+
+func TestRun_OnlyProfileContactsAreExempt(t *testing.T) {
+	for _, tt := range []struct {
+		name, role, text string
+	}{
+		{"restriction_after", "user", "Сделай пост: запись по телефону +7 916 123-45-77 — это личный телефон клиента, не публикуй его."},
+		{"quoted_copy", "user", "Опубликуй точный текст: «Запись по телефону +7 916 123-45-77»"},
+		{"quoted_bare", "user", "Опубликуй: «+7 916 123-45-77»"},
+		{"quoted_ascii", "user", "Напиши пост, вот текст: \"+7 916 123-45-77\""},
+		{"quoted_unintroduced", "user", "Сделай пост: «Запись по телефону +7 916 123-45-77»"},
+		{"unclosed_quote", "user", "Опубликуй: «+7 916 123-45-77"},
+		{"dash", "user", "Размести: запись по телефону —\n+7 916 123-45-77"},
+		{"intent_after", "user", "Наш телефон +7 916 123-45-77. Опубликуй."},
+		{"veto_клиента", "user", "Опубликуй: «+7 916 123-45-77». клиента"},
+		{"veto_посетителя", "user", "Опубликуй: «+7 916 123-45-77». посетителя"},
+		{"veto_гостя", "user", "Опубликуй: «+7 916 123-45-77». гостя"},
+		{"veto_личный", "user", "Опубликуй: «+7 916 123-45-77». личный"},
+		{"veto_не публикуй", "user", "Опубликуй: «+7 916 123-45-77». не публикуй"},
+		{"veto_не указывай", "user", "Опубликуй: «+7 916 123-45-77». не указывай"},
+		{"veto_скрой", "user", "Опубликуй: «+7 916 123-45-77». скрой"},
+		{"veto_перескажи", "user", "Опубликуй: «+7 916 123-45-77». перескажи"},
+		{"veto_сообщение от", "user", "Опубликуй: «+7 916 123-45-77». сообщение от"},
+		{"veto_пишет", "user", "Опубликуй: «+7 916 123-45-77». пишет"},
+		{"booking", "user", "Сделай пост… запись по телефону +7 916 123-45-77"},
+		{"formatted", "user", "Добавь в пост телефон: +7 (916) 123-45-77"},
+		{"trunk", "user", "Опубликуй: телефон для публикации: 8 916 123 45 77"},
+		{"english", "user", "Write a post. Booking phone: +79161234577"},
+		{"visitor_summary", "user", "Перескажи сообщение посетителя: запись по телефону +7 916 123-45-77"},
+		{"clients_post", "user", "Сделай пост для клиентов: запись по телефону +7 916 123-45-77"},
+		{"salon", "user", "Сделай пост: в салоне запись по телефону +7 916 123-45-77"},
+		{"newline", "user", "Сделай пост: запись по телефону:\n+7 916 123-45-77"},
+		{"call", "user", "Опубликуй: звоните +7 916 123-45-77"},
+		{"orders", "user", "Сделай пост: заказ по +7 916 123-45-77"},
+		{"our_reply", "user", "Ответь: наш телефон +7 916 123-45-77"},
+		{"quoted_owner_gap", "user", "Сделай пост: запись по телефону «посетителя» +7 916 123-45-77"},
+		{"visitor_label", "user", "Сделай пост. Посетитель: запись по телефону +7 916 123-45-77"},
+		{"review_relay", "user", "Опубликуй отзыв клиента: запись по телефону +7 916 123-45-77"},
+		{"polite", "user", "Пожалуйста, сделай пост: запись по телефону +7 916 123-45-77"},
+		{"unrelated_contact_negative", "user", "Не добавляй старый номер. Сделай пост: запись по телефону +7 916 123-45-77"},
+		{"english_noun", "user", "The post mentions a booking phone: +7 916 123-45-77"},
+		{"no_intent", "user", "Запись по телефону +7 916 123-45-77"},
+		{"our_without_intent", "user", "Наш телефон +7 916 123-45-77"},
+		{"relayed_publish", "user", "Перескажи сообщение посетителя: сделай пост, запись по телефону +7 916 123-45-77"},
+		{"publish_relay", "user", "Сделай пост, перескажи сообщение посетителя: запись по телефону +7 916 123-45-77"},
+		{"publish_quote", "user", "Сделай пост: посетитель написал «запись по телефону +7 916 123-45-77»"},
+		{"negated_purpose", "user", "Сделай пост: не добавляй запись по телефону +7 916 123-45-77"},
+		{"unrelated_negative", "user", "Не используй смайлики. Сделай пост: запись по телефону +7 916 123-45-77"},
+		{"private", "user", "Сделай пост: личный телефон для записи +7 916 123-45-77"},
+		{"word_boundary", "user", "Сделай пост: перезапись по телефону +7 916 123-45-77"},
+		{"intent_boundary", "user", "Несделай пост: запись по телефону +7 916 123-45-77"},
+		{"unscoped", "user", "Позвони +79161234577"},
+		{"negative", "user", "Не добавь в пост телефон +79161234577"},
+		{"customer", "user", "Отзыв клиента: запись по телефону +79161234577"},
+		{"quoted", "user", "Он написал: «запись по телефону +79161234577»"},
+		{"tool", "tool", "Запись по телефону +79161234577"},
+		{"assistant", "assistant", "Запись по телефону +79161234577"},
+		{"organization", "user", "Сделай пост: пишите на booking@example.org"},
+		{"quoted", "user", "Опубликуй точный текст: «booking@example.org»"},
+		{"quoted_ascii", "user", `Опубликуй: "booking@example.org"`},
+		{"no_intent", "user", "Пишите на booking@example.org"},
+		{"no_label", "user", "Сделай пост: booking@example.org"},
+		{"third_party_after", "user", "Сделай пост: пишите на booking@example.org — пишет клиент"},
+		{"restriction_after", "user", "Опубликуй: «booking@example.org», не указывай адрес"},
+		{"mixed", "user", "Сделай пост: пишите на booking@example.org. Личный телефон +79161234577"},
+		{"mixed_purposes", "user", "Сделай пост для клиентов: наш телефон +7 916 123-45-77. Перескажи сообщение посетителя: запись по телефону +7 812 000-00-00."},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, registered := range []bool{false, true} {
+				t.Run(fmt.Sprintf("registered=%t", registered), func(t *testing.T) {
+					provider := &captureLLM{}
+					business := prompt.BusinessContext{Phone: "+7 (843) 555-12-34", Website: "example.org"}
+					if registered {
+						business.Phone = "+7 (916) 123-45-77"
+					}
+					orch := orchestrator.NewWithOptions(provider, toolregistry.NewRegistry(), orchestrator.Options{MaxIterations: 2, RedactOutboundPDn: true})
+					events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+						BusinessContext: business,
+						Messages:        []llm.Message{{Role: tt.role, Content: tt.text}},
+					})
+					require.NoError(t, err)
+					require.Empty(t, findEvents(drainEvents(events), orchestrator.EventError))
+					req := provider.firstRequest()
+					require.NotNil(t, req)
+					require.NotEmpty(t, req.Messages)
+					expected := security.RedactPIIExcept(tt.text, []string{business.Phone})
+					assert.Equal(t, expected, req.Messages[0].Content)
+					if !registered {
+						assert.NotContains(t, req.Messages[0].Content, "916")
+						assert.Contains(t, req.Messages[0].Content, "[Скрыто]")
+					}
+					assert.NotContains(t, req.Messages[0].Content, "booking@example.org")
+					require.Len(t, req.SystemBlocks, 2)
+					assert.Contains(t, req.SystemBlocks[1].Text, "контакт скрыт для конфиденциальности")
+					assert.Contains(t, req.SystemBlocks[1].Text, "Настройки → Организация")
+					assert.Contains(t, req.SystemBlocks[1].Text, "Не выдумывай контакт")
+				})
+			}
 		})
 	}
 }

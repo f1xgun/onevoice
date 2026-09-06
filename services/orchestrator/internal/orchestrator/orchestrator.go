@@ -223,7 +223,7 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 		Messages:                 history,
 		SystemPlatform:           platform,
 		SystemBusiness:           business,
-		PDnAllowlist:             append(businessContactAllowlist(req.BusinessContext), publicationContactAllowlist(req.Messages)...),
+		PDnAllowlist:             businessContactAllowlist(req.BusinessContext),
 		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
