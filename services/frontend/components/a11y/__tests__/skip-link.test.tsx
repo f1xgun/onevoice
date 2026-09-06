@@ -1,13 +1,24 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, act } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import { createTranslator } from 'next-intl';
+import { describe, expect, it, vi } from 'vitest';
 import AppLayout from '@/app/(app)/layout';
-import { setDesktopViewport } from '@/test-utils/viewport';
+import SettingsLayout from '@/app/(app)/settings/layout';
+import SettingsPage from '@/app/(app)/settings/page';
+import ChatListPage from '@/app/(app)/chat/page';
+import PublicLayout from '@/app/(public)/layout';
+import LoginPage from '@/app/(public)/login/page';
 import type * as ConvHooks from '@/hooks/useConversations';
 import type * as ProjHooks from '@/hooks/useProjects';
+import { hasLayoutBrowser, withLayoutPage } from '@/test-utils/browser-layout';
+import { SkipLink } from '../skip-link';
 
-// Pathname mock — toggled per test.
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) =>
+    createTranslator({ locale: 'ru', messages: {}, namespace }),
+}));
+
 const usePathnameMock = vi.fn(() => '/chat');
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
@@ -54,9 +65,6 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/lib/telemetry', () => ({
   trackEvent: vi.fn(),
 }));
-
-// BusinessRequiredGuard dependencies — provide a valid active business so
-// the guard renders children instead of returning null.
 vi.mock('@/lib/stores/business', () => ({
   useBusinessStore: (selector?: (s: unknown) => unknown) => {
     const state = {
@@ -114,45 +122,53 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-describe('AppLayout route-conditional ProjectPane', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDesktopViewport();
-  });
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({ allowed: true, isLoading: false }),
+}));
 
-  it('renders NavRail without duplicated history on /chat', async () => {
-    usePathnameMock.mockReturnValue('/chat');
-    const { container } = render(
-      <Wrapper>
-        <AppLayout>
-          <div>child</div>
-        </AppLayout>
-      </Wrapper>
-    );
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    expect(container.querySelector('[data-testid="nav-rail"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="project-pane"]')).toBeNull();
-  });
-
-  it('renders ONLY NavRail on /integrations (project-pane hidden)', async () => {
-    usePathnameMock.mockReturnValue('/integrations');
-    const { container } = render(
-      <Wrapper>
-        <AppLayout>
-          <div>child</div>
-        </AppLayout>
-      </Wrapper>
-    );
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    expect(container.querySelector('[data-testid="nav-rail"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="project-pane"]')).toBeNull();
-  });
+describe('skip link geometry and keyboard access in route shells', () => {
+  it.skipIf(!hasLayoutBrowser).each(['/login', '/chat', '/settings'])(
+    'fits a 320px viewport before and after keyboard focus on %s',
+    async (route) => {
+      usePathnameMock.mockReturnValue(route);
+      const content =
+        route === '/login' ? (
+          <PublicLayout>
+            <LoginPage />
+          </PublicLayout>
+        ) : (
+          <AppLayout>
+            {route === '/chat' ? (
+              <ChatListPage />
+            ) : (
+              await SettingsLayout({ children: <SettingsPage /> })
+            )}
+          </AppLayout>
+        );
+      const { container } = render(
+        <Wrapper>
+          <SkipLink />
+          {content}
+        </Wrapper>
+      );
+      await waitFor(() => expect(container.querySelector('main')).not.toBeNull());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await withLayoutPage(container.innerHTML, { width: 320, height: 640 }, async (page) => {
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+        await page.keyboard.press('Tab');
+        const link = page.locator('a[href="#main-content"]');
+        expect(await link.evaluate((element) => element === document.activeElement)).toBe(true);
+        const bounds = await link.boundingBox();
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.width).toBeGreaterThan(1);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+        await page.keyboard.press('Enter');
+        expect(await page.evaluate(() => document.activeElement?.id)).toBe('main-content');
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+      });
+    }
+  );
 });

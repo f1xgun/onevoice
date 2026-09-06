@@ -55,7 +55,8 @@ export type ChatErrorCode =
   | 'approval_expired'
   | 'sse_concurrency_exceeded'
   | 'business_not_found'
-  | 'orchestrator_unavailable';
+  | 'orchestrator_unavailable'
+  | 'stream_interrupted';
 
 export interface Message {
   id: string;

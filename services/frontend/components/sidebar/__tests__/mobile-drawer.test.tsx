@@ -17,7 +17,7 @@ import type { Conversation } from '@/lib/conversations';
 // ----- Mocks -----
 
 const pushMock = vi.fn();
-let pathnameValue = '/chat';
+let pathnameValue = '/chat/c-1';
 vi.mock('next/navigation', () => ({
   usePathname: () => pathnameValue,
   useRouter: () => ({ push: pushMock, back: vi.fn(), replace: vi.fn() }),
@@ -124,7 +124,7 @@ describe('mobile drawer', () => {
     apiGet.mockReset();
     pushMock.mockReset();
     setupApi();
-    pathnameValue = '/chat';
+    pathnameValue = '/chat/c-1';
   });
 
   it('auto-closes when a chat row is clicked', async () => {

@@ -264,3 +264,18 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
     );
   });
 });
+
+it('shows a recoverable history error instead of an empty history', async () => {
+  bizApiGet.mockRejectedValue(new Error('offline'));
+  const ChatListPage = (await import('../page')).default;
+  render(
+    <Wrapper>
+      <ChatListPage />
+    </Wrapper>
+  );
+  expect(await screen.findByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+  expect(screen.queryByText('Нет чатов')).not.toBeInTheDocument();
+  bizApiGet.mockResolvedValue({ data: [baseAuto] });
+  await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+  expect(await screen.findByText(baseAuto.title)).toBeInTheDocument();
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -179,8 +179,6 @@ describe('ChatWindow — history load failure', () => {
       'Не удалось загрузить данные. Обновите страницу или попробуйте ещё раз.'
     );
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
-    // The onboarding empty state must NOT be shown — that would hide an existing
-    // conversation and let a fresh send run without its prior context.
     expect(screen.queryByText('Чем могу помочь?')).not.toBeInTheDocument();
     const input = screen.getByPlaceholderText('Напишите сообщение…');
     expect(input).toBeDisabled();
@@ -341,3 +339,86 @@ describe('ChatWindow — IntegrationTokenInvalidBanner detector', () => {
     expect(screen.queryByRole('link', { name: /Переподключить/ })).not.toBeInTheDocument();
   });
 });
+
+describe('composer keyboard and failed submission', () => {
+  it('keeps Enter multiline, ignores IME, and preserves text after a rejected POST', async () => {
+    const fetchMock = mockGetMessages({ messages: [], pendingApprovals: [] });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText('Чем могу помочь?');
+    const input = screen.getByRole('textbox', { name: 'Напишите сообщение…' });
+    expect(input.tagName).toBe('TEXTAREA');
+    fireEvent.change(input, { target: { value: 'Первая строка\nВторая строка' } });
+    fetchMock.mockClear();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true, isComposing: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockResolvedValue(new Response('{}', { status: 503 }));
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(input).not.toBeDisabled());
+    expect(input).toHaveValue('Первая строка\nВторая строка');
+  });
+});
+
+it.each([
+  { frame: 'data: {"type":"done"}\n\n', cleared: true },
+  {
+    frame:
+      'data: {"type":"text","content":"Подготовлен пост"}\n\n' +
+      'data: {"type":"tool_approval_required","batch_id":"b1","calls":[{"call_id":"c1","tool_name":"telegram__send_channel_post","args":{"text":"Публикация"},"editable_fields":["text"],"floor":"manual"}]}\n\n',
+    cleared: true,
+  },
+  { frame: 'data: {"type":"text","content":"Частичный ответ"}\n\n', cleared: false },
+  { frame: '', cleared: false },
+  {
+    frame: 'data: {"type":"error","code":"max_iterations"}\n\ndata: {"type":"done"}\n\n',
+    cleared: false,
+  },
+  { frame: 'data: {"type":"error","code":"max_iterations"}\n\n', cleared: false },
+])(
+  'clears the instruction only after successful streaming: $cleared',
+  async ({ frame, cleared }) => {
+    const fetchMock = mockGetMessages({ messages: [], pendingApprovals: [] });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText('Чем могу помочь?');
+    const input = screen.getByRole('textbox', { name: 'Напишите сообщение…' });
+    fireEvent.change(input, { target: { value: 'Проверить текст' } });
+    fetchMock.mockResolvedValue(
+      new Response(frame, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+    );
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    if (frame.includes('tool_approval_required')) {
+      await screen.findByRole('region', { name: /Ожидает подтверждения/ });
+      expect(input).toBeDisabled();
+    } else {
+      await waitFor(() => expect(input).not.toBeDisabled());
+    }
+    await waitFor(() => expect(input).toHaveValue(cleared ? '' : 'Проверить текст'));
+    if (cleared) {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    }
+    if (frame.includes('tool_approval_required')) {
+      expect(screen.getByText('Подготовлен пост')).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: /Ожидает подтверждения/ })).toBeInTheDocument();
+    }
+    if (!frame || frame.includes('Частичный ответ')) {
+      expect(
+        await screen.findByText(
+          'Ответ прервался до завершения. Попробуйте отправить поручение повторно.'
+        )
+      ).toBeInTheDocument();
+      if (frame) expect(screen.getByText('Частичный ответ')).toBeInTheDocument();
+      fetchMock.mockResolvedValue(new Response('data: {"type":"done"}\n\n'));
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      await waitFor(() => expect(input).toHaveValue(''));
+    }
+  }
+);

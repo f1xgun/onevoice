@@ -20,6 +20,7 @@ export const CHAT_ERROR_FALLBACK_KEY = 'fallback';
 // the pre-stream codes the chat POST returns before the SSE body opens
 // (sse_concurrency_exceeded, business_not_found, orchestrator_unavailable).
 const CHAT_ERROR_KEYS: Record<ChatErrorCode, string> = {
+  stream_interrupted: 'streamInterrupted',
   max_iterations: 'maxIterations',
   internal_error: 'internalError',
   conversation_token_cap: 'conversationTokenCap',

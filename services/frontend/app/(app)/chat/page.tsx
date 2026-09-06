@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from '@/components/design-system/AppAlertDialog';
 import { ConversationItem, type Conversation } from '@/components/chat/ConversationItem';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { SkeletonInbox } from '@/components/states';
 
 export default function ChatListPage() {
@@ -37,7 +38,12 @@ export default function ChatListPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const canCreate = usePermission('content.create').allowed;
 
-  const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
+  const {
+    data: conversations = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<Conversation[]>({
     queryKey: conversationsQueryKey(activeBusinessId),
     queryFn: () => listConversations(activeBusinessId!),
     enabled: !!activeBusinessId,
@@ -100,9 +106,9 @@ export default function ChatListPage() {
   });
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{tChat('heading')}</h1>
+    <div className="mx-auto max-w-[1040px] p-4 md:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-page-title">{tChat('heading')}</h1>
         {canCreate && (
           <Button onClick={() => createConversation()} disabled={isPending}>
             <Plus size={16} className="mr-2" />
@@ -113,8 +119,10 @@ export default function ChatListPage() {
 
       {isLoading ? (
         <SkeletonInbox rows={3} />
+      ) : isError ? (
+        <ListLoadError onRetry={() => void refetch()} />
       ) : conversations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-20 text-ink-soft">
           <MessageCircle size={48} className="mb-4 opacity-40" />
           <p className="text-lg">{tChat('noConversations')}</p>
           <p className="mt-1 text-sm">{tChat('newConversationCta')}</p>
@@ -149,7 +157,6 @@ export default function ChatListPage() {
             <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant="danger"
-              className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
               onClick={() => deleteTarget && deleteConversation(deleteTarget)}
             >
               {tCommon('delete')}

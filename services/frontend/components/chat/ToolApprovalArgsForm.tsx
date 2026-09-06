@@ -111,7 +111,7 @@ export const ToolApprovalArgsForm = memo(function ToolApprovalArgsForm({
 
   if (!editable) {
     return (
-      <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-3">
+      <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[96px_minmax(0,1fr)] sm:gap-x-3">
         {rows.map((row) => (
           <ReadOnlyRow key={row.key} row={row} t={t} />
         ))}
@@ -153,7 +153,7 @@ export const ToolApprovalArgsForm = memo(function ToolApprovalArgsForm({
             <Lock size={12} aria-hidden="true" />
             {t('lockedSectionHeading')}
           </h4>
-          <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-3">
+          <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[96px_minmax(0,1fr)] sm:gap-x-3">
             {lockedRows.map((row) => (
               <ReadOnlyRow key={row.key} row={row} t={t} />
             ))}
@@ -374,7 +374,7 @@ function ReadOnlyRow({ row, t }: ReadOnlyRowProps) {
   return (
     <>
       <dt className="text-sm font-medium text-ink-mid">{row.label}</dt>
-      <dd className="min-w-0 whitespace-pre-line break-words text-sm text-ink">
+      <dd className="min-w-0 whitespace-pre-line break-words text-reading text-ink">
         <ReadOnlyValue value={row.value} t={t} />
       </dd>
     </>

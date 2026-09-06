@@ -20,6 +20,22 @@ function renderGroup(
 }
 
 describe('ToolApprovalToggleGroup', () => {
+  it.each([
+    { decision: 'approve' as const, label: /Одобрить/, color: 'text-ink' },
+    { decision: 'edit' as const, label: /Изменить/, color: 'text-ink' },
+    { decision: 'reject' as const, label: /Отклонить/, color: 'text-danger' },
+  ])('renders the documented active styling for $decision', ({ decision, label, color }) => {
+    renderGroup({ decision });
+    const active = screen.getByRole('button', { name: label });
+    expect(active).toHaveClass('bg-paper-raised', color, 'ring-2', 'ring-ring');
+    expect(active).not.toHaveClass('bg-brand');
+    for (const button of screen.getAllByRole('button')) {
+      if (button === active) continue;
+      expect(button).toHaveClass('bg-paper-raised', 'text-ink');
+      expect(button).not.toHaveClass('ring-2');
+    }
+  });
+
   it('M) renders three buttons with the exact Russian labels', () => {
     renderGroup();
     expect(screen.getByRole('button', { name: /Одобрить/ })).toBeInTheDocument();

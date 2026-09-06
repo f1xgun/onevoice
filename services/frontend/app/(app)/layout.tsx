@@ -23,15 +23,14 @@ import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
 // content (sticky top-0 keeps it visible while the page scrolls).
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 // persistent RED banner when accountDeletion !== null.
-// UI-SPEC Surface 10: outranks VerificationBanner — mounts ABOVE so the
+// Outranks VerificationBanner — mounts ABOVE so the
 // deletion-grace state visually wins when both could fire (the user
 // can be both unverified AND mid-grace).
 import { DeletionGraceBanner } from '@/components/account/DeletionGraceBanner';
 // forced re-consent modal — z-50 portal that
 // renders OUTSIDE <main> when the user has stale policy versions and
 // is past the email-verification gate. Mutually exclusive with
-// EmailVerifiedRequiredModal per the modal-precedence rule (UI-SPEC
-// §Cross-surface stacking).
+// EmailVerifiedRequiredModal to show only one required-action modal at a time.
 import { ReConsentModal } from '@/components/legal/ReConsentModal';
 import type { ReactNode } from 'react';
 
@@ -59,12 +58,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     const accessToken = useAuthStore.getState().accessToken;
     if (accessToken && sessionAttempt === 0) {
       setReady(true);
-      // The login/register response carries only a minimal user (no
-      // emailVerified / deletion / reconsent state). Hydrate the full
-      // profile from /auth/me so the verification banner, deletion-grace
-      // banner and re-consent modal reflect real state right after sign-in
-      // — not just after the next cold load. Non-blocking: the user is
-      // already authenticated, so failure keeps the minimal user.
       api
         .get(API_PATHS.AUTH.ME, { signal: controller.signal })
         .then((res) => {
@@ -124,7 +117,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   if (sessionError) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-sm text-ink-mid">{tSession('refreshFailed')}</p>
         <Button type="button" onClick={() => setSessionAttempt((n) => n + 1)}>
           {tSession('retry')}
@@ -137,7 +130,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return null;
   }
 
-  const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
+  const showProjectPane = pathname.startsWith('/chat/') || pathname.startsWith('/projects');
 
   const user = useAuthStore.getState().user;
   const requiresEmailVerification =
@@ -147,13 +140,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <BusinessRequiredGuard>
       <>
-        {/* RBAC: invalidate per-business permissions cache on every
-            business switch. Mounted here so it's active for the entire (app)
-            shell but only after BusinessRequiredGuard resolves a valid
-            activeBusinessId. Renders no DOM. */}
         <PermissionsCacheGuard />
         {isDesktop ? (
-          <div className="flex h-screen">
+          <div className="flex h-dvh">
             <NavRail />
             <PanelGroup
               direction="horizontal"
@@ -162,14 +151,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             >
               {showProjectPane && (
                 <>
-                  {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
-                      (default 280 px). minSize=12 / maxSize=35 cover the
-                      locked 200–480 px range without clipping.
-                      Explicit id+order keep the panel registry stable when
-                      showProjectPane toggles between routes — without them
-                      react-resizable-panels v3 re-keys panels on remount and
-                      the resize handle ends up reporting deltas against the
-                      wrong neighbour, inverting the drag direction. */}
                   <Panel
                     id="project-pane"
                     order={1}
@@ -180,17 +161,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   >
                     <ProjectPane />
                   </Panel>
-                  {/* PanelResizeHandle already renders role="separator" with
-                      aria-controls + aria-label, so it's a self-contained,
-                      focusable, labelled control. The earlier role="region"
-                      wrapper duplicated the announcement (axe M4 review):
-                      Tab would announce "region, Изменить ширину…" then
-                      "separator, Изменить ширину…". Drop the wrapper.
-                      aria-orientation="vertical" disambiguates the separator
-                      axis for AT and documents intent for axe's region rule —
-                      a 1-px separator between two landmarks is not itself a
-                      landmark, so the residual region-rule warning is a known
-                      false positive. */}
                   <PanelResizeHandle
                     id="project-pane-handle"
                     aria-label={tSidebar('resizeAria')}
@@ -200,15 +170,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </>
               )}
               <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-                {/* tabIndex={-1}: makes <main> programmatically focusable so
-                    activating the SkipLink moves keyboard focus here. Without
-                    it, the hash navigation only scrolls; the next Tab would
-                    advance from the link's DOM position (back into the
-                    sidebar). Doesn't add <main> to the tab order.
-                    focus-visible:outline-ink (keyboard-only, not mouse) gives
-                    a brief visible confirmation that focus actually moved
-                    here — required by WCAG 2.4.7 since the skip-link's only
-                    purpose is to transfer focus. */}
                 <main
                   id="main-content"
                   tabIndex={-1}
@@ -216,18 +177,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 >
                   <DeletionGraceBanner />
                   <VerificationBanner />
-                  <div className="flex-1">{children}</div>
+                  <div className="min-h-0 flex-1">{children}</div>
                 </main>
               </Panel>
             </PanelGroup>
           </div>
         ) : (
-          <div className="flex h-screen flex-col">
+          <div className="flex h-dvh flex-col">
             <Sidebar />
-            {/* tabIndex={-1}: see desktop branch above — required for the
-                SkipLink to actually transfer keyboard focus into <main>.
-                focus-visible outline mirrors the desktop branch — a brief
-                ink ring is the only cue that focus moved (WCAG 2.4.7). */}
             <main
               id="main-content"
               tabIndex={-1}
@@ -235,15 +192,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             >
               <DeletionGraceBanner />
               <VerificationBanner />
-              <div className="flex-1">{children}</div>
+              <div className="min-h-0 flex-1">{children}</div>
             </main>
           </div>
         )}
-        {/* forced re-consent. Portal-mounted
-            at the top level so the modal sits OUTSIDE <main> and reaches
-            z-50 above any banners. Mutually exclusive with the email-
-            verification modal — that one still wins (UI-SPEC §Modal
-            precedence rule). */}
         {showReConsent && user?.requiresReconsent && (
           <ReConsentModal policies={user.requiresReconsent.policies} />
         )}

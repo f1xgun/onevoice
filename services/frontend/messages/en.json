@@ -351,7 +351,8 @@
       "renameDialogDescription": "The new name will appear everywhere this chat is shown.",
       "renamePlaceholder": "Chat name",
       "renameError": "Couldn't rename the chat",
-      "deleteError": "Couldn't delete the chat"
+      "deleteError": "Couldn't delete the chat",
+      "created": "Created"
     },
     "window": {
       "helpPrompt": "How can I help?",
@@ -363,7 +364,10 @@
       "typingAria": "OneVoice is typing",
       "externalImage": "Open image",
       "stopAria": "Stop",
-      "readOnlyHint": "You don't have permission to send messages in this organization"
+      "readOnlyHint": "You don't have permission to send messages in this organization",
+      "authorOwner": "You",
+      "authorAssistant": "OneVoice",
+      "sendHint": "Enter for a new line. Ctrl/Cmd+Enter to send your instruction."
     },
     "header": {
       "menuAria": "Chat menu",
@@ -439,6 +443,7 @@
       "decisionUnavailableReason": "Decision not found — please approve again"
     },
     "streamError": {
+      "streamInterrupted": "The response ended before completion. Try sending your instruction again.",
       "maxIterations": "Could not complete the request — the task was too complex. Try rephrasing it or breaking it into smaller steps.",
       "internalError": "Something went wrong on our side. Please try again in a moment.",
       "conversationTokenCap": "This chat has reached its size limit. Start a new chat to continue.",
@@ -477,7 +482,10 @@
         "subtitle": "Review the arguments before running",
         "submitIdle": "Confirm",
         "submitLoading": "Sending…",
-        "submitHelper": "Pick an action for every task"
+        "submitHelper": "Pick an action for every task",
+        "decision": "Your decision",
+        "changed": "Approval data changed. Your edits are preserved. Load the new version to review it again; this will discard your current edits.",
+        "reload": "Load new version and discard edits"
       },
       "actions": {
         "approve": "Approve",
@@ -1392,7 +1400,9 @@
     "logout": "Log out",
     "platformsGroup": "Platforms",
     "railAria": "Main navigation",
-    "skipToContent": "Skip to content"
+    "skipToContent": "Skip to content",
+    "connected": "Connected",
+    "notConnected": "Connection not confirmed"
   },
   "feedback": {
     "title": "Feedback",

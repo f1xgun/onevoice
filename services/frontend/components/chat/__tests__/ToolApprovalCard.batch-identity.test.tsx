@@ -62,3 +62,28 @@ describe('ToolApprovalCard — staged drafts survive a same-batchId object swap'
     );
   });
 });
+
+it('keeps edited text visible and blocks decisions when server arguments change', async () => {
+  const user = userEvent.setup();
+  const submit = vi.fn();
+  const { rerender } = render(<ToolApprovalCard batch={threeCallBatch} onSubmit={submit} />);
+  await user.click(screen.getByRole('button', { name: /^Изменить telegram__send_channel_post/u }));
+  const textbox = screen.getAllByRole('textbox')[0];
+  await user.clear(textbox);
+  await user.type(textbox, 'Моя правка');
+  rerender(
+    <ToolApprovalCard
+      batch={{
+        ...threeCallBatch,
+        calls: threeCallBatch.calls.map((c, i) =>
+          i === 0 ? { ...c, args: { ...c.args, text: 'Новый текст' } } : c
+        ),
+      }}
+      onSubmit={submit}
+    />
+  );
+  expect(screen.getByDisplayValue('Моя правка')).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('Данные согласования изменились');
+  expect(screen.getByRole('button', { name: /^Подтвердить$/ })).toBeDisabled();
+  expect(submit).not.toHaveBeenCalled();
+});

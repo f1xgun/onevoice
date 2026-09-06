@@ -23,17 +23,17 @@ export function Sidebar() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
+  const showProjectPane = pathname.startsWith('/chat/') || pathname.startsWith('/projects');
 
   return (
-    <div className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
+    <div className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 xl:hidden">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
             aria-label={tSide('toggleAria')}
-            className="md:hidden"
+            className="xl:hidden"
           >
             <Menu className="h-5 w-5" />
           </Button>
