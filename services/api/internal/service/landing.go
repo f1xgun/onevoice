@@ -1,10 +1,7 @@
 // Package service — landing.go.
 //
-// LandingService backs the two public marketing-landing capture endpoints:
-// the closed-beta waitlist and the fake-door channel vote. Both are
-// unauthenticated, so the service is the trust boundary — it normalizes and
-// re-validates every field against a closed allow-list before persistence,
-// independently of the handler's request-schema validation.
+// LandingService validates public waitlist signups, channel votes, and CTA events
+// before persistence, independently of the handler's request-schema validation.
 package service
 
 import (
@@ -12,6 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -68,6 +70,8 @@ type WaitlistInput struct {
 	Sphere  string
 	Pain    string
 	Consent bool
+	Source  string
+	Plan    string
 }
 
 // ChannelVoteInput is the service-layer view of one fake-door vote.
@@ -80,6 +84,7 @@ type ChannelVoteInput struct {
 type landingRepo interface {
 	InsertWaitlist(ctx context.Context, row repository.WaitlistSignupRow) error
 	InsertChannelVote(ctx context.Context, row repository.ChannelVoteRow) error
+	InsertLandingEvent(ctx context.Context, row repository.LandingEventRow) error
 }
 
 // LandingService records public waitlist signups and fake-door channel votes.
@@ -94,7 +99,7 @@ func NewLandingService(repo landingRepo) *LandingService {
 
 // JoinWaitlist normalizes the email (trim + lower-case), enforces consent, and
 // validates the optional segments against their closed allow-lists before
-// persisting. A duplicate email is a silent no-op at the repository layer, so
+// persisting. A duplicate email updates supplied attribution, so
 // this returns nil for a repeat signup — the caller must not surface a
 // distinguishable "already exists" response.
 func (s *LandingService) JoinWaitlist(ctx context.Context, in WaitlistInput) error {
@@ -107,6 +112,21 @@ func (s *LandingService) JoinWaitlist(ctx context.Context, in WaitlistInput) err
 	}
 
 	row := repository.WaitlistSignupRow{Email: email, Consent: in.Consent}
+	if in.Source != "" {
+		switch in.Source {
+		case "landing", "billing", "business-limit":
+			row.Source = &in.Source
+		default:
+			return ErrInvalidSegment
+		}
+	}
+	if in.Plan != "" {
+		if in.Plan != "pro" {
+			return ErrInvalidSegment
+		}
+		row.Plan = &in.Plan
+	}
+
 	if in.Sphere != "" {
 		if _, ok := allowedSpheres[in.Sphere]; !ok {
 			return fmt.Errorf("%w: sphere %q", ErrInvalidSegment, in.Sphere)
@@ -141,5 +161,36 @@ func (s *LandingService) RecordChannelVote(ctx context.Context, in ChannelVoteIn
 	if err := s.repo.InsertChannelVote(ctx, row); err != nil {
 		return fmt.Errorf("channel vote record: %w", err)
 	}
+	return nil
+}
+
+// ErrInvalidLandingEvent identifies an invalid CTA or pathname.
+var ErrInvalidLandingEvent = errors.New("invalid landing event")
+
+var landingCTAClicks = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "landing_cta_clicks_total",
+	Help: "Persisted anonymous landing CTA clicks.",
+}, []string{"cta"})
+
+// LandingEventInput contains the CTA and local pathname.
+type LandingEventInput struct {
+	CTA  string
+	Path string
+}
+
+// RecordLandingEvent validates and persists a click before incrementing its counter.
+func (s *LandingService) RecordLandingEvent(ctx context.Context, in LandingEventInput) error {
+	switch in.CTA {
+	case "hero-waitlist", "hero-register", "nav-register", "nav-login", "pricing-free-register", "pricing-pro-waitlist", "waitlist-success-register":
+	default:
+		return ErrInvalidLandingEvent
+	}
+	if !utf8.ValidString(in.Path) || len(in.Path) > 1024 || !strings.HasPrefix(in.Path, "/") || strings.HasPrefix(in.Path, "//") || strings.ContainsAny(in.Path, "?#\\") || strings.ContainsFunc(in.Path, unicode.IsControl) {
+		return ErrInvalidLandingEvent
+	}
+	if err := s.repo.InsertLandingEvent(ctx, repository.LandingEventRow{CTA: in.CTA, Path: in.Path}); err != nil {
+		return fmt.Errorf("landing event record: %w", err)
+	}
+	landingCTAClicks.WithLabelValues(in.CTA).Inc()
 	return nil
 }

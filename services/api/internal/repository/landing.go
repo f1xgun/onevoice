@@ -1,9 +1,7 @@
 // Package repository — landing.go.
 //
-// LandingRepository owns SQL for the two public marketing-landing capture
-// tables: waitlist_signups (closed-beta signups) and channel_votes (fake-door
-// votes for not-yet-supported channels). Both are written by unauthenticated
-// endpoints, so neither row carries a tenant/business key.
+// LandingRepository stores anonymous waitlist signups, channel votes, and CTA
+// events. These records carry no tenant key.
 package repository
 
 import (
@@ -21,6 +19,8 @@ type WaitlistSignupRow struct {
 	Sphere  *string
 	Pain    *string
 	Consent bool
+	Source  *string
+	Plan    *string
 }
 
 // ChannelVoteRow is one public fake-door vote to insert. Note is nullable.
@@ -43,16 +43,16 @@ func NewLandingRepository(pool pgxPool) *LandingRepository {
 	}
 }
 
-// InsertWaitlist records one signup. It is idempotent per email: a duplicate
-// email is a no-op (ON CONFLICT DO NOTHING) rather than an error, so the
+// InsertWaitlist records one signup. A duplicate
+// email updates supplied attribution without erasing omitted fields, so the
 // handler can return the same 204 whether the email is new or already known —
 // no email-enumeration oracle.
 func (r *LandingRepository) InsertWaitlist(ctx context.Context, row WaitlistSignupRow) error {
 	sqlStr, args, err := r.psql.
 		Insert("waitlist_signups").
-		Columns("email", "sphere", "pain", "consent").
-		Values(row.Email, row.Sphere, row.Pain, row.Consent).
-		Suffix("ON CONFLICT (email) DO NOTHING").
+		Columns("email", "sphere", "pain", "consent", "source", "plan").
+		Values(row.Email, row.Sphere, row.Pain, row.Consent, row.Source, row.Plan).
+		Suffix("ON CONFLICT (email) DO UPDATE SET source = COALESCE(EXCLUDED.source, waitlist_signups.source), plan = COALESCE(EXCLUDED.plan, waitlist_signups.plan)").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("waitlist_signups insert build: %w", err)
@@ -77,6 +77,24 @@ func (r *LandingRepository) InsertChannelVote(ctx context.Context, row ChannelVo
 	}
 	if _, err := r.pool.Exec(ctx, sqlStr, args...); err != nil {
 		return fmt.Errorf("channel_votes insert: %w", err)
+	}
+	return nil
+}
+
+// LandingEventRow is an anonymous CTA click.
+type LandingEventRow struct {
+	CTA  string
+	Path string
+}
+
+// InsertLandingEvent persists one validated click.
+func (r *LandingRepository) InsertLandingEvent(ctx context.Context, row LandingEventRow) error {
+	query, args, err := r.psql.Insert("landing_events").Columns("cta", "path").Values(row.CTA, row.Path).ToSql()
+	if err != nil {
+		return fmt.Errorf("landing event build: %w", err)
+	}
+	if _, err := r.pool.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("landing event insert: %w", err)
 	}
 	return nil
 }

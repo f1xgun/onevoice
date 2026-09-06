@@ -220,6 +220,8 @@ paths:
     $ref: paths/audit.yaml#/~1businesses~1{id}~1audit-logs
   /telemetry:
     $ref: paths/telemetry.yaml#/~1telemetry
+  /landing-events:
+    $ref: paths/landing.yaml#/~1landing-events
   /waitlist:
     $ref: paths/landing.yaml#/~1waitlist
   /channel-votes:
@@ -3364,6 +3366,27 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChannelDemandCount'
+    LandingEventRequest:
+      type: object
+      required: [cta, path]
+      properties:
+        cta:
+          type: string
+          enum: [hero-waitlist, hero-register, nav-register, nav-login, pricing-free-register, pricing-pro-waitlist, waitlist-success-register]
+        path:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: Local pathname starting with a single slash, without query or fragment.
+    TelegramConnectError:
+      type: object
+      required: [error, reason]
+      properties:
+        error:
+          type: string
+        reason:
+          type: string
+          description: Stable Telegram connection failure reason.
     WaitlistRequest:
       type: object
       description: |
@@ -3395,6 +3418,14 @@ components:
           - reviews
           - posts
           - card
+        source:
+          type: string
+          enum: [landing, billing, business-limit]
+          description: Optional latest signup source; omitted values preserve existing attribution.
+        plan:
+          type: string
+          enum: [pro]
+          description: Optional requested plan; omitted values preserve existing interest.
         consent:
           type: boolean
           description: |

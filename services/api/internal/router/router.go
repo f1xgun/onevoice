@@ -142,6 +142,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		// Public marketing-landing capture. Unauthenticated, so both share the
 		// per-IP Register budget as a spam/abuse floor.
 		if handlers.Landing != nil {
+			r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).Post("/landing-events", handlers.Landing.RecordLandingEvent)
 			r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).
 				Post("/waitlist", handlers.Landing.JoinWaitlist)
 			r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).

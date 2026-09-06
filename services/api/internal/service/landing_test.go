@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -16,6 +18,8 @@ import (
 type fakeLandingRepo struct {
 	waitlist []repository.WaitlistSignupRow
 	votes    []repository.ChannelVoteRow
+	events   []repository.LandingEventRow
+	eventErr error
 }
 
 func (f *fakeLandingRepo) InsertWaitlist(_ context.Context, row repository.WaitlistSignupRow) error {
@@ -148,4 +152,74 @@ func TestRecordChannelVote_NoteRoundTrips(t *testing.T) {
 	require.Len(t, repo.votes, 1)
 	require.NotNil(t, repo.votes[0].Note)
 	assert.Equal(t, "хотим Дзен", *repo.votes[0].Note)
+}
+
+func (f *fakeLandingRepo) InsertLandingEvent(_ context.Context, row repository.LandingEventRow) error {
+	if f.eventErr != nil {
+		return f.eventErr
+	}
+	f.events = append(f.events, row)
+	return nil
+}
+
+func TestLandingEventValidationAndCounter(t *testing.T) {
+	for _, cta := range []string{"hero-waitlist", "hero-register", "nav-register", "nav-login", "pricing-free-register", "pricing-pro-waitlist", "waitlist-success-register"} {
+		t.Run(cta, func(t *testing.T) {
+			repo := &fakeLandingRepo{}
+			svc := NewLandingService(repo)
+			counter := landingCTAClicks.WithLabelValues(cta)
+			before := testutil.ToFloat64(counter)
+			require.NoError(t, svc.RecordLandingEvent(context.Background(), LandingEventInput{CTA: cta, Path: "/ru"}))
+			require.Equal(t, []repository.LandingEventRow{{CTA: cta, Path: "/ru"}}, repo.events)
+			assert.Equal(t, before+1, testutil.ToFloat64(counter))
+			repo.eventErr = errors.New("store unavailable")
+			require.Error(t, svc.RecordLandingEvent(context.Background(), LandingEventInput{CTA: cta, Path: "/en"}))
+			assert.Equal(t, before+1, testutil.ToFloat64(counter))
+		})
+	}
+	for _, in := range []LandingEventInput{
+		{CTA: "unknown", Path: "/"}, {CTA: "nav-login", Path: ""},
+		{CTA: "nav-login", Path: "/" + strings.Repeat("x", 1024)},
+		{CTA: "nav-login", Path: "//example.org"}, {CTA: "nav-login", Path: "/?email=private"},
+		{CTA: "nav-login", Path: "/#fragment"}, {CTA: "nav-login", Path: "/\n"},
+		{CTA: "nav-login", Path: "/\\host"},
+	} {
+		t.Run(in.CTA+in.Path, func(t *testing.T) {
+			repo := &fakeLandingRepo{}
+			require.ErrorIs(t, NewLandingService(repo).RecordLandingEvent(context.Background(), in), ErrInvalidLandingEvent)
+			assert.Empty(t, repo.events)
+		})
+	}
+}
+
+func TestWaitlistAttribution(t *testing.T) {
+	for _, tc := range []struct {
+		source, plan string
+		valid        bool
+	}{
+		{"", "", true}, {"landing", "", true}, {"billing", "pro", true}, {"business-limit", "pro", true},
+		{"unknown", "pro", false}, {"billing", "free", false},
+	} {
+		t.Run(tc.source+tc.plan, func(t *testing.T) {
+			repo := &fakeLandingRepo{}
+			err := NewLandingService(repo).JoinWaitlist(context.Background(), WaitlistInput{Email: "owner@example.org", Consent: true, Source: tc.source, Plan: tc.plan})
+			if !tc.valid {
+				require.ErrorIs(t, err, ErrInvalidSegment)
+				require.Empty(t, repo.waitlist)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, repo.waitlist, 1)
+			if tc.source != "" {
+				assert.Equal(t, tc.source, *repo.waitlist[0].Source)
+			} else {
+				assert.Nil(t, repo.waitlist[0].Source)
+			}
+			if tc.plan != "" {
+				assert.Equal(t, tc.plan, *repo.waitlist[0].Plan)
+			} else {
+				assert.Nil(t, repo.waitlist[0].Plan)
+			}
+		})
+	}
 }

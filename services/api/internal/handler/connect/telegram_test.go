@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
@@ -482,18 +483,14 @@ func TestConnectTelegram_BotNoAccess(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	// After the error-categorization refactor, ok:false with a non-Forbidden
-	// description surfaces the upstream message verbatim instead of the
-	// generic "bot does not have access to this channel" — that string is
-	// now reserved for the genuine forbidden case.
-	if resp.Error != "Bad Request: chat not found" {
-		t.Errorf("expected upstream description, got %q", resp.Error)
+	if resp.Error != i18n.Tr(req.Context(), "connect.telegram.channel_unavailable") {
+		t.Errorf("expected localized channel guidance, got %q", resp.Error)
 	}
+
 }
 
 // TestConnectTelegram_BotForbidden: Telegram returns ok:false with a
-// Forbidden-prefixed description. We map that to 403 and pass the upstream
-// message through so the user sees the actual reason (kicked, not a member).
+// Forbidden-prefixed description. We map that to safe localized 403 guidance.
 func TestConnectTelegram_BotForbidden(t *testing.T) {
 	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `{"ok":false,"description":"Forbidden: bot was kicked from the channel chat"}`)
@@ -521,8 +518,8 @@ func TestConnectTelegram_BotForbidden(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if !strings.HasPrefix(resp.Error, "Forbidden") {
-		t.Errorf("expected upstream Forbidden description, got %q", resp.Error)
+	if resp.Error != i18n.Tr(req.Context(), "connect.telegram.no_access") {
+		t.Errorf("expected localized access guidance, got %q", resp.Error)
 	}
 }
 

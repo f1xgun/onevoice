@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -139,7 +140,7 @@ const (
 	telegramErrForbidden
 	// telegramErrAPIRejected: Telegram returned ok:false with any other
 	// description (chat not found, bad chat_id, etc.). Map to 400 and
-	// surface the description to the user.
+	// return a safe localized message to the user.
 	telegramErrAPIRejected
 	// telegramErrRateLimited: Telegram returned a rate-limit / anti-bot
 	// envelope (HTTP 429 "Too Many Requests: retry after N"). The single
@@ -259,16 +260,6 @@ func (h *ConnectHandler) probeTelegramLinkedGroup(ctx context.Context, botToken 
 	return "ok"
 }
 
-// classifyAndWriteTelegramError maps a *telegramAPIError into an HTTP
-// response. Network/parse failures → 502 (upstream broken, not the
-// user's data); Forbidden-style API rejections → 403 with the upstream
-// description; everything else (chat not found, etc.) → 400 with the
-// description. Non-typed errors fall through to a generic 500 since
-// callers should always pass through telegramGetChat.
-//
-// Our own generated messages are localized via fallbackKey; the upstream
-// Telegram description (deliberately surfaced verbatim so the owner sees the
-// real reason, e.g. "Forbidden: bot was kicked") passes through untranslated.
 func writeTelegramAPIError(w http.ResponseWriter, r *http.Request, err error, fallbackKey string) {
 	var apiErr *telegramAPIError
 	if !errors.As(err, &apiErr) {
@@ -277,21 +268,13 @@ func writeTelegramAPIError(w http.ResponseWriter, r *http.Request, err error, fa
 	}
 	switch apiErr.Kind {
 	case telegramErrUnreachable:
-		writeJSONErrorKey(w, r, http.StatusBadGateway, "connect.telegram.unreachable")
+		writeTelegramConnectError(w, r, http.StatusBadGateway, "unreachable", "connect.telegram.unreachable")
 	case telegramErrRateLimited:
-		writeJSONErrorKey(w, r, http.StatusTooManyRequests, "connect.telegram.rate_limited")
+		writeTelegramConnectError(w, r, http.StatusTooManyRequests, "rate_limited", "connect.telegram.rate_limited")
 	case telegramErrForbidden:
-		if apiErr.Description != "" {
-			writeJSONError(w, http.StatusForbidden, apiErr.Description)
-		} else {
-			writeJSONErrorKey(w, r, http.StatusForbidden, fallbackKey)
-		}
+		writeTelegramConnectError(w, r, http.StatusForbidden, "forbidden", "connect.telegram.no_access")
 	case telegramErrAPIRejected:
-		if apiErr.Description != "" {
-			writeJSONError(w, http.StatusBadRequest, apiErr.Description)
-		} else {
-			writeJSONErrorKey(w, r, http.StatusBadRequest, fallbackKey)
-		}
+		writeTelegramConnectError(w, r, http.StatusBadRequest, "api_rejected", "connect.telegram.channel_unavailable")
 	default:
 		writeJSONErrorKey(w, r, http.StatusInternalServerError, fallbackKey)
 	}
@@ -340,10 +323,10 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 	health := h.EvaluateTelegramHealth(r.Context(), h.cfg.TelegramBotToken, req.ChannelId)
 	switch {
 	case health.Status == connhealth.StatusBroken && health.ReasonCode == connhealth.ReasonTelegramNotAdmin:
-		writeJSONErrorKey(w, r, http.StatusConflict, "connect.telegram.not_admin")
+		writeTelegramConnectError(w, r, http.StatusConflict, "not_admin", "connect.telegram.not_admin")
 		return
 	case health.Status == connhealth.StatusBroken && health.ReasonCode == connhealth.ReasonTelegramNoPostRight:
-		writeJSONErrorKey(w, r, http.StatusConflict, "connect.telegram.no_post_rights")
+		writeTelegramConnectError(w, r, http.StatusConflict, "no_post_rights", "connect.telegram.no_post_rights")
 		return
 	}
 
@@ -533,4 +516,8 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 		LinkedChatId:      channelInfo.LinkedChatID,
 		LinkedGroupStatus: openapi.RefreshTelegramResponseLinkedGroupStatus(linkedStatus),
 	})
+}
+
+func writeTelegramConnectError(w http.ResponseWriter, r *http.Request, status int, reason, key string) {
+	writeJSON(w, status, openapi.TelegramConnectError{Error: i18n.Tr(r.Context(), key), Reason: reason})
 }
