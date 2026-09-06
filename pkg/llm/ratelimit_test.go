@@ -3,6 +3,7 @@ package llm_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,39 +70,131 @@ func TestRateLimiter_CheckLimit(t *testing.T) {
 	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
 	userID := uuid.New()
 
-	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 	assert.NoError(t, err)
 	assert.True(t, allowed)
 
 	for i := 0; i < 9; i++ {
-		allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
+		allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 		assert.NoError(t, err)
 		assert.True(t, allowed)
 	}
 
-	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
+	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 	assert.NoError(t, err)
 	assert.False(t, allowed)
 }
 
-// TestRateLimiter_TokenLimit exercises the REAL per-minute token gate (free
-// TokensPerMin=5000): a first turn estimated at 4000 tokens passes, a second at
+// gateTierLimits returns a single-tier table with an explicit per-minute token
+// gate, so tests of the GATE MECHANISM do not silently change meaning when the
+// product-side DefaultTierLimits numbers are retuned.
+func gateTierLimits(tokensPerMin int) llm.TierLimits {
+	return llm.TierLimits{
+		"free": llm.Limits{
+			RequestsPerMin: 10,
+			TokensPerMin:   tokensPerMin,
+			TokensPerMonth: -1,
+			DailySpendUSD:  0,
+		},
+	}
+}
+
+// TestRateLimiter_TokenLimit exercises the REAL per-minute token gate with
+// TokensPerMin=5000: a first turn estimated at 4000 tokens passes, a second at
 // 1500 trips the gate (4000+1500 > 5000). Previously skipped without a live
 // Redis; now miniredis-backed so the token branch actually runs.
 func TestRateLimiter_TokenLimit(t *testing.T) {
 	ctx := context.Background()
 	_, rdb := freshRedis(t)
 
-	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	limiter := llm.NewRateLimiter(rdb, gateTierLimits(5000))
 	userID := uuid.New()
 
-	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 4000)
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 4000})
 	assert.NoError(t, err)
 	assert.True(t, allowed)
 
-	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 1500)
+	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 1500})
 	assert.NoError(t, err)
 	assert.False(t, allowed)
+}
+
+// TestRateLimiter_StablePrefixNotAccumulated — the cache-stable prefix
+// (SystemBlocks + tool catalog) that every call of an agentic turn re-sends is
+// compared against the cap but never accumulated in the minute window. Before
+// the fix each call INCRBY'd the whole request estimate, so a two-call turn
+// (tool iteration, or a HITL resume) exhausted the window on its own.
+func TestRateLimiter_StablePrefixNotAccumulated(t *testing.T) {
+	ctx := context.Background()
+	_, rdb := freshRedis(t)
+
+	limiter := llm.NewRateLimiter(rdb, gateTierLimits(5000))
+	userID := uuid.New()
+
+	turn := llm.TokenCharge{Variable: 400, Stable: 2600}
+	for i := 0; i < 6; i++ {
+		allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", turn)
+		require.NoError(t, err)
+		assert.True(t, allowed, "call %d: 2600 stable prefix must be charged once, not %d times", i, i+1)
+	}
+}
+
+// TestRateLimiter_OversizeRequestDoesNotPoisonWindow — a single request whose
+// estimate alone exceeds the per-minute cap is rejected WITHOUT incrementing
+// the counter, so a later correctly-sized request in the same window still
+// passes. Before the fix CheckLimit INCRBY'd first and compared after, leaving
+// the window permanently over the cap (and every retry re-charging it).
+func TestRateLimiter_OversizeRequestDoesNotPoisonWindow(t *testing.T) {
+	ctx := context.Background()
+	_, rdb := freshRedis(t)
+
+	limiter := llm.NewRateLimiter(rdb, gateTierLimits(5000))
+	userID := uuid.New()
+
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 9000})
+	require.NoError(t, err)
+	assert.False(t, allowed, "a request over the whole per-minute cap must be refused")
+
+	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 1000})
+	require.NoError(t, err)
+	assert.True(t, allowed, "the refused oversize request must not have consumed the window")
+}
+
+// TestRateLimiter_OversizeRequestSkipsRedisEntirely — the size gate runs before
+// any Redis side-effect, so the refused request does not even burn a slot in
+// the per-minute REQUEST counter.
+func TestRateLimiter_OversizeRequestSkipsRedisEntirely(t *testing.T) {
+	ctx := context.Background()
+	mr, rdb := freshRedis(t)
+
+	limiter := llm.NewRateLimiter(rdb, gateTierLimits(5000))
+	userID := uuid.New()
+
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 9000})
+	require.NoError(t, err)
+	require.False(t, allowed)
+
+	assert.Empty(t, mr.Keys(), "an over-cap request must not create any rate-limit counter")
+}
+
+// TestRateLimiter_FreeTierFitsAMultiStepTurn — the product default for the free
+// tier must fit a realistic Russian-language turn: a tool-using turn is several
+// LLM calls in one minute, and a HITL approve/reject posts another. This is the
+// fail-on-revert anchor for the free TokensPerMin default: shrink it back to
+// 5000 and the sequence below starts returning allowed=false.
+func TestRateLimiter_FreeTierFitsAMultiStepTurn(t *testing.T) {
+	ctx := context.Background()
+	_, rdb := freshRedis(t)
+
+	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	userID := uuid.New()
+
+	turn := llm.TokenCharge{Variable: 900, Stable: 1900}
+	for i := 0; i < llm.DefaultTierLimits["free"].RequestsPerMin; i++ {
+		allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", turn)
+		require.NoError(t, err)
+		assert.True(t, allowed, "free tier must admit call %d of the RequestsPerMin it already allows", i+1)
+	}
 }
 
 // TestRateLimiter_TokensPerMonth_Accumulates — several requests' estimated
@@ -124,12 +217,12 @@ func TestRateLimiter_TokensPerMonth_Accumulates(t *testing.T) {
 	userID := uuid.New()
 
 	for i := 0; i < 3; i++ {
-		allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 300)
+		allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 300})
 		require.NoError(t, err)
 		assert.True(t, allowed, "request %d (running total %d) is at-or-under the 1000/month cap", i, (i+1)*300)
 	}
 
-	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 300)
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 300})
 	require.NoError(t, err)
 	assert.False(t, allowed, "4th request pushes the month total to 1200 > 1000 → blocked")
 }
@@ -153,13 +246,13 @@ func TestRateLimiter_RecordTokens_BumpsMonthCounter(t *testing.T) {
 	limiter := llm.NewRateLimiter(rdb, limits)
 	userID := uuid.New()
 
-	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 600)
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 600})
 	require.NoError(t, err)
 	require.True(t, allowed)
 
 	limiter.RecordTokens(ctx, userID, uuid.Nil, "free", 500)
 
-	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 600)
+	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 600})
 	require.NoError(t, err)
 	assert.False(t, allowed, "month total 600+500+600=1700 > 1000 after reconcile → blocked")
 }
@@ -240,7 +333,7 @@ func TestRateLimiter_DailySpend_Blocked(t *testing.T) {
 	before := testutil.ToFloat64(metrics.LLMDailySpendBlocked.WithLabelValues("free"))
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", llm.TokenCharge{Variable: 0})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "got %v", err)
 	assert.False(t, allowed)
@@ -254,7 +347,7 @@ func TestRateLimiter_DailySpend_Allowed(t *testing.T) {
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", llm.TokenCharge{Variable: 0})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 }
@@ -266,7 +359,7 @@ func TestRateLimiter_DailySpend_SkippedWhenNil(t *testing.T) {
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", llm.TokenCharge{Variable: 0})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 }
@@ -279,7 +372,7 @@ func TestRateLimiter_DailySpend_SkippedNilBusiness(t *testing.T) {
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 0)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", llm.TokenCharge{Variable: 0})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 	assert.False(t, spender.called, "DailySpender must not be consulted when businessID is nil")
@@ -295,7 +388,7 @@ func TestRateLimiter_NilUser_RunsDailySpendGate(t *testing.T) {
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "free", 100)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "free", llm.TokenCharge{Variable: 100})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "got %v", err)
 	assert.False(t, allowed)
@@ -311,7 +404,7 @@ func TestRateLimiter_NilUser_SkipsPerUserBuckets(t *testing.T) {
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "free", 100)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "free", llm.TokenCharge{Variable: 100})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 	for _, k := range mr.Keys() {
@@ -327,7 +420,7 @@ func TestRateLimiter_NilUser_UnknownTierPasses(t *testing.T) {
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "background", 100)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.Nil, uuid.New(), "background", llm.TokenCharge{Variable: 100})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 }
@@ -339,7 +432,7 @@ func TestRateLimiter_RealUser_UnknownTierFailsClosed(t *testing.T) {
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "ghost", 100)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.New(), "ghost", llm.TokenCharge{Variable: 100})
 	require.Error(t, err)
 	assert.False(t, allowed)
 }
@@ -353,7 +446,7 @@ func TestRateLimiter_DailySpend_BlocksBeforeRedis(t *testing.T) {
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
 
 	userID := uuid.New()
-	_, err := rl.CheckLimit(context.Background(), userID, uuid.New(), "free", 0)
+	_, err := rl.CheckLimit(context.Background(), userID, uuid.New(), "free", llm.TokenCharge{Variable: 0})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded))
 
@@ -370,12 +463,12 @@ func TestRateLimiter_DailySpend_EpsilonNudge(t *testing.T) {
 
 	atCap := &fakeDailySpender{spend: dailyCap - 1e-12}
 	rlAtCap := llm.NewRateLimiter(rdb, freeTierWithCap(dailyCap), llm.WithDailySpender(atCap))
-	_, err := rlAtCap.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
+	_, err := rlAtCap.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", llm.TokenCharge{Variable: 0})
 	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "epsilon-below cap must fire, got %v", err)
 
 	under := &fakeDailySpender{spend: dailyCap - 1e-3}
 	rlUnder := llm.NewRateLimiter(rdb, freeTierWithCap(dailyCap), llm.WithDailySpender(under))
-	allowed, err := rlUnder.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
+	allowed, err := rlUnder.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", llm.TokenCharge{Variable: 0})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 }
@@ -389,7 +482,7 @@ func TestRateLimiter_RedisDown_Block(t *testing.T) {
 	before := testutil.ToFloat64(metrics.LLMRedisDownFallback.WithLabelValues("block"))
 	rl := llm.NewRateLimiter(rdb, llm.DefaultTierLimits, llm.WithRedisDownPolicy(llm.RedisDownPolicyBlock))
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrRateLimitUnavailable), "got %v", err)
 	assert.False(t, allowed)
@@ -408,7 +501,7 @@ func TestRateLimiter_RedisDown_LocalFallback_Allow(t *testing.T) {
 		llm.WithLocalBucket(rate.Limit(100.0/3600.0), 5),
 	)
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 	assert.Equal(t, before+1, testutil.ToFloat64(metrics.LLMRedisDownFallback.WithLabelValues("fallback")))
@@ -426,11 +519,11 @@ func TestRateLimiter_RedisDown_LocalFallback_Exhausted(t *testing.T) {
 		llm.WithLocalBucket(rate.Limit(0.0001), 1),
 	)
 
-	allowed1, err1 := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
+	allowed1, err1 := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 	require.NoError(t, err1)
 	assert.True(t, allowed1)
 
-	allowed2, err2 := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
+	allowed2, err2 := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 	require.Error(t, err2)
 	assert.True(t, errors.Is(err2, llm.ErrRateLimitExceeded), "got %v", err2)
 	assert.False(t, allowed2)
@@ -448,7 +541,7 @@ func TestRateLimiter_RedisDown_LocalFallback_Misconfigured(t *testing.T) {
 		llm.WithRedisDownPolicy(llm.RedisDownPolicyLocalFallback),
 	)
 
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 100)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", llm.TokenCharge{Variable: 100})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrRateLimitUnavailable), "got %v", err)
 	assert.False(t, allowed)
@@ -466,7 +559,7 @@ func TestRateLimiter_DailySpenderError_FailsClosed(t *testing.T) {
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0), llm.WithDailySpender(spender))
 
 	userID := uuid.New()
-	allowed, err := rl.CheckLimit(context.Background(), userID, uuid.New(), "free", 100)
+	allowed, err := rl.CheckLimit(context.Background(), userID, uuid.New(), "free", llm.TokenCharge{Variable: 100})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrRateLimitUnavailable), "got %v", err)
 	assert.False(t, allowed)
@@ -520,7 +613,7 @@ func TestRateLimiter_TTLSelfHeal_RepairsMissingTTL(t *testing.T) {
 	before := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
-	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", 1)
+	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 1})
 	require.NoError(t, err)
 	assert.True(t, allowed, "self-heal must not block the request")
 
@@ -554,7 +647,7 @@ func TestRateLimiter_TTLSelfHeal_DoesNotResetExistingWindow(t *testing.T) {
 	before := testutil.ToFloat64(metrics.LLMExpireFailure.WithLabelValues("requests_min"))
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
-	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", 1)
+	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 1})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 
@@ -580,7 +673,7 @@ func TestRateLimiter_TTLSelfHeal_NoHealOnFreshCounter(t *testing.T) {
 	userID := uuid.New()
 	reqKey := "ratelimit:" + userID.String() + ":requests:min"
 
-	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", 1)
+	allowed, err := rl.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 1})
 	require.NoError(t, err)
 	assert.True(t, allowed)
 
@@ -598,8 +691,91 @@ func TestRateLimiter_ScriptError_GracefulDegradation(t *testing.T) {
 	rdb.AddHook(evalFailHook{err: errors.New("EVAL transient")})
 
 	rl := llm.NewRateLimiter(rdb, freeTierWithCap(1.0))
-	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", 1)
+	allowed, err := rl.CheckLimit(context.Background(), uuid.New(), uuid.Nil, "free", llm.TokenCharge{Variable: 1})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, llm.ErrRateLimitUnavailable), "got %v", err)
 	assert.False(t, allowed)
+}
+
+func TestRateLimiter_RejectedChargePreservesAllCounters(t *testing.T) {
+	for _, gate := range []string{"requests", "minute", "month"} {
+		t.Run(gate, func(t *testing.T) {
+			mr, rdb := freshRedis(t)
+			limits := llm.Limits{RequestsPerMin: 10, TokensPerMin: 1000, TokensPerMonth: 1000}
+			switch gate {
+			case "requests":
+				limits.RequestsPerMin = 1
+			case "minute":
+				limits.TokensPerMin = 500
+			case "month":
+				limits.TokensPerMonth = 500
+			}
+			limiter := llm.NewRateLimiter(rdb, llm.TierLimits{"free": limits})
+			ctx := context.Background()
+			userID := uuid.New()
+			allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 300})
+			require.NoError(t, err)
+			require.True(t, allowed)
+			mr.FastForward(10 * time.Second)
+			values := map[string]string{}
+			ttls := map[string]time.Duration{}
+			for _, key := range mr.Keys() {
+				values[key], err = mr.Get(key)
+				require.NoError(t, err)
+				ttls[key] = mr.TTL(key)
+			}
+			for retry := 0; retry < 3; retry++ {
+				allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 300})
+				require.NoError(t, err)
+				require.False(t, allowed)
+			}
+			require.Len(t, mr.Keys(), len(values))
+			for key, value := range values {
+				got, getErr := mr.Get(key)
+				require.NoError(t, getErr)
+				assert.Equal(t, value, got)
+				assert.Equal(t, ttls[key], mr.TTL(key))
+			}
+			if gate != "requests" {
+				allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", llm.TokenCharge{Variable: 200})
+				require.NoError(t, err)
+				require.True(t, allowed, "remaining capacity must still be usable")
+			}
+		})
+	}
+}
+
+func TestRateLimiter_ConcurrentReservationsStayWithinBudget(t *testing.T) {
+	_, rdb := freshRedis(t)
+	limiter := llm.NewRateLimiter(rdb, llm.TierLimits{"free": {
+		RequestsPerMin: 100, TokensPerMin: 1000, TokensPerMonth: 1000,
+	}})
+	userID := uuid.New()
+	type outcome struct {
+		allowed bool
+		err     error
+	}
+	results := make(chan outcome, 20)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			allowed, err := limiter.CheckLimit(context.Background(), userID, uuid.Nil, "free", llm.TokenCharge{Variable: 100})
+			results <- outcome{allowed, err}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	admitted := 0
+	for result := range results {
+		require.NoError(t, result.err)
+		if result.allowed {
+			admitted++
+		}
+	}
+	assert.Equal(t, 10, admitted)
+	count, err := rdb.Get(context.Background(), "ratelimit:"+userID.String()+":requests:min").Int()
+	require.NoError(t, err)
+	assert.Equal(t, admitted, count)
 }

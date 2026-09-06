@@ -40,11 +40,11 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 	now := time.Now().UTC()
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID).
-			AddRow(targetID, newRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(actorID, ownerRoleID, false).
+			AddRow(targetID, newRoleID, false))
 	mockPool.ExpectCommit()
 
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{

@@ -138,3 +138,80 @@ func TestEstimateRequestTokens_IncludesMessages(t *testing.T) {
 			whole, msgsOnly)
 	}
 }
+
+// TestEstimateTokens_CountsRunesNotBytes — the estimate must be language-neutral.
+// Cyrillic is 2 UTF-8 bytes per rune, so a byte-length estimator charged a
+// Russian prompt twice what it charged the same-length English one, which is
+// what pushed ordinary RU chat turns over the per-minute gate.
+func TestEstimateTokens_CountsRunesNotBytes(t *testing.T) {
+	const runeCount = 4000
+	latin := estimateTokens([]Message{{Role: "user", Content: strings.Repeat("a", runeCount)}})
+	cyrillic := estimateTokens([]Message{{Role: "user", Content: strings.Repeat("я", runeCount)}})
+
+	if latin != cyrillic {
+		t.Fatalf("same rune count must estimate the same: latin=%d cyrillic=%d", latin, cyrillic)
+	}
+}
+
+// TestEstimateStableTokens_CountsRunesNotBytes — the same language neutrality
+// applies to the system prompt, which is Russian in production and dominates
+// the per-call estimate.
+func TestEstimateStableTokens_CountsRunesNotBytes(t *testing.T) {
+	const runeCount = 4000
+	latin := estimateStableTokens(ChatRequest{
+		SystemBlocks: []SystemBlock{{Text: strings.Repeat("a", runeCount)}},
+	})
+	cyrillic := estimateStableTokens(ChatRequest{
+		SystemBlocks: []SystemBlock{{Text: strings.Repeat("я", runeCount)}},
+	})
+
+	if latin != cyrillic {
+		t.Fatalf("same rune count must estimate the same: latin=%d cyrillic=%d", latin, cyrillic)
+	}
+}
+
+// TestEstimateRequestCharge_SplitsStableFromVariable — Messages land in
+// Variable, SystemBlocks and Tools in Stable, and Total is their sum. The split
+// is what lets the per-minute burst gate stop re-charging the identical prompt
+// prefix on every iteration of one agentic turn.
+func TestEstimateRequestCharge_SplitsStableFromVariable(t *testing.T) {
+	req := ChatRequest{
+		Messages:     []Message{{Role: "user", Content: strings.Repeat("m", 4000)}},
+		SystemBlocks: []SystemBlock{{Text: strings.Repeat("s", 8000)}},
+		Tools: []ToolDefinition{{
+			Type: ToolCallTypeFunction,
+			Function: FunctionDefinition{
+				Name:        "telegram__send_channel_post",
+				Description: strings.Repeat("d", 400),
+				Parameters:  map[string]interface{}{"type": "object"},
+			},
+		}},
+	}
+
+	charge := estimateRequestCharge(req)
+
+	if charge.Variable != estimateTokens(req.Messages) {
+		t.Fatalf("Variable must be the messages-only estimate: got %d want %d",
+			charge.Variable, estimateTokens(req.Messages))
+	}
+	if charge.Stable < 2000 {
+		t.Fatalf("an 8000-char SystemBlock plus a tool schema should estimate >= 2000 stable tokens, got %d",
+			charge.Stable)
+	}
+	if charge.Total() != charge.Variable+charge.Stable {
+		t.Fatalf("Total must be Variable+Stable: got %d", charge.Total())
+	}
+	if charge.Total() != estimateRequestTokens(req) {
+		t.Fatalf("estimateRequestTokens must equal the charge total: %d vs %d",
+			estimateRequestTokens(req), charge.Total())
+	}
+}
+
+// TestEstimateRequestCharge_EmptyRequest — a request with nothing in it charges
+// nothing, so an ungated internal call cannot accidentally consume a window.
+func TestEstimateRequestCharge_EmptyRequest(t *testing.T) {
+	charge := estimateRequestCharge(ChatRequest{})
+	if charge.Variable != 0 || charge.Stable != 0 || charge.Total() != 0 {
+		t.Fatalf("empty request must estimate a zero charge, got %+v", charge)
+	}
+}
