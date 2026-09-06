@@ -32,27 +32,37 @@ export function LandingInteractions({ mode }: LandingEntryProps) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     document.addEventListener('click', trackLandingClick);
+    const viewport = window.visualViewport;
     function update() {
+      const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+      const keyboardOpen = Boolean(
+        viewport && window.innerHeight - viewport.height > MOBILE_BAR_FOCUS_CLEARANCE
+      );
       const hero = document.getElementById('hero');
       const waitlist = document.getElementById('waitlist');
       const rect = waitlist?.getBoundingClientRect();
-      const formVisible = rect && rect.top < window.innerHeight && rect.bottom > 0;
+      const formVisible = rect && rect.top < viewportBottom && rect.bottom > 0;
       const focused = document.activeElement;
       const editing =
         focused instanceof HTMLElement &&
         focused.matches('input, textarea, select, [role="combobox"]');
+      const clearance = Math.max(
+        MOBILE_BAR_FOCUS_CLEARANCE,
+        document.querySelector('[data-landing-bar]')?.getBoundingClientRect().height ?? 0
+      );
       const coveredFocus =
         focused instanceof HTMLElement &&
         focused !== document.body &&
         !focused.closest('[data-landing-bar]') &&
-        focused.getBoundingClientRect().bottom > window.innerHeight - MOBILE_BAR_FOCUS_CLEARANCE;
+        focused.getBoundingClientRect().bottom > viewportBottom - clearance;
       setVisible(
         Boolean(
           hero &&
           hero.getBoundingClientRect().bottom <= 0 &&
           !formVisible &&
           !editing &&
-          !coveredFocus
+          !coveredFocus &&
+          !keyboardOpen
         )
       );
     }
@@ -63,6 +73,8 @@ export function LandingInteractions({ mode }: LandingEntryProps) {
     }
     window.addEventListener('scroll', update, { passive: true });
     window.addEventListener('resize', update);
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
     document.addEventListener('focusin', update);
     document.addEventListener('focusout', update);
     update();
@@ -71,6 +83,8 @@ export function LandingInteractions({ mode }: LandingEntryProps) {
       observer.disconnect();
       window.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
       document.removeEventListener('focusin', update);
       document.removeEventListener('focusout', update);
     };

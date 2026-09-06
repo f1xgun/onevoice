@@ -20,7 +20,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FormError } from '@/components/ui/form-error';
-import { MonoLabel } from '@/components/ui/mono-label';
 import { createWaitlistSchema, type WaitlistInput } from '@/lib/schemas';
 import { joinWaitlist, type WaitlistPayload } from '@/lib/api/waitlist';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
@@ -76,14 +75,13 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
 
   if (submitted) {
     return (
-      <div className="rounded-xl border border-line bg-paper-raised p-8 shadow-ov-3 sm:p-10">
-        <MonoLabel tone="ochre">{t('success.label')}</MonoLabel>
-        <h3 className="mt-3 text-[26px] font-medium leading-tight tracking-[-0.015em] sm:text-[30px]">
-          {t('success.title')}
-        </h3>
-        <p className="mt-4 max-w-[440px] text-[15px] leading-relaxed text-ink-mid">
-          {t('success.body')}
-        </p>
+      <div
+        role="status"
+        className="min-w-0 rounded-lg border border-line bg-paper-raised p-4 shadow-none sm:p-6"
+      >
+        <p className="text-meta text-ink-soft">{t('success.label')}</p>
+        <h3 className="mt-3 text-document-title">{t('success.title')}</h3>
+        <p className="mt-4 max-w-[440px] text-reading text-ink">{t('success.body')}</p>
         <div className="mt-7">
           <Button asChild size="lg" variant="primary">
             <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noreferrer">
@@ -107,11 +105,11 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
     <form
       onSubmit={handleSubmit(onSubmit)}
       noValidate
-      className="rounded-xl border border-line bg-paper-raised p-6 shadow-ov-3 sm:p-8"
+      className="min-w-0 rounded-lg border border-line bg-paper-raised p-4 shadow-none sm:p-6"
     >
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="waitlist-email" className="text-xs font-medium text-ink-mid">
+          <Label htmlFor="waitlist-email" className="text-meta font-medium text-ink-mid">
             {t('emailLabel')}
           </Label>
           <Input
@@ -120,15 +118,19 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
             inputMode="email"
             autoComplete="email"
             placeholder={t('emailPlaceholder')}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? 'waitlist-email-error' : undefined}
             {...register('email')}
           />
           {errors.email && (
-            <p className="text-sm text-[var(--ov-danger)]">{errors.email.message}</p>
+            <p id="waitlist-email-error" className="text-meta text-danger">
+              {errors.email.message}
+            </p>
           )}
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="waitlist-sphere" className="text-xs font-medium text-ink-mid">
+          <Label htmlFor="waitlist-sphere" className="text-meta font-medium text-ink-mid">
             {t('sphereLabel')}
             <span className="ml-1.5 font-normal text-ink-soft">{t('optional')}</span>
           </Label>
@@ -137,12 +139,15 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
             control={control}
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger id="waitlist-sphere">
+                <SelectTrigger
+                  id="waitlist-sphere"
+                  className="h-auto min-h-11 whitespace-normal border-control bg-paper-raised text-reading [&>span]:line-clamp-none"
+                >
                   <SelectValue placeholder={t('spherePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {SPHERE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
+                    <SelectItem key={option} value={option} className="min-h-11 text-reading">
                       {t(`sphereOptions.${option}`)}
                     </SelectItem>
                   ))}
@@ -152,8 +157,8 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
           />
         </div>
 
-        <fieldset className="flex flex-col gap-2.5">
-          <legend className="mb-0.5 text-xs font-medium text-ink-mid">
+        <fieldset className="flex min-w-0 flex-col gap-2.5">
+          <legend className="mb-0.5 text-meta font-medium text-ink-mid">
             {t('painLabel')}
             <span className="ml-1.5 font-normal text-ink-soft">{t('optional')}</span>
           </legend>
@@ -161,14 +166,22 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
             name="pain"
             control={control}
             render={({ field }) => (
-              <RadioGroup value={field.value} onValueChange={field.onChange} className="gap-2.5">
+              <RadioGroup
+                value={field.value ?? ''}
+                onValueChange={field.onChange}
+                className="gap-2.5"
+              >
                 {PAIN_OPTIONS.map((option) => (
                   <label
                     key={option}
                     htmlFor={`pain-${option}`}
-                    className="flex cursor-pointer items-center gap-2.5 text-[14px] text-ink"
+                    className="flex min-h-11 cursor-pointer items-center gap-3 py-2 text-reading text-ink"
                   >
-                    <RadioGroupItem id={`pain-${option}`} value={option} />
+                    <RadioGroupItem
+                      className="shrink-0 border-control"
+                      id={`pain-${option}`}
+                      value={option}
+                    />
                     {t(`painOptions.${option}`)}
                   </label>
                 ))}
@@ -184,13 +197,18 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
             render={({ field }) => (
               <Checkbox
                 id="waitlist-consent"
-                className="mt-0.5"
+                className="mt-3.5 shrink-0 border-control"
+                aria-invalid={Boolean(errors.consent)}
+                aria-describedby={errors.consent ? 'waitlist-consent-error' : undefined}
                 checked={field.value === true}
                 onCheckedChange={(value) => field.onChange(value === true)}
               />
             )}
           />
-          <label htmlFor="waitlist-consent" className="text-[13px] leading-relaxed text-ink-mid">
+          <label
+            htmlFor="waitlist-consent"
+            className="min-h-11 cursor-pointer py-2.5 text-meta text-ink"
+          >
             {t('consentLabel')}{' '}
             <Link href={legalDocHref('privacy')} className="text-ink underline hover:no-underline">
               {t('consentLinkText')}
@@ -198,7 +216,9 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
           </label>
         </div>
         {errors.consent && (
-          <p className="-mt-2 text-sm text-[var(--ov-danger)]">{errors.consent.message}</p>
+          <p id="waitlist-consent-error" className="-mt-2 text-meta text-danger">
+            {errors.consent.message}
+          </p>
         )}
 
         <FormError>{formError}</FormError>

@@ -7,7 +7,6 @@ import { Check } from 'lucide-react';
 
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { AppInput as Input } from '@/components/design-system/AppInput';
-import { MonoLabel } from '@/components/ui/mono-label';
 import { voteChannel } from '@/lib/api/waitlist';
 
 // Direct-vote channels post immediately on click. "other" reveals a note field
@@ -59,7 +58,7 @@ export function ChannelVote() {
 
   return (
     <div className="mt-10 rounded-lg border border-line bg-paper-sunken p-6 sm:p-7">
-      <MonoLabel tone="ochre">{t('kicker')}</MonoLabel>
+      <p className="text-meta text-ink-soft">{t('kicker')}</p>
       <h3 className="mt-2 text-[20px] font-medium leading-snug tracking-[-0.01em] sm:text-[22px]">
         {t('headline')}
       </h3>
