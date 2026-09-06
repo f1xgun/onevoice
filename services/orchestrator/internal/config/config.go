@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
 
@@ -220,6 +221,10 @@ func Load() (*Config, error) {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			toolExecTimeout = d
 		}
+	}
+
+	if toolExecTimeout > natsauth.ResponsePermissionTTL-natsauth.ResponsePermissionMargin {
+		return nil, fmt.Errorf("TOOL_EXEC_TIMEOUT must be at most %s to fit the NATS reply permission window", natsauth.ResponsePermissionTTL-natsauth.ResponsePermissionMargin)
 	}
 
 	healthCheckTimeout := 2 * time.Second

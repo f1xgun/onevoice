@@ -350,8 +350,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	appEnv := os.Getenv("APP_ENV")
+	publicURL := getEnv("PUBLIC_URL", defaultPublicURL)
+
 	cfg := &Config{
-		AppEnv:        os.Getenv("APP_ENV"),
+		AppEnv:        appEnv,
 		Port:          getEnv("PORT", "8080"),
 		PostgresHost:  getEnv("POSTGRES_HOST", "localhost"),
 		PostgresPort:  getEnv("POSTGRES_PORT", "5432"),
@@ -366,7 +369,7 @@ func Load() (*Config, error) {
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
 		A2APayloadKey: os.Getenv("A2A_PAYLOAD_KEY"),
-		SecureCookies: getEnv("SECURE_COOKIES", envBoolTrue) == envBoolTrue,
+		SecureCookies: secureCookiesDefault(publicURL),
 
 		VKClientID:                 os.Getenv("VK_CLIENT_ID"),
 		VKClientSecret:             os.Getenv("VK_CLIENT_SECRET"),
@@ -415,8 +418,8 @@ func Load() (*Config, error) {
 		S3UseSSL:          getEnv("S3_USE_SSL", "false") == envBoolTrue,
 		S3PublicURLPrefix: getEnv("S3_PUBLIC_URL_PREFIX", "/media"),
 
-		PublicURL:          getEnv("PUBLIC_URL", defaultPublicURL),
-		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{defaultCORSDevOrigin}),
+		PublicURL:          publicURL,
+		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", defaultCORSOrigins(publicURL, appEnv)),
 
 		HTTPReadTimeout:          getEnvDuration("HTTP_READ_TIMEOUT", defaultHTTPReadTimeout),
 		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", defaultHTTPReadHeaderTimeout),
@@ -473,6 +476,18 @@ func Load() (*Config, error) {
 	if cfg.LockoutDuration <= 0 {
 		cfg.LockoutDuration = defaultLockoutDuration
 	}
+	if v := os.Getenv("SECURE_COOKIES"); v != "" {
+		b, perr := strconv.ParseBool(v)
+		if perr != nil {
+			return nil, fmt.Errorf("SECURE_COOKIES must be a boolean, got %q: %w", v, perr)
+		}
+		cfg.SecureCookies = b
+	}
+	if cfg.SecureCookies && strings.HasPrefix(strings.ToLower(cfg.PublicURL), plainHTTPPrefix) {
+		slog.Warn("SECURE_COOKIES is on while PUBLIC_URL is plain http — browsers reject the __Host- refresh cookie, so every full page load signs the user out",
+			"public_url", cfg.PublicURL)
+	}
+
 	cfg.SmartCaptchaSiteKey = os.Getenv("SMARTCAPTCHA_SITE_KEY")
 	cfg.SmartCaptchaSecretKey = os.Getenv("SMARTCAPTCHA_SECRET_KEY")
 	cfg.TrustedProxyCIDRs = os.Getenv("TRUSTED_PROXY_CIDRS")
@@ -775,7 +790,38 @@ func parseInternalACL() (map[string][]string, error) {
 // boot checks (legal validation, transactional email) share, so each gate uses
 // identical matching semantics (case-insensitive, whitespace-trimmed).
 func (c *Config) IsProduction() bool {
-	return strings.EqualFold(strings.TrimSpace(c.AppEnv), "production")
+	return isProductionEnv(c.AppEnv)
+}
+
+// isProductionEnv is IsProduction's value form, usable while Load is still
+// assembling the Config.
+func isProductionEnv(appEnv string) bool {
+	return strings.EqualFold(strings.TrimSpace(appEnv), "production")
+}
+
+// defaultCORSOrigins is the allow-list used when CORS_ALLOWED_ORIGINS is unset.
+// PublicURL is always included: it is the origin a browser sends behind the
+// reverse proxy, and the handler-level CSRF check on the erasure / consent /
+// organization-lifecycle endpoints rejects everything outside this list. Outside
+// production the local Next.js dev server origin is allowed as well.
+func defaultCORSOrigins(publicURL, appEnv string) []string {
+	origins := []string{publicURL}
+	if !isProductionEnv(appEnv) && publicURL != defaultCORSDevOrigin {
+		origins = append(origins, defaultCORSDevOrigin)
+	}
+	return origins
+}
+
+const plainHTTPPrefix = "http://"
+
+// secureCookiesDefault reports whether the refresh cookie carries the Secure
+// attribute when SECURE_COOKIES is unset. A `__Host-`-prefixed Secure cookie is
+// discarded by browsers on a plain-http origin, which silently drops the session
+// on every full page load, so the default follows the PUBLIC_URL scheme: plain
+// http turns it off, anything else (https, or an unparsable value) keeps the
+// hardened default.
+func secureCookiesDefault(publicURL string) bool {
+	return !strings.HasPrefix(strings.ToLower(strings.TrimSpace(publicURL)), plainHTTPPrefix)
 }
 
 // RequireInternalMTLS returns a fatal boot error when the internal listener —

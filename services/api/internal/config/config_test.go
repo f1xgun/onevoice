@@ -306,14 +306,35 @@ func TestLoad_HTTPTimeouts(t *testing.T) {
 
 func TestLoad_CORSAllowedOrigins(t *testing.T) {
 	cases := []struct {
-		name  string
-		value string
-		want  []string
+		name      string
+		value     string
+		publicURL string
+		appEnv    string
+		want      []string
 	}{
 		{
-			name:  "unset → dev default localhost:3000",
+			name:  "unset → public origin plus the dev origin",
 			value: "",
-			want:  []string{"http://localhost:3000"},
+			want:  []string{"http://localhost", "http://localhost:3000"},
+		},
+		{
+			name:      "unset behind a reverse proxy → that proxy's origin is allowed",
+			value:     "",
+			publicURL: "https://app.example.com",
+			want:      []string{"https://app.example.com", "http://localhost:3000"},
+		},
+		{
+			name:      "unset in production → public origin only",
+			value:     "",
+			publicURL: "https://app.example.com",
+			appEnv:    "production",
+			want:      []string{"https://app.example.com"},
+		},
+		{
+			name:      "unset with PUBLIC_URL equal to the dev origin → no duplicate",
+			value:     "",
+			publicURL: "http://localhost:3000",
+			want:      []string{"http://localhost:3000"},
 		},
 		{
 			name:  "single origin",
@@ -333,18 +354,86 @@ func TestLoad_CORSAllowedOrigins(t *testing.T) {
 		{
 			name:  "blank-only value falls back to default",
 			value: "  ,  ,",
-			want:  []string{"http://localhost:3000"},
+			want:  []string{"http://localhost", "http://localhost:3000"},
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			minTestEnv(t)
+			if c.appEnv == "production" {
+				setValidLegal(t)
+				t.Setenv("LLM_MODEL", "")
+				t.Setenv("TITLER_MODEL", "")
+			}
+			t.Setenv("APP_ENV", c.appEnv)
+			t.Setenv("PUBLIC_URL", c.publicURL)
 			t.Setenv("CORS_ALLOWED_ORIGINS", c.value)
 
 			cfg, err := config.Load()
 			require.NoError(t, err)
 			assert.Equal(t, c.want, cfg.CORSAllowedOrigins)
+		})
+	}
+}
+
+// TestLoad_SecureCookies pins the SECURE_COOKIES default to the PUBLIC_URL
+// scheme: a Secure `__Host-` refresh cookie is discarded by browsers on a
+// plain-http origin, which silently signs the user out on every full page load.
+func TestLoad_SecureCookies(t *testing.T) {
+	cases := []struct {
+		name      string
+		publicURL string
+		value     string
+		want      bool
+		wantErr   bool
+	}{
+		{
+			name: "unset with the default http origin → off",
+			want: false,
+		},
+		{
+			name:      "unset with an https origin → on",
+			publicURL: "https://app.example.com",
+			want:      true,
+		},
+		{
+			name:      "unset with an uppercase http origin → off",
+			publicURL: "HTTP://localhost",
+			want:      false,
+		},
+		{
+			name:      "explicit true wins over an http origin",
+			publicURL: "http://localhost",
+			value:     "true",
+			want:      true,
+		},
+		{
+			name:      "explicit false wins over an https origin",
+			publicURL: "https://app.example.com",
+			value:     "false",
+			want:      false,
+		},
+		{
+			name:    "unparsable value fails loud",
+			value:   "yes-please",
+			wantErr: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			minTestEnv(t)
+			t.Setenv("PUBLIC_URL", c.publicURL)
+			t.Setenv("SECURE_COOKIES", c.value)
+
+			cfg, err := config.Load()
+			if c.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, c.want, cfg.SecureCookies)
 		})
 	}
 }

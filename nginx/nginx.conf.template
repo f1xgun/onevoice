@@ -40,6 +40,11 @@ http {
     server_name ${DOMAIN};
 
     # Let's Encrypt http-01 challenge files — served verbatim.
+    location = /nginx-health {
+      access_log off;
+      return 200;
+    }
+
     location ^~ /.well-known/acme-challenge/ {
       root /var/www/certbot;
       default_type "text/plain";
@@ -85,9 +90,15 @@ http {
       proxy_pass $api_upstream;
     }
 
+    # The bare prefix is never an object — refuse it here so it can never be
+    # forwarded as a bucket-root request (which S3 answers with a listing).
+    location = /media/ {
+      return 404;
+    }
+
     location /media/ {
       set $minio_upstream http://minio:9000;
-      rewrite ^/media/(.*)$ /onevoice/$1 break;
+      rewrite ^/media/(.+)$ /onevoice/$1 break;
       proxy_pass $minio_upstream;
     }
 

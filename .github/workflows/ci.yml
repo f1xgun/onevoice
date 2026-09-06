@@ -41,6 +41,8 @@ jobs:
         with:
           filters: |
             backend:
+              - 'docker-compose*.yml'
+              - 'scripts/check-compose-env.sh'
               - 'pkg/**'
               - 'services/api/**'
               - 'services/orchestrator/**'
@@ -189,6 +191,11 @@ jobs:
 
       - name: No-inline-URL check (custom analyzer)
         run: make lint-urls
+
+      # Check detected literal service env reads against base Compose mappings.
+      # See the script for exclusions and coverage limits.
+      - name: Compose env propagation check
+        run: make lint-compose-env
 
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest

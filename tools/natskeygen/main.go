@@ -29,6 +29,8 @@ import (
 	"strings"
 
 	"github.com/nats-io/nkeys"
+
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 )
 
 // File modes for the generated material.
@@ -86,10 +88,14 @@ var perms = []svcPerm{
 func main() {
 	out := flag.String("out", "infra/nats/creds", "output directory for seeds and auth.conf")
 	force := flag.Bool("force", false, "regenerate even if auth.conf already exists")
+	refresh := flag.Bool("refresh", false, "refresh authorization from existing seeds without rotating identities")
 	flag.Parse()
+	if *force && *refresh {
+		fail("-force and -refresh cannot be combined")
+	}
 
 	authPath := filepath.Join(*out, "auth.conf")
-	if !*force {
+	if !*force && !*refresh {
 		if _, err := os.Stat(authPath); err == nil {
 			fmt.Printf("✓ %s already exists — skipping (run with -force, or `make clean-nats-creds`)\n", authPath)
 			return
@@ -102,7 +108,8 @@ func main() {
 
 	var users []string
 	for _, p := range perms {
-		kp, err := nkeys.CreateUser()
+		seedPath := filepath.Join(*out, p.service+".nk")
+		kp, err := serviceKey(seedPath, *refresh)
 		if err != nil {
 			fail("create nkey for %s: %v", p.service, err)
 		}
@@ -115,9 +122,10 @@ func main() {
 			fail("read public key for %s: %v", p.service, err)
 		}
 
-		seedPath := filepath.Join(*out, p.service+".nk")
-		if err := os.WriteFile(seedPath, append(seed, '\n'), seedFileMode); err != nil {
-			fail("write seed %s: %v", seedPath, err)
+		if !*refresh {
+			if err := os.WriteFile(seedPath, append(seed, '\n'), seedFileMode); err != nil {
+				fail("write seed %s: %v", seedPath, err)
+			}
 		}
 		kp.Wipe()
 
@@ -158,7 +166,7 @@ func renderUser(p svcPerm, pub string) string {
 		fmt.Fprintf(&b, "        subscribe { allow: [%s] }\n", quoteList(p.subscribeAllow))
 	}
 	if p.allowResponses {
-		b.WriteString("        allow_responses: true\n")
+		fmt.Fprintf(&b, "        allow_responses: { max: 1, expires: %q }\n", natsauth.ResponsePermissionTTL.String())
 	}
 	b.WriteString("      }\n")
 	b.WriteString("    }\n")
@@ -177,4 +185,20 @@ func quoteList(subjects []string) string {
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "natskeygen: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+func serviceKey(path string, refresh bool) (nkeys.KeyPair, error) {
+	if !refresh {
+		return nkeys.CreateUser()
+	}
+	seed, err := os.ReadFile(path) //nolint:gosec // The operator selects the seed directory via the CLI -out flag.
+	if err != nil {
+		return nil, fmt.Errorf("read existing seed %q: %w", path, err)
+	}
+	defer clear(seed)
+	key, err := nkeys.FromSeed([]byte(strings.TrimSpace(string(seed))))
+	if err != nil {
+		return nil, fmt.Errorf("parse existing seed %q: %w", path, err)
+	}
+	return key, nil
 }

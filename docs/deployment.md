@@ -73,12 +73,27 @@ git checkout main          # never deploy a feature branch
 
 The four agent services authenticate to the API's internal port (`:8443`) with client certificates signed by a project-local CA. These never touch the internet — they secure container-to-container traffic only.
 
+For a local/test stand, generate the credentials at the paths used by Compose:
+
 ```bash
-make certs
-ls certs/                 # ca.crt + server.{crt,key} + {telegram,vk,yandex-business}.{crt,key}
+make nats-creds
+make mtls-certs
 ```
 
-One-shot. Re-run only on CA rotation. Files are gitignored.
+For production, provision a separate CA and per-service keys through your secrets
+manager as described in [internal mTLS](../infra/mtls/README.md). Mount those
+production credentials at the configured paths; do not reuse the dev CA.
+
+On Linux, `agent-yandex-business` runs as UID/GID 1000 with capabilities dropped.
+Host-generated 0600 credentials must belong to that identity to be readable.
+Before deployment and after every rotation, apply the targeted ownership and
+traversal commands in [NATS ownership](../infra/nats/README.md#linux-credential-ownership)
+and [mTLS ownership](../infra/mtls/README.md#linux-credential-ownership), using the
+actual provisioned paths. Keep other services' keys and the CA key private to
+their provisioning identities. Do not recursively chown all credentials.
+
+Existing NATS deployments also need [permission refresh](../infra/nats/README.md#updating-reply-permissions-without-rotating-identities)
+to apply the five-minute reply window without rotating identities.
 
 ---
 
@@ -89,6 +104,21 @@ cp .env.example .env
 ```
 
 Open `.env` and fill in **every blank required field**. The file is the single source of truth — every section is annotated inline.
+
+> **How `.env` reaches the containers.** Compose reads `.env` only to interpolate
+> `${VAR}` references; nothing is injected automatically. The base
+> `docker-compose.yml` passes variables through each service's `environment:`
+> mapping. `make lint-compose-env` (part of `make lint-all` and CI) checks detected,
+> non-ignored literal env reads in service Go sources against those mappings.
+> It excludes test files and shared packages, and does not cover dynamic or
+> indirect reads, other formatting, or other env-reading helpers. It does not
+> account for `env_file`, image defaults, or Compose overrides, so it is not a
+> complete env audit.
+
+Set `APP_ENV=production` for any real deployment: it switches on the fail-closed
+gates (LEGAL_* validation, LLM data-residency, mandatory internal mTLS and
+orchestrator secret). The production overlay refuses to start without `APP_ENV`
+and `PUBLIC_URL`.
 
 ### Required values you MUST generate
 
@@ -119,7 +149,7 @@ Substitute `203.0.113.10` with the VM's public IP.
 ```env
 PUBLIC_URL=http://203.0.113.10
 CORS_ALLOWED_ORIGINS=http://203.0.113.10
-SECURE_COOKIES=false        # CRITICAL: without this, browsers won't store the session cookie over HTTP → login fails silently
+SECURE_COOKIES=false        # optional — this is already the default for an http PUBLIC_URL; forcing true makes the browser drop the session cookie over HTTP, so every full page load logs the user out
 
 # leave the TLS knobs empty — the prod overlay is not used
 DOMAIN=
@@ -354,7 +384,7 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 |---|---|---|
 | `api` container loops with `JWT_SECRET is required` | `.env` missing or compose run from a directory without it | Run from `/opt/onevoice` (the repo root). |
 | `api` exits with `ENCRYPTION_KEY must be exactly 32 bytes` | Generated with `rand -base64 32` (44 chars) or `rand -hex 32` (64 chars) | Use `openssl rand -hex 16` exactly. |
-| Login redirects back to login (mode A) | `SECURE_COOKIES` left at default `true` → browser refuses to store the cookie over HTTP | Set `SECURE_COOKIES=false`. |
+| Login redirects back to login (mode A) | `SECURE_COOKIES=true` forced with a plain-http `PUBLIC_URL` → browser refuses to store the cookie | Unset `SECURE_COOKIES` (it then follows the PUBLIC_URL scheme) or set it to `false`. |
 | `nginx` exits with `cannot load certificate ... no such file` | Cert volume empty | Re-run `./scripts/init-letsencrypt.sh`. |
 | Certbot returns `DNS problem: NXDOMAIN` | DNS not propagated, or in mode B the IP fragment is misspelled (dashes, not dots) | Mode B uses dashes: `203-0-113-10.nip.io`, not `203.0.113.10.nip.io`. |
 | Certbot returns `too many certificates already issued` | Hit Let's Encrypt's 5/week prod limit | Set `CERTBOT_STAGING=1` and iterate; flip to 0 only when you're confident. |
@@ -374,9 +404,9 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 - [ ] `.env` filled in, no blank required fields; **no dev secrets reused**.
 - [ ] `JWT_SECRET` ≥ 32 chars, `ENCRYPTION_KEY` exactly 32 bytes.
 - [ ] `CORS_ALLOWED_ORIGINS` matches the public origin (not `localhost`, not `*`).
-- [ ] Mode A: `SECURE_COOKIES=false`. Modes B / C: leave at default `true`.
+- [ ] `SECURE_COOKIES` unset (it follows the `PUBLIC_URL` scheme), or set to match it: `false` for mode A, `true` for modes B / C.
 - [ ] OAuth redirect URIs (modes B / C) match values in the VK / Yandex dashboards.
-- [ ] `make certs` run on the VM.
+- [ ] NATS and mTLS credentials provisioned; Linux worker ownership and directory traversal verified.
 - [ ] Modes B / C: Let's Encrypt staging cert obtained, then promoted.
 - [ ] `docker compose ... ps` shows all services `running` / `healthy`.
 - [ ] Health endpoint returns 200.

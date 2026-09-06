@@ -3,7 +3,10 @@ package natsauth
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	natslib "github.com/nats-io/nats.go"
 )
 
 // testSeed is a throwaway nkey user seed (generated with nkeys.CreateUser,
@@ -86,16 +89,56 @@ func TestOptions_NkeyBeatsUserPassword(t *testing.T) {
 	}
 }
 
-func TestOptions_InvalidNkeySeedSkipped(t *testing.T) {
-	clearAuthEnv(t)
-	bad := filepath.Join(t.TempDir(), "bad.nk")
-	if err := os.WriteFile(bad, []byte("not-a-valid-seed"), 0o600); err != nil {
-		t.Fatalf("write bad seed: %v", err)
+func TestOptions_SeedErrorsFailBeforeDial(t *testing.T) {
+	for _, name := range []string{"missing", "malformed", "unreadable"} {
+		t.Run(name, func(t *testing.T) {
+			clearAuthEnv(t)
+			path := filepath.Join(t.TempDir(), "user.nk")
+			if name != "missing" {
+				content := testSeed
+				mode := os.FileMode(0o600)
+				if name == "malformed" {
+					content = "invalid"
+				}
+				if name == "unreadable" {
+					mode = 0
+				}
+				if err := os.WriteFile(path, []byte(content), mode); err != nil {
+					t.Fatal(err)
+				}
+				if name == "unreadable" && os.Geteuid() == 0 {
+					t.Skip("root bypasses file permissions")
+				}
+			}
+			t.Setenv("NATS_NKEY_SEED", path)
+			t.Setenv("NATS_USER", "fallback-must-not-be-used")
+			conn, err := natslib.Connect(natslib.DefaultURL, Options()...)
+			if conn != nil {
+				conn.Close()
+				t.Fatal("unexpected connection")
+			}
+			if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "load NATS nkey seed") {
+				t.Fatalf("expected a credential error naming the path, got %v", err)
+			}
+		})
 	}
-	t.Setenv("NATS_NKEY_SEED", bad)
-	// A malformed seed yields no option (the failure surfaces at Connect, not here).
-	if got := Options(); len(got) != 0 {
-		t.Fatalf("expected 0 options for invalid seed, got %d", len(got))
+}
+
+func TestOptions_SeedSignsNonce(t *testing.T) {
+	clearAuthEnv(t)
+	t.Setenv("NATS_NKEY_SEED", writeSeedFile(t))
+	var options natslib.Options
+	for _, option := range Options() {
+		if err := option(&options); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if options.Nkey == "" || options.SignatureCB == nil {
+		t.Fatal("missing nkey authentication")
+	}
+	signature, err := options.SignatureCB([]byte("test nonce"))
+	if err != nil || len(signature) == 0 {
+		t.Fatal("seed cannot sign nonce")
 	}
 }
 
