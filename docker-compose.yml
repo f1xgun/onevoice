@@ -681,6 +681,8 @@ services:
       dockerfile: Dockerfile
       args:
         API_URL: http://api:8080
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+        PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
         ORCHESTRATOR_URL: http://orchestrator:8090
         # 152-ФЗ Art. 14 data-controller identity, inlined at build time.
         # APP_ENV=production makes the build hard-fail on placeholder values
@@ -707,7 +709,16 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+    environment:
+      CSP_API_ORIGIN: ${CSP_API_ORIGIN:-}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        envsubst '$$CSP_API_ORIGIN' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+        exec nginx -g 'daemon off;'
     depends_on:
       - frontend
     networks:

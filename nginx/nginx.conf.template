@@ -1,8 +1,8 @@
 # nginx.conf.template — OneVoice production
 #
 # This file is rendered with envsubst at container start
-# (see docker-compose.prod.yml → nginx.entrypoint). Only ${DOMAIN}
-# is expanded; nginx-native $variables are escaped via the envsubst
+# (see docker-compose.prod.yml → nginx.command). Only ${DOMAIN} and
+# ${CSP_API_ORIGIN} are expanded; nginx-native $variables are preserved by the
 # allowlist so the template stays valid.
 #
 # Two-server setup:
@@ -17,6 +17,29 @@
 events { worker_connections 1024; }
 
 http {
+  server_tokens off;
+  proxy_hide_header X-Powered-By;
+  proxy_hide_header Strict-Transport-Security;
+  proxy_hide_header Content-Security-Policy;
+  proxy_hide_header X-Content-Type-Options;
+  proxy_hide_header X-Frame-Options;
+  proxy_hide_header Referrer-Policy;
+  proxy_hide_header Permissions-Policy;
+  proxy_hide_header Cross-Origin-Opener-Policy;
+
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' ${CSP_API_ORIGIN} https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; frame-ancestors 'none'" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+  add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
+
+  map $scheme $transport_security {
+    default "";
+    https "max-age=15768000; includeSubDomains";
+  }
+  add_header Strict-Transport-Security $transport_security always;
+
   resolver 127.0.0.11 valid=10s ipv6=off;
 
   # SSE / chat endpoints — long-lived streams must not buffer or time out.
@@ -75,12 +98,6 @@ http {
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 1d;
     ssl_session_tickets off;
-
-    # HSTS — comment out for the first 24h after a new domain switch.
-    add_header Strict-Transport-Security "max-age=15768000; includeSubDomains" always;
-    add_header X-Content-Type-Options    "nosniff"  always;
-    add_header X-Frame-Options           "DENY"     always;
-    add_header Referrer-Policy           "no-referrer-when-downgrade" always;
 
     # Logo uploads — cap at 10 MB.
     client_max_body_size 10m;
