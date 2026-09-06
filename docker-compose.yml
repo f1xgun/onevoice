@@ -1,6 +1,17 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   # PostgreSQL
   postgres:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     restart: unless-stopped
     image: postgres:16-alpine
     container_name: onevoice-postgres
@@ -34,6 +45,11 @@ services:
   # loopback mapping via `ports: !reset []`. The `ping` healthcheck needs no
   # credentials (it is exempt from auth).
   mongodb:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     restart: unless-stopped
     image: mongo:7
     container_name: onevoice-mongodb
@@ -60,6 +76,11 @@ services:
   # the healthcheck's redis-cli authenticate without embedding the password in
   # the command line. docker-compose.prod.yml drops the loopback mapping.
   redis:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     restart: unless-stopped
     image: redis:7-alpine
     container_name: onevoice-redis
@@ -84,6 +105,11 @@ services:
   # without exposing an unauthenticated-by-default port on the VM's public IP;
   # docker-compose.prod.yml drops even the loopback mapping via `ports: !reset []`.
   nats:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     restart: unless-stopped
     image: nats:2.10-alpine
     container_name: onevoice-nats
@@ -112,8 +138,13 @@ services:
 
   # MinIO — S3-compatible object storage for user uploads (logos, etc.)
   minio:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     restart: unless-stopped
-    image: minio/minio:latest
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     container_name: onevoice-minio
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -143,7 +174,12 @@ services:
   # (logo and generated-image paths carry business UUIDs) through the public
   # /media/ edge. The explicit policy below allows reads of known keys only.
   minio-init:
-    image: minio/mc:latest
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     container_name: onevoice-minio-init
     depends_on:
       minio:
@@ -179,7 +215,12 @@ services:
 
   # Migration runner
   migrate:
-    image: migrate/migrate:latest
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    image: migrate/migrate@sha256:cc4ad8e19d66791e3689405d9a028ce6e9614f32032db14acda1469f7201d6e4
     container_name: onevoice-migrate
     volumes:
       - ./migrations/postgres:/migrations
@@ -196,6 +237,11 @@ services:
 
   # API Server
   api:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     build:
       context: .
       dockerfile: Dockerfile
@@ -396,6 +442,11 @@ services:
 
   # Telegram agent
   agent-telegram:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     build:
       context: .
       dockerfile: Dockerfile.agent-telegram
@@ -430,6 +481,11 @@ services:
 
   # VK agent
   agent-vk:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     build:
       context: .
       dockerfile: Dockerfile.agent-vk
@@ -461,6 +517,11 @@ services:
 
   # Google Business agent
   agent-google-business:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     build:
       context: .
       dockerfile: Dockerfile.agent-google-business
@@ -491,6 +552,11 @@ services:
 
   # Yandex.Business RPA agent
   agent-yandex-business:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     build:
       context: .
       dockerfile: Dockerfile.agent-yandex-business
@@ -576,6 +642,11 @@ services:
 
   # LLM Orchestrator
   orchestrator:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     build:
       context: .
       dockerfile: Dockerfile.orchestrator
@@ -676,6 +747,11 @@ services:
     restart: unless-stopped
 
   frontend:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     build:
       context: ./services/frontend
       dockerfile: Dockerfile
@@ -704,7 +780,12 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:alpine
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    image: nginx@sha256:1d13701a5f9f3fb01aaa88cef2344d65b6b5bf6b7d9fa4cf0dca557a8d7702ba
     container_name: onevoice-nginx
     ports:
       - "80:80"

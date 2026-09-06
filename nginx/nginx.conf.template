@@ -119,7 +119,11 @@ http {
       proxy_pass $minio_upstream;
     }
 
-    location /health/ {
+    location ^~ /health/ {
+      return 404;
+    }
+
+    location = /health/live {
       set $api_upstream http://api:8080;
       proxy_pass $api_upstream;
     }
