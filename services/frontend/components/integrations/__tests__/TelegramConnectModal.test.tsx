@@ -40,7 +40,6 @@ async function submitChannel(user: ReturnType<typeof userEvent.setup>, channel: 
   await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
 }
 
-const ADMIN_FAIL = 'Ошибка подключения. Убедитесь, что бот добавлен как администратор в канал.';
 const VERIFY_REQUIRED = 'Подтвердите email, чтобы продолжить.';
 
 describe('TelegramConnectModal — connect flow', () => {
@@ -65,41 +64,31 @@ describe('TelegramConnectModal — connect flow', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('shows the email-verification message (not the bot-admin error) on a 412 gate', async () => {
-    apiPost.mockRejectedValueOnce({
-      response: {
-        status: 412,
-        data: { code: 'email_verification_required', verifiedDeadline: '2026-05-24T18:29:47Z' },
-      },
-    });
-    const user = userEvent.setup();
-    renderModal();
-
-    await submitChannel(user, '@mychannel');
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(VERIFY_REQUIRED));
-    expect(toast.error).not.toHaveBeenCalledWith(ADMIN_FAIL);
-  });
-
-  it('surfaces the backend error message for non-verification errors', async () => {
-    const serverMsg = 'Добавьте бота администратором с правом публикации, затем переподключите.';
-    apiPost.mockRejectedValueOnce({ response: { status: 409, data: { error: serverMsg } } });
-    const user = userEvent.setup();
-    renderModal();
-
-    await submitChannel(user, '@mychannel');
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(serverMsg));
-    expect(toast.error).not.toHaveBeenCalledWith(ADMIN_FAIL);
-  });
-
-  it('falls back to the generic failure when the error carries no message', async () => {
-    apiPost.mockRejectedValueOnce(new Error('network down'));
-    const user = userEvent.setup();
-    renderModal();
-
-    await submitChannel(user, '@mychannel');
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(ADMIN_FAIL));
-  });
+  it.each([
+    [412, { code: 'email_verification_required' }, VERIFY_REQUIRED],
+    [
+      400,
+      { code: 'telegram_channel_not_found', error: 'Bad Request: chat not found' },
+      'Канал не найден.',
+    ],
+    [409, { code: 'telegram_not_admin' }, 'Добавьте бота администратором'],
+    [403, { code: 'telegram_forbidden' }, 'Нет доступа к каналу.'],
+    [429, { code: 'telegram_rate_limited' }, 'Telegram временно ограничил запросы.'],
+    [502, { code: 'telegram_unreachable' }, 'Не удалось связаться с Telegram.'],
+    [400, { error: 'Bad Request: chat not found' }, 'Канал не найден.'],
+    [undefined, undefined, 'Не удалось связаться с Telegram.'],
+  ])(
+    'shows a localized inline reason for %s and preserves input and focus',
+    async (status, data, text) => {
+      apiPost.mockRejectedValueOnce(status ? { response: { status, data } } : new Error('network'));
+      const user = userEvent.setup();
+      const { onClose } = renderModal();
+      await submitChannel(user, '@mychannel');
+      expect(await screen.findByRole('alert')).toHaveTextContent(text as string);
+      expect(screen.getByPlaceholderText(/@channel/)).toHaveValue('@mychannel');
+      expect(screen.getByPlaceholderText(/@channel/)).toHaveFocus();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+    }
+  );
 });

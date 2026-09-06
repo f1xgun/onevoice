@@ -93,7 +93,12 @@ api.interceptors.response.use(
       url.includes(API_PATHS.AUTH.REGISTER) ||
       url.includes('/auth/refresh');
 
-    if (error.response?.status !== HTTP_STATUS.UNAUTHORIZED || original._retry || isAuthEndpoint) {
+    if (
+      error.response?.status !== HTTP_STATUS.UNAUTHORIZED ||
+      original?._retry ||
+      isAuthEndpoint ||
+      url.includes(API_PATHS.TELEMETRY)
+    ) {
       return Promise.reject(error);
     }
 

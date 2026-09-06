@@ -36,6 +36,7 @@ export default function RegisterPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const tReg = useTranslations('auth.register');
   const tValidation = useTranslations('validation');
+  const tPasswordErrors = useTranslations('auth.passwordReset.errors');
   const tRegErrors = useTranslations('register.errors');
   const registerSchema = useMemo(() => createRegisterSchema(tValidation), [tValidation]);
 
@@ -82,6 +83,14 @@ export default function RegisterPage() {
       const message = response?.data?.message;
       const fields = response?.data?.fields;
 
+      if (status === HTTP_STATUS.BAD_REQUEST && code === 'password_too_weak') {
+        setError(
+          'password',
+          { type: 'server', message: tPasswordErrors('weakPassword') },
+          { shouldFocus: true }
+        );
+        return;
+      }
       if (status === HTTP_STATUS.BAD_REQUEST && code === 'consent_required') {
         setFormError(tRegErrors('consentRequired'));
         return;
@@ -154,10 +163,14 @@ export default function RegisterPage() {
               type="password"
               placeholder="••••••••"
               autoComplete="new-password"
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? 'password-error' : undefined}
               {...register('password')}
             />
             {errors.password && (
-              <p className="text-sm text-[var(--ov-danger)]">{errors.password.message}</p>
+              <p id="password-error" role="alert" className="text-sm text-[var(--ov-danger)]">
+                {errors.password.message}
+              </p>
             )}
           </div>
           <div className="flex flex-col gap-1.5">

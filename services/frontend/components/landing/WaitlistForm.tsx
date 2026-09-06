@@ -33,7 +33,13 @@ import { legalDocHref } from '@/lib/legal/routes';
 const SPHERE_OPTIONS = ['cafe', 'beauty', 'services', 'retail', 'other'] as const;
 const PAIN_OPTIONS = ['reviews', 'posts', 'card'] as const;
 
-export function WaitlistForm({ mode }: LandingEntryProps) {
+interface WaitlistFormProps extends Partial<LandingEntryProps> {
+  source?: string;
+  plan?: 'pro';
+  submitLabel?: string;
+}
+
+export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormProps = {}) {
   const t = useTranslations('landing.waitlist');
   const tValidation = useTranslations('validation');
   const schema = useMemo(() => createWaitlistSchema(tValidation), [tValidation]);
@@ -55,6 +61,8 @@ export function WaitlistForm({ mode }: LandingEntryProps) {
   const onSubmit = async (data: WaitlistInput) => {
     setFormError(null);
     const payload: WaitlistPayload = { email: data.email, consent: true };
+    if (source) payload.source = source;
+    if (plan) payload.plan = plan;
     if (data.sphere) payload.sphere = data.sphere;
     if (data.pain) payload.pain = data.pain;
     try {
@@ -84,7 +92,7 @@ export function WaitlistForm({ mode }: LandingEntryProps) {
             </a>
           </Button>
         </div>
-        {mode !== 'waitlist_only' && (
+        {(mode === 'hybrid' || mode === 'open') && (
           <Button asChild variant="secondary" className="mt-4 h-auto whitespace-normal text-center">
             <Link href="/register" data-cta="waitlist-success-register">
               {t('success.registerCta')}
@@ -202,7 +210,7 @@ export function WaitlistForm({ mode }: LandingEntryProps) {
           className="w-full"
           disabled={isSubmitting || !isValid}
         >
-          {isSubmitting ? t('submitting') : t('submit')}
+          {isSubmitting ? t('submitting') : (submitLabel ?? t('submit'))}
         </Button>
       </div>
     </form>

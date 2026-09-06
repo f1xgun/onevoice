@@ -1,4 +1,3 @@
-import { api } from './api';
 import { useAuthStore } from './auth';
 import { API_BASE_URL, API_PATHS } from '@/lib/constants/apiPaths';
 
@@ -29,6 +28,8 @@ export function trackEvent(
     metadata?: Record<string, string>;
   }
 ): void {
+  if (!useAuthStore.getState().accessToken) return;
+
   const event: TelemetryEvent = {
     eventType,
     action,
@@ -65,54 +66,35 @@ export function trackClick(action: string, metadata?: Record<string, string>): v
  * Fire-and-forget: errors are silently swallowed so telemetry never breaks the app.
  */
 export async function flushTelemetry(): Promise<void> {
-  if (buffer.length === 0) return;
-
-  const batch = buffer;
-  buffer = [];
-
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = null;
-  }
-
-  try {
-    await api.post(API_PATHS.TELEMETRY, batch);
-  } catch {}
+  await sendBufferedTelemetry(false);
 }
 
-/**
- * Flush buffered events on page hide. Uses fetch with `keepalive` — which, like
- * sendBeacon, survives unload — but unlike sendBeacon can attach the
- * Authorization header. `POST /telemetry` is JWT-protected, so a header-less
- * sendBeacon 401'd and silently dropped every page-hide batch.
- *
- * With no access token the events can't be attributed, so the buffer is left
- * intact for a later authenticated flush rather than dropped.
- */
+/** Flush authenticated events on page hide without triggering auth navigation. */
 export function flushOnHide(): void {
-  if (buffer.length === 0) return;
+  void sendBufferedTelemetry(true);
+}
 
-  const token = useAuthStore.getState().accessToken;
-  if (!token) return;
-
+async function sendBufferedTelemetry(keepalive: boolean): Promise<void> {
   const batch = buffer;
   buffer = [];
-
   if (flushTimer) {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
-
-  void fetch(`${API_BASE_URL}${API_PATHS.TELEMETRY}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(batch),
-    keepalive: true,
-    credentials: 'include',
-  }).catch(() => {});
+  const token = useAuthStore.getState().accessToken;
+  if (!token || batch.length === 0) return;
+  try {
+    await fetch(`${API_BASE_URL}${API_PATHS.TELEMETRY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(batch),
+      keepalive,
+      credentials: 'include',
+    });
+  } catch {}
 }
 
 if (typeof document !== 'undefined') {

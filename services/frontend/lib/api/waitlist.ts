@@ -9,6 +9,8 @@ export interface WaitlistPayload {
   sphere?: string;
   pain?: string;
   consent: boolean;
+  source?: string;
+  plan?: 'pro';
 }
 
 export interface ChannelVotePayload {

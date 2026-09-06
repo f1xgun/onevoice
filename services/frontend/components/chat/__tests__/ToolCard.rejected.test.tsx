@@ -60,3 +60,23 @@ describe('ToolCard — rejected', () => {
     expect(screen.getByText(/Доступ к инструменту был отозван политикой/)).toBeInTheDocument();
   });
 });
+
+it.each(['ru', 'en'] as const)('localizes an unavailable decision neutrally in %s', (locale) => {
+  (globalThis as unknown as { __setTestLocale: (locale: 'ru' | 'en') => void }).__setTestLocale(
+    locale
+  );
+  render(<ToolCard tool={makeRejected({ rejectReason: 'decision_unavailable' })} />);
+  expect(
+    screen.getByText(
+      locale === 'ru'
+        ? 'Решение не найдено — повторите одобрение'
+        : 'Decision not found — please approve again'
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(locale === 'ru' ? 'Нужно одобрение' : 'Approval needed')
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText(/decision_unavailable|Отклонено пользователем|Rejected by user/)
+  ).not.toBeInTheDocument();
+});

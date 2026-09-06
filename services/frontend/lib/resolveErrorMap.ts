@@ -249,3 +249,43 @@ export function useMapRoleError(): (err: unknown) => string {
   const t = useTranslations('roles.errors') as TranslateFn;
   return useMemo(() => createMapRoleError(t), [t]);
 }
+
+export function isBusinessPlanLimitError(err: unknown): boolean {
+  const data = (err as AxiosError<{ code?: string; error?: string }> | undefined)?.response?.data;
+  return data?.code === 'plan_limit_businesses' || data?.error === 'plan_limit_businesses';
+}
+
+export function createMapTelegramConnectError(t: TranslateFn): (err: unknown) => string {
+  return (err) => {
+    const response = (err as AxiosError<{ code?: string; error?: string }> | undefined)?.response;
+    const code = response?.data?.code ?? response?.data?.error;
+    if (
+      response?.status === HTTP_STATUS.TOO_MANY_REQUESTS ||
+      code === 'telegram_rate_limited' ||
+      code === 'rate_limit_exceeded'
+    )
+      return t('rateLimited');
+    if (
+      !response ||
+      response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR ||
+      code === 'telegram_unreachable'
+    )
+      return t('unreachable');
+    if (
+      code === 'telegram_channel_not_found' ||
+      code === 'channel_not_found' ||
+      response.status === HTTP_STATUS.BAD_REQUEST
+    )
+      return t('channelNotFound');
+    if (
+      code === 'telegram_bot_not_admin' ||
+      code === 'telegram_not_admin' ||
+      code === 'telegram_no_post_rights' ||
+      response.status === HTTP_STATUS.CONFLICT
+    )
+      return t('adminRequired');
+    if (code === 'telegram_forbidden' || response.status === HTTP_STATUS.FORBIDDEN)
+      return t('noAccess');
+    return t('failed');
+  };
+}

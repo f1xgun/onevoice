@@ -47,21 +47,38 @@ describe('telemetry — page-hide flush (AN-7)', () => {
     expect(body[0]).toMatchObject({ eventType: 'page_view', action: 'open', page: '/dashboard' });
   });
 
-  it('does not send and preserves the buffer when there is no access token', async () => {
+  it('drops anonymous events including delayed flushes and later login', async () => {
     h.token = null;
     const tele = await import('../telemetry');
-    tele.trackEvent('page_view', 'open');
-
+    tele.trackEvent('api_error', 'register conflict');
+    await vi.advanceTimersByTimeAsync(5000);
     tele.flushOnHide();
+    h.token = 'later';
+    await tele.flushTelemetry();
     expect(fetchMock).not.toHaveBeenCalled();
-
-    // A later authenticated flush still has the event — it was not dropped.
-    h.token = 'tok-later';
-    tele.flushOnHide();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
-    expect(body).toHaveLength(1);
+    expect(h.postMock).not.toHaveBeenCalled();
   });
+
+  it('drops a pending batch when logged out before its timer fires', async () => {
+    const tele = await import('../telemetry');
+    tele.trackEvent('page_view', 'open');
+    h.token = null;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 429, 500])(
+    'does not retry or use the auth client after telemetry HTTP %s',
+    async (status) => {
+      fetchMock.mockResolvedValue(new Response(null, { status }));
+      const tele = await import('../telemetry');
+      tele.trackEvent('api_error', 'failed request');
+      await vi.advanceTimersByTimeAsync(15000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(h.postMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).not.toBe('/login');
+    }
+  );
 
   it('no-ops when the buffer is empty', async () => {
     const tele = await import('../telemetry');

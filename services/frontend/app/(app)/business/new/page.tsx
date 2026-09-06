@@ -17,6 +17,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
+import { ProRequest } from '@/components/billing/ProRequest';
+import { isBusinessPlanLimitError } from '@/lib/resolveErrorMap';
 import { api } from '@/lib/api';
 import { useBusinessStore } from '@/lib/stores/business';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
@@ -77,7 +79,9 @@ export default function NewBusinessPage() {
       toast.success(tNewPage('createdToast', { name: created.name }));
       router.push('/business');
     },
-    onError: () => toast.error(tNewPage('createError')),
+    onError: (error) => {
+      if (!isBusinessPlanLimitError(error)) toast.error(tNewPage('createError'));
+    },
   });
 
   return (
@@ -91,6 +95,12 @@ export default function NewBusinessPage() {
               {tSections('profile.title')}
             </h2>
           </header>
+          {isBusinessPlanLimitError(mutation.error) && (
+            <div role="alert" className="space-y-3 rounded-md border border-line p-4">
+              <p>{tNewPage('freeLimit')}</p>
+              <ProRequest source="business_limit" />
+            </div>
+          )}
           <form
             onSubmit={handleSubmit((d) => mutation.mutate(d))}
             className="flex flex-col gap-5 px-6 py-5"
