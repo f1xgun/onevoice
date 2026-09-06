@@ -64,24 +64,44 @@ The function takes a `pgx.Tx` because it MUST share the tx with the
 caller's mutation. Inside the tx it runs:
 
 ```sql
-SELECT user_id, role_id
-FROM business_members
-WHERE business_id = $1 AND status = 'active'
-FOR UPDATE
+SELECT m.user_id,
+       m.role_id,
+       (u.deletion_requested_at IS NOT NULL AND u.deletion_canceled_at IS NULL) AS pending_deletion
+FROM business_members m
+JOIN users u ON u.id = m.user_id
+WHERE m.business_id = $1 AND m.status = 'active'
+FOR UPDATE OF m
 ```
 
-The `FOR UPDATE` lock serializes concurrent demote / remove / role-edit
-operations against the same business. Without it, two
-simultaneous "demote the other owner" calls could both pass the check
-and leave the business orphaned.
+The `FOR UPDATE OF m` lock serializes concurrent demote / remove /
+role-edit operations against the same business, while keeping the lock
+footprint on `business_members` only (the `users` join is a read). Without
+it, two simultaneous "demote the other owner" calls could both pass the
+check and leave the business orphaned.
 
 Only `status = 'active'` rows are counted. Suspended members cannot
 act (middleware returns 403 on `status='suspended'`), so counting them
 toward the owner quorum would create a back-door last-owner stranding —
 one active + one suspended owner passes the invariant, the active one
 gets demoted, the business is left with an "owner" who can never act.
-This matches `repository.business_member.CountOwnersByBusiness`'s
-filter for the same conceptual question.
+
+A member whose **user account is pending deletion** is excluded from the
+owner count for exactly the same reason. `RequestDeletionInTx` leaves the
+`business_members` row `active` and only stamps `users.deleted_at` /
+`users.deletion_requested_at`, so a soft-deleted co-owner used to satisfy
+`postOwners >= 1`. That let the last real owner remove or demote himself:
+the organization was left with no owner who can act (and no owner who can
+even read it), and the pending user became un-purgeable, because
+`fn_refuse_sole_owner_delete` then sees him as the sole owner and aborts
+his hard delete on every sweeper tick — past the 30-day 152-ФЗ deadline.
+The predicate mirrors the effective-owner definition in
+`AccountDeletionService.EnumerateSoleOwnerBusinesses`
+(`deletion_requested_at IS NULL OR deletion_canceled_at IS NOT NULL`), so
+a canceled deletion restores the member to the quorum.
+
+`repository.business_member.CountOwnersByBusiness` answers a narrower,
+membership-only question (active owner ROWS) and is not part of any
+invariant path — do not substitute it for this check.
 
 ### `OwnerChangeKind` enumerates the mutation paths
 
@@ -117,6 +137,9 @@ decides whether each row contributes to the post-mutation owner count:
   `*change.RoleID` contributes 0.
 - `RoleDelete`: same as above — the FK is `ON DELETE RESTRICT`, but
   the simulation captures the intent.
+
+Independently of the kind, a row whose `pending_deletion` flag is true
+contributes 0 — see "Lock + simulate" above.
 
 `postOwners < 1` → `ErrLastOwner`.
 

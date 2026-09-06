@@ -180,7 +180,9 @@ type BusinessMembershipRepository interface {
 	ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]BusinessMember, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]BusinessMember, error)
 
-	// CountOwnersByBusiness shares the active-only filter used by EnsureOwnerExistsAfter.
+	// CountOwnersByBusiness counts active owner MEMBERSHIP rows only. It does not
+	// exclude owners whose user account is pending deletion, so it is not a
+	// substitute for authz.EnsureOwnerExistsAfter on any invariant path.
 	CountOwnersByBusiness(ctx context.Context, businessID uuid.UUID) (int, error)
 
 	UpdateRole(ctx context.Context, businessID, userID, newRoleID, actorUserID uuid.UUID) error

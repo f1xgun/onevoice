@@ -46,6 +46,17 @@ type OwnerChange struct {
 
 // EnsureOwnerExistsAfter refuses any operation that would leave a business with zero owners.
 // Callers MUST pass a pgx.Tx already inside a transaction.
+//
+// "Owner" means an ACTIVE member holding the system owner role whose user
+// account is not itself pending deletion (deletion_requested_at stamped and not
+// canceled). A soft-deleted co-owner is a tombstone, not a person who can still
+// manage the business: counting one would let the last real owner remove or
+// demote himself, stranding the organization with no manageable owner and
+// leaving the pending user un-purgeable — the hard-delete trigger then refuses
+// the sweep because that user has become the sole owner. This mirrors the
+// effective-owner definition used when enumerating sole-owner businesses at
+// account-deletion time.
+//
 // See docs/pkg/authz-invariants.md.
 func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, change OwnerChange) error {
 	if tx == nil {
@@ -61,10 +72,13 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 	}
 
 	const lockSQL = `
-		SELECT user_id, role_id
-		FROM business_members
-		WHERE business_id = $1 AND status = 'active'
-		FOR UPDATE
+		SELECT m.user_id,
+		       m.role_id,
+		       (u.deletion_requested_at IS NOT NULL AND u.deletion_canceled_at IS NULL) AS pending_deletion
+		FROM business_members m
+		JOIN users u ON u.id = m.user_id
+		WHERE m.business_id = $1 AND m.status = 'active'
+		FOR UPDATE OF m
 	`
 	rows, err := tx.Query(ctx, lockSQL, businessID)
 	if err != nil {
@@ -73,13 +87,14 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 	defer rows.Close()
 
 	type memberKey struct {
-		UserID uuid.UUID
-		RoleID uuid.UUID
+		UserID          uuid.UUID
+		RoleID          uuid.UUID
+		PendingDeletion bool
 	}
 	var snapshot []memberKey
 	for rows.Next() {
 		var m memberKey
-		if scanErr := rows.Scan(&m.UserID, &m.RoleID); scanErr != nil {
+		if scanErr := rows.Scan(&m.UserID, &m.RoleID, &m.PendingDeletion); scanErr != nil {
 			return fmt.Errorf("authz.EnsureOwnerExistsAfter: scan member row: %w", scanErr)
 		}
 		snapshot = append(snapshot, m)
@@ -123,7 +138,7 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 		default:
 			return fmt.Errorf("authz.EnsureOwnerExistsAfter: unknown OwnerChange.Kind=%d", change.Kind)
 		}
-		if isOwner {
+		if isOwner && !m.PendingDeletion {
 			postOwners++
 		}
 	}
