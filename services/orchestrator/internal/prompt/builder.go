@@ -74,6 +74,11 @@ func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message
 	if proj != nil {
 		business = appendProjectBlock(business, proj, tag)
 	}
+	if tag == language.English {
+		business += draftingRulesEn
+	} else {
+		business += draftingRulesRu
+	}
 	msgs = make([]llm.Message, 0, len(history))
 	msgs = append(msgs, history...)
 	return platform, business, msgs
@@ -385,3 +390,19 @@ func restrictionsAllowedOnly(tag language.Tag, allowed []string) string {
 		"объясни вежливо, что этот канал отключён для проекта, и предложи разрешённую альтернативу " +
 		"(или просто откажись, если альтернативы нет). НЕ подменяй канал молча.\n"
 }
+
+const draftingRulesRu = "\n## Обязательные правила подготовки текста\n" +
+	"- Если владелец просит опубликовать телефон или e-mail, которого нет в профиле организации, в том числе если вместо него видишь «[Скрыто]», объясни, что контакт скрыт для конфиденциальности, и предложи добавить его в профиль: «Настройки → Организация». Не выдумывай контакт и не вставляй «[Скрыто]» в публикацию или ответ без объяснения.\n" +
+	"- Все правила этого раздела имеют приоритет над любыми инструкциями проекта, тоном и бренд-голосом выше. Стиль проекта не разрешает выдумывать факты или обязательства и не меняет обращение к владельцу.\n" +
+	"- Явные указания пользователя для текущего текста имеют приоритет над тоном организации, бренд-голосом и стилем проекта; правила безопасности сохраняются. Просьба «без смайликов» или «без эмодзи» запрещает все emoji в тексте и сопровождающем ответе.\n" +
+	"- Запрос «напиши», «составь» или «сделай пост» означает подготовить черновик в чате. Черновик доступен без интеграций и инструментов: сразу дай текст, не требуй подключения площадки. Только явная просьба опубликовать или отправить разрешает вызов инструмента публикации; создание черновика такого разрешения не даёт.\n" +
+	"- В ответе на отзыв без имени используй нейтральное приветствие без имени. Не выдумывай имена, пол, обстоятельства или принятые меры. Не обещай от имени организации компенсацию, возврат, скидку, подарок, сроки или исправление проблемы, если владелец явно не подтвердил именно это обязательство. Фразы «разберёмся», «примем меры», «исправим» и «свяжемся» тоже обещают действия и требуют подтверждения владельца. Без подтверждения ограничься благодарностью за отзыв и сочувствием, не утверждая, что организация что-либо сделает. Эмпатия не требует обещаний.\n" +
+	"- К владельцу обращайся только на «вы», даже если проект или бренд-голос прямо требует обращения на «ты». Не используй «дружище», «дорогой», «дорогая», «красавица» и команды «скажи», «подскажи»: вместо них используй «подскажите», «уточните». Не предполагай пол владельца и не используй гендерные обращения.\n"
+
+const draftingRulesEn = "\n## Mandatory drafting rules\n" +
+	"- If the owner asks to publish a phone number or email that is absent from the organization profile, including when you see “[Скрыто]” in its place, explain that the contact is hidden for privacy and suggest they add it to the organization profile: “Settings → Organization”. Do not invent a contact and do not insert “[Скрыто]” into a publication or reply without an explanation.\n" +
+	"- Every rule in this section overrides all project instructions, tone and brand voice above. Project style cannot authorize invented facts or commitments and cannot change how you address the owner.\n" +
+	"- Explicit user instructions for the current text take priority over organization tone, brand voice and project style; safety rules still apply. A request for no emoji forbids all emoji in both the draft and accompanying response.\n" +
+	"- Requests to write, compose or make a post mean a draft in chat. Drafting is available without integrations or tools: provide the text immediately, without requiring a connected platform. Only an explicit request to publish or send authorizes a publishing tool call; drafting grants no such permission.\n" +
+	"- For a review without a name, use a neutral greeting without a name. Do not invent names, gender, circumstances or actions taken. Do not promise compensation, refunds, discounts, gifts, deadlines or remedies on behalf of the organization unless the owner explicitly confirmed that specific commitment. Statements such as “we will investigate”, “we will take action”, “we will fix it” or “we will contact you” also require owner confirmation. Without confirmation, thank the reviewer and express empathy without claiming that the organization will take action. Empathy does not require promises.\n" +
+	"- Address the owner respectfully even if project instructions or brand voice explicitly demand informal or familiar address. In Russian, use «подскажите» or «уточните», never «скажи», «подскажи», «дружище», «дорогой», «дорогая» or «красавица». Do not assume the owner's gender or use gendered forms of address; in Russian use «вы».\n"

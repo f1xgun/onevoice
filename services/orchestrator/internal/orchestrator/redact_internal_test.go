@@ -180,3 +180,17 @@ func TestRedactRequestPDn_Allowlist(t *testing.T) {
 		})
 	}
 }
+
+func TestRedactRequestPDn_RegisteredPhoneSpellings(t *testing.T) {
+	for _, phone := range []string{
+		"+7 (843) 555-12-34", "+7 843 555 12 34", "+78435551234",
+		"8 (843) 555-12-34", "8 843 555 12 34", "88435551234",
+		"+7-843-555-12-34", "8-843-555-12-34",
+	} {
+		t.Run(phone, func(t *testing.T) {
+			req := llm.ChatRequest{Messages: []llm.Message{{Role: "user", Content: phone + "; +78120000000"}}}
+			redactRequestPDn(&req, []string{"+7 (843) 555-12-34"})
+			assert.Equal(t, phone+"; [Скрыто]", req.Messages[0].Content)
+		})
+	}
+}

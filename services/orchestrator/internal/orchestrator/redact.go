@@ -14,9 +14,8 @@ import (
 // transborder personal-data transfer or when inference is routed exclusively to
 // RU/self-hosted endpoints. See docs/orchestrator/config.md.
 //
-// allow carries the business's OWN registered contact values, which are the
-// business's public data rather than third-party personal data and therefore
-// survive the scrub.
+// allow carries only registered organization contacts. Contacts supplied in
+// conversation messages never grant an exemption.
 func (o *Orchestrator) applyOutboundRedaction(req *llm.ChatRequest, allow []string) {
 	if !o.options.RedactOutboundPDn {
 		return

@@ -48,8 +48,8 @@ type RunState struct {
 
 	AvailableTools []llm.ToolDefinition
 
-	// PDnAllowlist holds the business's own registered contact values, exempted
-	// from the outbound personal-data scrub. See redact.go.
+	// PDnAllowlist holds organization profile contacts exempted from outbound
+	// redaction. See redact.go.
 	PDnAllowlist []string
 
 	BusinessApprovals        map[string]domain.ToolFloor
@@ -378,9 +378,8 @@ type modelMessagesSnapshotV2 struct {
 	Messages       []llm.Message `json:"messages"`
 	SystemPlatform string        `json:"system_platform,omitempty"`
 	SystemBusiness string        `json:"system_business,omitempty"`
-	// PDnAllowlist carries the business's own contact values across the pause so
-	// the resumed turn scrubs exactly like the paused one. omitempty keeps
-	// snapshots for businesses without contact fields byte-identical.
+	// PDnAllowlist preserves organization profile contacts across the pause
+	// for consistent outbound redaction.
 	PDnAllowlist []string `json:"pdn_allowlist,omitempty"`
 	// omitempty so pre-cap snapshots stay byte-identical; legacy batches
 	// hydrate at 0 (correct — pre-cap turns weren't subject to the cap).
