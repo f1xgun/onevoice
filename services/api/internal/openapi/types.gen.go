@@ -520,17 +520,20 @@ type BillingErrorResponse struct {
 
 // Business defines model for Business.
 type Business struct {
-	Address     *string                `json:"address,omitempty"`
-	Category    *string                `json:"category,omitempty"`
-	CreatedAt   time.Time              `json:"createdAt" validate:"required"`
-	Description *string                `json:"description,omitempty"`
-	Id          openapi_types.UUID     `json:"id" validate:"required,uuid"`
-	LogoUrl     *string                `json:"logoUrl,omitempty"`
-	Name        string                 `json:"name" validate:"required"`
-	Phone       *string                `json:"phone,omitempty"`
-	Settings    map[string]interface{} `json:"settings" validate:"required"`
-	UpdatedAt   time.Time              `json:"updatedAt" validate:"required"`
-	Website     *string                `json:"website"`
+	Address     *string   `json:"address,omitempty"`
+	Category    *string   `json:"category,omitempty"`
+	CreatedAt   time.Time `json:"createdAt" validate:"required"`
+	Description *string   `json:"description,omitempty"`
+
+	// HasFirstSuccessfulAction Whether the organization has a persisted successful task or completed text-only assistant answer across its entire history. Authoritative on GET business profile.
+	HasFirstSuccessfulAction *bool                  `json:"hasFirstSuccessfulAction,omitempty"`
+	Id                       openapi_types.UUID     `json:"id" validate:"required,uuid"`
+	LogoUrl                  *string                `json:"logoUrl,omitempty"`
+	Name                     string                 `json:"name" validate:"required"`
+	Phone                    *string                `json:"phone,omitempty"`
+	Settings                 map[string]interface{} `json:"settings" validate:"required"`
+	UpdatedAt                time.Time              `json:"updatedAt" validate:"required"`
+	Website                  *string                `json:"website"`
 }
 
 // BusinessMembershipRoleRef defines model for BusinessMembershipRoleRef.

@@ -154,6 +154,14 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	indexesCancel()
 
+	actionCtx, actionCancel := context.WithTimeout(ctx, startupTimeout)
+	if err := repository.EnsureActionActivation(actionCtx, h.Mongo); err != nil {
+		actionCancel()
+		h.Close()
+		return nil, fmt.Errorf("wire: ensure action activation: %w", err)
+	}
+	actionCancel()
+
 	indexesCtx2, indexesCancel2 := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.EnsureConversationIndexes(indexesCtx2, h.Mongo); err != nil {
 		indexesCancel2()

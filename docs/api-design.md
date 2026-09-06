@@ -118,3 +118,20 @@ is retained; immediate errors retain the localized error content. Successful
 turns have `status: "complete"`. Clients must not infer success from nonempty
 content or an absent legacy status. Successful tool tasks independently prove
 that an action completed.
+
+## Onboarding first action
+
+`GET /api/v1/businesses/{id}` includes `hasFirstSuccessfulAction`. The API reads
+all persisted history for the authorized organization: an `agent_tasks` record
+with status `done`, or an assistant message with status `complete`, nonblank
+content, no error code, and no tool calls. Failed, pending, and ambiguous legacy
+turns do not count. New empty conversations cannot reset completion. Read errors
+fail the profile request instead of returning a misleading `false`.
+
+The Mongo startup backfill copies organization IDs from conversations onto
+existing messages without changing their outcomes; message writes maintain this
+field. Organization/status indexes support one bounded-result aggregation over
+messages and tasks. No PostgreSQL migration or new collection is needed.
+The checklist uses the profile flag and refreshes it after a chat finishes.
+The existing signup-to-connected integration funnel remains unchanged; this
+checkout has no first-action funnel gauge.

@@ -366,6 +366,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         // A turn we were waiting on just resolved — refresh the conversation
         // list so the auto-generated title appears without a manual reload.
         if (attempts > 0 && apiMsgs) {
+          void queryClient.invalidateQueries({
+            queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
+          });
           queryClient.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
         }
       }
@@ -510,6 +513,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         }
 
         await consumeSSEStream(response, controller.signal, onEventRef.current);
+        void queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
+        });
       } catch (error: unknown) {
         if ((error as Error).name === 'AbortError') return;
         setMessages((prev) => {
@@ -540,6 +546,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       tCommon,
       tStreamError,
       locale,
+      queryClient,
     ]
   );
 
@@ -642,6 +649,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           if (event.type === 'tool_approval_required') sawNextApproval = true;
           handleChatSSEEvent(event);
         });
+        void queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
+        });
       } catch (err: unknown) {
         if ((err as Error).name === 'AbortError') return;
         toast.error(resumeStreamError);
@@ -666,6 +676,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       tCommonErrors,
       resolveError,
       resumeStreamError,
+      queryClient,
       handleChatSSEEvent,
       applyEventToLastAssistant,
     ]

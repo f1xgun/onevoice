@@ -847,6 +847,10 @@ components:
       - createdAt
       - updatedAt
       properties:
+        hasFirstSuccessfulAction:
+          type: boolean
+          readOnly: true
+          description: Whether the organization has a persisted successful task or completed text-only assistant answer across its entire history. Authoritative on GET business profile.
         id:
           type: string
           format: uuid

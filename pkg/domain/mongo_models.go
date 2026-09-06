@@ -76,6 +76,7 @@ type Conversation struct {
 }
 
 type Message struct {
+	BusinessID     string                 `json:"-" bson:"business_id,omitempty"`
 	ID             string                 `json:"id" bson:"_id,omitempty"`
 	ConversationID string                 `json:"conversationId" bson:"conversation_id"`
 	Role           string                 `json:"role" bson:"role"`

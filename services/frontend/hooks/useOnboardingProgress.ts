@@ -7,11 +7,8 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
-import type { AgentTask } from '@/types/task';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { useMembers } from '@/lib/hooks/useMembers';
-import { conversationsQueryKey } from '@/hooks/useConversations';
-import type { Conversation } from '@/lib/conversations';
 import type { Business } from '@/types/business';
 
 export type OnboardingStepId =
@@ -55,16 +52,6 @@ export interface OnboardingSignals {
   showInvite: boolean;
   hasTeammate: boolean;
 }
-
-interface PersistedAnswer {
-  role: string;
-  content: string;
-  status?: string;
-  errorCode?: string;
-  toolCalls?: unknown[];
-}
-
-const MAX_ONBOARDING_HISTORIES = 20;
 
 const ROUTES = {
   createOrg: API_PATHS.BUSINESS.ROOT,
@@ -148,55 +135,6 @@ export function useOnboardingProgress(): OnboardingProgress {
     retry: false,
   });
 
-  const actions = useQuery<AgentTask[]>({
-    queryKey: [...QUERY_KEYS.BUSINESS_TASKS(activeBusinessId), 'first-action'],
-    queryFn: async ({ signal }) => {
-      const { data } = await bizApi(activeBusinessId!).get<AgentTask[] | { tasks?: AgentTask[] }>(
-        BIZ_API_PATHS.TASKS.ROOT,
-        { signal, params: { status: 'done', limit: 1 } }
-      );
-      return Array.isArray(data) ? data : (data?.tasks ?? []);
-    },
-    enabled: !!activeBusinessId,
-    retry: false,
-  });
-
-  const hasSuccessfulTask =
-    actions.isSuccess && (actions.data ?? []).some((action) => action.status === 'done');
-
-  const textAnswer = useQuery({
-    queryKey: [...conversationsQueryKey(activeBusinessId), 'first-action'],
-    queryFn: async ({ signal }) => {
-      const api = bizApi(activeBusinessId!);
-      const limit = MAX_ONBOARDING_HISTORIES;
-      const { data: conversations } = await api.get<Conversation[]>(
-        BIZ_API_PATHS.CONVERSATIONS.ROOT,
-        { signal, params: { limit, offset: 0 } }
-      );
-      for (const conversation of conversations.slice(0, MAX_ONBOARDING_HISTORIES)) {
-        const { data } = await api.get<PersistedAnswer[] | { messages: PersistedAnswer[] }>(
-          BIZ_API_PATHS.CONVERSATIONS.MESSAGES(conversation.id),
-          { signal }
-        );
-        const messages = Array.isArray(data) ? data : data.messages;
-        if (
-          messages.some(
-            (message) =>
-              message.role === 'assistant' &&
-              message.status === 'complete' &&
-              !message.errorCode &&
-              message.content.trim() !== '' &&
-              !message.toolCalls?.length
-          )
-        )
-          return true;
-      }
-      return false;
-    },
-    enabled: !!activeBusinessId && (actions.isSuccess || actions.isError) && !hasSuccessfulTask,
-    retry: false,
-  });
-
   const canInvite = usePermission('members.invite').allowed;
   const members = useMembers(canInvite ? activeBusinessId : null);
 
@@ -211,10 +149,8 @@ export function useOnboardingProgress(): OnboardingProgress {
     hasDescription:
       profile.isSuccess && typeof description === 'string' && description.trim() !== '',
     profileSettled: profile.isSuccess || profile.isError,
-    hasFirstAction: hasSuccessfulTask || (textAnswer.isSuccess && textAnswer.data),
-    conversationsSettled:
-      hasSuccessfulTask ||
-      ((actions.isSuccess || actions.isError) && (textAnswer.isSuccess || textAnswer.isError)),
+    hasFirstAction: profile.isSuccess && profile.data?.hasFirstSuccessfulAction === true,
+    conversationsSettled: profile.isSuccess || profile.isError,
     showInvite: canInvite,
     hasTeammate: members.isSuccess && (members.data?.length ?? 0) > 1,
   });

@@ -43,15 +43,16 @@ type User struct {
 }
 
 type Business struct {
-	ID          uuid.UUID              `json:"id" db:"id"`
-	Name        string                 `json:"name" db:"name"`
-	Category    string                 `json:"category" db:"category"`
-	Address     string                 `json:"address" db:"address"`
-	Phone       string                 `json:"phone" db:"phone"`
-	Website     *string                `json:"website" db:"website"`
-	Description string                 `json:"description" db:"description"`
-	LogoURL     string                 `json:"logoUrl" db:"logo_url"`
-	Settings    map[string]interface{} `json:"settings" db:"settings"`
+	HasFirstSuccessfulAction bool                   `json:"hasFirstSuccessfulAction" db:"-"`
+	ID                       uuid.UUID              `json:"id" db:"id"`
+	Name                     string                 `json:"name" db:"name"`
+	Category                 string                 `json:"category" db:"category"`
+	Address                  string                 `json:"address" db:"address"`
+	Phone                    string                 `json:"phone" db:"phone"`
+	Website                  *string                `json:"website" db:"website"`
+	Description              string                 `json:"description" db:"description"`
+	LogoURL                  string                 `json:"logoUrl" db:"logo_url"`
+	Settings                 map[string]interface{} `json:"settings" db:"settings"`
 	// organization-deletion lifecycle. All three are pointer-time.Time so they
 	// can be nil (the "no pending deletion" state). JSON-hidden — surfaced via a
 	// typed wrapper at the read boundary so listing endpoints don't leak them.

@@ -29,6 +29,9 @@ func (r *messageRepository) Create(ctx context.Context, msg *domain.Message) err
 		msg.ID = bson.NewObjectID().Hex()
 	}
 	msg.CreatedAt = time.Now()
+	if err := r.populateBusinessID(ctx, msg); err != nil {
+		return err
+	}
 
 	_, err := r.collection.InsertOne(ctx, msg)
 	if err != nil {
@@ -102,6 +105,9 @@ func (r *messageRepository) DeleteByConversationID(ctx context.Context, conversa
 func (r *messageRepository) Update(ctx context.Context, msg *domain.Message) error {
 	if msg.ID == "" {
 		return fmt.Errorf("update message: id is required")
+	}
+	if err := r.populateBusinessID(ctx, msg); err != nil {
+		return err
 	}
 	res, err := r.collection.ReplaceOne(ctx, bson.M{"_id": msg.ID}, msg)
 	if err != nil {
@@ -263,4 +269,18 @@ func (r *messageRepository) SearchByConversationIDs(
 		return nil, fmt.Errorf("decode search hits: %w", err)
 	}
 	return hits, nil
+}
+
+func (r *messageRepository) populateBusinessID(ctx context.Context, msg *domain.Message) error {
+	var conversation domain.Conversation
+	err := r.collection.Database().Collection("conversations").FindOne(ctx, bson.M{"_id": msg.ConversationID}).Decode(&conversation)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		msg.BusinessID = ""
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("resolve message organization: %w", err)
+	}
+	msg.BusinessID = conversation.BusinessID
+	return nil
 }

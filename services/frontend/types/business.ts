@@ -13,6 +13,7 @@ export interface SpecialDate {
 }
 
 export interface Business {
+  hasFirstSuccessfulAction?: boolean;
   id: string;
   name: string;
   category: string;

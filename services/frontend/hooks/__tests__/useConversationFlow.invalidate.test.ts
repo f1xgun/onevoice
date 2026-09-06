@@ -42,6 +42,7 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
 
   it("invalidates ['conversations'] exactly once when chat SSE emits 'done'", async () => {
     const fetchMock = vi.fn();
+    let streamController: ReadableStreamDefaultController<Uint8Array>;
 
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(
@@ -55,10 +56,19 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
 
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(/\/api\/v1\/businesses\/biz-test\/chat\/cid-d10$/);
-      return mockSSEResponse([
-        sseLine({ type: 'text', content: 'Hi ' }),
-        sseLine({ type: 'done' }),
-      ]);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+            controller.enqueue(
+              new TextEncoder().encode(
+                sseLine({ type: 'text', content: 'Hi ' }) + sseLine({ type: 'done' })
+              )
+            );
+          },
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } }
+      );
     });
 
     vi.stubGlobal('fetch', fetchMock);
@@ -77,8 +87,19 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
+    let send: Promise<void>;
     await act(async () => {
-      await result.current.sendMessage('hello');
+      send = result.current.sendMessage('hello');
+    });
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['businesses', 'biz-test', 'tasks'] })
+    );
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: ['businesses', 'biz-test', 'business'],
+    });
+    await act(async () => {
+      streamController.close();
+      await send;
     });
 
     const conversationsCalls = invalidateSpy.mock.calls.filter((c) => {
@@ -90,6 +111,9 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
       );
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['businesses', 'biz-test', 'tasks'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['businesses', 'biz-test', 'business'],
+    });
     expect(conversationsCalls).toHaveLength(1);
     expect(conversationsCalls[0][0]).toEqual({
       queryKey: ['businesses', 'biz-test', 'conversations'],

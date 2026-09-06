@@ -422,7 +422,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		return nil, fmt.Errorf("wire: create user service: %w", err)
 	}
 	s.User = userService
-	s.Business = service.NewBusinessService(repos.Business, repos.BusinessMembership, repos.Role, h.PG, s.AuditLogger)
+	s.Business = service.NewBusinessService(repos.Business, repos.BusinessMembership, repos.Role, h.PG, s.AuditLogger, repository.NewActionActivationRepository(h.Mongo))
 
 	s.AuthzCache = authz.NewCache(repos.MembershipLoader)
 
