@@ -131,7 +131,7 @@ Substitute `203.0.113.10` with the VM's public IP.
 ```env
 PUBLIC_URL=http://203.0.113.10
 CORS_ALLOWED_ORIGINS=http://203.0.113.10
-SECURE_COOKIES=false        # CRITICAL: without this, browsers won't store the session cookie over HTTP → login fails silently
+SECURE_COOKIES=false        # optional — this is already the default for an http PUBLIC_URL; forcing true makes the browser drop the session cookie over HTTP, so every full page load logs the user out
 
 # leave the TLS knobs empty — the prod overlay is not used
 DOMAIN=
@@ -366,7 +366,7 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 |---|---|---|
 | `api` container loops with `JWT_SECRET is required` | `.env` missing or compose run from a directory without it | Run from `/opt/onevoice` (the repo root). |
 | `api` exits with `ENCRYPTION_KEY must be exactly 32 bytes` | Generated with `rand -base64 32` (44 chars) or `rand -hex 32` (64 chars) | Use `openssl rand -hex 16` exactly. |
-| Login redirects back to login (mode A) | `SECURE_COOKIES` left at default `true` → browser refuses to store the cookie over HTTP | Set `SECURE_COOKIES=false`. |
+| Login redirects back to login (mode A) | `SECURE_COOKIES=true` forced with a plain-http `PUBLIC_URL` → browser refuses to store the cookie | Unset `SECURE_COOKIES` (it then follows the PUBLIC_URL scheme) or set it to `false`. |
 | `nginx` exits with `cannot load certificate ... no such file` | Cert volume empty | Re-run `./scripts/init-letsencrypt.sh`. |
 | Certbot returns `DNS problem: NXDOMAIN` | DNS not propagated, or in mode B the IP fragment is misspelled (dashes, not dots) | Mode B uses dashes: `203-0-113-10.nip.io`, not `203.0.113.10.nip.io`. |
 | Certbot returns `too many certificates already issued` | Hit Let's Encrypt's 5/week prod limit | Set `CERTBOT_STAGING=1` and iterate; flip to 0 only when you're confident. |
@@ -386,7 +386,7 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 - [ ] `.env` filled in, no blank required fields; **no dev secrets reused**.
 - [ ] `JWT_SECRET` ≥ 32 chars, `ENCRYPTION_KEY` exactly 32 bytes.
 - [ ] `CORS_ALLOWED_ORIGINS` matches the public origin (not `localhost`, not `*`).
-- [ ] Mode A: `SECURE_COOKIES=false`. Modes B / C: leave at default `true`.
+- [ ] `SECURE_COOKIES` unset (it follows the `PUBLIC_URL` scheme), or set to match it: `false` for mode A, `true` for modes B / C.
 - [ ] OAuth redirect URIs (modes B / C) match values in the VK / Yandex dashboards.
 - [ ] `make certs` run on the VM.
 - [ ] Modes B / C: Let's Encrypt staging cert obtained, then promoted.

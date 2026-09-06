@@ -368,7 +368,7 @@ func Load() (*Config, error) {
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
 		A2APayloadKey: os.Getenv("A2A_PAYLOAD_KEY"),
-		SecureCookies: getEnv("SECURE_COOKIES", envBoolTrue) == envBoolTrue,
+		SecureCookies: secureCookiesDefault(publicURL),
 
 		VKClientID:                 os.Getenv("VK_CLIENT_ID"),
 		VKClientSecret:             os.Getenv("VK_CLIENT_SECRET"),
@@ -475,6 +475,18 @@ func Load() (*Config, error) {
 	if cfg.LockoutDuration <= 0 {
 		cfg.LockoutDuration = defaultLockoutDuration
 	}
+	if v := os.Getenv("SECURE_COOKIES"); v != "" {
+		b, perr := strconv.ParseBool(v)
+		if perr != nil {
+			return nil, fmt.Errorf("SECURE_COOKIES must be a boolean, got %q: %w", v, perr)
+		}
+		cfg.SecureCookies = b
+	}
+	if cfg.SecureCookies && strings.HasPrefix(strings.ToLower(cfg.PublicURL), "http://") {
+		slog.Warn("SECURE_COOKIES is on while PUBLIC_URL is plain http — browsers reject the __Host- refresh cookie, so every full page load signs the user out",
+			"public_url", cfg.PublicURL)
+	}
+
 	cfg.SmartCaptchaSiteKey = os.Getenv("SMARTCAPTCHA_SITE_KEY")
 	cfg.SmartCaptchaSecretKey = os.Getenv("SMARTCAPTCHA_SECRET_KEY")
 	cfg.TrustedProxyCIDRs = os.Getenv("TRUSTED_PROXY_CIDRS")
@@ -795,6 +807,16 @@ func defaultCORSOrigins(publicURL, appEnv string) []string {
 		origins = append(origins, defaultCORSDevOrigin)
 	}
 	return origins
+}
+
+// secureCookiesDefault reports whether the refresh cookie carries the Secure
+// attribute when SECURE_COOKIES is unset. A `__Host-`-prefixed Secure cookie is
+// discarded by browsers on a plain-http origin, which silently drops the session
+// on every full page load, so the default follows the PUBLIC_URL scheme: plain
+// http turns it off, anything else (https, or an unparsable value) keeps the
+// hardened default.
+func secureCookiesDefault(publicURL string) bool {
+	return !strings.HasPrefix(strings.ToLower(strings.TrimSpace(publicURL)), "http://")
 }
 
 // RequireInternalMTLS returns a fatal boot error when the internal listener —

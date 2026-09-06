@@ -371,6 +371,67 @@ func TestLoad_CORSAllowedOrigins(t *testing.T) {
 	}
 }
 
+// TestLoad_SecureCookies pins the SECURE_COOKIES default to the PUBLIC_URL
+// scheme: a Secure `__Host-` refresh cookie is discarded by browsers on a
+// plain-http origin, which silently signs the user out on every full page load.
+func TestLoad_SecureCookies(t *testing.T) {
+	cases := []struct {
+		name      string
+		publicURL string
+		value     string
+		want      bool
+		wantErr   bool
+	}{
+		{
+			name: "unset with the default http origin → off",
+			want: false,
+		},
+		{
+			name:      "unset with an https origin → on",
+			publicURL: "https://app.example.com",
+			want:      true,
+		},
+		{
+			name:      "unset with an uppercase http origin → off",
+			publicURL: "HTTP://localhost",
+			want:      false,
+		},
+		{
+			name:      "explicit true wins over an http origin",
+			publicURL: "http://localhost",
+			value:     "true",
+			want:      true,
+		},
+		{
+			name:      "explicit false wins over an https origin",
+			publicURL: "https://app.example.com",
+			value:     "false",
+			want:      false,
+		},
+		{
+			name:    "unparsable value fails loud",
+			value:   "yes-please",
+			wantErr: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			minTestEnv(t)
+			t.Setenv("PUBLIC_URL", c.publicURL)
+			t.Setenv("SECURE_COOKIES", c.value)
+
+			cfg, err := config.Load()
+			if c.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, c.want, cfg.SecureCookies)
+		})
+	}
+}
+
 func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
