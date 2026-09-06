@@ -2,11 +2,13 @@ package orchestrator_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -111,4 +113,57 @@ func TestStepRun_PassesPDnWhenRedactionDisabled(t *testing.T) {
 	assert.NotContains(t, req.Messages[0].Content, "[Скрыто]")
 	require.Len(t, req.SystemBlocks, 2)
 	assert.Contains(t, req.SystemBlocks[1].Text, "+79991234567")
+}
+
+func TestResume_PDnAllowlistSurvivesPauseRoundTrip(t *testing.T) {
+	for _, verdict := range []string{"approved", "rejected"} {
+		t.Run(verdict, func(t *testing.T) {
+			ctx := context.Background()
+			reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, nil)
+			repo := newMockPendingRepo()
+			options := orchestrator.Options{MaxIterations: 5, RedactOutboundPDn: true}
+			stub := &stubLLM{responses: []*llm.ChatResponse{{
+				FinishReason: "tool_calls",
+				ToolCalls: []llm.ToolCall{{
+					ID: "contact-call", Type: llm.ToolCallTypeFunction,
+					Function: llm.FunctionCall{Name: "manual_tool", Arguments: "{}"},
+				}},
+			}}}
+			orch := orchestrator.NewWithHITL(stub, reg, repo, options)
+			events, err := orch.Run(ctx, orchestrator.RunRequest{
+				BusinessContext: prompt.BusinessContext{Name: "Acme", Phone: "+7 (843) 555-12-34", Website: "ab.com"},
+				Messages:        []llm.Message{{Role: "user", Content: "наш 8 843 555-12-34, клиент +78120000000, customer a@b.com"}},
+				ConversationID:  "contact-conversation",
+			})
+			require.NoError(t, err)
+			paused := drainEvents(events)
+			require.Empty(t, findEvents(paused, orchestrator.EventError))
+			require.Len(t, findEvents(paused, orchestrator.EventToolApprovalRequired), 1)
+			require.Len(t, repo.insertedBatches, 1)
+			batch := repo.insertedBatches[0]
+			var snapshot struct {
+				PDnAllowlist []string      `json:"pdn_allowlist"`
+				Messages     []llm.Message `json:"messages"`
+			}
+			require.NoError(t, json.Unmarshal(batch.ModelMessages, &snapshot))
+			assert.Equal(t, []string{"+7 (843) 555-12-34", "ab.com"}, snapshot.PDnAllowlist)
+			require.NotEmpty(t, snapshot.Messages)
+			assert.Contains(t, snapshot.Messages[0].Content, "+78120000000")
+			batch.Calls[0].Verdict = verdict
+
+			capLLM := &captureLLM{}
+			resumed := orchestrator.NewWithHITL(capLLM, reg, repo, options)
+			events, err = resumed.Resume(ctx, orchestrator.ResumeRequest{BatchID: batch.ID})
+			require.NoError(t, err)
+			completed := drainEvents(events)
+			require.Empty(t, findEvents(completed, orchestrator.EventError))
+			require.Len(t, findEvents(completed, orchestrator.EventDone), 1)
+			req := capLLM.firstRequest()
+			require.NotNil(t, req)
+			require.NotEmpty(t, req.Messages)
+			assert.Equal(t, "наш 8 843 555-12-34, клиент [Скрыто], customer [Скрыто]", req.Messages[0].Content)
+			require.Len(t, req.SystemBlocks, 2)
+			assert.Contains(t, req.SystemBlocks[1].Text, "+7 (843) 555-12-34")
+		})
+	}
 }

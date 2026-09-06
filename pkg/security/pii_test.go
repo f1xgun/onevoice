@@ -3,6 +3,8 @@ package security
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestContainsPII verifies the named-class detector against:
@@ -117,7 +119,7 @@ func TestRedactPII_LogShape(t *testing.T) {
 }
 
 // TestRedactPIIExcept covers the allowlist carve-out used for a business's own
-// registered contact details (CHAT-ORCH-03). Matching is format-insensitive:
+// registered contact details. Phone matching is format-insensitive:
 // the +7 / 8 / punctuated spellings of one Russian number are one value, and
 // e-mail comparison is case-insensitive.
 func TestRedactPIIExcept(t *testing.T) {
@@ -127,6 +129,17 @@ func TestRedactPIIExcept(t *testing.T) {
 		allow []string
 		want  string
 	}{
+		{name: "website cannot allow email", input: "customer a@b.com", allow: []string{"ab.com"}, want: "customer [Скрыто]"},
+		{name: "local part dots remain meaningful", input: "first.last@example.com", allow: []string{"firstlast@example.com"}, want: "[Скрыто]"},
+		{name: "local part dots remain meaningful in reverse", input: "firstlast@example.com", allow: []string{"first.last@example.com"}, want: "[Скрыто]"},
+		{name: "domain dots remain meaningful", input: "a@b.com", allow: []string{"a@bc.om"}, want: "[Скрыто]"},
+		{name: "plus tag remains meaningful", input: "first+last@example.com", allow: []string{"firstlast@example.com"}, want: "[Скрыто]"},
+		{name: "email allowlist requires whole value", input: "a@b.com", allow: []string{"a@b.com/path"}, want: "[Скрыто]"},
+		{name: "email whitespace is not ignored", input: "a@b.com", allow: []string{" a@b.com "}, want: "[Скрыто]"},
+		{name: "numeric website cannot allow phone", input: "+78435551234", allow: []string{"7843.5551234"}, want: "[Скрыто]"},
+		{name: "phone extension is not ignored", input: "+78435551234", allow: []string{"+78435551234/"}, want: "[Скрыто]"},
+		{name: "national allowlist matches international phone", input: "+78435551234", allow: []string{"8 (843) 555-12-34"}, want: "+78435551234"},
+		{name: "other PII classes cannot be allowlisted", input: "4111111111111111", allow: []string{"4111111111111111"}, want: "[Скрыто]"},
 		{
 			name:  "nil allowlist behaves exactly like RedactPII",
 			input: "тел. +7 (843) 555-12-34",
@@ -185,9 +198,7 @@ func TestRedactPIIExcept(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := RedactPIIExcept(tc.input, tc.allow); got != tc.want {
-				t.Fatalf("RedactPIIExcept(%q, %v) = %q, want %q", tc.input, tc.allow, got, tc.want)
-			}
+			assert.Equal(t, tc.want, RedactPIIExcept(tc.input, tc.allow))
 		})
 	}
 }
@@ -198,10 +209,6 @@ func TestRedactPIIExcept_Idempotent(t *testing.T) {
 	allow := []string{"+78435551234"}
 	once := RedactPIIExcept("наш +78435551234, клиента a@b.com", allow)
 	twice := RedactPIIExcept(once, allow)
-	if once != twice {
-		t.Fatalf("RedactPIIExcept is not idempotent: %q != %q", once, twice)
-	}
-	if !strings.Contains(twice, "+78435551234") {
-		t.Fatalf("allowlisted value lost on the second pass: %q", twice)
-	}
+	assert.Equal(t, once, twice)
+	assert.Contains(t, twice, "+78435551234")
 }
