@@ -1,27 +1,15 @@
 'use client';
 
-import { useRef, useEffect, useState, useMemo, useCallback, useId } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Send, Square } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { ChatHeader } from './ChatHeader';
-import { MessageBubble } from './MessageBubble';
-import { ProjectChip } from './ProjectChip';
-import { ProjectPickerChip } from './ProjectPickerChip';
-import { ConnectChannelHint, shouldPromptConnectChannel } from './ConnectChannelHint';
 import { GettingStartedChecklist } from '@/components/onboarding/GettingStartedChecklist';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 import { GuidedCompose } from '@/components/onboarding/GuidedCompose';
 import { SectionHelp } from '@/components/onboarding/SectionHelp';
-import { ToolApprovalCard } from './ToolApprovalCard';
-import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
-import { ProcessingApprovalBanner } from './ProcessingApprovalBanner';
-import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { AppTextarea as Input } from '@/components/design-system/AppInput';
 import { SkeletonChat } from '@/components/states';
 import { ListLoadError } from '@/components/lists/ListLoadError';
@@ -37,22 +25,24 @@ import { usePermission } from '@/lib/hooks/usePermission';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { trackEvent } from '@/lib/telemetry';
 import type { Conversation } from '@/lib/conversations';
-
-const FOLLOW_THRESHOLD_PX = 80;
-const IME_KEY_CODE = 229;
-const composerSchema = z.object({ message: z.string() });
+import { useChatComposer } from '@/hooks/useChatComposer';
+import { ChatHeader } from './ChatHeader';
+import { MessageBubble } from './MessageBubble';
+import { ProjectChip } from './ProjectChip';
+import { ProjectPickerChip } from './ProjectPickerChip';
+import { ConnectChannelHint, shouldPromptConnectChannel } from './ConnectChannelHint';
+import { ToolApprovalCard } from './ToolApprovalCard';
+import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
+import { ProcessingApprovalBanner } from './ProcessingApprovalBanner';
+import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
 
 interface ChatWindowProps {
   conversationId: string;
-  // Forwarded to ChatHeader → ChatRowMenu so the chat owner (chat/[id]/page)
-  // can redirect after delete without ChatWindow/ChatHeader pulling the
-  // Next.js router into their isolated test fixtures.
   onConversationDeleted?: () => void;
 }
 
 export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
   const tChat = useTranslations('chat.window');
-  const composerId = useId();
   const {
     messages,
     isLoading,
@@ -65,15 +55,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     pendingApproval,
     resolveApproval,
   } = useConversationFlow({ conversationId });
-  const { register, watch, setValue } = useForm<z.infer<typeof composerSchema>>({
-    resolver: zodResolver(composerSchema),
-    defaultValues: { message: '' },
-  });
-  const input = watch('message');
-  const followingRef = useRef(true);
-  const sendingRef = useRef(false);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
@@ -85,12 +67,11 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
   const sendPerm = usePermission('content.create');
   const canSend = sendPerm.allowed;
-
-  // awaitingTurn: a prior turn is still generating server-side (we reloaded
-  // mid-turn). Block new sends — the backend would reject with
-  // turn_already_in_progress anyway.
   const composerDisabled =
     isLoading || isStreaming || awaitingTurn || pendingApproval !== null || !canSend || loadError;
+
+  const { composerId, register, input, bottomRef, handleSend, handleScroll, handleKeyDown } =
+    useChatComposer({ messages, disabled: composerDisabled, sendMessage });
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
@@ -114,14 +95,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     currentProject?.quickActions && currentProject.quickActions.length > 0
       ? currentProject.quickActions
       : defaultQuickActions;
-
-  // Shares the NavRail integrations query (same key → warm cache, no extra
-  // fetch). With no connected channel the quick-action chips fire a tool-less
-  // LLM turn that silently no-ops, so we swap them for a connect nudge — but
-  // only on a SUCCESSFUL load, so a user with channels never sees a flash of
-  // the nudge while loading, and a transient /integrations error fails open to
-  // the chips rather than a possibly-wrong dead-end (isSuccess, not
-  // !isPlaceholderData: the latter also flips false on an error with no data).
   const { data: integrations = [], isSuccess: integrationsLoaded } = useQuery<
     { platform: string; status: string }[]
   >({
@@ -153,22 +126,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     return null;
   }, [messages]);
 
-  useEffect(() => {
-    if (followingRef.current) bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-  }, [messages]);
-
-  const handleSend = async () => {
-    const text = input.trim();
-    if (!text || composerDisabled) return;
-    if (sendingRef.current) return;
-    sendingRef.current = true;
-    try {
-      await sendMessage(text, () => setValue('message', ''));
-    } finally {
-      sendingRef.current = false;
-    }
-  };
-
   const handlePickerChange = (projectId: string | null) => {
     if (!conversation) return;
     if ((conversation.projectId ?? null) === projectId) return;
@@ -195,12 +152,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   return (
     <div data-ov-motion className="flex h-full min-h-0 min-w-0 flex-col">
       <FirstActionWizard open={wizardOpen} onClose={closeWizard} />
-
-      {/* Chat header — (USER OVERRIDE) Landmine 1:
-          isolated, memoized subtree subscribed via useQuery `select` to a
-          primitive string. Rendered as a SIBLING of the message list and
-          composer below so title changes do not destroy composer focus or
-          scroll position. */}
       {!showEmptyState && (
         <ChatHeader
           conversationId={conversationId}
@@ -218,11 +169,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       )}
 
       <div
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          followingRef.current =
-            el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD_PX;
-        }}
+        onScroll={handleScroll}
         className="min-h-0 flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6 md:scroll-py-8"
       >
         {isLoading ? (
@@ -233,9 +180,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
           </div>
         ) : messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center gap-4 py-6">
-            {/* Self-contained activation checklist. Kept independent of the
-                composer/chips so the surface stays shared-safe with the
-                parallel first-action wizard, which mounts via onOpenWizard. */}
             <GettingStartedChecklist className="w-full max-w-lg" onOpenWizard={openWizard} />
             <ProjectPickerChip
               value={conversation?.projectId ?? null}
@@ -259,9 +203,6 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
                     </button>
                   ))}
                 </div>
-                {/* Guided compose seeds a templated instruction into the SAME
-                    sendMessage path the chips use; the model drafts and its
-                    publish tool call surfaces the existing ToolApprovalCard. */}
                 <GuidedCompose onCompose={sendMessage} disabled={composerDisabled} />
               </>
             )}
@@ -270,22 +211,11 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
         ) : (
           messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
         )}
-
-        {/* Expired approval banner — sits above the card; owned by. */}
         {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
-
-        {/* Processing banner — the batch was approved and the resume is running
-          server-side (resolving). Replaces the actionable card so a reload
-          mid-resume cannot re-submit (which would 409 already_resolved). */}
         {pendingApproval?.status === 'resolving' && <ProcessingApprovalBanner />}
-
-        {/* Integration-token-invalid banner — surfaces above the composer when
-          the newest assistant turn's tool call failed with the typed code. */}
         {tokenInvalidCall && (
           <IntegrationTokenInvalidBanner platform={tokenInvalidCall.name.split('__')[0] ?? ''} />
         )}
-
-        {/* Inline approval card — renders only when a pending batch exists. */}
         {pendingApproval?.status === 'pending' && (
           <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
             <ToolApprovalCard batch={pendingApproval} onSubmit={resolveApproval} />
@@ -304,25 +234,12 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             id={composerId}
             {...register('message')}
             rows={3}
-            onKeyDown={(e) => {
-              if (
-                e.key === 'Enter' &&
-                (e.ctrlKey || e.metaKey) &&
-                !e.nativeEvent.isComposing &&
-                e.keyCode !== IME_KEY_CODE
-              ) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
+            onKeyDown={handleKeyDown}
             placeholder={tChat('messagePlaceholder')}
             aria-label={tChat('messagePlaceholder')}
             disabled={composerDisabled}
             className="flex-1 border-0 bg-paper text-ink shadow-none focus:border-0 focus:ring-0"
           />
-          {/* TODO(design): slash-commands chip rail (`/ Команды`) per
-              mock — backend command registry not in scope for v1.3, so
-              the placeholder is deferred. */}
           {isStreaming ? (
             <Button variant="outline" size="md" onClick={stop} aria-label={tChat('stopAria')}>
               <Square size={16} />

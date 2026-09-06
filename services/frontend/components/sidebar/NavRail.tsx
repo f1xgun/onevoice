@@ -61,6 +61,7 @@ export interface NavRailProps {
   expanded?: boolean;
 }
 
+/** Renders navigation and labeled integration statuses with check or minus icons. */
 export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
@@ -98,8 +99,6 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
           expanded ? 'h-auto w-full px-3' : 'h-dvh w-52 overflow-y-auto px-3'
         )}
       >
-        {/* OV mark — graphite on paper, the always-visible brand cue. Anchored
-            at the very top of the rail, above the organization switcher. */}
         <Link
           href="/chat"
           aria-label="OneVoice"
@@ -108,10 +107,6 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
         >
           OV
         </Link>
-
-        {/* BusinessSwitcher — visible payoff of the multi-tenant model. 40x40
-            circular trigger below the OV mark; opens a Popover with the user's
-            memberships and a «+ Создать организацию» footer. */}
         <BusinessSwitcher />
 
         <nav aria-label={tNav('railAria')} className={cn('flex flex-1 flex-col gap-1', 'w-full')}>
@@ -149,9 +144,6 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
             );
           })}
         </nav>
-
-        {/* Integration status — vertical dots with one tooltip listing
-            platforms. Connected = success green, disconnected = ink-faint. */}
         <Tooltip>
           <TooltipTrigger asChild>
             <div
@@ -195,10 +187,6 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
             </ul>
           </TooltipContent>
         </Tooltip>
-
-        {/* Feedback — always-reachable affordance so a frustrated user can
-            leave an actionable signal in-app instead of churning silently.
-            Sits above the locale + identity controls in the footer cluster. */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -213,15 +201,8 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
           <TooltipContent side="right">{tNav('feedback')}</TooltipContent>
         </Tooltip>
         <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
-
-        {/* Language switcher — 40 px globe icon button matching the rail's
-            icon column. Sits directly above logout so locale + identity
-            controls live in the same footer cluster; the menu opens to the
-            right of the rail like the nav tooltips. */}
         <ThemeSwitcher className="mb-2" side="right" align="end" />
         <LanguageSwitcher className="mb-2" side="right" align="end" />
-
-        {/* Logout */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button

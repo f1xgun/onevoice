@@ -225,11 +225,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     });
   }, []);
 
-  // Load history, then keep polling while a turn is still being generated
-  // server-side. The server finishes and persists a turn even after the client
-  // disconnects (refresh), so a trailing user message with no assistant reply
-  // means "still generating" — we show the typing placeholder and poll GET
-  // /messages until the reply lands (or the attempt cap is hit).
   useEffect(() => {
     let cancelled = false;
     const historyController = new AbortController();
@@ -238,11 +233,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     setAwaitingTurn(false);
     setLoadError(false);
 
-    // A real conversation switch (the App Router reuses this hook instance across
-    // /chat/[id] navigations, so no unmount fires) while a send is streaming for
-    // a DIFFERENT conversation: abort the orphaned stream and clear streaming
-    // state so its in-flight SSE events can't bleed into the new conversation and
-    // so the load below isn't short-circuited by the streaming guard.
     if (isStreamingRef.current && streamingConversationIdRef.current !== conversationId) {
       sendAbortRef.current?.abort();
       isStreamingRef.current = false;
@@ -250,13 +240,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       setIsStreaming(false);
     }
 
-    // A real switch to a DIFFERENT conversation (not a same-conversation effect
-    // re-run from an activeBusinessId/queryClient dep change) must drop the prior
-    // conversation's HITL state: clear the leaked approval card and abort any
-    // in-flight resume stream whose SSE events would otherwise bleed into the new
-    // conversation (a `done` frame finalizing the wrong bubble, a re-pause frame
-    // injecting the old batch as a card here). B's own pending approval, if any,
-    // is re-established by the hydration branch in load() below.
     if (
       loadedConversationIdRef.current !== null &&
       loadedConversationIdRef.current !== conversationId
@@ -265,9 +248,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       setIsResolving(false);
       isResolvingRef.current = false;
       resumeAbortRef.current?.abort();
-      // Release resume ownership so the orphaned resume's onEvent/finally (still
-      // running in the previous conversation's closure) no longer match and skip
-      // their setPendingApproval/finalize writes against the new conversation.
       resumingConversationIdRef.current = null;
     }
     loadedConversationIdRef.current = conversationId;
@@ -280,10 +260,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     };
 
     const load = async (isInitial: boolean): Promise<void> => {
-      // Wait for the access token before the first load. The token is read
-      // from the store at call time (not via the effect deps) so a mid-session
-      // token rotation never re-runs this effect and clobbers a live stream.
-      // authFetch handles any mid-session 401 by refreshing and replaying.
       if (!useAuthStore.getState().accessToken) {
         if (isInitial) setIsLoading(false);
         return;
@@ -298,12 +274,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         payload = null;
       }
       if (cancelled) return;
-      // A live stream owns message state for ITS conversation — never clobber it
-      // with the persisted list. This short-circuits an initial-load re-run (e.g.
-      // a token rotation re-firing the effect) while the same conversation is
-      // streaming. A re-run for a DIFFERENT conversation is a real switch (the
-      // App Router reuses this instance across /chat/[id] navigations), so the
-      // old stream is aborted above and we fall through to load the new history.
       if (isStreamingRef.current && streamingConversationIdRef.current === conversationId) {
         clearPoll();
         setAwaitingTurn(false);
@@ -341,14 +311,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         }
         setMessages(mapped);
       } else if (!isInitial) {
-        // Transient GET failure mid-poll — keep the placeholder and retry up to
-        // the cap instead of dropping the indicator on a network blip.
         keepWaiting = attempts < TURN_POLL_MAX_ATTEMPTS;
       } else {
-        // Initial history load failed (HTTP error or network) with no message
-        // list — surface an explicit error instead of the empty "start here"
-        // state, which would hide an existing conversation and let a fresh send
-        // run without its prior context.
         setLoadError(true);
       }
 
@@ -363,8 +327,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         turnPollRef.current = setTimeout(() => void load(false), TURN_POLL_INTERVAL_MS);
       } else {
         clearPoll();
-        // A turn we were waiting on just resolved — refresh the conversation
-        // list so the auto-generated title appears without a manual reload.
         if (attempts > 0 && apiMsgs) {
           void queryClient.invalidateQueries({
             queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
@@ -436,8 +398,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     async (text: string, onAccepted?: () => void) => {
       if (isStreamingRef.current) return;
 
-      // Stop any in-flight-turn polling and drop its placeholder — the live
-      // stream now owns message state.
       if (turnPollRef.current) {
         clearTimeout(turnPollRef.current);
         turnPollRef.current = null;
@@ -483,12 +443,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           signal: controller.signal,
         });
 
-        // The chat POST can fail with a typed pre-stream error before the SSE
-        // body opens (429 sse_concurrency_exceeded + Retry-After, 503
-        // rate_limit_unavailable, 404 business_not_found, 502
-        // orchestrator_unavailable, 400). consumeSSEStream would collapse all of
-        // these to a bare "HTTP <status>" throw, losing the code and retry hint.
-        // Map them to the same `error` SSE shape the renderer localizes instead.
         if (!response.ok) {
           let body: unknown = null;
           try {
@@ -513,11 +467,17 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         }
 
         let failed = false;
+        let completed = false;
         await consumeSSEStream(response, controller.signal, (event) => {
+          if (controller.signal.aborted || sendAbortRef.current !== controller) return;
           if (event.type === 'error') failed = true;
+          if (event.type === 'done') completed = true;
           onEventRef.current(event);
         });
-        if (!failed && !controller.signal.aborted) onAccepted?.();
+        if (!failed && !controller.signal.aborted && sendAbortRef.current === controller) {
+          if (completed) onAccepted?.();
+          else applyEventToLastAssistant({ type: 'error', code: 'stream_interrupted' });
+        }
         void queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
         });
@@ -532,9 +492,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           ];
         });
       } finally {
-        // Only clear streaming state if this send still owns it. A conversation
-        // switch may have already aborted this send and handed ownership to a
-        // newer send; don't stomp the newer stream's flags from this finally.
         if (sendAbortRef.current === controller) {
           finalizeStreamingAssistant();
           setIsStreaming(false);
@@ -559,8 +516,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     sendAbortRef.current?.abort();
   }, []);
 
-  // Abort any in-flight send/resume stream on unmount so detached fetches stop
-  // invoking onEvent (setState) on an unmounted component.
   useEffect(() => {
     return () => {
       sendAbortRef.current?.abort();
@@ -571,14 +526,14 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const resolveApproval = useCallback(
     async (decisions: ApprovalDecision[]) => {
       if (!pendingApproval) return;
-      if (isResolvingRef.current) return; // debounce — composer is also disabled
+      if (isResolvingRef.current) return;
 
       const sanitizedDecisions: ApprovalDecision[] = decisions.map((d) => {
         const copy: ApprovalDecision = { id: d.id, action: d.action };
         if (d.action === 'edit' && d.edited_args) {
           const filtered: Record<string, string | number | boolean> = {};
           for (const [k, v] of Object.entries(d.edited_args)) {
-            if (k === 'tool_name') continue; // NEVER echo
+            if (k === 'tool_name') continue;
             filtered[k] = v;
           }
           copy.edited_args = filtered;
@@ -647,8 +602,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           }
         );
         await consumeSSEStream(resumeRes, controller.signal, (event) => {
-          // Drop frames once a conversation switch reassigned ownership — their
-          // setMessages/setPendingApproval would target the new conversation.
           if (resumingConversationIdRef.current !== conversationId) return;
           if (event.type === 'done') sawDone = true;
           if (event.type === 'tool_approval_required') sawNextApproval = true;
@@ -661,9 +614,6 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         if ((err as Error).name === 'AbortError') return;
         toast.error(resumeStreamError);
       } finally {
-        // Mirror sendMessage's ownership check: only this resume's conversation may
-        // write approval/finalize state. A switch already cleared it for the new
-        // conversation; don't stomp the new conversation's freshly-loaded state.
         if (resumingConversationIdRef.current === conversationId) {
           if (!sawNextApproval) setPendingApproval(null);
           if (!sawDone && !sawNextApproval) {

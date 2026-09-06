@@ -179,8 +179,6 @@ describe('ChatWindow — history load failure', () => {
       'Не удалось загрузить данные. Обновите страницу или попробуйте ещё раз.'
     );
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
-    // The onboarding empty state must NOT be shown — that would hide an existing
-    // conversation and let a fresh send run without its prior context.
     expect(screen.queryByText('Чем могу помочь?')).not.toBeInTheDocument();
     const input = screen.getByPlaceholderText('Напишите сообщение…');
     expect(input).toBeDisabled();
@@ -368,6 +366,12 @@ describe('composer keyboard and failed submission', () => {
 
 it.each([
   { frame: 'data: {"type":"done"}\n\n', cleared: true },
+  { frame: 'data: {"type":"text","content":"Частичный ответ"}\n\n', cleared: false },
+  { frame: '', cleared: false },
+  {
+    frame: 'data: {"type":"error","code":"max_iterations"}\n\ndata: {"type":"done"}\n\n',
+    cleared: false,
+  },
   { frame: 'data: {"type":"error","code":"max_iterations"}\n\n', cleared: false },
 ])(
   'clears the instruction only after successful streaming: $cleared',
@@ -387,5 +391,16 @@ it.each([
     fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
     await waitFor(() => expect(input).not.toBeDisabled());
     await waitFor(() => expect(input).toHaveValue(cleared ? '' : 'Проверить текст'));
+    if (!frame || frame.includes('Частичный ответ')) {
+      expect(
+        await screen.findByText(
+          'Ответ прервался до завершения. Попробуйте отправить поручение повторно.'
+        )
+      ).toBeInTheDocument();
+      if (frame) expect(screen.getByText('Частичный ответ')).toBeInTheDocument();
+      fetchMock.mockResolvedValue(new Response('data: {"type":"done"}\n\n'));
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      await waitFor(() => expect(input).toHaveValue(''));
+    }
   }
 );

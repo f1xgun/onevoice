@@ -443,6 +443,7 @@
       "decisionUnavailableReason": "Decision not found — please approve again"
     },
     "streamError": {
+      "streamInterrupted": "The response ended before completion. Try sending your instruction again.",
       "maxIterations": "Could not complete the request — the task was too complex. Try rephrasing it or breaking it into smaller steps.",
       "internalError": "Something went wrong on our side. Please try again in a moment.",
       "conversationTokenCap": "This chat has reached its size limit. Start a new chat to continue.",
