@@ -114,3 +114,24 @@ network, which already implies host compromise. v1.5+ may add OCSP stapling.
 | `tls: handshake failure: missing client certificate` | API listener requires client cert; client (tokenclient) had no cert config | Confirm `ONEVOICE_MTLS_ENABLED=true` on the calling service; confirm cert/key env vars resolve to a readable file inside the container. |
 | `tls: certificate is not valid for any names` | Cert's SAN doesn't include the hostname the client used | Regenerate with the right service name; the script's SAN line includes `DNS:<service>,DNS:localhost`. |
 | Time-skew errors | Container clock drift > leaf cert's notBefore | Sync host clock; consider `ntpd` in the container if drift is recurring. |
+
+## Linux credential ownership
+
+The Yandex browser worker runs as UID/GID 1000 (`pwuser`) with no capabilities.
+For Linux bind mounts, keep private keys at 0600 and assign only its leaf key to
+that identity. The mounted certificate directory must be traversable; public
+certificates must be readable. After generation or rotation, before deployment:
+
+```bash
+sudo chown 1000:1000 infra/mtls/certs/agent-yandex-business.key
+sudo chmod 600 infra/mtls/certs/agent-yandex-business.key
+sudo chmod 755 infra/mtls/certs
+sudo chmod 644 infra/mtls/certs/ca.crt infra/mtls/certs/agent-yandex-business.crt
+```
+
+Keep `ca.key` and other services' keys owned by their provisioning identity at
+0600. Do not recursively chown the directory to the browser worker. Production
+secret volumes must provide the same UID/readability contract at their actual
+mount paths; the dev generator is not a production CA. Docker Desktop ownership
+remapping can hide this Linux requirement. Also provision the worker's
+[NATS seed ownership](../nats/README.md#linux-credential-ownership).

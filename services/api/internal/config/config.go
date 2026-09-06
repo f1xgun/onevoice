@@ -482,7 +482,7 @@ func Load() (*Config, error) {
 		}
 		cfg.SecureCookies = b
 	}
-	if cfg.SecureCookies && strings.HasPrefix(strings.ToLower(cfg.PublicURL), "http://") {
+	if cfg.SecureCookies && strings.HasPrefix(strings.ToLower(cfg.PublicURL), plainHTTPPrefix) {
 		slog.Warn("SECURE_COOKIES is on while PUBLIC_URL is plain http — browsers reject the __Host- refresh cookie, so every full page load signs the user out",
 			"public_url", cfg.PublicURL)
 	}
@@ -809,6 +809,8 @@ func defaultCORSOrigins(publicURL, appEnv string) []string {
 	return origins
 }
 
+const plainHTTPPrefix = "http://"
+
 // secureCookiesDefault reports whether the refresh cookie carries the Secure
 // attribute when SECURE_COOKIES is unset. A `__Host-`-prefixed Secure cookie is
 // discarded by browsers on a plain-http origin, which silently drops the session
@@ -816,7 +818,7 @@ func defaultCORSOrigins(publicURL, appEnv string) []string {
 // http turns it off, anything else (https, or an unparsable value) keeps the
 // hardened default.
 func secureCookiesDefault(publicURL string) bool {
-	return !strings.HasPrefix(strings.ToLower(strings.TrimSpace(publicURL)), "http://")
+	return !strings.HasPrefix(strings.ToLower(strings.TrimSpace(publicURL)), plainHTTPPrefix)
 }
 
 // RequireInternalMTLS returns a fatal boot error when the internal listener —

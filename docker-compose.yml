@@ -1,6 +1,7 @@
 services:
   # PostgreSQL
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     container_name: onevoice-postgres
     environment:
@@ -33,6 +34,7 @@ services:
   # loopback mapping via `ports: !reset []`. The `ping` healthcheck needs no
   # credentials (it is exempt from auth).
   mongodb:
+    restart: unless-stopped
     image: mongo:7
     container_name: onevoice-mongodb
     command: ["mongod", "--auth", "--bind_ip_all"]
@@ -58,6 +60,7 @@ services:
   # the healthcheck's redis-cli authenticate without embedding the password in
   # the command line. docker-compose.prod.yml drops the loopback mapping.
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     container_name: onevoice-redis
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set, generate with openssl rand -base64 24}"]
@@ -81,6 +84,7 @@ services:
   # without exposing an unauthenticated-by-default port on the VM's public IP;
   # docker-compose.prod.yml drops even the loopback mapping via `ports: !reset []`.
   nats:
+    restart: unless-stopped
     image: nats:2.10-alpine
     container_name: onevoice-nats
     command: ["-c", "/etc/nats/nats-server.conf"]
@@ -108,6 +112,7 @@ services:
 
   # MinIO — S3-compatible object storage for user uploads (logos, etc.)
   minio:
+    restart: unless-stopped
     image: minio/minio:latest
     container_name: onevoice-minio
     command: ["server", "/data", "--console-address", ":9001"]
@@ -131,20 +136,44 @@ services:
     networks:
       - onevoice-network
 
-  # Create bucket and set public-read policy for uploaded logos
+  # Create the bucket and grant anonymous GetObject on its objects.
+  #
+  # NOT `mc anonymous set download`: that shorthand also grants bucket-level
+  # s3:ListBucket, so an unauthenticated caller could enumerate every object key
+  # (logo and generated-image paths carry business UUIDs) through the public
+  # /media/ edge. The explicit policy below allows reads of known keys only.
   minio-init:
     image: minio/mc:latest
     container_name: onevoice-minio-init
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set} ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set} &&
-      mc mb --ignore-existing local/${S3_BUCKET:-onevoice} &&
-      mc anonymous set download local/${S3_BUCKET:-onevoice} &&
-      echo 'MinIO bucket ready'
-      "
+    environment:
+      MC_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MC_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      MC_BUCKET: ${S3_BUCKET:-onevoice}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$MC_USER" "$$MC_PASSWORD"
+        mc mb --ignore-existing "local/$$MC_BUCKET"
+        cat > /tmp/anonymous-read.json <<JSON
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"AWS": ["*"]},
+              "Action": ["s3:GetObject"],
+              "Resource": ["arn:aws:s3:::$$MC_BUCKET/*"]
+            }
+          ]
+        }
+        JSON
+        mc anonymous set-json /tmp/anonymous-read.json "local/$$MC_BUCKET"
+        echo 'MinIO bucket ready'
     networks:
       - onevoice-network
 

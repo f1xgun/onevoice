@@ -53,3 +53,35 @@ received — it never grants blanket `_INBOX.>` publish. Requesters (orchestrato
 api) originate `tasks.*` and read their own reply inboxes; no service can
 subscribe another agent's `tasks.<platform>` subject or publish a task it isn't
 entitled to.
+
+## Linux credential ownership
+
+The Yandex agent runs as `pwuser` (UID/GID 1000) with all capabilities dropped.
+Linux bind mounts preserve host ownership; root-generated 0600 files are not
+readable by that agent. Keep seeds private (0600), and assign **only its own**
+seed to its runtime identity before deployment, and after credential rotation:
+
+```bash
+sudo chown 1000:1000 infra/nats/creds/agent-yandex-business.nk
+sudo chmod 600 infra/nats/creds/agent-yandex-business.nk
+```
+
+The seed is mounted as a single file. For mTLS directory traversal and its leaf
+key ownership, also follow [the mTLS instructions](../mtls/README.md#linux-credential-ownership).
+Do not recursively assign all credentials to the browser worker. Missing,
+unreadable or malformed seeds now fail connection setup with the file path.
+
+## Updating reply permissions without rotating identities
+
+Agent replies are limited to one response within five minutes. The orchestrator
+rejects `TOOL_EXEC_TIMEOUT` above 4m30s, reserving 30s for delivery. Existing
+`auth.conf` files are gitignored and ordinary generation skips them. Refresh
+permissions from the existing seeds when deploying this change:
+
+```bash
+go run ./tools/natskeygen -refresh
+```
+
+This updates only `auth.conf`; it never rotates seeds. Deploy the refreshed
+configuration and reload NATS through your normal maintenance procedure. A code
+update alone does not change permissions on a running broker.

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -371,4 +372,28 @@ func TestRateLimiterGate_DevNoRedis_Degraded(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, dec.Enabled)
 	assert.True(t, dec.Degraded)
+}
+
+func TestConfig_ToolTimeoutFitsReplyPermission(t *testing.T) {
+	limit := natsauth.ResponsePermissionTTL - natsauth.ResponsePermissionMargin
+	for _, tc := range []struct {
+		name, value string
+		wantErr     bool
+	}{
+		{"default", "", false},
+		{"maximum", limit.String(), false},
+		{"over maximum", (limit + time.Nanosecond).String(), true},
+		{"long override", "10m", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TOOL_EXEC_TIMEOUT", tc.value)
+			cfg, err := requireLoad(t)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "TOOL_EXEC_TIMEOUT")
+				return
+			}
+			require.NoError(t, err)
+			assert.LessOrEqual(t, cfg.ToolExecTimeout, limit)
+		})
+	}
 }

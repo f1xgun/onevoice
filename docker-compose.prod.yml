@@ -82,14 +82,10 @@ services:
       - onevoice-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:80/.well-known/acme-challenge/healthcheck"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:80/nginx-health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      # Note: `--spider` on a missing path returns 404, which is NOT a
-      # hard-fail for nginx itself (the server is up; the file just
-      # doesn't exist). Healthcheck still reports unhealthy on 4xx —
-      # acceptable here as the goal is "nginx process responding".
 
   # Certbot — one-shot certificate issuance + periodic renewal.
   # Run interactively the first time:
@@ -147,7 +143,7 @@ services:
 
   # --- Healthchecks for app services (declared in base compose but
   #     left without checks; production overlay fills them in so
-  #     Docker can restart unhealthy containers). ---
+  #     monitoring can detect unhealthy containers). ---
   api:
     # Drop the base 8080/8443 host mappings — the api is reached only via
     # nginx in prod. (8443 is the internal mTLS port; never expose it.)
@@ -159,7 +155,7 @@ services:
       APP_ENV: ${APP_ENV:?APP_ENV must be set to production for a production deploy}
       PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL must be set to the public https origin (e.g. https://app.example.com)}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8080/health/live"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/health/live"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -172,7 +168,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:?APP_ENV must be set to production for a production deploy}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8090/health/live"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8090/health/live"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -180,7 +176,7 @@ services:
 
   frontend:
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:3000/"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 5s
       retries: 3

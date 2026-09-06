@@ -6,6 +6,7 @@
 package natsauth
 
 import (
+	"fmt"
 	"os"
 
 	natslib "github.com/nats-io/nats.go"
@@ -30,22 +31,21 @@ import (
 //   - NATS_CA_PATH: PEM bundle used to verify the NATS server certificate (TLS).
 //   - NATS_CLIENT_CERT / NATS_CLIENT_KEY: client certificate for mutual TLS.
 //
-// File-backed options defer their reads to Connect time where the underlying
-// option supports it (credentials, CA bundle, client cert), so a missing or
-// malformed file surfaces as a connect error rather than a panic here. The nkey
-// seed is read eagerly by NkeyOptionFromSeed; a read/parse failure is skipped
-// here (no option appended) and surfaces at Connect as an authorization
-// violation rather than a panic — the container always mounts the seed before
-// the process starts, so this path is not hit in practice.
+// File-backed options validate their material at Connect time. Missing or
+// malformed seeds fail before dialing, with the credential path in the error.
 func Options() []natslib.Option {
 	var opts []natslib.Option
 
 	if creds := os.Getenv("NATS_CREDS"); creds != "" {
 		opts = append(opts, natslib.UserCredentials(creds))
 	} else if seed := os.Getenv("NATS_NKEY_SEED"); seed != "" {
-		if opt, err := natslib.NkeyOptionFromSeed(seed); err == nil {
-			opts = append(opts, opt)
-		}
+		opts = append(opts, func(options *natslib.Options) error {
+			opt, err := natslib.NkeyOptionFromSeed(seed)
+			if err != nil {
+				return fmt.Errorf("load NATS nkey seed %q: %w", seed, err)
+			}
+			return opt(options)
+		})
 	} else if user := os.Getenv("NATS_USER"); user != "" {
 		opts = append(opts, natslib.UserInfo(user, os.Getenv("NATS_PASSWORD")))
 	}

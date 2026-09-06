@@ -73,12 +73,27 @@ git checkout main          # never deploy a feature branch
 
 The four agent services authenticate to the API's internal port (`:8443`) with client certificates signed by a project-local CA. These never touch the internet — they secure container-to-container traffic only.
 
+For a local/test stand, generate the credentials at the paths used by Compose:
+
 ```bash
-make certs
-ls certs/                 # ca.crt + server.{crt,key} + {telegram,vk,yandex-business}.{crt,key}
+make nats-creds
+make mtls-certs
 ```
 
-One-shot. Re-run only on CA rotation. Files are gitignored.
+For production, provision a separate CA and per-service keys through your secrets
+manager as described in [internal mTLS](../infra/mtls/README.md). Mount those
+production credentials at the configured paths; do not reuse the dev CA.
+
+On Linux, `agent-yandex-business` runs as UID/GID 1000 with capabilities dropped.
+Host-generated 0600 credentials must belong to that identity to be readable.
+Before deployment and after every rotation, apply the targeted ownership and
+traversal commands in [NATS ownership](../infra/nats/README.md#linux-credential-ownership)
+and [mTLS ownership](../infra/mtls/README.md#linux-credential-ownership), using the
+actual provisioned paths. Keep other services' keys and the CA key private to
+their provisioning identities. Do not recursively chown all credentials.
+
+Existing NATS deployments also need [permission refresh](../infra/nats/README.md#updating-reply-permissions-without-rotating-identities)
+to apply the five-minute reply window without rotating identities.
 
 ---
 
@@ -388,7 +403,7 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 - [ ] `CORS_ALLOWED_ORIGINS` matches the public origin (not `localhost`, not `*`).
 - [ ] `SECURE_COOKIES` unset (it follows the `PUBLIC_URL` scheme), or set to match it: `false` for mode A, `true` for modes B / C.
 - [ ] OAuth redirect URIs (modes B / C) match values in the VK / Yandex dashboards.
-- [ ] `make certs` run on the VM.
+- [ ] NATS and mTLS credentials provisioned; Linux worker ownership and directory traversal verified.
 - [ ] Modes B / C: Let's Encrypt staging cert obtained, then promoted.
 - [ ] `docker compose ... ps` shows all services `running` / `healthy`.
 - [ ] Health endpoint returns 200.
