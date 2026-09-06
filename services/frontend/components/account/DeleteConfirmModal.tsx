@@ -10,6 +10,9 @@
 // SoleOwnerBlockedModal with the returned businesses payload
 // - On 423 account_pending_deletion: closes self + reloads (the
 // grace banner will mount on the next render)
+// - On any other code (origin_not_allowed, 5xx, network): copy comes from
+// lib/error_mapping, so an unrelated failure is never reported as a wrong
+// password
 
 'use client';
 
@@ -36,6 +39,7 @@ import {
   type SoleOwnerBusiness,
 } from '@/lib/api/account';
 import { localeToIntlTag } from '@/lib/i18n/locales';
+import { mapErrorCode } from '@/lib/error_mapping';
 import { SoleOwnerBlockedModal } from './SoleOwnerBlockedModal';
 
 interface DeleteConfirmModalProps {
@@ -55,6 +59,7 @@ const DELETION_GRACE_MS =
 export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalProps) {
   const t = useTranslations('account.deletion.confirmModal');
   const tErrors = useTranslations('account.deletion.errors');
+  const tCopy = useTranslations(); // top-level for COPY i18nKey resolution
   const locale = useLocale();
 
   const [password, setPassword] = useState('');
@@ -105,7 +110,7 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
           window.location.reload();
           return;
         default:
-          toast.error(tErrors('passwordInvalid'));
+          toast.error(tCopy(mapErrorCode(err.code).i18nKey));
       }
     }
   }

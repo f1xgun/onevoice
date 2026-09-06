@@ -9,7 +9,9 @@
 // Inline action «Отменить удаление» fires POST /users/me/restore. On
 // 204 the page reloads so /auth/me re-fetches and the banner
 // unmounts. On 410 (deletion_too_old) the user is redirected to
-// /login because the session is about to be invalid.
+// /login because the session is about to be invalid. Every other
+// failure takes its copy from lib/error_mapping, so a transient 5xx is
+// never reported as an expired cancellation window.
 //
 // Per UI-SPEC: ICU date interpolation via dateFnsLocale-aware
 // `Intl.DateTimeFormat`; date is in font-mono per the typography
@@ -24,12 +26,14 @@ import { restoreAccount, type DeletionAccountError } from '@/lib/api/account';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { localeToIntlTag } from '@/lib/i18n/locales';
+import { mapErrorCode } from '@/lib/error_mapping';
 import { cn } from '@/lib/utils';
 
 const HTTP_GONE = 410;
 
 export function DeletionGraceBanner() {
   const t = useTranslations('account.deletion');
+  const tCopy = useTranslations(); // top-level for COPY i18nKey resolution
   const locale = useLocale();
   const user = useAuthStore((s) => s.user);
   const [submitting, setSubmitting] = useState(false);
@@ -55,9 +59,7 @@ export function DeletionGraceBanner() {
         window.location.href = '/login';
         return;
       }
-      toast.error(
-        err.code === 'origin_not_allowed' ? t('errors.originNotAllowed') : t('errors.tooOld')
-      );
+      toast.error(tCopy(mapErrorCode(err.code).i18nKey));
       setSubmitting(false);
     }
   }
