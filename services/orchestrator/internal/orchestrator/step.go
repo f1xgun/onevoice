@@ -48,6 +48,10 @@ type RunState struct {
 
 	AvailableTools []llm.ToolDefinition
 
+	// PDnAllowlist holds the business's own registered contact values, exempted
+	// from the outbound personal-data scrub. See redact.go.
+	PDnAllowlist []string
+
 	BusinessApprovals        map[string]domain.ToolFloor
 	ProjectApprovalOverrides map[string]domain.ToolFloor
 
@@ -200,7 +204,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 				{Text: state.SystemBusiness},
 			}
 		}
-		o.applyOutboundRedaction(&llmReq)
+		o.applyOutboundRedaction(&llmReq, state.PDnAllowlist)
 		resp, err := o.llm.Chat(ctx, llmReq)
 		if err != nil {
 			ev := translateChatError(ctx, err)
@@ -279,7 +283,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		manualCalls, forbiddenCalls = enforceOffered(manualCalls, forbiddenCalls, offered)
 
 		for _, tc := range forbiddenCalls {
-			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
+			rejectionMsg := buildRejectionMessage(rejectionByPolicy, reasonPolicyForbidden, policyForbiddenNote)
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
 				Content:    rejectionMsg,
@@ -290,7 +294,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 				Type:       EventToolRejected,
 				ToolCallID: tc.ID,
 				ToolName:   tc.Function.Name,
-				Content:    "policy_forbidden",
+				Content:    reasonPolicyForbidden,
 			}:
 			case <-ctx.Done():
 				return OutcomeError, "", ctx.Err()
@@ -374,6 +378,10 @@ type modelMessagesSnapshotV2 struct {
 	Messages       []llm.Message `json:"messages"`
 	SystemPlatform string        `json:"system_platform,omitempty"`
 	SystemBusiness string        `json:"system_business,omitempty"`
+	// PDnAllowlist carries the business's own contact values across the pause so
+	// the resumed turn scrubs exactly like the paused one. omitempty keeps
+	// snapshots for businesses without contact fields byte-identical.
+	PDnAllowlist []string `json:"pdn_allowlist,omitempty"`
 	// omitempty so pre-cap snapshots stay byte-identical; legacy batches
 	// hydrate at 0 (correct — pre-cap turns weren't subject to the cap).
 	AccumulatedInputTokens  int `json:"accumulated_input_tokens,omitempty"`
@@ -387,6 +395,7 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 		Messages:                state.Messages,
 		SystemPlatform:          state.SystemPlatform,
 		SystemBusiness:          state.SystemBusiness,
+		PDnAllowlist:            state.PDnAllowlist,
 		AccumulatedInputTokens:  state.AccumulatedInputTokens,
 		AccumulatedOutputTokens: state.AccumulatedOutputTokens,
 	}

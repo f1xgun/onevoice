@@ -88,6 +88,12 @@ populate `RunState` without juggling a long return list. Legacy V1
 snapshots leave most fields zero — the `Legacy` flag tells the caller to
 expect a leading system message in `Messages` instead.
 
+`PDnAllowlist` (`pdn_allowlist`) is hydrated so the resumed turn exempts
+the same business-owned contact values from the outbound personal-data
+scrub as the paused one. Snapshots written before the field existed decode
+to nil — the resumed turn then redacts without an allowlist, which is the
+old, safe behaviour.
+
 Accumulated token counts (`AccumulatedInputTokens`,
 `AccumulatedOutputTokens`) are hydrated so the per-conversation cap
 continues to measure from the pre-pause budget. Legacy V1/V2 snapshots
@@ -115,12 +121,12 @@ will immediately hit the same cancellation gate.
 ### Per-call branches
 
 - **`Verdict == "reject"`** → synthetic rejection message
-  `{"rejected":true,"reason":"<reject_reason or user_rejected>"}`
-  appended to `state.Messages`; `EventToolRejected` emitted; no
-  dispatch.
+  `{"rejected":true,"by":"owner","reason":"<reject_reason or
+  user_rejected>","note":"…"}` appended to `state.Messages`;
+  `EventToolRejected` emitted; no dispatch.
 - **TOCTOU re-check fails** (`effective == ToolFloorForbidden`) →
-  synthetic `policy_revoked` rejection message; `EventToolRejected`
-  emitted; no dispatch.
+  synthetic `by:"policy"` / `reason:"policy_revoked"` rejection message;
+  `EventToolRejected` emitted; no dispatch.
 - **`Dispatched == true`** → silently skipped (crash recovery).
 - **Edit verdict** → `EditedArgs` merged over the original `Arguments`
   map. The `EditableFields` whitelist was already enforced by the
@@ -133,6 +139,15 @@ will immediately hit the same cancellation gate.
   `pendingRepo.MarkDispatched` (best-effort log on error — Redis dedupe
   at the agent is the primary safety layer; the Mongo flag is
   belt-and-suspenders), and emits `tool_result`.
+
+All rejection payloads come from `rejection.go:buildRejectionMessage`. The
+`by` + `note` fields are load-bearing: a bare reason token leaves the model
+free to invent a platform-side cause (a content filter, a "test mode") and
+offer a retry that can never succeed, so each note names the true origin —
+the owner's card decision or the OneVoice tool policy — and forbids both
+retrying and silently substituting another channel. The `reason` token on
+the wire `EventToolRejected` is unchanged; the frontend maps it to badge
+copy.
 
 `DisplayName` + `DisplayNameKey` are populated on `tool_call` and
 `tool_result` events so the `AgentTask` row created on the resume path

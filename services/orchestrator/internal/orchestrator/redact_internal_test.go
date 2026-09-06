@@ -33,7 +33,7 @@ func TestRedactRequestPDn_ScrubsContentToolCallsAndBusinessBlock(t *testing.T) {
 		},
 	}
 
-	redactRequestPDn(&req)
+	redactRequestPDn(&req, nil)
 
 	require.Len(t, req.Messages, 3)
 	assert.Contains(t, req.Messages[0].Content, "[Скрыто]")
@@ -61,9 +61,9 @@ func TestRedactRequestPDn_ScrubsContentToolCallsAndBusinessBlock(t *testing.T) {
 // placeholder is not itself PII).
 func TestRedactRequestPDn_Idempotent(t *testing.T) {
 	req := llm.ChatRequest{Messages: []llm.Message{{Role: "user", Content: "почта a@b.com"}}}
-	redactRequestPDn(&req)
+	redactRequestPDn(&req, nil)
 	once := req.Messages[0].Content
-	redactRequestPDn(&req)
+	redactRequestPDn(&req, nil)
 	assert.Equal(t, once, req.Messages[0].Content)
 }
 
@@ -77,8 +77,106 @@ func TestRedactRequestPDn_PreservesNonPII(t *testing.T) {
 			{Text: "## Бизнес: Кофейня «Утро»", CacheBoundary: false},
 		},
 	}
-	redactRequestPDn(&req)
+	redactRequestPDn(&req, nil)
 	assert.Equal(t, "Заказ 1234567890 готов", req.Messages[0].Content,
 		"a bare order number must not trip the phone/cc heuristics")
 	assert.Equal(t, "## Бизнес: Кофейня «Утро»", req.SystemBlocks[1].Text)
+}
+
+// TestRedactRequestPDn_Allowlist covers CHAT-ORCH-03: values on the allowlist
+// (the business's own registered contacts) survive every scrubbed surface —
+// message content, tool-call arguments and the business prompt block — in any
+// spelling, while everything else is still redacted.
+func TestRedactRequestPDn_Allowlist(t *testing.T) {
+	const ownPhone = "+7 (843) 555-12-34"
+
+	tests := []struct {
+		name       string
+		allow      []string
+		content    string
+		wantKeep   []string
+		wantRedact []string
+	}{
+		{
+			name:       "own phone survives in the exact registered spelling",
+			allow:      []string{ownPhone},
+			content:    "Звоните: +7 (843) 555-12-34",
+			wantKeep:   []string{"+7 (843) 555-12-34"},
+			wantRedact: nil,
+		},
+		{
+			name:       "own phone survives in the 8-prefixed national spelling",
+			allow:      []string{ownPhone},
+			content:    "Наш телефон 8 843 555-12-34",
+			wantKeep:   []string{"8 843 555-12-34"},
+			wantRedact: nil,
+		},
+		{
+			name:       "own phone survives in E.164 spelling",
+			allow:      []string{ownPhone},
+			content:    "тел. +78435551234",
+			wantKeep:   []string{"+78435551234"},
+			wantRedact: nil,
+		},
+		{
+			name:       "a third-party phone alongside the allowed one is still redacted",
+			allow:      []string{ownPhone},
+			content:    "наш +78435551234, клиента +78120000000",
+			wantKeep:   []string{"+78435551234"},
+			wantRedact: []string{"+78120000000"},
+		},
+		{
+			name:       "allowed email survives, other emails do not",
+			allow:      []string{"Info@Utro.ru"},
+			content:    "пишите info@utro.ru, клиент писал с a@b.com",
+			wantKeep:   []string{"info@utro.ru"},
+			wantRedact: []string{"a@b.com"},
+		},
+		{
+			name:       "empty allowlist redacts everything (RedactPII parity)",
+			allow:      nil,
+			content:    "наш +78435551234",
+			wantKeep:   nil,
+			wantRedact: []string{"+78435551234"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := llm.ChatRequest{
+				Messages: []llm.Message{
+					{Role: "user", Content: tt.content},
+					{Role: "assistant", ToolCalls: []llm.ToolCall{{
+						ID:   "c1",
+						Type: llm.ToolCallTypeFunction,
+						Function: llm.FunctionCall{
+							Name:      "telegram__send_channel_post",
+							Arguments: `{"text":"` + tt.content + `"}`,
+						},
+					}}},
+				},
+				SystemBlocks: []llm.SystemBlock{
+					{Text: "platform prefix", CacheBoundary: true},
+					{Text: tt.content, CacheBoundary: false},
+				},
+			}
+
+			redactRequestPDn(&req, tt.allow)
+
+			surfaces := map[string]string{
+				"message content":     req.Messages[0].Content,
+				"tool-call arguments": req.Messages[1].ToolCalls[0].Function.Arguments,
+				"business block":      req.SystemBlocks[1].Text,
+			}
+			for label, got := range surfaces {
+				for _, keep := range tt.wantKeep {
+					assert.Contains(t, got, keep, "%s must keep the allowlisted value", label)
+				}
+				for _, gone := range tt.wantRedact {
+					assert.NotContains(t, got, gone, "%s must redact the third-party value", label)
+				}
+			}
+			assert.Equal(t, "platform prefix", req.SystemBlocks[0].Text)
+		})
+	}
 }

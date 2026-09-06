@@ -77,6 +77,7 @@ type snapshotDecoded struct {
 	Messages                []llm.Message
 	SystemPlatform          string
 	SystemBusiness          string
+	PDnAllowlist            []string
 	AccumulatedInputTokens  int
 	AccumulatedOutputTokens int
 	Legacy                  bool
@@ -105,6 +106,7 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 		out.Messages = env.Messages
 		out.SystemPlatform = env.SystemPlatform
 		out.SystemBusiness = env.SystemBusiness
+		out.PDnAllowlist = env.PDnAllowlist
 		out.AccumulatedInputTokens = env.AccumulatedInputTokens
 		out.AccumulatedOutputTokens = env.AccumulatedOutputTokens
 		return out, nil
@@ -157,6 +159,7 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		Messages:                 snap.Messages,
 		SystemPlatform:           snap.SystemPlatform,
 		SystemBusiness:           snap.SystemBusiness,
+		PDnAllowlist:             snap.PDnAllowlist,
 		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
@@ -229,17 +232,15 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 		call := batch.Calls[i]
 
-		// Fail-closed: a call is dispatched ONLY when its verdict is an explicit
-		// approval (approve/edit). Any other verdict — reject, or an EMPTY/unknown
-		// verdict left behind when RecordDecisions failed to persist after the
-		// batch transitioned to "resolving" — is treated as a rejection and never
-		// executes, so a call the user intended to reject is not published.
 		if call.Verdict != "approve" && call.Verdict != "edit" {
-			reason := call.RejectReason
-			if reason == "" {
-				reason = "user_rejected"
+			source, reason, note := rejectionByDecisionState, reasonDecisionUnavailable, decisionUnavailableNote
+			if call.Verdict == "reject" {
+				source, reason, note = rejectionByOwner, call.RejectReason, ownerRejectionNote
+				if reason == "" {
+					reason = reasonUserRejected
+				}
 			}
-			rejectionMsg := fmt.Sprintf(`{"rejected":true,"reason":%q}`, reason)
+			rejectionMsg := buildRejectionMessage(source, reason, note)
 			mu.Lock()
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
@@ -259,7 +260,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 
 		if !offered[call.ToolName] {
-			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
+			rejectionMsg := buildRejectionMessage(rejectionByPolicy, reasonPolicyForbidden, policyForbiddenNote)
 			mu.Lock()
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
@@ -271,7 +272,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
-				Content:    "policy_forbidden",
+				Content:    reasonPolicyForbidden,
 			}) {
 				return
 			}
@@ -281,7 +282,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		floor := o.tools.Floor(call.ToolName)
 		effective := hitl.Resolve(floor, req.BusinessApprovals, req.ProjectApprovalOverrides, call.ToolName)
 		if effective == domain.ToolFloorForbidden {
-			rejectionMsg := `{"rejected":true,"reason":"policy_revoked"}`
+			rejectionMsg := buildRejectionMessage(rejectionByPolicy, reasonPolicyRevoked, policyRevokedNote)
 			mu.Lock()
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
@@ -293,7 +294,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
-				Content:    "policy_revoked",
+				Content:    reasonPolicyRevoked,
 			}) {
 				return
 			}

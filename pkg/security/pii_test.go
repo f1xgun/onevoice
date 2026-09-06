@@ -3,6 +3,8 @@ package security
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestContainsPII verifies the named-class detector against:
@@ -114,4 +116,101 @@ func TestRedactPII_LogShape(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRedactPIIExcept covers the allowlist carve-out used for a business's own
+// registered contact details. Phone matching is format-insensitive:
+// the +7 / 8 / punctuated spellings of one Russian number are one value, and
+// e-mail comparison is case-insensitive.
+func TestRedactPIIExcept(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		allow []string
+		want  string
+	}{
+		{name: "website cannot allow email", input: "customer a@b.com", allow: []string{"ab.com"}, want: "customer [Скрыто]"},
+		{name: "local part dots remain meaningful", input: "first.last@example.com", allow: []string{"firstlast@example.com"}, want: "[Скрыто]"},
+		{name: "local part dots remain meaningful in reverse", input: "firstlast@example.com", allow: []string{"first.last@example.com"}, want: "[Скрыто]"},
+		{name: "domain dots remain meaningful", input: "a@b.com", allow: []string{"a@bc.om"}, want: "[Скрыто]"},
+		{name: "plus tag remains meaningful", input: "first+last@example.com", allow: []string{"firstlast@example.com"}, want: "[Скрыто]"},
+		{name: "email prefix cannot grant exemption", input: "a@b.com", allow: []string{"contact: a@b.com"}, want: "[Скрыто]"},
+		{name: "phone prefix cannot grant exemption", input: "+78435551234", allow: []string{"phone: +78435551234"}, want: "[Скрыто]"},
+		{name: "email allowlist requires whole value", input: "a@b.com", allow: []string{"a@b.com/path"}, want: "[Скрыто]"},
+		{name: "email whitespace is not ignored", input: "a@b.com", allow: []string{" a@b.com "}, want: "[Скрыто]"},
+		{name: "numeric website cannot allow phone", input: "+78435551234", allow: []string{"7843.5551234"}, want: "[Скрыто]"},
+		{name: "phone extension is not ignored", input: "+78435551234", allow: []string{"+78435551234/"}, want: "[Скрыто]"},
+		{name: "national allowlist matches international phone", input: "+78435551234", allow: []string{"8 (843) 555-12-34"}, want: "+78435551234"},
+		{name: "other PII classes cannot be allowlisted", input: "4111111111111111", allow: []string{"4111111111111111"}, want: "[Скрыто]"},
+		{
+			name:  "nil allowlist behaves exactly like RedactPII",
+			input: "тел. +7 (843) 555-12-34",
+			allow: nil,
+			want:  "тел. [Скрыто]",
+		},
+		{
+			name:  "exact spelling is preserved",
+			input: "тел. +7 (843) 555-12-34",
+			allow: []string{"+7 (843) 555-12-34"},
+			want:  "тел. +7 (843) 555-12-34",
+		},
+		{
+			name:  "E.164 spelling matches the punctuated allowlist entry",
+			input: "тел. +78435551234",
+			allow: []string{"+7 (843) 555-12-34"},
+			want:  "тел. +78435551234",
+		},
+		{
+			name:  "8-prefixed national spelling matches the +7 allowlist entry",
+			input: "тел. 8 843 555-12-34",
+			allow: []string{"+78435551234"},
+			want:  "тел. 8 843 555-12-34",
+		},
+		{
+			name:  "a different number is still redacted",
+			input: "наш +78435551234, клиента +78120000000",
+			allow: []string{"+78435551234"},
+			want:  "наш +78435551234, клиента [Скрыто]",
+		},
+		{
+			name:  "e-mail comparison ignores case",
+			input: "пишите Info@Utro.ru",
+			allow: []string{"info@utro.ru"},
+			want:  "пишите Info@Utro.ru",
+		},
+		{
+			name:  "an unrelated e-mail beside the allowed one is still redacted",
+			input: "info@utro.ru и a@b.com",
+			allow: []string{"info@utro.ru"},
+			want:  "info@utro.ru и [Скрыто]",
+		},
+		{
+			name:  "blank allowlist entries are ignored",
+			input: "тел. +78435551234",
+			allow: []string{"", "   ", "-"},
+			want:  "тел. [Скрыто]",
+		},
+		{
+			name:  "a website entry never accidentally allows a phone",
+			input: "тел. +78435551234",
+			allow: []string{"https://utro.ru"},
+			want:  "тел. [Скрыто]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, RedactPIIExcept(tc.input, tc.allow))
+		})
+	}
+}
+
+// TestRedactPIIExcept_Idempotent asserts a second pass over already-redacted
+// text is a no-op and still preserves the allowlisted value.
+func TestRedactPIIExcept_Idempotent(t *testing.T) {
+	allow := []string{"+78435551234"}
+	once := RedactPIIExcept("наш +78435551234, клиента a@b.com", allow)
+	twice := RedactPIIExcept(once, allow)
+	assert.Equal(t, once, twice)
+	assert.Contains(t, twice, "+78435551234")
 }

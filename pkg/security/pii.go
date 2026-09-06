@@ -2,6 +2,7 @@ package security
 
 import (
 	"regexp"
+	"strings"
 	"unicode"
 )
 
@@ -72,10 +73,28 @@ var piiClasses = []piiClass{
 // RedactPII replaces every PII match in s with the placeholder "[Скрыто]".
 // Idempotent. Safe on empty string. UTF-8 / Cyrillic preserved.
 func RedactPII(s string) string {
+	return RedactPIIExcept(s, nil)
+}
+
+// RedactPIIExcept behaves like RedactPII but preserves every match whose value
+// is listed in allow. It exists for values that are PII-shaped yet are not
+// third-party personal data — a business's OWN registered contact phone or
+// e-mail, which it publishes on its public profile and which the assistant
+// legitimately has to reproduce.
+//
+// Email comparison ignores case but preserves all punctuation. Phone entries
+// must match the complete phone pattern; digits are compared with an 8-to-7
+// trunk fold. Websites and other PII classes cannot grant exemptions.
+// A nil or empty allow makes this exactly RedactPII.
+func RedactPIIExcept(s string, allow []string) string {
+	allowed := normalizedAllowSet(allow)
 	out := s
 	for _, c := range piiClasses {
 		out = c.pattern.ReplaceAllStringFunc(out, func(match string) string {
 			if c.extra != nil && !c.extra(match) {
+				return match
+			}
+			if allowed[contactAllowKey(c.name, match)] {
 				return match
 			}
 			return redactionToken
@@ -83,6 +102,47 @@ func RedactPII(s string) string {
 	}
 	return out
 }
+
+func normalizedAllowSet(allow []string) map[string]bool {
+	set := make(map[string]bool, len(allow))
+	for _, value := range allow {
+		for _, class := range piiClasses {
+			if class.name != "email" && class.name != "phone" {
+				continue
+			}
+			loc := class.pattern.FindStringIndex(value)
+			if len(loc) == 2 && loc[0] == 0 && loc[1] == len(value) {
+				set[contactAllowKey(class.name, value)] = true
+			}
+		}
+	}
+	return set
+}
+
+func contactAllowKey(class, value string) string {
+	switch class {
+	case "email":
+		return "email:" + strings.ToLower(value)
+	case "phone":
+		var digits strings.Builder
+		for _, r := range value {
+			if r >= '0' && r <= '9' {
+				digits.WriteRune(r)
+			}
+		}
+		key := digits.String()
+		if len(key) == ruPhoneDigits && key[0] == '8' {
+			key = "7" + key[1:]
+		}
+		return "phone:" + key
+	default:
+		return ""
+	}
+}
+
+// ruPhoneDigits is the digit count of a full Russian phone number (country code
+// or trunk prefix + 10 subscriber digits).
+const ruPhoneDigits = 11
 
 // ContainsPII reports whether s contains any PII pattern. Convenience wrapper
 // over ContainsPIIClass.

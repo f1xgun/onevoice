@@ -112,10 +112,16 @@ Each iteration of the for-loop performs:
    `(autoCalls, manualCalls, forbiddenCalls)`. `hitl.Bucket` is a pure
    function so this loop and the resolve-path TOCTOU re-check cannot
    diverge.
-9. **Forbidden calls** → synthetic `{"rejected":true,"reason":
-   "policy_forbidden"}` tool-role message appended to `state.Messages` +
-   `EventToolRejected` emitted. **Not** dispatched. The LLM sees the
-   outcome on the next iteration.
+9. **Forbidden calls** → synthetic rejection tool-role message appended to
+   `state.Messages` + `EventToolRejected` emitted. **Not** dispatched. The
+   LLM sees the outcome on the next iteration. The payload is built by
+   `rejection.go:buildRejectionMessage` and is self-describing —
+   `{"rejected":true,"by":"policy","reason":"policy_forbidden","note":"…"}`.
+   The `note` states that OneVoice (not the platform) blocked the call and
+   forbids both retrying it and substituting another channel; without it the
+   model reliably invents a platform-side cause and offers a retry that can
+   never succeed. The `reason` token on the wire `EventToolRejected` is
+   unchanged — the frontend maps it to badge copy.
 10. **Auto calls** → `dispatchToolCalls(ctx, out, autoCalls,
     &state.Messages)` (parallel fan-out; appends tool-role messages in
     original `tool_calls` order regardless of completion order — preserves
@@ -144,15 +150,19 @@ When `len(manualCalls) > 0`:
     "messages": [...],
     "system_platform": "...",
     "system_business": "...",
+    "pdn_allowlist": ["+7 (843) 555-12-34"],
     "accumulated_input_tokens": 12345,
     "accumulated_output_tokens": 678}
    ```
    The `accumulated_*` fields use `omitempty` so pre-cap snapshots stay
    byte-identical; legacy batches hydrate at 0 (correct — pre-cap turns
-   weren't subject to the cap). On marshal failure (only theoretical for
-   `llm.Message` + strings) we fall back to `{"v":2,"messages":[]}` and
-   log — Resume will then emit `corrupt snapshot` if it ever loads such
-   a batch.
+   weren't subject to the cap). `pdn_allowlist` (also `omitempty`) carries
+   the business's own contact values so a resumed turn scrubs outbound
+   personal data exactly like the paused one — see *Business-owned contact
+   allowlist* in `docs/orchestrator/config.md`. On marshal failure (only
+   theoretical for `llm.Message` + strings) we fall back to
+   `{"v":2,"messages":[]}` and log — Resume will then emit `corrupt
+   snapshot` if it ever loads such a batch.
 4. Build `PendingCall[]` from `manualCalls`. JSON args fall back to
    `{"raw": <original-string>}` on unmarshal failure. `FloorAtPause` is
    the constant `ToolFloorManual` — only manual-floor calls reach this
