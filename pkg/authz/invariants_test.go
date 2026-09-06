@@ -128,7 +128,7 @@ func TestEnsureOwnerExistsAfter_PendingDeletionOwnersDoNotCount(t *testing.T) {
 			for _, r := range tc.rows {
 				rows = rows.AddRow(r.userID, r.roleID, r.pendingDeletion)
 			}
-			mock.ExpectQuery(`(?s)pending_deletion.*JOIN users u ON u.id = m.user_id`).
+			mock.ExpectQuery(`(?s)\(u\.deletion_requested_at IS NOT NULL AND u\.deletion_canceled_at IS NULL\) AS pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 				WithArgs(businessID).
 				WillReturnRows(rows)
 

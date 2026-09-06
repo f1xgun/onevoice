@@ -388,11 +388,11 @@ func TestMembersHandler_UpdateMemberRole_HappyPath(t *testing.T) {
 	now := time.Now().UTC()
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID).
-			AddRow(targetID, newRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(actorID, ownerRoleID, false).
+			AddRow(targetID, newRoleID, false))
 	mockPool.ExpectCommit()
 
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
@@ -449,10 +449,10 @@ func TestMembersHandler_UpdateMemberRole_LastOwnerRefuses(t *testing.T) {
 	}, nil)
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(targetID, ownerRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(targetID, ownerRoleID, false))
 	mockPool.ExpectRollback()
 
 	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
@@ -574,11 +574,11 @@ func TestMembersHandler_UpdateMemberRole_SmallBodyAccepted(t *testing.T) {
 	now := time.Now().UTC()
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID).
-			AddRow(targetID, newRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(actorID, ownerRoleID, false).
+			AddRow(targetID, newRoleID, false))
 	mockPool.ExpectCommit()
 
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
@@ -777,11 +777,11 @@ func TestMembersHandler_UpdateMemberRole_OwnerCanAssignOwner(t *testing.T) {
 	}, nil)
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID).
-			AddRow(targetID, ownerRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(actorID, ownerRoleID, false).
+			AddRow(targetID, ownerRoleID, false))
 	mockPool.ExpectCommit()
 
 	mr.On("UpdateRoleInTx", mock.Anything, mock.Anything, bizID, targetID, ownerRoleID, actorID).Return(nil)
@@ -834,11 +834,11 @@ func TestMembersHandler_RemoveMember_HappyPath_NonSelf(t *testing.T) {
 	nonOwnerRoleID := uuid.New()
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(actorID, ownerRoleID).
-			AddRow(targetID, nonOwnerRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(actorID, ownerRoleID, false).
+			AddRow(targetID, nonOwnerRoleID, false))
 	mockPool.ExpectCommit()
 
 	mr.On("DeleteInTx", mock.Anything, mock.Anything, bizID, targetID).Return(nil)
@@ -873,10 +873,10 @@ func TestMembersHandler_RemoveMember_LastOwnerRefuses(t *testing.T) {
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(targetID, ownerRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(targetID, ownerRoleID, false))
 	mockPool.ExpectRollback()
 
 	h := newMembersHandlerForTest(mr, rr, ur, mockPool, inv)
@@ -923,11 +923,11 @@ func TestMembersHandler_RemoveMember_SelfRemoval_WithoutPermission(t *testing.T)
 	nonOwnerRoleID := uuid.New()
 
 	mockPool.ExpectBeginTx(pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	mockPool.ExpectQuery("SELECT user_id, role_id").
+	mockPool.ExpectQuery(`(?s)SELECT m\.user_id,.*pending_deletion.*JOIN users u ON u\.id = m\.user_id`).
 		WithArgs(pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id"}).
-			AddRow(uuid.New(), ownerRoleID).
-			AddRow(targetID, nonOwnerRoleID))
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "role_id", "pending_deletion"}).
+			AddRow(uuid.New(), ownerRoleID, false).
+			AddRow(targetID, nonOwnerRoleID, false))
 	mockPool.ExpectCommit()
 
 	mr.On("DeleteInTx", mock.Anything, mock.Anything, bizID, targetID).Return(nil)

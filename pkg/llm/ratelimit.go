@@ -183,6 +183,7 @@ const (
 // per-business daily-spend gate and an explicit policy for the Redis-down
 // failure mode.
 type RateLimiter struct {
+	now             func() time.Time
 	redis           *redis.Client
 	limits          TierLimits
 	dailySpender    DailySpender
@@ -223,7 +224,7 @@ func WithLocalBucket(limit rate.Limit, burst int) RateLimiterOption {
 // gate and the Redis-down policy; the zero option set preserves the legacy
 // behavior (per-minute / per-month only, fail closed on Redis errors).
 func NewRateLimiter(rdb *redis.Client, limits TierLimits, opts ...RateLimiterOption) *RateLimiter {
-	rl := &RateLimiter{redis: rdb, limits: limits}
+	rl := &RateLimiter{redis: rdb, limits: limits, now: time.Now}
 	for _, o := range opts {
 		o(rl)
 	}
@@ -298,7 +299,7 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 }
 
 func (rl *RateLimiter) reserveCharge(ctx context.Context, userID uuid.UUID, limits Limits, charge TokenCharge) (bool, error) {
-	now := time.Now().UTC()
+	now := rl.now().UTC()
 	endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 	prefix := "ratelimit:" + userID.String()
 	buckets := []struct {
@@ -381,7 +382,7 @@ func (rl *RateLimiter) RecordTokens(ctx context.Context, userID, _ uuid.UUID, ti
 		return
 	}
 
-	now := time.Now()
+	now := rl.now().UTC()
 	monthKey := fmt.Sprintf("ratelimit:%s:tokens:month:%s", userID.String(), now.Format("2006-01"))
 	endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 	if _, err := rl.incrWithExpiry(ctx, monthKey, int64(deltaTokens), endOfMonth.Sub(now), gateTokensMonth); err != nil {
