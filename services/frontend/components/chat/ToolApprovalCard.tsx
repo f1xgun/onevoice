@@ -4,7 +4,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ApprovalAction, ApprovalDecision, PendingApproval } from '@/types/chat';
 
@@ -220,7 +220,6 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
                   disabled={submitting}
                   aria-disabled={!allDecided || submitting}
                   aria-describedby={!allDecided ? 'approval-card-submit-helper' : undefined}
-                  className={!allDecided ? 'opacity-50' : undefined}
                 >
                   {submitting && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
                   {submitting ? tCard('submitLoading') : tCard('submitIdle')}

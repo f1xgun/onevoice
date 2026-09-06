@@ -7,8 +7,8 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';

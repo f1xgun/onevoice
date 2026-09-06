@@ -3,8 +3,8 @@
 import { type UseFormReturn } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { AppInput as Input } from '@/components/design-system/AppInput';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import type { FormValues } from './useProjectForm';
 
 interface CreateProjectFieldsProps {

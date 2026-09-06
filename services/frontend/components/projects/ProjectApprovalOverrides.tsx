@@ -120,7 +120,7 @@ function ToolRow({
           <span
             className={cn(
               'rounded-md border px-2 py-0.5 text-xs text-muted-foreground',
-              selection === SELECTION_INHERIT ? 'border-primary/40 bg-accent/40' : 'border-border'
+              selection === SELECTION_INHERIT ? 'border-primary bg-accent' : 'border-border'
             )}
             aria-label={tOver('businessTag', { label: businessDefaultLabel })}
           >

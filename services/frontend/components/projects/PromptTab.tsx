@@ -11,7 +11,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { TabsContent } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { cn } from '@/lib/utils';
 import { MAX_SYSTEM_PROMPT_CHARS, type FormValues } from './useProjectForm';
 

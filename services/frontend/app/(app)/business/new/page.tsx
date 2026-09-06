@@ -23,9 +23,9 @@ import { api } from '@/lib/api';
 import { useBusinessStore } from '@/lib/stores/business';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 import { createBusinessSchema, type BusinessInput } from '@/lib/schemas';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
 import { CategoryField } from '@/components/business/CategoryField';
@@ -162,7 +162,7 @@ export default function NewBusinessPage() {
                   {...register('description')}
                   rows={4}
                   placeholder={tProfileForm('descriptionPlaceholder')}
-                  className="focus:ring-ochre/20 flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft focus:border-ochre focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </Field>
             </div>

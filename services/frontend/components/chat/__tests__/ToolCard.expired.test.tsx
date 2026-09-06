@@ -32,6 +32,6 @@ describe('ToolCard — expired', () => {
     expect(wrapper).not.toBeNull();
     expect(wrapper?.style.borderLeftColor).toBe('rgb(42, 171, 238)'); // #2AABEE
     const styleAttr = wrapper?.getAttribute('style') ?? '';
-    expect(styleAttr).not.toContain('hsl(var(--destructive))');
+    expect(styleAttr).not.toContain('var(--destructive)');
   });
 });

@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +32,7 @@ import type { Member, Role } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { useAuthStore } from '@/lib/auth';
 
-import { ConfirmDestructive } from '@/components/ui/confirm-destructive';
+import { ConfirmDestructive } from '@/components/design-system/ConfirmDestructive';
 import { RoleChangeDialog } from './RoleChangeDialog';
 
 const SKELETON_ROW_COUNT = 4;

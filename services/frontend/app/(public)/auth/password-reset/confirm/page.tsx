@@ -24,8 +24,8 @@ import { useTranslations } from 'next-intl';
 
 import { AuthShell } from '@/components/auth/AuthShell';
 import { MonoLabel } from '@/components/ui/mono-label';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { mapErrorCode } from '@/lib/error_mapping';
 

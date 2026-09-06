@@ -15,7 +15,7 @@ import { Controller, type Control, type ControllerRenderProps } from 'react-hook
 import { useTranslations } from 'next-intl';
 
 import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import {
   Select,
   SelectContent,

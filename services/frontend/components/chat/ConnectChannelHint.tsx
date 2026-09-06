@@ -8,7 +8,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 
 // integrationLike is the minimal shape the predicate needs — mirrors the

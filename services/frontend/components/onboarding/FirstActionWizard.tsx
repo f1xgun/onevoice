@@ -22,17 +22,17 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@/components/design-system/AppDialog';
 import { cn } from '@/lib/utils';
 import type { Review } from '@/types/review';
 

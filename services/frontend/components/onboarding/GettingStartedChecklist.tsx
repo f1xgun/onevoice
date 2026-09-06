@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ArrowRight, Check, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useOnboardingProgress, type OnboardingStep } from '@/hooks/useOnboardingProgress';

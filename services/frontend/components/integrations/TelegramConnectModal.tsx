@@ -3,9 +3,14 @@
 import { useTranslations } from 'next-intl';
 
 import { useTelegramConnectForm } from '@/hooks/useTelegramConnectForm';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
+import {
+  Dialog,
+  AppDialog as DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/design-system/AppDialog';
 
 interface Props {
   open: boolean;

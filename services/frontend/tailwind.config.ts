@@ -1,8 +1,5 @@
 import type { Config } from 'tailwindcss';
 
-// OneVoice — Linen design system.
-// Tokens are OKLCH (defined in app/globals.css). Tailwind reads them via
-// bare var(--token) — wrapping in hsl(var(...)) silently fails against OKLCH.
 const config: Config = {
   darkMode: ['class'],
   content: [
@@ -72,6 +69,15 @@ const config: Config = {
           DEFAULT: 'var(--ov-line)',
           soft: 'var(--ov-line-soft)',
         },
+        brand: {
+          DEFAULT: 'var(--ov-brand)',
+          foreground: 'var(--ov-on-brand)',
+          hover: 'var(--ov-brand-hover)',
+          soft: 'var(--ov-brand-soft)',
+        },
+        control: 'var(--ov-control)',
+        overlay: 'var(--ov-overlay)',
+        // Deprecated compatibility alias for generated primitives.
         ochre: {
           DEFAULT: 'var(--ov-accent)',
           deep: 'var(--ov-accent-deep)',
@@ -98,7 +104,30 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
+      },
+      fontSize: {
+        hero: ['2.25rem', { lineHeight: '2.5rem', letterSpacing: '-0.025em', fontWeight: '600' }],
+        'hero-lg': [
+          '3.5rem',
+          { lineHeight: '3.75rem', letterSpacing: '-0.025em', fontWeight: '600' },
+        ],
+        section: [
+          '1.75rem',
+          { lineHeight: '2.125rem', letterSpacing: '-0.015em', fontWeight: '600' },
+        ],
+        'section-lg': [
+          '2.25rem',
+          { lineHeight: '2.625rem', letterSpacing: '-0.015em', fontWeight: '600' },
+        ],
+        'page-title': ['1.5rem', { lineHeight: '1.875rem', fontWeight: '600' }],
+        'document-title': ['1.25rem', { lineHeight: '1.75rem', fontWeight: '600' }],
+        reading: ['1rem', { lineHeight: '1.5625rem' }],
+        action: ['1rem', { lineHeight: '1.375rem', fontWeight: '500' }],
+        meta: ['.875rem', { lineHeight: '1.25rem' }],
+        technical: ['.8125rem', { lineHeight: '1.125rem' }],
+        price: ['2rem', { lineHeight: '2.375rem', fontWeight: '500' }],
       },
       borderRadius: {
         sm: 'var(--ov-radius-sm)',
@@ -107,6 +136,7 @@ const config: Config = {
         xl: 'var(--ov-radius-xl)',
       },
       boxShadow: {
+        overlay: 'var(--ov-shadow-overlay)',
         'ov-1': 'var(--ov-shadow-1)',
         'ov-2': 'var(--ov-shadow-2)',
         'ov-3': 'var(--ov-shadow-3)',

@@ -17,7 +17,7 @@
 
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
 import { cn } from '@/lib/utils';

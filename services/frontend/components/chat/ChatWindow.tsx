@@ -18,8 +18,8 @@ import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { ProcessingApprovalBanner } from './ProcessingApprovalBanner';
 import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { SkeletonChat } from '@/components/states';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { useConversationFlow } from '@/hooks/useConversationFlow';
@@ -199,7 +199,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       )}
 
       {/* Messages — paper-well backdrop matches mock-ai-chat.jsx (line 146). */}
-      <div className="flex-1 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6">
+      <div className="flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6 md:scroll-py-8">
         {isLoading ? (
           <SkeletonChat className="bg-transparent p-0" />
         ) : loadError ? (
@@ -277,7 +277,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
           ApprovalCard). The keep-disabled-while-streaming-or-pending
           contract is unchanged. */}
       <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
-        <div className="flex gap-2 rounded-md border border-line bg-paper-sunken p-2 transition-colors focus-within:border-ochre">
+        <div className="flex gap-2 rounded-md border border-line bg-paper-sunken p-2 transition-colors focus-within:border-brand">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}

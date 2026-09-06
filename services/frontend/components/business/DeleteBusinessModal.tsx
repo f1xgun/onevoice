@@ -15,11 +15,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Input } from '@/components/ui/input';
+} from '@/components/design-system/AppAlertDialog';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { FieldError } from '@/components/ui/field-error';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessDeletionStore, DELETION_GRACE_MS } from '@/lib/stores/businessDeletion';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';

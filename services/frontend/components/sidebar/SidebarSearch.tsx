@@ -129,7 +129,7 @@ export function SidebarSearch() {
             }}
             onKeyDown={onKeyDown}
             placeholder={tSide('search.placeholder', { os: detectPlaceholderOS() })}
-            className="w-full rounded-md border border-line bg-paper-sunken py-1 pl-7 pr-7 text-sm text-ink placeholder:text-ink-faint focus:border-ochre focus:outline-none"
+            className="w-full rounded-md border border-line bg-paper-sunken py-1 pl-7 pr-7 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none"
           />
           {isFetching && (
             <Loader2

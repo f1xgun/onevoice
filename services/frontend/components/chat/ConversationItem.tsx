@@ -5,10 +5,10 @@ import { formatDistanceToNow } from 'date-fns';
 import { MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
-import { Input } from '@/components/ui/input';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import {
   DropdownMenu,
   DropdownMenuContent,

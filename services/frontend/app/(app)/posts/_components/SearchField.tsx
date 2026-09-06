@@ -5,7 +5,7 @@
 import { Search } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Input } from '@/components/ui/input';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 
 export function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const tPosts = useTranslations('posts');

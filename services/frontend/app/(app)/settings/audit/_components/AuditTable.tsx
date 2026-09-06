@@ -5,7 +5,7 @@ import type { AuditLogDTO } from '../_lib/types';
 import { actionToI18nKey } from '../_lib/actionLabels';
 import { isKnownResource } from '../_lib/resourceLabels';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 
 interface Props {

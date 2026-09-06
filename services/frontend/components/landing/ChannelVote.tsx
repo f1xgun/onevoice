@@ -5,8 +5,8 @@ import { useForm } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { voteChannel } from '@/lib/api/waitlist';
 

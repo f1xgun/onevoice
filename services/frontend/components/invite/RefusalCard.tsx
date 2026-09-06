@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { actionButtonVariants as buttonVariants } from '@/components/design-system/action-button-variants';
 import { cn } from '@/lib/utils';
 import { useBusinessStore } from '@/lib/stores/business';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';

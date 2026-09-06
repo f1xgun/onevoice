@@ -14,7 +14,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { EmptyFrame } from './EmptyFrame';
 
 export interface EmptyChannelsProps {

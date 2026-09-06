@@ -132,14 +132,14 @@ describe('useHighlightMessage', () => {
   });
 });
 
-// Static-content test: globals.css must contain the flash keyframe + reduced-motion fallback.
-describe('globals.css — flash keyframe', () => {
-  it('contains @keyframes onevoice-flash + [data-highlight] + prefers-reduced-motion', async () => {
+describe('globals.css — static highlight', () => {
+  it('keeps the timed highlight static and scopes reduced motion to app surfaces', async () => {
     const { readFileSync } = await import('fs');
     const path = await import('path');
     const cssPath = path.resolve(__dirname, '../..', 'app', 'globals.css');
     const css = readFileSync(cssPath, 'utf8');
-    expect(css).toMatch(/@keyframes\s+onevoice-flash/);
+    expect(css).not.toMatch(/@keyframes\s+onevoice-flash/);
+    expect(css).toContain('[data-ov-motion]');
     expect(css).toMatch(/\[data-highlight=['"]true['"]\]/);
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
   });

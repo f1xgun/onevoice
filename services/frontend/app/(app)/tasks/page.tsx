@@ -36,7 +36,7 @@ import { useTasksStream } from '@/hooks/useTasksStream';
 
 import { explainError } from './explainError';
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';

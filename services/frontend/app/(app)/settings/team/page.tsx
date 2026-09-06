@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { UserPlus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { PageHeader } from '@/components/ui/page-header';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 import { useBusinessStore } from '@/lib/stores/business';

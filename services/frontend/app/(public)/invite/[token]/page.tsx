@@ -8,7 +8,7 @@ import { format, parseISO } from 'date-fns';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInvitationPreview, useAcceptInvitation } from '@/lib/hooks/useInvitations';
 import { useMapInviteError } from '@/lib/resolveErrorMap';

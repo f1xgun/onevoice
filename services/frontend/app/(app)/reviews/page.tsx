@@ -26,19 +26,19 @@ import { Badge } from '@/components/ui/badge';
 // extra headroom absorbs network slack so the request doesn't surface as
 // a fake timeout in the UI before the agent actually finishes.
 const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
 import { ListLoadError } from '@/components/lists/ListLoadError';
-import { Textarea } from '@/components/ui/textarea';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@/components/design-system/AppDialog';
 import {
   Select,
   SelectContent,
@@ -548,7 +548,7 @@ function ReviewCard({
       {/* Failed reply — the saved text never reached the platform. The owner
           sees what was written, why it's still here, and a one-click resend. */}
       {hasFailedReply && (
-        <div className="border-destructive/40 mt-4 rounded-md border bg-paper-sunken px-4 py-3">
+        <div className="mt-4 rounded-md border border-destructive bg-paper-sunken px-4 py-3">
           <MonoLabel>{tReviews('failedReply.label')}</MonoLabel>
           <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
           <p className="mt-2 text-xs text-ink-soft">{tReviews('failedReply.explanation')}</p>

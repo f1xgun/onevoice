@@ -8,8 +8,8 @@ import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { Plus, Link2, LogOut } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { useLogout } from '@/lib/hooks/useLogout';

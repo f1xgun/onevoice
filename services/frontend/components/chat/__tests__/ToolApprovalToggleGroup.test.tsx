@@ -81,12 +81,14 @@ describe('ToolApprovalToggleGroup', () => {
     );
   });
 
-  it('S) dims inactive siblings via opacity-60 when a decision is set', () => {
+  it('keeps inactive decisions readable and exposes selection through aria-pressed', () => {
     renderGroup({ decision: 'approve' });
     const editBtn = screen.getByRole('button', { name: /Изменить/ });
     const rejectBtn = screen.getByRole('button', { name: /Отклонить/ });
-    expect(editBtn.className).toContain('opacity-60');
-    expect(rejectBtn.className).toContain('opacity-60');
+    expect(editBtn.getAttribute('aria-pressed')).toBe('false');
+    expect(editBtn.className).not.toContain('opacity-60');
+    expect(rejectBtn.getAttribute('aria-pressed')).toBe('false');
+    expect(rejectBtn.className).not.toContain('opacity-60');
   });
 
   it('T) Space keyboard activation fires onSelect with the focused action', async () => {

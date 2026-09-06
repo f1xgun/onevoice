@@ -11,7 +11,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
 

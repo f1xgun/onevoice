@@ -25,8 +25,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+} from '@/components/design-system/AppAlertDialog';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import {
   listMyConsents,
   withdrawPDN,

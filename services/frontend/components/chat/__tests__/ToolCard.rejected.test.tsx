@@ -28,12 +28,12 @@ describe('ToolCard — rejected', () => {
     expect(nameNode.className).toMatch(/\btext-muted-foreground\b/);
   });
 
-  it('TT: rejected wrapper overrides borderLeftColor to hsl(var(--destructive))', () => {
+  it('TT: rejected wrapper overrides borderLeftColor to var(--destructive)', () => {
     const { container } = render(<ToolCard tool={makeRejected()} />);
     const wrapper = container.firstElementChild as HTMLElement | null;
     expect(wrapper).not.toBeNull();
     const styleAttr = wrapper?.getAttribute('style') ?? '';
-    expect(styleAttr).toContain('hsl(var(--destructive))');
+    expect(styleAttr).toContain('var(--destructive)');
   });
 
   it('UU: rejected + rejectReason renders "Причина: {reason}" line', () => {

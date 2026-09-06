@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRevokeInvitation } from '@/lib/hooks/useInvitations';
 import { useMapInviteError } from '@/lib/resolveErrorMap';
@@ -24,7 +24,7 @@ import type { PendingInvitation } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 
-import { ConfirmDestructive } from '@/components/ui/confirm-destructive';
+import { ConfirmDestructive } from '@/components/design-system/ConfirmDestructive';
 
 interface InvitationsTabProps {
   businessId: string;

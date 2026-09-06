@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
@@ -97,10 +97,10 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
               aria-pressed={on}
               className={cn(
                 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors',
-                'focus:ring-ochre/30 focus:outline-none focus:ring-2',
+                'focus:outline-none focus:ring-2 focus:ring-brand',
                 on
-                  ? 'border-ochre bg-ochre-soft text-[var(--ov-accent-ink)]'
-                  : 'hover:border-ochre/40 border-line bg-paper-raised text-ink-mid hover:text-ink'
+                  ? 'border-brand bg-brand-soft text-[var(--ov-accent-ink)]'
+                  : 'border-line bg-paper-raised text-ink-mid hover:border-brand hover:text-ink'
               )}
             >
               {on && <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-ochre" />}

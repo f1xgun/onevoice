@@ -25,9 +25,9 @@ import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Switch } from '@/components/ui/switch';
-import { Calendar } from '@/components/ui/calendar';
+import { AppCalendar as Calendar } from '@/components/design-system/AppCalendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Badge } from '@/components/ui/badge';
@@ -237,7 +237,7 @@ function TimeBox({
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
       style={{ minWidth: 78 }}
     />
   );
@@ -382,7 +382,7 @@ function SpecialDateRow({
             aria-label={tSchedule('openAria', { label: formatted })}
             value={date.open ?? '10:00'}
             onChange={(e) => onChange({ open: e.target.value })}
-            className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2"
+            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
             style={{ minWidth: 78 }}
           />
           <span className="text-ink-soft">—</span>
@@ -391,7 +391,7 @@ function SpecialDateRow({
             aria-label={tSchedule('closeAria', { label: formatted })}
             value={date.close ?? '18:00'}
             onChange={(e) => onChange({ close: e.target.value })}
-            className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2"
+            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
             style={{ minWidth: 78 }}
           />
         </div>

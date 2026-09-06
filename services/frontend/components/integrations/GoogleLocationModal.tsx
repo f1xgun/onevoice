@@ -6,12 +6,12 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from '@/components/design-system/AppDialog';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';

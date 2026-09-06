@@ -4,13 +4,13 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from '@/components/design-system/AppDialog';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import {
   Select,
   SelectContent,

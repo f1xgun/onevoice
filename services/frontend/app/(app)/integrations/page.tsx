@@ -12,7 +12,7 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import type { IntegrationStatus } from '@/lib/constants/integrationStatus';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyChannels, SkeletonChannels } from '@/components/states';
