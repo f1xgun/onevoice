@@ -115,6 +115,74 @@ describe('design system interactions', () => {
     expect(select).toHaveBeenCalledTimes(1);
   });
 
+  it('selects a controlled range and marks both endpoints and intervening days', async () => {
+    const user = userEvent.setup();
+    const select = vi.fn();
+    const from = new Date(2026, 8, 4);
+    const to = new Date(2026, 8, 7);
+    const { rerender } = render(<AppCalendar mode="range" defaultMonth={from} onSelect={select} />);
+    await user.click(screen.getByRole('button', { name: /September 4th/ }));
+    expect(select.mock.lastCall?.[0]?.from).toEqual(from);
+    rerender(
+      <AppCalendar
+        mode="range"
+        defaultMonth={from}
+        selected={select.mock.lastCall?.[0]}
+        onSelect={select}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /September 7th/ }));
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(select.mock.lastCall?.[0]).toEqual({ from, to });
+    rerender(
+      <AppCalendar
+        mode="range"
+        defaultMonth={from}
+        selected={select.mock.lastCall?.[0]}
+        onSelect={select}
+      />
+    );
+    for (const day of ['4th', '5th', '6th', '7th']) {
+      expect(screen.getByRole('button', { name: new RegExp(`September ${day}`) })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+    }
+    expect(screen.getByRole('button', { name: /September 8th/ })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+  });
+
+  it('moves range focus across months, skips disabled days and selects with the keyboard', async () => {
+    const user = userEvent.setup();
+    const select = vi.fn();
+    const from = new Date(2026, 8, 30);
+    render(
+      <AppCalendar
+        mode="range"
+        defaultMonth={from}
+        selected={{ from }}
+        disabled={new Date(2026, 9, 2)}
+        onSelect={select}
+      />
+    );
+    await user.tab();
+    await user.tab();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /September 30th/ })).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('button', { name: /October 1st/ })).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('button', { name: /October 3rd/ })).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('button', { name: /October 10th/ })).toHaveFocus();
+    expect(select).not.toHaveBeenCalled();
+    await user.keyboard('{Enter}');
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(select.mock.lastCall?.[0]).toEqual({ from, to: new Date(2026, 9, 10) });
+  });
+
   it('announces supplied unknown-outcome text without inferring success', () => {
     render(
       <StatusLine

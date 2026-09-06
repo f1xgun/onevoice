@@ -17,8 +17,9 @@ export function actionButtonVariants({
   const danger = variant === 'danger' || variant === 'destructive';
   return cn(
     buttonVariants({ variant, size }),
+    'opacity-100 hover:opacity-100',
     className,
-    'min-h-11 min-w-11 h-auto whitespace-normal break-words rounded-md px-4 py-2.5 text-action tracking-normal shadow-none opacity-100 hover:opacity-100 duration-150 active:duration-150 disabled:opacity-100 motion-reduce:transition-none',
+    'min-h-11 min-w-11 h-auto whitespace-normal break-words rounded-md px-4 py-2.5 text-action tracking-normal shadow-none duration-150 active:duration-150 disabled:opacity-100 motion-reduce:transition-none',
     primary
       ? 'bg-brand text-brand-foreground border border-brand hover:bg-brand-hover hover:text-brand-foreground hover:border-brand-hover active:bg-brand-hover'
       : variant === 'link'

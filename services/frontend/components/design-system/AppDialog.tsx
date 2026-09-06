@@ -19,10 +19,14 @@ export {
   DialogFooter,
 } from '@/components/ui/dialog';
 
-export const AppDialog = forwardRef<
-  ElementRef<typeof Content>,
-  ComponentPropsWithoutRef<typeof Content>
->(function AppDialog({ className, children, ...props }, ref) {
+export interface AppDialogProps extends ComponentPropsWithoutRef<typeof Content> {
+  className?: string;
+}
+
+export const AppDialog = forwardRef<ElementRef<typeof Content>, AppDialogProps>(function AppDialog(
+  { className, children, ...props },
+  ref
+) {
   const t = useTranslations('common');
   return (
     <DialogPortal>

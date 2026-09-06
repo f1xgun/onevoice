@@ -8,7 +8,11 @@ import { cn } from '@/lib/utils';
 import { ActionButton } from './ActionButton';
 import { actionButtonVariants } from './action-button-variants';
 
-function AppDayButton({ day, modifiers, className, ...props }: ComponentProps<typeof DayButton>) {
+interface AppDayButtonProps extends ComponentProps<typeof DayButton> {
+  className?: string;
+}
+
+function AppDayButton({ day, modifiers, className, ...props }: AppDayButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(
     function focusDay() {
@@ -32,12 +36,58 @@ function AppDayButton({ day, modifiers, className, ...props }: ComponentProps<ty
   );
 }
 
-export function AppCalendar({
-  className,
-  classNames,
-  components,
-  ...props
-}: ComponentProps<typeof Calendar>) {
+type CalendarProps = ComponentProps<typeof Calendar>;
+
+export interface AppCalendarSingleProps extends Extract<
+  CalendarProps,
+  { mode: 'single'; required?: false }
+> {
+  mode: 'single';
+}
+export interface AppCalendarSingleRequiredProps extends Extract<
+  CalendarProps,
+  { mode: 'single'; required: true }
+> {
+  mode: 'single';
+}
+export interface AppCalendarMultipleProps extends Extract<
+  CalendarProps,
+  { mode: 'multiple'; required?: false }
+> {
+  mode: 'multiple';
+}
+export interface AppCalendarMultipleRequiredProps extends Extract<
+  CalendarProps,
+  { mode: 'multiple'; required: true }
+> {
+  mode: 'multiple';
+}
+export interface AppCalendarRangeProps extends Extract<
+  CalendarProps,
+  { mode: 'range'; required?: false }
+> {
+  mode: 'range';
+}
+export interface AppCalendarRangeRequiredProps extends Extract<
+  CalendarProps,
+  { mode: 'range'; required: true }
+> {
+  mode: 'range';
+}
+export interface AppCalendarUnselectedProps extends Extract<CalendarProps, { mode?: undefined }> {
+  mode?: undefined;
+}
+
+export type AppCalendarProps =
+  | AppCalendarSingleProps
+  | AppCalendarSingleRequiredProps
+  | AppCalendarMultipleProps
+  | AppCalendarMultipleRequiredProps
+  | AppCalendarRangeProps
+  | AppCalendarRangeRequiredProps
+  | AppCalendarUnselectedProps;
+
+export function AppCalendar({ className, classNames, components, ...props }: AppCalendarProps) {
   return (
     <Calendar
       {...props}

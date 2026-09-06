@@ -2,7 +2,9 @@ import type { HTMLAttributes } from 'react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-export type DraftSurfaceProps = HTMLAttributes<HTMLDivElement>;
+export interface DraftSurfaceProps extends HTMLAttributes<HTMLDivElement> {
+  className?: string;
+}
 
 export function DraftSurface({ className, children, ...props }: DraftSurfaceProps) {
   return (

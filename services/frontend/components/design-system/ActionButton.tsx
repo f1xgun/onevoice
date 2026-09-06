@@ -5,7 +5,9 @@ import type { ButtonProps } from '@/components/ui/button';
 import { Button } from '@/components/ui/button';
 import { actionButtonVariants } from './action-button-variants';
 
-export type ActionButtonProps = ButtonProps;
+export interface ActionButtonProps extends ButtonProps {
+  className?: string;
+}
 
 export const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps>(function ActionButton(
   { variant, size, className, disabled, asChild, onClick, onClickCapture, ...props },

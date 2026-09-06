@@ -22,12 +22,27 @@ const variants: ActionButtonProps['variant'][] = [
   'destructive',
   'link',
 ];
+const hiddenButton = renderToStaticMarkup(
+  <ActionButton
+    variant="ghost"
+    size="icon"
+    className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+  >
+    Меню
+  </ActionButton>
+);
+const hoverButton = renderToStaticMarkup(
+  <ActionButton className="opacity-50 hover:opacity-75">Действие</ActionButton>
+);
 const markup =
+  hiddenButton +
+  hoverButton +
   variants
     .map((variant) =>
       renderToStaticMarkup(<ActionButton variant={variant}>Ёё Йй Щщ ₽ №</ActionButton>)
     )
-    .join('') + renderToStaticMarkup(<AppInput />);
+    .join('') +
+  renderToStaticMarkup(<AppInput />);
 
 beforeAll(async () => {
   css = (
@@ -97,6 +112,23 @@ function element(html: string) {
 }
 
 describe('compiled Tailwind button and field cascade', () => {
+  it('preserves caller visibility in compiled CSS until group hover or keyboard focus', () => {
+    const group = element(`<div class="group">${hiddenButton}</div>`);
+    const button = group.firstElementChild!;
+    expect(declarations(button, 'light').opacity).toBe('0');
+    group.setAttribute('data-test-state', 'hover');
+    expect(declarations(button, 'light').opacity).toBe('1');
+    group.removeAttribute('data-test-state');
+    expect(declarations(button, 'light', 'focus-visible').opacity).toBe('1');
+    expect(declarations(button, 'light').opacity).toBe('0');
+  });
+
+  it('preserves caller opacity overrides for normal and hover states', () => {
+    const button = element(hoverButton);
+    expect(declarations(button, 'light').opacity).toBe('0.5');
+    expect(declarations(button, 'light', 'hover').opacity).toBe('0.75');
+  });
+
   it.each(['light', 'dark'] as const)(
     '%s resolves actual generated primary/hover/disabled pairs',
     (theme) => {
