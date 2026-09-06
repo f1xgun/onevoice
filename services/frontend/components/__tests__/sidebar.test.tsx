@@ -4,6 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Sidebar } from '../sidebar';
+import { chromium } from 'playwright';
+import postcss from 'postcss';
+import tailwindcss from 'tailwindcss';
+import tailwindConfig from '../../tailwind.config';
 import type { Project } from '@/types/project';
 
 // Mock next/navigation — usePathname drives the projects-subtree visibility gate.
@@ -76,6 +80,31 @@ describe('Sidebar — projects subtree visibility (preserved on mobile drawer)',
   beforeEach(() => {
     pathnameRef.current = '/chat';
   });
+
+  it('gives the Close button at least a 24 by 24 pixel hit area', async () => {
+    await renderAndOpenDrawer('/chat');
+    const dialog = screen.getByRole('dialog');
+    const css = await postcss([
+      tailwindcss({
+        ...tailwindConfig,
+        content: [{ raw: dialog.outerHTML, extension: 'html' }],
+      }),
+    ]).process('@tailwind base; @tailwind utilities;', { from: undefined });
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage({ viewport: { width: 375, height: 667 } });
+      await page.setContent(dialog.outerHTML);
+      await page.addStyleTag({ content: css.css });
+      const box = await page.getByRole('button', { name: 'Закрыть', exact: true }).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBeGreaterThanOrEqual(24);
+      expect(box!.height).toBeGreaterThanOrEqual(24);
+    } finally {
+      await browser.close();
+    }
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Закрыть', exact: true }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  }, 15000);
 
   it('renders projects subtree on /chat (drawer open)', async () => {
     await renderAndOpenDrawer('/chat');

@@ -79,6 +79,7 @@ export const BIZ_API_PATHS = {
   CONVERSATIONS: {
     ROOT: '/conversations',
     BY_ID: (id: string) => `/conversations/${id}`,
+    MESSAGES: (id: string) => `/conversations/${id}/messages`,
     PIN: (id: string) => `/conversations/${id}/pin`,
     UNPIN: (id: string) => `/conversations/${id}/unpin`,
     MOVE: (id: string) => `/conversations/${id}/move`,

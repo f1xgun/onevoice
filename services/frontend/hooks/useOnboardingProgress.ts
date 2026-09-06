@@ -10,6 +10,8 @@ import { useBusinessList } from '@/lib/hooks/useBusinessList';
 import type { AgentTask } from '@/types/task';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { useMembers } from '@/lib/hooks/useMembers';
+import { conversationsQueryKey } from '@/hooks/useConversations';
+import type { Conversation } from '@/lib/conversations';
 import type { Business } from '@/types/business';
 
 export type OnboardingStepId =
@@ -52,6 +54,13 @@ export interface OnboardingSignals {
   conversationsSettled: boolean;
   showInvite: boolean;
   hasTeammate: boolean;
+}
+
+interface PersistedAnswer {
+  role: string;
+  content: string;
+  status?: string;
+  toolCalls?: unknown[];
 }
 
 const ROUTES = {
@@ -149,6 +158,40 @@ export function useOnboardingProgress(): OnboardingProgress {
     retry: false,
   });
 
+  const textAnswer = useQuery({
+    queryKey: [...conversationsQueryKey(activeBusinessId), 'first-action'],
+    queryFn: async ({ signal }) => {
+      const api = bizApi(activeBusinessId!);
+      const limit = 100;
+      for (let offset = 0; ; offset += limit) {
+        const { data: conversations } = await api.get<Conversation[]>(
+          BIZ_API_PATHS.CONVERSATIONS.ROOT,
+          { signal, params: { limit, offset } }
+        );
+        for (const conversation of conversations) {
+          const { data } = await api.get<PersistedAnswer[] | { messages: PersistedAnswer[] }>(
+            BIZ_API_PATHS.CONVERSATIONS.MESSAGES(conversation.id),
+            { signal }
+          );
+          const messages = Array.isArray(data) ? data : data.messages;
+          if (
+            messages.some(
+              (message) =>
+                message.role === 'assistant' &&
+                (!message.status || message.status === 'complete') &&
+                message.content.trim() !== '' &&
+                !message.toolCalls?.length
+            )
+          )
+            return true;
+        }
+        if (conversations.length < limit) return false;
+      }
+    },
+    enabled: !!activeBusinessId,
+    retry: false,
+  });
+
   const canInvite = usePermission('members.invite').allowed;
   const members = useMembers(canInvite ? activeBusinessId : null);
 
@@ -164,8 +207,10 @@ export function useOnboardingProgress(): OnboardingProgress {
       profile.isSuccess && typeof description === 'string' && description.trim() !== '',
     profileSettled: profile.isSuccess || profile.isError,
     hasFirstAction:
-      actions.isSuccess && (actions.data ?? []).some((action) => action.status === 'done'),
-    conversationsSettled: actions.isSuccess || actions.isError,
+      (actions.isSuccess && (actions.data ?? []).some((action) => action.status === 'done')) ||
+      (textAnswer.isSuccess && textAnswer.data),
+    conversationsSettled:
+      (actions.isSuccess || actions.isError) && (textAnswer.isSuccess || textAnswer.isError),
     showInvite: canInvite,
     hasTeammate: members.isSuccess && (members.data?.length ?? 0) > 1,
   });
