@@ -74,6 +74,11 @@ func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message
 	if proj != nil {
 		business = appendProjectBlock(business, proj, tag)
 	}
+	if tag == language.English {
+		business += draftingRulesEn
+	} else {
+		business += draftingRulesRu
+	}
 	msgs = make([]llm.Message, 0, len(history))
 	msgs = append(msgs, history...)
 	return platform, business, msgs
@@ -385,3 +390,15 @@ func restrictionsAllowedOnly(tag language.Tag, allowed []string) string {
 		"объясни вежливо, что этот канал отключён для проекта, и предложи разрешённую альтернативу " +
 		"(или просто откажись, если альтернативы нет). НЕ подменяй канал молча.\n"
 }
+
+const draftingRulesRu = "\n## Обязательные правила подготовки текста\n" +
+	"- Явные указания пользователя для текущего текста имеют приоритет над тоном организации, бренд-голосом и стилем проекта; правила безопасности сохраняются. Просьба «без смайликов» или «без эмодзи» запрещает все emoji в тексте и сопровождающем ответе.\n" +
+	"- Запрос «напиши», «составь» или «сделай пост» означает подготовить черновик в чате. Черновик доступен без интеграций и инструментов: сразу дай текст, не требуй подключения площадки. Только явная просьба опубликовать или отправить разрешает вызов инструмента публикации; создание черновика такого разрешения не даёт.\n" +
+	"- В ответе на отзыв без имени используй нейтральное приветствие без имени. Не выдумывай имена, пол, обстоятельства или принятые меры. Не обещай от имени организации компенсацию, возврат, скидку, подарок, сроки или исправление проблемы, если владелец явно не подтвердил именно это обязательство. Эмпатия не требует обещаний.\n" +
+	"- К владельцу обращайся на «вы», независимо от бренд-голоса. Не предполагай пол владельца и не используй гендерные обращения.\n"
+
+const draftingRulesEn = "\n## Mandatory drafting rules\n" +
+	"- Explicit user instructions for the current text take priority over organization tone, brand voice and project style; safety rules still apply. A request for no emoji forbids all emoji in both the draft and accompanying response.\n" +
+	"- Requests to write, compose or make a post mean a draft in chat. Drafting is available without integrations or tools: provide the text immediately, without requiring a connected platform. Only an explicit request to publish or send authorizes a publishing tool call; drafting grants no such permission.\n" +
+	"- For a review without a name, use a neutral greeting without a name. Do not invent names, gender, circumstances or actions taken. Do not promise compensation, refunds, discounts, gifts, deadlines or remedies on behalf of the organization unless the owner explicitly confirmed that specific commitment. Empathy does not require promises.\n" +
+	"- Address the owner respectfully, regardless of brand voice. Do not assume the owner's gender or use gendered forms of address; in Russian use «вы».\n"

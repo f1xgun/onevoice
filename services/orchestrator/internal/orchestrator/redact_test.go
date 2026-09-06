@@ -191,3 +191,82 @@ func TestResume_PDnAllowlistSurvivesPauseRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
+	for _, verdict := range []string{"approve", "edit", "reject"} {
+		t.Run(verdict, func(t *testing.T) {
+			ctx := context.Background()
+			var dispatched atomic.Int32
+			rec := &instrumentedExecutor{onDispatch: func() { dispatched.Add(1) }}
+			reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, rec)
+			repo := newMockPendingRepo()
+			options := orchestrator.Options{MaxIterations: 5, RedactOutboundPDn: true}
+			stub := &stubLLM{responses: []*llm.ChatResponse{{
+				FinishReason: "tool_calls",
+				ToolCalls: []llm.ToolCall{{
+					ID: "contact-call", Type: llm.ToolCallTypeFunction,
+					Function: llm.FunctionCall{Name: "manual_tool", Arguments: `{"text":"8 (916) 123-45-77; +78120000000"}`},
+				}},
+			}}}
+			orch := orchestrator.NewWithHITL(stub, reg, repo, options)
+			events, err := orch.Run(ctx, orchestrator.RunRequest{
+				BusinessContext: prompt.BusinessContext{Name: "Acme", Phone: "+7 (843) 555-12-34", Website: "ab.com"},
+				Messages:        []llm.Message{{Role: "user", Content: "Сделай пост: запись по телефону +7 916 123-45-77"}},
+				ConversationID:  "contact-conversation",
+			})
+			require.NoError(t, err)
+			paused := drainEvents(events)
+			require.Empty(t, findEvents(paused, orchestrator.EventError))
+			require.Len(t, findEvents(paused, orchestrator.EventToolApprovalRequired), 1)
+			require.Len(t, repo.insertedBatches, 1)
+			batch := repo.insertedBatches[0]
+			var snapshot struct {
+				PDnAllowlist []string      `json:"pdn_allowlist"`
+				Messages     []llm.Message `json:"messages"`
+			}
+			require.NoError(t, json.Unmarshal(batch.ModelMessages, &snapshot))
+			assert.Equal(t, []string{"+7 (843) 555-12-34", "ab.com", "+7 916 123-45-77"}, snapshot.PDnAllowlist)
+			require.NotEmpty(t, snapshot.Messages)
+			assert.Contains(t, snapshot.Messages[0].Content, "+7 916 123-45-77")
+			batch.Calls[0].Verdict = verdict
+
+			capLLM := &captureLLM{}
+			resumed := orchestrator.NewWithHITL(capLLM, reg, repo, options)
+			events, err = resumed.Resume(ctx, orchestrator.ResumeRequest{BatchID: batch.ID})
+			require.NoError(t, err)
+			completed := drainEvents(events)
+			require.Empty(t, findEvents(completed, orchestrator.EventError))
+			require.Len(t, findEvents(completed, orchestrator.EventDone), 1)
+			if verdict == "reject" {
+				assert.Zero(t, dispatched.Load())
+				assert.Empty(t, findEvents(completed, orchestrator.EventToolCall))
+				assert.Empty(t, findEvents(completed, orchestrator.EventToolResult))
+				rejected := findEvents(completed, orchestrator.EventToolRejected)
+				require.Len(t, rejected, 1)
+				assert.Equal(t, "contact-call", rejected[0].ToolCallID)
+				assert.Equal(t, "user_rejected", rejected[0].Content)
+			} else {
+				assert.Equal(t, int32(1), dispatched.Load())
+				assert.Empty(t, findEvents(completed, orchestrator.EventToolRejected))
+				calls := findEvents(completed, orchestrator.EventToolCall)
+				require.Len(t, calls, 1)
+				assert.Equal(t, "contact-call", calls[0].ToolCallID)
+				results := findEvents(completed, orchestrator.EventToolResult)
+				require.Len(t, results, 1)
+				assert.Equal(t, "contact-call", results[0].ToolCallID)
+				assert.Empty(t, results[0].ToolError)
+				assert.Equal(t, map[string]interface{}{"ok": true}, results[0].ToolResult)
+			}
+
+			req := capLLM.firstRequest()
+			require.NotNil(t, req)
+			require.NotEmpty(t, req.Messages)
+			assert.Equal(t, "Сделай пост: запись по телефону +7 916 123-45-77", req.Messages[0].Content)
+			require.Len(t, req.Messages[1].ToolCalls, 1)
+			assert.Contains(t, req.Messages[1].ToolCalls[0].Function.Arguments, "8 (916) 123-45-77")
+			assert.NotContains(t, req.Messages[1].ToolCalls[0].Function.Arguments, "+78120000000")
+			require.Len(t, req.SystemBlocks, 2)
+			assert.Contains(t, req.SystemBlocks[1].Text, "+7 (843) 555-12-34")
+		})
+	}
+}

@@ -180,3 +180,38 @@ func TestRedactRequestPDn_Allowlist(t *testing.T) {
 		})
 	}
 }
+
+func TestPublicationContactAllowlist(t *testing.T) {
+	for _, tt := range []struct {
+		name, role, text string
+		want             bool
+	}{
+		{"booking", "user", "Сделай пост… запись по телефону +7 916 123-45-77", true},
+		{"formatted", "user", "Добавь в пост телефон: +7 (916) 123-45-77", true},
+		{"trunk", "user", "Телефон для публикации: 8 916 123 45 77", true},
+		{"english", "user", "Write a post. Booking phone: +79161234577", true},
+		{"unscoped", "user", "Позвони +79161234577", false},
+		{"negative", "user", "Не добавь в пост телефон +79161234577", false},
+		{"customer", "user", "Отзыв клиента: запись по телефону +79161234577", false},
+		{"quoted", "user", "Он написал: «запись по телефону +79161234577»", false},
+		{"tool", "tool", "Запись по телефону +79161234577", false},
+		{"assistant", "assistant", "Запись по телефону +79161234577", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			allow := publicationContactAllowlist([]llm.Message{{Role: tt.role, Content: tt.text}})
+			req := llm.ChatRequest{Messages: []llm.Message{{Role: "assistant", Content: "+7 (916) 123-45-77; +78120000000; person@example.org"}}}
+			redactRequestPDn(&req, allow)
+			if tt.want {
+				assert.Contains(t, req.Messages[0].Content, "+7 (916) 123-45-77")
+			} else {
+				assert.NotContains(t, req.Messages[0].Content, "916")
+			}
+			assert.NotContains(t, req.Messages[0].Content, "+78120000000")
+			assert.NotContains(t, req.Messages[0].Content, "person@example.org")
+		})
+	}
+	assert.Empty(t, publicationContactAllowlist([]llm.Message{
+		{Role: "user", Content: "Запись по телефону +79161234577"},
+		{Role: "user", Content: "Напиши другой пост без контактов"},
+	}))
+}

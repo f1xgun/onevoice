@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
@@ -74,4 +75,25 @@ func businessContactAllowlist(ctx prompt.BusinessContext) []string {
 		return nil
 	}
 	return out
+}
+
+var publicationContact = regexp.MustCompile(`(?i)(?:запись по телефону|телефон для (?:записи|заказов|публикации)|(?:укажи|добавь) в (?:пост|публикацию) телефон|booking phone|phone for (?:bookings|orders|publication))[ :—-]*((?:\+7|8)[ \-(]*\d{3}[ \-)]*\d{3}[ \-]*\d{2}[ \-]*\d{2}\b)`)
+var unsafeContactContext = regexp.MustCompile(`(?i)(?:не |нельзя|клиент|отзыв|цитат|чуж|сотрудник|личн|customer|review|quote|private|do not|don't|[«»"` + "`" + `<>])`)
+
+func publicationContactAllowlist(messages []llm.Message) []string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != "user" {
+			continue
+		}
+		text := messages[i].Content
+		if unsafeContactContext.MatchString(text) {
+			return nil
+		}
+		var allow []string
+		for _, match := range publicationContact.FindAllStringSubmatch(text, -1) {
+			allow = append(allow, match[1])
+		}
+		return allow
+	}
+	return nil
 }
