@@ -181,7 +181,7 @@ func (t *Turn) Run(
 
 	body, _ := json.Marshal(t.buildOrchestratorRequest(ctx, req, enriched))
 	streamErr := t.streamOrchestrator(ctx, taskOpsCtx, w, req.ConversationID, body, nil, enriched.business.ID.String(), state, emit)
-	if streamErr != nil && state.pauseEvent == nil && state.streamErrContent == "" &&
+	if streamErr != nil && state.pauseEvent == nil && state.streamErrCode == "" &&
 		!errors.Is(streamErr, context.Canceled) && strings.Contains(streamErr.Error(), "stream chat") {
 		return OutcomeOrchestratorUnavailable, streamErr
 	}
@@ -198,7 +198,7 @@ func (t *Turn) Run(
 	if state.pauseEvent != nil {
 		return OutcomePauseHITL, nil
 	}
-	if state.streamErrContent != "" {
+	if state.streamErrCode != "" {
 		return OutcomeError, nil
 	}
 	return OutcomeDone, nil
@@ -266,7 +266,8 @@ func (t *Turn) ownsConversation(ctx context.Context, conversationID, userID, bus
 //
 //   - pauseEvent != nil — write Status=PendingApproval with per-call
 //     ApprovalID=<batch>-<call> + Status=Pending stamped on every ToolCall.
-//   - done / error — write Status=Complete. If content is empty AND a
+//   - done — write Status=Complete; error — write Status=Error and ErrorCode.
+//     If content is empty AND a
 //     stream-error frame was received, wrap it through the i18n catalog at
 //     write-time so chat history renders in the writer's language forever.
 //
@@ -342,10 +343,14 @@ func (t *Turn) persistAfterStream(
 		Status:         domain.MessageStatusComplete,
 		CreatedAt:      streamStartAt,
 	}
+	if state.streamErrCode != "" {
+		assistantMsg.Status = domain.MessageStatusError
+		assistantMsg.ErrorCode = state.streamErrCode
+	}
 	if err := t.persistAssistantComplete(saveCtx, assistantMsg); err != nil {
 		slog.ErrorContext(saveCtx, "chatturn: failed to save assistant message", "error", err)
 	}
-	if state.streamErrContent == "" && (state.assistantText.Len() > 0 || len(state.toolCalls) > 0) {
+	if state.streamErrCode == "" && (state.assistantText.Len() > 0 || len(state.toolCalls) > 0) {
 		t.fireAutoTitleIfPending(parentCtx, req.ConversationID, enriched.business.ID.String(), req.Message, state.assistantText.String())
 	}
 }

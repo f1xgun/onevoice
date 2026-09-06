@@ -60,6 +60,7 @@ interface PersistedAnswer {
   role: string;
   content: string;
   status?: string;
+  errorCode?: string;
   toolCalls?: unknown[];
 }
 
@@ -158,6 +159,9 @@ export function useOnboardingProgress(): OnboardingProgress {
     retry: false,
   });
 
+  const hasSuccessfulTask =
+    actions.isSuccess && (actions.data ?? []).some((action) => action.status === 'done');
+
   const textAnswer = useQuery({
     queryKey: [...conversationsQueryKey(activeBusinessId), 'first-action'],
     queryFn: async ({ signal }) => {
@@ -178,7 +182,8 @@ export function useOnboardingProgress(): OnboardingProgress {
             messages.some(
               (message) =>
                 message.role === 'assistant' &&
-                (!message.status || message.status === 'complete') &&
+                message.status === 'complete' &&
+                !message.errorCode &&
                 message.content.trim() !== '' &&
                 !message.toolCalls?.length
             )
@@ -188,7 +193,7 @@ export function useOnboardingProgress(): OnboardingProgress {
         if (conversations.length < limit) return false;
       }
     },
-    enabled: !!activeBusinessId,
+    enabled: !!activeBusinessId && (actions.isSuccess || actions.isError) && !hasSuccessfulTask,
     retry: false,
   });
 
@@ -206,11 +211,10 @@ export function useOnboardingProgress(): OnboardingProgress {
     hasDescription:
       profile.isSuccess && typeof description === 'string' && description.trim() !== '',
     profileSettled: profile.isSuccess || profile.isError,
-    hasFirstAction:
-      (actions.isSuccess && (actions.data ?? []).some((action) => action.status === 'done')) ||
-      (textAnswer.isSuccess && textAnswer.data),
+    hasFirstAction: hasSuccessfulTask || (textAnswer.isSuccess && textAnswer.data),
     conversationsSettled:
-      (actions.isSuccess || actions.isError) && (textAnswer.isSuccess || textAnswer.isError),
+      hasSuccessfulTask ||
+      ((actions.isSuccess || actions.isError) && (textAnswer.isSuccess || textAnswer.isError)),
     showInvite: canInvite,
     hasTeammate: members.isSuccess && (members.data?.length ?? 0) > 1,
   });

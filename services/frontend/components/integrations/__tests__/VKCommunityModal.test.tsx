@@ -1,3 +1,4 @@
+import { hasLayoutBrowser, withLayoutPage } from '@/test-utils/browser-layout';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -206,3 +207,39 @@ it('keeps expanded token content in an internal scroller with reachable dismissa
   await user.click(cancel);
   expect(onClose).toHaveBeenCalledOnce();
 });
+
+it.skipIf(!hasLayoutBrowser).each(['ru', 'en'] as const)(
+  'keeps the expanded %s token form reachable when the keyboard shrinks the viewport',
+  async (locale) => {
+    globalThis.__setTestLocale(locale);
+    renderModal();
+    const details = screen.getByRole('dialog').querySelector('details')!;
+    await userEvent.setup().click(details.querySelector('summary')!);
+    const dialog = screen.getByRole('dialog');
+    await withLayoutPage(dialog.outerHTML, { width: 375, height: 667 }, async (page) => {
+      await page.locator('textarea').focus();
+      await page.setViewportSize({ width: 375, height: 360 });
+      const box = await page.getByRole('dialog').boundingBox();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(360);
+      const scroller = page.locator('details').locator('..');
+      const sizes = await scroller.evaluate((element) => ({
+        height: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+      }));
+      expect(sizes.scrollHeight).toBeGreaterThan(sizes.height);
+      await page.locator('textarea').scrollIntoViewIfNeeded();
+      const input = await page.locator('textarea').boundingBox();
+      expect(input!.y).toBeGreaterThanOrEqual(box!.y);
+      expect(input!.y + input!.height).toBeLessThanOrEqual(360);
+      const cancel = page.getByRole('button', {
+        name: locale === 'ru' ? 'Отмена' : 'Cancel',
+        exact: true,
+      });
+      const cancelBox = await cancel.boundingBox();
+      expect(cancelBox!.y).toBeGreaterThanOrEqual(0);
+      expect(cancelBox!.y + cancelBox!.height).toBeLessThanOrEqual(360);
+    });
+  },
+  15000
+);

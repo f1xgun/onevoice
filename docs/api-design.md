@@ -109,3 +109,12 @@ Sync/bulk operations (e.g. "apply change to all connected platforms") return a `
 - Default page size: 20; max: 100.
 - Query params: `?limit=20&offset=0` (offset pagination) or `?limit=20&after=<cursor>` (cursor pagination when ordering is stable).
 - Include total count in responses only when cheap; otherwise prefer "has_more" boolean.
+
+## Persisted Chat Outcomes
+
+Assistant messages from failed streams have `status: "error"` and an
+`errorCode` (the upstream code, or `STREAM_ERROR` when absent). Partial text
+is retained; immediate errors retain the localized error content. Successful
+turns have `status: "complete"`. Clients must not infer success from nonempty
+content or an absent legacy status. Successful tool tasks independently prove
+that an action completed.

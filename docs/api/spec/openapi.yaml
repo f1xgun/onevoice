@@ -2295,6 +2295,10 @@ components:
           additionalProperties: true
         status:
           type: string
+          description: Complete denotes a successful turn; error denotes a failed stream, including partial text. An absent legacy status is not proof of success.
+        errorCode:
+          type: string
+          description: Machine-readable stream error code; STREAM_ERROR when no upstream code is supplied.
         createdAt:
           type: string
           format: date-time

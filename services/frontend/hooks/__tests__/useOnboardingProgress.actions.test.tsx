@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -23,6 +23,9 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 describe('first action completion', () => {
+  beforeEach(() => {
+    get.mockReset();
+  });
   it.each([
     [[], false],
     [[{ status: 'error' }], false],
@@ -39,10 +42,12 @@ describe('first action completion', () => {
 
   it.each([
     ['complete', 'Готовый текст публикации', true],
-    [undefined, 'Сохранённый ответ', true],
+    [undefined, 'Сохранённый ответ', false],
     ['in_progress', 'Начало ответа', false],
     ['pending_approval', 'Ожидание подтверждения', false],
     ['complete', '   ', false],
+    ['error', 'Ошибка: Provider unavailable', false],
+    ['error', 'Начало ответа', false],
   ])('checks persisted text-only replies (%s)', async (status, content, done) => {
     get.mockImplementation(async (path: string) => {
       if (path === '/conversations') return { data: [{ id: 'text-chat' }] };
@@ -133,4 +138,50 @@ describe('first action completion', () => {
     );
     expect(result.current.steps.find((s) => s.id === 'firstAction')?.done).toBe(false);
   });
+});
+
+it.each([
+  { status: 'error', content: 'Ошибка: Provider unavailable', errorCode: 'PROVIDER_ERROR' },
+  { status: 'error', content: 'Начало ответа', errorCode: 'PROVIDER_ERROR' },
+  { status: 'complete', content: 'Начало ответа', errorCode: 'PROVIDER_ERROR' },
+])('rejects persisted failed responses: %j', async (reply) => {
+  get.mockImplementation(async (path: string) => ({
+    data:
+      path === '/conversations'
+        ? [{ id: 'failed' }]
+        : path.endsWith('/messages')
+          ? { messages: [{ role: 'assistant', toolCalls: [], ...reply }], pendingApprovals: [] }
+          : [],
+  }));
+  const { result } = renderHook(() => useOnboardingProgress(), { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.loaded).toBe(true));
+  expect(result.current.steps.find((s) => s.id === 'firstAction')?.done).toBe(false);
+});
+
+it('does not fetch conversations when a successful task proves completion', async () => {
+  get.mockReset();
+  get.mockImplementation(async (path: string) => ({
+    data: path === '/tasks' ? [{ status: 'done' }] : [],
+  }));
+  const { result } = renderHook(() => useOnboardingProgress(), { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.loaded).toBe(true));
+  expect(result.current.steps.find((s) => s.id === 'firstAction')?.done).toBe(true);
+  expect(get.mock.calls.some(([path]) => path.startsWith('/conversations'))).toBe(false);
+});
+
+it('stops history requests after the first successful answer', async () => {
+  get.mockReset();
+  get.mockImplementation(async (path: string) => ({
+    data:
+      path === '/conversations'
+        ? [{ id: 'first' }, { id: 'second' }]
+        : path.endsWith('/messages')
+          ? { messages: [{ role: 'assistant', status: 'complete', content: 'Done' }] }
+          : [],
+  }));
+  const { result } = renderHook(() => useOnboardingProgress(), { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.loaded).toBe(true));
+  expect(
+    get.mock.calls.filter(([path]) => path.endsWith('/messages')).map(([path]) => path)
+  ).toEqual(['/conversations/first/messages']);
 });

@@ -1053,16 +1053,21 @@ type Member struct {
 
 // Message defines model for Message.
 type Message struct {
-	Attachments    *[]MessageAttachment    `json:"attachments,omitempty"`
-	Content        string                  `json:"content" validate:"required"`
-	ConversationId string                  `json:"conversationId" validate:"required"`
-	CreatedAt      time.Time               `json:"createdAt" validate:"required"`
-	Id             string                  `json:"id" validate:"required"`
-	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
-	Role           MessageRole             `json:"role" validate:"required,oneof=user assistant system"`
-	Status         *string                 `json:"status,omitempty"`
-	ToolCalls      *[]MessageToolCall      `json:"toolCalls,omitempty"`
-	ToolResults    *[]MessageToolResult    `json:"toolResults,omitempty"`
+	Attachments    *[]MessageAttachment `json:"attachments,omitempty"`
+	Content        string               `json:"content" validate:"required"`
+	ConversationId string               `json:"conversationId" validate:"required"`
+	CreatedAt      time.Time            `json:"createdAt" validate:"required"`
+
+	// ErrorCode Machine-readable stream error code; STREAM_ERROR when no upstream code is supplied.
+	ErrorCode *string                 `json:"errorCode,omitempty"`
+	Id        string                  `json:"id" validate:"required"`
+	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
+	Role      MessageRole             `json:"role" validate:"required,oneof=user assistant system"`
+
+	// Status Complete denotes a successful turn; error denotes a failed stream, including partial text. An absent legacy status is not proof of success.
+	Status      *string              `json:"status,omitempty"`
+	ToolCalls   *[]MessageToolCall   `json:"toolCalls,omitempty"`
+	ToolResults *[]MessageToolResult `json:"toolResults,omitempty"`
 }
 
 // MessageRole defines model for Message.Role.

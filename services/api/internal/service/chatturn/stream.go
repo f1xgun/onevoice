@@ -33,6 +33,7 @@ type streamState struct {
 	toolResults      []domain.ToolResult
 	pauseEvent       *sse.Event
 	streamErrContent string
+	streamErrCode    string
 	// idMap propagates LLM tool_call.id -> internal agent_task.id mapping so
 	// tool_result events can correlate even when the orchestrator's
 	// tool_call.id and the dispatched agent task have different identifiers.
@@ -128,6 +129,10 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 		state.pauseEvent = &evCopy
 	case "error":
 		state.streamErrContent = ev.Content
+		state.streamErrCode = ev.Code
+		if state.streamErrCode == "" {
+			state.streamErrCode = "STREAM_ERROR"
+		}
 	}
 }
 
