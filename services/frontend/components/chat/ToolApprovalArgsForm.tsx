@@ -4,10 +4,10 @@ import { Fragment, memo, useId, useState, type ReactNode } from 'react';
 import { Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Input } from '@/components/ui/input';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 
 import { evaluateEditGate } from './toolApprovalGate';
 

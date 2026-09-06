@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 import { refreshAccessToken } from '@/lib/api/authFetch';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { trackEvent } from '@/lib/telemetry';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Sidebar } from '@/components/sidebar';
@@ -212,7 +212,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <main
                   id="main-content"
                   tabIndex={-1}
-                  className="flex h-full flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                  className="flex h-full scroll-pb-28 scroll-pt-20 flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink md:scroll-py-8"
                 >
                   <DeletionGraceBanner />
                   <VerificationBanner />
@@ -231,7 +231,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <main
               id="main-content"
               tabIndex={-1}
-              className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className="flex min-h-0 flex-1 scroll-pb-28 scroll-pt-20 flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink md:scroll-py-8"
             >
               <DeletionGraceBanner />
               <VerificationBanner />

@@ -6,7 +6,7 @@
 // Extracted from posts/page.tsx as part of.
 import { useTranslations } from 'next-intl';
 
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 

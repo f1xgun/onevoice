@@ -20,9 +20,9 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { createBusinessSchema, type BusinessInput } from '@/lib/schemas';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { CategoryField } from '@/components/business/CategoryField';
 import type { Business } from '@/types/business';
 
@@ -100,7 +100,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={logoMutation.isPending || !canEdit}
-          className="hover:border-ochre/40 relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-paper-sunken text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          className="relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-paper-sunken text-ink-soft transition-colors hover:border-brand hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={tProfileForm('logoUploadAria')}
         >
           {logoUrl ? (
@@ -118,7 +118,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
             </span>
           )}
           {logoMutation.isPending && (
-            <span className="bg-paper/70 absolute inset-0 grid place-items-center font-mono text-[11px] uppercase tracking-[0.04em] text-ink-soft">
+            <span className="absolute inset-0 grid place-items-center bg-paper font-mono text-[11px] uppercase tracking-[0.04em] text-ink-soft">
               …
             </span>
           )}
@@ -208,7 +208,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
             {...register('description')}
             rows={4}
             placeholder={tProfileForm('descriptionPlaceholder')}
-            className="focus:ring-ochre/20 flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft focus:border-ochre focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
           />
         </Field>
       </div>

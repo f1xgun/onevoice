@@ -12,7 +12,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@/components/design-system/AppAlertDialog';
 
 interface DeleteProjectDialogProps {
   open: boolean;
@@ -62,7 +62,7 @@ export function DeleteProjectDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>{tCommon('cancel')}</AlertDialogCancel>
           <AlertDialogAction
-            className="hover:bg-destructive/90 bg-destructive text-destructive-foreground"
+            variant="danger"
             disabled={pending}
             onClick={(e) => {
               e.preventDefault();

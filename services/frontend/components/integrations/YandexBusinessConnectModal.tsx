@@ -3,9 +3,14 @@
 import { useTranslations } from 'next-intl';
 import { Check, Copy, Loader2 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import {
+  Dialog,
+  AppDialog as DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/design-system/AppDialog';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { useYandexBusinessConfig, useYandexDelegatedForm } from '@/hooks/useYandexBusinessConnect';
 import type { DelegatedFlowProps } from '@/hooks/useYandexBusinessConnect';
 

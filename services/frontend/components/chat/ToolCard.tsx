@@ -4,7 +4,7 @@
 //
 // One tool call = one card with the platform tag, the tool name in
 // JetBrains Mono, and a status pill on the right. The card carries a
-// 3 px platform-tinted left border (hsl(var(--destructive)) when the
+// 3 px platform-tinted left border (var(--destructive) when the
 // user rejected the call). Linen background + 1 px line border on the
 // rest of the card.
 //
@@ -57,7 +57,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
 
   const decisionUnavailable = tool.rejectReason === 'decision_unavailable';
   const borderLeftColor =
-    tool.status === 'rejected' && !decisionUnavailable ? 'hsl(var(--destructive))' : color;
+    tool.status === 'rejected' && !decisionUnavailable ? 'var(--destructive)' : color;
 
   const policyReasonKey = tool.rejectReason
     ? POLICY_REJECT_REASON_KEYS[tool.rejectReason]

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import type { LandingEntryProps } from '@/lib/landing-entry';
 
 const EVENTS_PATH = '/api/v1/landing-events';

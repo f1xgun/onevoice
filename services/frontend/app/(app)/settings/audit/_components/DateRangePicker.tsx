@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+import { AppCalendar as Calendar } from '@/components/design-system/AppCalendar';
 
 interface Props {
   from?: string;
@@ -102,7 +102,7 @@ export function DateRangePicker({ from, to, onChange }: Props) {
               {labelFor('custom')}
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-2">
+          <PopoverContent className="w-auto max-w-[calc(100vw-0.5rem)] p-1">
             <Calendar
               mode="range"
               selected={{

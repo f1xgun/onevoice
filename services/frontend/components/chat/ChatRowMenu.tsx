@@ -23,17 +23,17 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@/components/design-system/AppAlertDialog';
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+} from '@/components/design-system/AppDialog';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { MoveChatMenuItem } from '@/components/chat/MoveChatMenuItem';
 import { PinChatMenuItem } from '@/components/chat/PinChatMenuItem';
 import {
@@ -218,7 +218,7 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              variant="danger"
               onClick={handleDelete}
               disabled={deleteMutation.isPending}
             >

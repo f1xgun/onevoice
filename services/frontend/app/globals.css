@@ -1,20 +1,7 @@
-/* OneVoice — Linen
- * Drop-in replacement for app/globals.css.
- *
- * The shadcn token names (--background, --primary, etc.) are kept so existing
- * components keep working. We've moved from HSL to OKLCH for better perceptual
- * uniformity in the warm-neutral range. Tailwind's hsl(var(--token)) reads
- * OKLCH values fine in modern browsers; if you support older targets, keep the
- * --on-* aliases as raw colors and use them via arbitrary values:
- *   class="bg-[var(--paper)] text-[var(--ink)]"
- *
- * Update tailwind.config.ts to read the OneVoice tokens (see snippet at bottom).
- */
-
+/* OneVoice — Своим голосом. Full HEX colors, shared semantic aliases. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -23,255 +10,157 @@
     text-wrap: pretty;
   }
 }
-
 @layer base {
   :root {
-    /* ─── Linen · Light ───────────────────────────────────────────── */
-
-    /* Surfaces — paper that gets quieter as it sinks */
-    --ov-paper: oklch(0.975 0.012 78);
-    --ov-paper-raised: oklch(0.99 0.008 80);
-    --ov-paper-sunken: oklch(0.945 0.015 78);
-    --ov-paper-well: oklch(0.92 0.018 78);
-
-    /* Ink — four steps; never invent new grays */
-    --ov-ink: oklch(0.2 0.012 60);
-    --ov-ink-mid: oklch(0.4 0.012 60);
-    --ov-ink-soft: oklch(0.5 0.012 60);
-    --ov-ink-faint: oklch(0.62 0.012 60);
-
-    /* Lines */
-    --ov-line: oklch(0.88 0.012 78);
-    --ov-line-soft: oklch(0.92 0.012 78);
-
-    /* Accent — ochre. Use sparingly. */
-    --ov-accent: oklch(0.66 0.13 75);
-    --ov-accent-deep: oklch(0.54 0.13 75);
-    --ov-accent-soft: oklch(0.94 0.05 75);
-    --ov-accent-ink: oklch(0.34 0.1 75);
-
-    /* Semantic — same chroma family as accent for cohesion */
-    --ov-success: oklch(0.58 0.1 145);
-    --ov-success-soft: oklch(0.93 0.04 145);
-    --ov-warning: oklch(0.72 0.13 75);
-    --ov-warning-soft: oklch(0.94 0.05 75);
-    --ov-warning-ink: oklch(0.42 0.1 75);
-    --ov-danger: oklch(0.55 0.16 25);
-    --ov-danger-soft: oklch(0.93 0.04 25);
-    --ov-info: oklch(0.58 0.08 230);
-    --ov-info-soft: oklch(0.93 0.03 230);
-
-    /* Elevation */
-    --ov-shadow-1: 0 1px 2px oklch(0.3 0.02 60 / 0.06), 0 1px 1px oklch(0.3 0.02 60 / 0.04);
-    --ov-shadow-2: 0 4px 12px oklch(0.3 0.02 60 / 0.06), 0 1px 2px oklch(0.3 0.02 60 / 0.04);
-    --ov-shadow-3: 0 12px 32px oklch(0.3 0.02 60 / 0.1), 0 2px 6px oklch(0.3 0.02 60 / 0.05);
-
-    /* Radii — friendly but measured */
-    --ov-radius-sm: 6px;
-    --ov-radius-md: 10px;
-    --ov-radius-lg: 14px;
-    --ov-radius-xl: 20px;
-
-    /* ─── shadcn aliases — keep existing components working ─────────── */
+    color-scheme: light;
+    --ov-paper: #f5f4f0;
+    --ov-paper-raised: #ffffff;
+    --ov-paper-sunken: #e7e9e3;
+    --ov-ink: #202724;
+    --ov-ink-soft: #58635d;
+    --ov-line: #cad0c9;
+    --ov-control: #77847c;
+    --ov-brand: #245c55;
+    --ov-on-brand: #ffffff;
+    --ov-brand-hover: #19463f;
+    --ov-brand-soft: #e0ebe5;
+    --ov-success: #41653b;
+    --ov-warning: #7a4c18;
+    --ov-danger: #a13c36;
+    --ov-on-danger: #ffffff;
+    --ov-info: #365f8a;
+    --ov-overlay: rgb(0 0 0 / 0.48);
+    --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.12);
+    --ov-radius-sm: 4px;
+    --ov-radius-md: 6px;
+    --ov-radius-lg: 8px;
+    --ov-radius-xl: 12px;
+  }
+  .dark {
+    color-scheme: dark;
+    --ov-paper: #202724;
+    --ov-paper-raised: #29332e;
+    --ov-paper-sunken: #35433b;
+    --ov-ink: #f2f3ed;
+    --ov-ink-soft: #b9c3ba;
+    --ov-line: #48564d;
+    --ov-control: #829389;
+    --ov-brand: #99c6ba;
+    --ov-on-brand: #202724;
+    --ov-brand-hover: #b3d9cf;
+    --ov-brand-soft: #23453e;
+    --ov-success: #b6d3a0;
+    --ov-warning: #e6c186;
+    --ov-danger: #f1a39a;
+    --ov-on-danger: #202724;
+    --ov-info: #a7c8eb;
+    --ov-overlay: rgb(0 0 0 / 0.64);
+    --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.32);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+      color-scheme: dark;
+      --ov-paper: #202724;
+      --ov-paper-raised: #29332e;
+      --ov-paper-sunken: #35433b;
+      --ov-ink: #f2f3ed;
+      --ov-ink-soft: #b9c3ba;
+      --ov-line: #48564d;
+      --ov-control: #829389;
+      --ov-brand: #99c6ba;
+      --ov-on-brand: #202724;
+      --ov-brand-hover: #b3d9cf;
+      --ov-brand-soft: #23453e;
+      --ov-success: #b6d3a0;
+      --ov-warning: #e6c186;
+      --ov-danger: #f1a39a;
+      --ov-on-danger: #202724;
+      --ov-info: #a7c8eb;
+      --ov-overlay: rgb(0 0 0 / 0.64);
+      --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.32);
+    }
+  }
+  :root,
+  .dark {
+    --ov-paper-well: var(--ov-paper-sunken);
+    --ov-ink-mid: var(--ov-ink);
+    --ov-ink-faint: var(--ov-ink-soft);
+    --ov-line-soft: var(--ov-line);
+    --ov-accent: var(--ov-brand);
+    --ov-accent-deep: var(--ov-brand-hover);
+    --ov-accent-soft: var(--ov-brand-soft);
+    --ov-accent-ink: var(--ov-ink);
+    --ov-success-soft: var(--ov-paper-raised);
+    --ov-warning-soft: var(--ov-paper-raised);
+    --ov-warning-ink: var(--ov-warning);
+    --ov-danger-soft: var(--ov-paper-raised);
+    --ov-info-soft: var(--ov-paper-raised);
+    --ov-shadow-2: var(--ov-shadow-overlay);
+    --ov-shadow-3: var(--ov-shadow-overlay);
+    --ov-shadow-1: none;
     --background: var(--ov-paper);
     --foreground: var(--ov-ink);
-
     --card: var(--ov-paper-raised);
     --card-foreground: var(--ov-ink);
-
     --popover: var(--ov-paper-raised);
     --popover-foreground: var(--ov-ink);
-
-    /* Primary is graphite, NOT accent. Accent reserved for moments of emphasis. */
-    --primary: var(--ov-ink);
-    --primary-foreground: var(--ov-paper);
-
+    --primary: var(--ov-brand);
+    --primary-foreground: var(--ov-on-brand);
     --secondary: var(--ov-paper-sunken);
     --secondary-foreground: var(--ov-ink);
-
     --muted: var(--ov-paper-sunken);
     --muted-foreground: var(--ov-ink-soft);
-
-    --accent: var(--ov-accent-soft);
-    --accent-foreground: var(--ov-accent-ink);
-
+    --accent: var(--ov-brand-soft);
+    --accent-foreground: var(--ov-ink);
     --destructive: var(--ov-danger);
-    --destructive-foreground: oklch(0.99 0 0);
-
+    --destructive-foreground: var(--ov-on-danger);
     --border: var(--ov-line);
-    --input: var(--ov-line);
-    --ring: var(--ov-accent);
-
-    --chart-1: var(--ov-accent);
+    --input: var(--ov-control);
+    --ring: var(--ov-brand);
+    --chart-1: var(--ov-brand);
     --chart-2: var(--ov-success);
     --chart-3: var(--ov-warning);
     --chart-4: var(--ov-info);
-    --chart-5: var(--ov-ink-mid);
-
+    --chart-5: var(--ov-ink-soft);
     --radius: var(--ov-radius-md);
   }
-
-  .dark {
-    /* ─── Linen · Dark ────────────────────────────────────────────────
-     * Same warm hue family, inverted lightness. Not pure black —
-     * a deep warm graphite (≈ "cocoa paper") so the warmth survives.
-     */
-    --ov-paper: oklch(0.18 0.01 60);
-    --ov-paper-raised: oklch(0.22 0.01 60);
-    --ov-paper-sunken: oklch(0.15 0.01 60);
-    --ov-paper-well: oklch(0.13 0.01 60);
-
-    --ov-ink: oklch(0.96 0.008 80);
-    --ov-ink-mid: oklch(0.78 0.01 70);
-    --ov-ink-soft: oklch(0.72 0.012 70);
-    --ov-ink-faint: oklch(0.55 0.012 70);
-
-    --ov-line: oklch(0.3 0.012 60);
-    --ov-line-soft: oklch(0.25 0.012 60);
-
-    --ov-accent: oklch(0.76 0.14 80);
-    --ov-accent-deep: oklch(0.66 0.14 80);
-    --ov-accent-soft: oklch(0.3 0.07 75);
-    --ov-accent-ink: oklch(0.88 0.09 80);
-
-    --ov-success: oklch(0.7 0.11 150);
-    --ov-success-soft: oklch(0.28 0.05 150);
-    --ov-warning: oklch(0.78 0.13 80);
-    --ov-warning-soft: oklch(0.3 0.06 80);
-    --ov-warning-ink: oklch(0.85 0.11 80);
-    --ov-danger: oklch(0.68 0.16 25);
-    --ov-danger-soft: oklch(0.3 0.07 25);
-    --ov-info: oklch(0.72 0.09 230);
-    --ov-info-soft: oklch(0.28 0.04 230);
-
-    --ov-shadow-1: 0 1px 2px oklch(0 0 0 / 0.4), 0 0 0 1px oklch(1 0 0 / 0.02);
-    --ov-shadow-2: 0 6px 18px oklch(0 0 0 / 0.45), 0 0 0 1px oklch(1 0 0 / 0.02);
-    --ov-shadow-3: 0 16px 40px oklch(0 0 0 / 0.55), 0 0 0 1px oklch(1 0 0 / 0.03);
-
-    --background: var(--ov-paper);
-    --foreground: var(--ov-ink);
-    --card: var(--ov-paper-raised);
-    --card-foreground: var(--ov-ink);
-    --popover: var(--ov-paper-raised);
-    --popover-foreground: var(--ov-ink);
-    --primary: var(--ov-ink);
-    --primary-foreground: var(--ov-paper);
-    --secondary: var(--ov-paper-sunken);
-    --secondary-foreground: var(--ov-ink);
-    --muted: var(--ov-paper-sunken);
-    --muted-foreground: var(--ov-ink-soft);
-    --accent: var(--ov-accent-soft);
-    --accent-foreground: var(--ov-accent-ink);
-    --destructive: var(--ov-danger);
-    --destructive-foreground: oklch(0.99 0 0);
-    --border: var(--ov-line);
-    --input: var(--ov-line);
-    --ring: var(--ov-accent);
-  }
-}
-
-@layer base {
   * {
     border-color: var(--ov-line);
   }
-
   html {
-    font-family:
-      'Mona Sans',
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      sans-serif;
-    font-feature-settings: 'ss01', 'cv11';
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: normal;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-
   body {
     background: var(--ov-paper);
     color: var(--ov-ink);
   }
-
-  /* Mono for IDs, codes, timestamps */
   code,
   kbd,
   samp,
   pre,
   .font-mono {
-    font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+    font-family: var(--font-mono), ui-monospace, monospace;
   }
-
-  /* Selection picks up the accent — quietly */
   ::selection {
     background: var(--ov-accent-soft);
-    color: var(--ov-accent-ink);
+    color: var(--ov-ink);
   }
 }
-
-/* ─── App-specific: message highlight pulse ───────────────────────────
- * Used by useHighlightMessage when a deep-link or scroll-to-message
- * lands on a target — gives a one-time ochre wash instead of a yellow
- * flash so it sits inside the Linen palette. Not part of the design
- * system itself; safe to retune the duration/colors per UX feedback.
- */
 [data-highlight='true'] {
-  animation: onevoice-flash 1.75s ease-out;
+  background-color: var(--ov-accent-soft);
 }
-
-@keyframes onevoice-flash {
-  0% {
-    background-color: var(--ov-accent-soft);
-  }
-  100% {
-    background-color: transparent;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  [data-highlight='true'] {
-    animation: none;
-    background-color: var(--ov-accent-soft);
-    transition: background-color 200ms;
+  [data-ov-motion],
+  [data-ov-motion] *,
+  [data-ov-motion]::before,
+  [data-ov-motion]::after,
+  [data-ov-motion] *::before,
+  [data-ov-motion] *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }
-
-/* ─── tailwind.config.ts addition (drop into theme.extend.colors) ─────
- *
- * colors: {
- *   paper: {
- *     DEFAULT: 'var(--ov-paper)',
- *     raised:  'var(--ov-paper-raised)',
- *     sunken:  'var(--ov-paper-sunken)',
- *     well:    'var(--ov-paper-well)',
- *   },
- *   ink: {
- *     DEFAULT: 'var(--ov-ink)',
- *     mid:     'var(--ov-ink-mid)',
- *     soft:    'var(--ov-ink-soft)',
- *     faint:   'var(--ov-ink-faint)',
- *   },
- *   line: {
- *     DEFAULT: 'var(--ov-line)',
- *     soft:    'var(--ov-line-soft)',
- *   },
- *   brand: {
- *     DEFAULT: 'var(--ov-accent)',
- *     deep:    'var(--ov-accent-deep)',
- *     soft:    'var(--ov-accent-soft)',
- *     ink:     'var(--ov-accent-ink)',
- *   },
- *   // ...keep the existing shadcn aliases
- * },
- *
- * fontFamily: {
- *   sans: ['Mona Sans', 'ui-sans-serif', 'system-ui'],
- *   mono: ['JetBrains Mono', 'ui-monospace'],
- * },
- *
- * borderRadius: {
- *   sm: 'var(--ov-radius-sm)',
- *   md: 'var(--ov-radius-md)',
- *   lg: 'var(--ov-radius-lg)',
- *   xl: 'var(--ov-radius-xl)',
- * },
- */

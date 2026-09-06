@@ -28,7 +28,7 @@ export function StreamErrorNotice({ code, detail }: StreamErrorNoticeProps) {
       role="alert"
       aria-live="polite"
       className="mt-2 flex items-start gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink"
-      style={{ borderLeftColor: 'hsl(var(--destructive))', borderLeftWidth: 3 }}
+      style={{ borderLeftColor: 'var(--destructive)', borderLeftWidth: 3 }}
     >
       <AlertTriangle
         size={16}

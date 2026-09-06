@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { usePlatformFullLabels } from '@/lib/platforms';
 import { useTools, toolNamesForPlatform } from '@/lib/hooks/useTools';

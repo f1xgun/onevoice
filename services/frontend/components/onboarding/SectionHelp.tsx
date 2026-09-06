@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { HelpCircle, Info, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useBusinessStore } from '@/lib/stores/business';
 import { readDismissed, sectionHelpDismissKey, writeDismissed } from '@/lib/onboarding/dismiss';

@@ -14,7 +14,7 @@ import { conversationsQueryKey } from '@/hooks/useConversations';
 import { listConversations } from '@/lib/conversations';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +24,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@/components/design-system/AppAlertDialog';
 import { ConversationItem, type Conversation } from '@/components/chat/ConversationItem';
 import { SkeletonInbox } from '@/components/states';
 
@@ -148,6 +148,7 @@ export default function ChatListPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
+              variant="danger"
               className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
               onClick={() => deleteTarget && deleteConversation(deleteTarget)}
             >

@@ -20,7 +20,7 @@ import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { toast } from 'sonner';
 import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 import { EmailChangeBeforeVerifyModal } from './EmailChangeBeforeVerifyModal';

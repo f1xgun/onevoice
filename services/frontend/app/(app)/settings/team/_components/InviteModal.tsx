@@ -9,14 +9,14 @@ import { Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+} from '@/components/design-system/AppDialog';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import {
   Select,

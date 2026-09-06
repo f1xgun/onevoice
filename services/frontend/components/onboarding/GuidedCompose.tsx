@@ -10,9 +10,9 @@
 import { useCallback, useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { PenLine } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { trackEvent } from '@/lib/telemetry';
 import {

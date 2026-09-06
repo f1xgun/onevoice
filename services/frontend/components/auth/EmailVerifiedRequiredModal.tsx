@@ -26,7 +26,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@/components/design-system/AppAlertDialog';
 import { toast } from 'sonner';
 
 const HTTP_TOO_MANY_REQUESTS = 429;

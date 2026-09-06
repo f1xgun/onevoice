@@ -20,9 +20,9 @@ import { useMapRoleError } from '@/lib/resolveErrorMap';
 import { PermissionTree } from '@/components/permission-tree/PermissionTree';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
+import { AppInput as Input } from '@/components/design-system/AppInput';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Label } from '@/components/ui/label';
 
 // Schema lives at module scope (not inside the component) so RHF's

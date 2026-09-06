@@ -17,7 +17,7 @@ import * as React from 'react';
 import { X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 
 export type StickyAlertTone = 'warning' | 'danger' | 'info';
 

@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { postReconsent, type ConsentError } from '@/lib/api/consents';
 import { type PolicyDiff } from '@/lib/auth';

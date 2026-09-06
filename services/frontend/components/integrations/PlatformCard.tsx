@@ -24,9 +24,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from '@/components/design-system/AppAlertDialog';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { bizApi } from '@/lib/api/business-api';

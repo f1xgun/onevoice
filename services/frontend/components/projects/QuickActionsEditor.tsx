@@ -2,8 +2,8 @@
 
 import { Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { MAX_QUICK_ACTIONS } from '@/lib/quick-actions';
 
 interface QuickActionsEditorProps {
@@ -47,9 +47,8 @@ export function QuickActionsEditor({ value, onChange }: QuickActionsEditorProps)
               />
               <Button
                 type="button"
-                variant="outline"
+                variant="danger"
                 size="icon"
-                className="hover:bg-destructive/10 text-destructive hover:text-destructive"
                 onClick={() => removeItem(index)}
                 aria-label={tQA('deleteAria', { index: index + 1 })}
               >

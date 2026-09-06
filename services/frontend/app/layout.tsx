@@ -1,23 +1,25 @@
+import { cookies } from 'next/headers';
+import { THEME_COOKIE, resolveTheme } from '@/lib/theme';
+import { ThemeProvider } from '@/components/design-system/ThemeProvider';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Manrope, JetBrains_Mono } from 'next/font/google';
+import { Golos_Text, JetBrains_Mono } from 'next/font/google';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { IntlClientProvider } from '@/components/IntlClientProvider';
 import { SkipLink } from '@/components/a11y/skip-link';
 
-// Manrope is the cyrillic-supporting fallback for Mona Sans (the design spec's
-// preferred sans). Mona Sans on Google Fonts ships latin only — see
-// design_handoff/tokens/PRODUCTION-README §1. Switch to self-hosted Mona Sans
-// from github.com/github/mona-sans if cyrillic glyphs are added upstream.
-const sans = Manrope({
+const sans = Golos_Text({
   subsets: ['latin', 'cyrillic'],
+  weight: ['400', '500', '600'],
   variable: '--font-sans',
   display: 'swap',
 });
 const mono = JetBrains_Mono({
-  subsets: ['latin'],
+  subsets: ['latin', 'cyrillic'],
+  weight: '400',
+  preload: false,
   variable: '--font-mono',
   display: 'swap',
 });
@@ -35,15 +37,22 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
+  const theme = resolveTheme((await cookies()).get(THEME_COOKIE)?.value);
   const locale = await getLocale();
   const messages = await getMessages();
 
   return (
-    <html lang={locale} className={`${sans.variable} ${mono.variable}`}>
+    <html
+      lang={locale}
+      data-ov-motion
+      className={`${sans.variable} ${mono.variable} ${theme === 'system' ? '' : theme} scroll-pb-32 scroll-pt-24 md:scroll-pb-8 md:scroll-pt-28`}
+    >
       <body className="font-sans antialiased">
         <IntlClientProvider locale={locale} messages={messages}>
           <SkipLink />
-          <Providers>{children}</Providers>
+          <ThemeProvider theme={theme}>
+            <Providers>{children}</Providers>
+          </ThemeProvider>
         </IntlClientProvider>
       </body>
     </html>

@@ -14,9 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from '@/components/design-system/AppAlertDialog';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { IntegrationDrift } from '@/lib/api/integrationsSync';
 import { useIntegrationsDrift, useVerifyIntegrations } from '@/lib/hooks/useIntegrationsDrift';

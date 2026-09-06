@@ -9,15 +9,15 @@ import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
+} from '@/components/design-system/AppDialog';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { extractApiErrorCode, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
 
 interface Props {

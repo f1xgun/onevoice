@@ -64,7 +64,7 @@ function Step({ step }: { step: ChannelConnectStep }) {
           'inline-flex size-[18px] shrink-0 items-center justify-center rounded-full',
           state === 'done' && 'border border-success bg-success text-paper',
           state === 'active' &&
-            'border-[1.5px] border-ochre bg-ochre-soft text-[var(--ov-accent-ink)]',
+            'border-[1.5px] border-brand bg-brand-soft text-[var(--ov-accent-ink)]',
           state === 'pending' && 'border border-line bg-paper-sunken'
         )}
       >

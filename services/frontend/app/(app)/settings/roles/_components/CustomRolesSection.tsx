@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Plus } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 import type { Role } from '@/lib/schemas';
 

@@ -12,8 +12,8 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
@@ -280,7 +280,7 @@ function RailTile({
   return (
     <Link
       href={href}
-      className="hover:border-ochre/40 group flex items-start gap-3 rounded-lg border border-line bg-paper-raised p-4 transition-colors hover:bg-paper-sunken"
+      className="group flex items-start gap-3 rounded-lg border border-line bg-paper-raised p-4 transition-colors hover:border-brand hover:bg-paper-sunken"
     >
       <span className="mt-0.5 shrink-0 text-ink-soft group-hover:text-ink">{icon}</span>
       <div className="min-w-0 flex-1">

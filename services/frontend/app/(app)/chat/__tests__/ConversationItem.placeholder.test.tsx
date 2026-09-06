@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -66,6 +67,25 @@ function renderItem(conv: TestConv) {
 }
 
 describe('ConversationItem placeholder', () => {
+  it('keeps the menu hidden until hover or focus and opens it from the keyboard', async () => {
+    const user = userEvent.setup();
+    renderItem(baseConv);
+    const trigger = screen.getByRole('button', { name: /Меню чата/ });
+    expect(trigger).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100',
+      'focus-visible:opacity-100'
+    );
+    expect(trigger).not.toHaveClass('opacity-100');
+    await user.tab();
+    await user.tab();
+    expect(trigger).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(trigger).toHaveFocus();
+  });
+
   it("renders 'Новый чат' when title is empty (auto_pending status)", () => {
     renderItem({ ...baseConv, title: '', titleStatus: 'auto_pending' });
     expect(screen.getByText('Новый чат')).toBeInTheDocument();

@@ -5,10 +5,10 @@ import { formatDistanceToNow } from 'date-fns';
 import { MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
-import { Input } from '@/components/ui/input';
+import { AppInput as Input } from '@/components/design-system/AppInput';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -106,7 +106,7 @@ export function ConversationItem({
               variant="ghost"
               size="icon"
               aria-label={tRow('triggerAria', { title: displayTitle })}
-              className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+              className="h-8 w-8 shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
               onClick={(e) => e.stopPropagation()}
             >
               <MoreHorizontal size={16} />

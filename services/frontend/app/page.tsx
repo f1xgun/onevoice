@@ -1,20 +1,11 @@
-// Public marketing landing — OneVoice (Linen rebuild).
-//
-// Per design_handoff_onevoice 2/mocks/mock-landing.jsx + Brand Voice Guide:
-// editorial typographic hero (no gradient hero, no stock photos), serif
-// italic ochre wordmark inside the headline, an inline composed inbox
-// preview as the hero visual, four alternating feature rows with embedded
-// UI samples, three-step how-it-works, 10-up channels grid, pull quote,
-// single-tier pricing CTA, footer. All copy passes the brand voice rules:
-// no exclamation marks, no emoji, no AI-powered hype, no urgency tactics.
-
 import Link from 'next/link';
 import { ArrowRight, Calendar, Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { ChannelMark } from '@/components/ui/channel-mark';
+import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
@@ -25,11 +16,6 @@ import { LandingInteractions } from '@/components/landing/LandingInteractions';
 import { parseLandingEntryMode, pricingCta } from '@/lib/landing-entry';
 import type { LandingEntryProps } from '@/lib/landing-entry';
 import { legalDocHref } from '@/lib/legal/routes';
-
-// ─── Local helpers ────────────────────────────────────────────────────
-// The wordmark is the only place we use a serif on the landing — inline
-// font-family avoids loading a webfont just for one phrase.
-const SERIF = '"Iowan Old Style", "Georgia", "Times New Roman", serif';
 
 const MAX_REVIEW_STARS = 5;
 
@@ -81,7 +67,7 @@ function SiteNav({ mode }: LandingEntryProps) {
     '#pricing': tNav('pricing'),
   };
   return (
-    <header className="bg-paper/85 sticky top-0 z-10 border-b border-line-soft backdrop-blur">
+    <header className="sticky top-0 z-10 border-b border-line-soft bg-paper backdrop-blur">
       <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2 sm:px-12 lg:flex-nowrap">
         <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
           <span className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md bg-ink text-[11px] font-semibold text-paper">
@@ -100,7 +86,8 @@ function SiteNav({ mode }: LandingEntryProps) {
           ))}
         </nav>
         <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
-          <div className="hidden sm:block">
+          <div className="flex items-center gap-1">
+            <ThemeSwitcher />
             <LanguageSwitcher />
           </div>
           <Link
@@ -141,13 +128,11 @@ function Hero({ mode }: LandingEntryProps) {
             <MonoLabel>{tHero('kicker')}</MonoLabel>
             <Badge tone="accent">{tHero('betaBadge')}</Badge>
           </div>
-          <h1 className="mt-5 text-pretty text-[36px] font-medium leading-[1.04] tracking-[-0.025em] sm:text-[56px] lg:text-[64px]">
+          <h1 className="mt-5 text-pretty font-display text-hero md:text-hero-lg">
             {tHero('headlineLine1')}
             <br />
             {tHero('headlineLine2Prefix')}
-            <span className="font-normal italic text-ochre-deep" style={{ fontFamily: SERIF }}>
-              {tHero('wordmark')}
-            </span>
+            <span className="font-display text-brand">{tHero('wordmark')}</span>
             {tHero('headlinePunctuation')}
           </h1>
           <p className="mt-4 max-w-[520px] text-[15px] leading-relaxed text-ink-mid sm:text-lg">
@@ -271,9 +256,7 @@ function Belief() {
         <MonoLabel>{tBelief('kicker')}</MonoLabel>
         <h2 className="mt-3 max-w-[880px] text-pretty text-[28px] font-medium leading-[1.18] tracking-[-0.015em] sm:text-[34px]">
           {tBelief('headlinePrefix')}
-          <span className="font-normal italic text-ochre-deep" style={{ fontFamily: SERIF }}>
-            {tBelief('headlineHighlight')}
-          </span>
+          <span className="font-display text-brand">{tBelief('headlineHighlight')}</span>
         </h2>
         <p className="mt-5 max-w-[720px] text-[17px] leading-relaxed text-ink-mid">
           {tBelief('body')}
@@ -374,7 +357,7 @@ function SampleDraft() {
           <MonoLabel className="ml-auto">{tS('ago')}</MonoLabel>
         </div>
         <div className="rounded-md bg-paper-sunken px-3.5 py-2.5 text-[13px]">{tS('question')}</div>
-        <div className="bg-ochre-soft/60 rounded-md border border-ochre-soft px-3.5 py-3 text-[13px] text-ink">
+        <div className="rounded-md border border-brand-soft bg-brand-soft px-3.5 py-3 text-[13px] text-ink">
           {tS('answer')}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button asChild size="sm" variant="primary">
@@ -531,10 +514,7 @@ function Quote() {
     <section className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[880px] px-6 py-28 sm:px-12">
         <MonoLabel>{t('label')}</MonoLabel>
-        <p
-          className="mt-6 text-pretty text-[26px] font-normal leading-snug tracking-[-0.015em] text-ink sm:text-[32px]"
-          style={{ fontFamily: SERIF, fontStyle: 'italic' }}
-        >
+        <p className="mt-6 text-pretty text-[26px] font-normal leading-snug tracking-[-0.015em] text-ink sm:text-[32px]">
           {t('body')}
         </p>
         <p className="mt-7 text-[13px] text-ink-soft">{t('note')}</p>
@@ -577,7 +557,7 @@ function Pricing({ mode }: LandingEntryProps) {
               <div
                 key={tier.key}
                 className={`flex min-w-0 flex-col rounded-xl border bg-paper-raised p-5 sm:p-6 ${
-                  tier.highlight ? 'border-ochre shadow-ov-3' : 'border-line'
+                  tier.highlight ? 'border-brand shadow-ov-3' : 'border-line'
                 }`}
               >
                 <MonoLabel tone={tier.highlight ? 'ochre' : undefined}>
@@ -590,7 +570,7 @@ function Pricing({ mode }: LandingEntryProps) {
                   <span className="text-[14px] text-ink-mid">{t(`tiers.${tier.key}.period`)}</span>
                 </div>
                 {tier.hasBetaTag && (
-                  <p className="bg-ochre-soft/50 mt-3 rounded-md border border-ochre-soft px-3 py-2 text-[13px] leading-snug text-ochre-ink">
+                  <p className="mt-3 rounded-md border border-brand-soft bg-brand-soft px-3 py-2 text-[13px] leading-snug text-ochre-ink">
                     {t(`tiers.${tier.key}.betaTag`)}
                     {mode === 'open' && (
                       <a

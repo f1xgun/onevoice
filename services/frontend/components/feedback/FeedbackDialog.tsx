@@ -10,15 +10,15 @@ import { toast } from 'sonner';
 
 import {
   Dialog,
-  DialogContent,
+  AppDialog as DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from '@/components/design-system/AppDialog';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import {
   Select,
   SelectContent,

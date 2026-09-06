@@ -2,7 +2,7 @@
 
 import { Check, Pencil, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { cn } from '@/lib/utils';
 import type { ApprovalAction } from '@/types/chat';
 
@@ -57,11 +57,7 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
       aria-pressed={active}
       aria-label={tActions(ARIA_LABEL_KEYS[action], { toolName })}
       onClick={onClick}
-      className={cn(
-        'h-8 px-3',
-        active && action === 'edit' && 'ring-2 ring-ring',
-        !active && 'opacity-60 hover:opacity-100'
-      )}
+      className={cn('h-8 px-3', active && 'ring-2 ring-ring')}
     >
       <Icon size={14} className="mr-1" />
       {tActions(action)}

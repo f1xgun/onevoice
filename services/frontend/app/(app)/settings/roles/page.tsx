@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useRoles } from '@/lib/hooks/useRoles';

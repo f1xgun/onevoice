@@ -8,7 +8,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { format, type Locale as DateFnsLocale } from 'date-fns';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';

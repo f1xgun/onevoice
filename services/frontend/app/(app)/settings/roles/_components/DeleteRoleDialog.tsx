@@ -15,7 +15,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@/components/design-system/AppAlertDialog';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,6 @@ import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { SYSTEM_ROLE_ORDER } from '@/lib/constants/roles';
 import { useMapRoleError } from '@/lib/resolveErrorMap';
 import { useRoleLabel } from '@/lib/hooks/useRoleLabel';
-import { cn } from '@/lib/utils';
 import type { Role } from '@/lib/schemas';
 
 // DeleteRoleDialog — the / / nucleus of the roles list flow.
@@ -258,15 +257,12 @@ export function DeleteRoleDialog({
         <AlertDialogFooter className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <AlertDialogCancel disabled={deleteMut.isPending}>{t('cancel')}</AlertDialogCancel>
           <AlertDialogAction
+            variant="danger"
             onClick={(e) => {
               e.preventDefault();
               void handleConfirm();
             }}
             disabled={deleteMut.isPending || (variant === 'picker' && !reassignToId)}
-            className={cn(
-              'hover:bg-[var(--ov-danger)]/90 bg-[var(--ov-danger)] text-[var(--ov-paper-raised)]',
-              deleteMut.isPending && 'opacity-70'
-            )}
           >
             {t('confirm')}
           </AlertDialogAction>

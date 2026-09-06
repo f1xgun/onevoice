@@ -24,7 +24,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
 import { restoreAccount, type DeletionAccountError } from '@/lib/api/account';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { localeToIntlTag } from '@/lib/i18n/locales';
 import { mapErrorCode } from '@/lib/error_mapping';
 import { cn } from '@/lib/utils';

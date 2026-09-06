@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
+import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Form } from '@/components/ui/form';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BasicsTab } from './BasicsTab';
@@ -94,8 +94,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
           {isEdit && project && canDelete && (
             <Button
               type="button"
-              variant="outline"
-              className="hover:bg-destructive/10 ml-auto text-destructive hover:text-destructive"
+              variant="danger"
+              className="ml-auto"
               onClick={() => setDeleteOpen(true)}
               disabled={submitting || isDeletePending}
             >
