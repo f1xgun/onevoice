@@ -33,6 +33,7 @@ export function LandingInteractions({ mode }: LandingEntryProps) {
   useEffect(() => {
     document.addEventListener('click', trackLandingClick);
     const viewport = window.visualViewport;
+    let barHeight = 0;
     function update() {
       const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
       const keyboardOpen = Boolean(
@@ -46,10 +47,11 @@ export function LandingInteractions({ mode }: LandingEntryProps) {
       const editing =
         focused instanceof HTMLElement &&
         focused.matches('input, textarea, select, [role="combobox"]');
-      const clearance = Math.max(
-        MOBILE_BAR_FOCUS_CLEARANCE,
-        document.querySelector('[data-landing-bar]')?.getBoundingClientRect().height ?? 0
-      );
+      const measuredHeight = document
+        .querySelector('[data-landing-bar]')
+        ?.getBoundingClientRect().height;
+      if (measuredHeight) barHeight = measuredHeight;
+      const clearance = Math.max(MOBILE_BAR_FOCUS_CLEARANCE, barHeight);
       const coveredFocus =
         focused instanceof HTMLElement &&
         focused !== document.body &&

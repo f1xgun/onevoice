@@ -94,6 +94,15 @@ describe('landing entry', () => {
       ).toBeVisible();
     }
   );
+  it.each([
+    { locale: 'ru', copy: ru },
+    { locale: 'en', copy: en },
+  ])('shows an edit of the actual draft in $locale', ({ copy }) => {
+    const example = copy.landing.workExample;
+    expect(example.draft).toContain(example.before);
+    expect(example.after).not.toBe(example.before);
+    expect(example.draft.replace(example.before, example.after)).toContain('10:00');
+  });
   it('keeps locale key sets and nonbreaking prices aligned', () => {
     function keys(value: object, prefix = ''): string[] {
       return Object.entries(value).flatMap(([key, child]) =>
@@ -239,6 +248,8 @@ describe('waitlist choices and recovery', () => {
 
 describe('mobile visual viewport', () => {
   it('hides for the keyboard and low focus, restores after resize, and removes listeners', () => {
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320);
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(812);
     const viewport = new EventTarget();
     Object.assign(viewport, { height: window.innerHeight, offsetTop: 0 });
     Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
@@ -247,7 +258,7 @@ describe('mobile visual viewport', () => {
       <>
         <section id="hero" />
         <section id="waitlist" />
-        <a href="#pricing">Focus</a>
+        <button type="button">Channel</button>
         <LandingInteractions mode="hybrid" />
       </>
     );
@@ -269,13 +280,28 @@ describe('mobile visual viewport', () => {
     vi.spyOn(
       container.querySelector('[data-landing-bar]')!,
       'getBoundingClientRect'
-    ).mockReturnValue({ height: 160 } as DOMRect);
-    const link = screen.getByRole('link', { name: 'Focus' });
-    vi.spyOn(link, 'getBoundingClientRect').mockReturnValue({
-      bottom: window.innerHeight - 120,
+    ).mockReturnValue({ height: 179 } as DOMRect);
+    const channel = screen.getByRole('button', { name: 'Channel' });
+    const focusRect = vi.spyOn(channel, 'getBoundingClientRect').mockReturnValue({
+      top: 603.75,
+      bottom: 691.75,
+      height: 88,
     } as DOMRect);
-    act(() => link.focus());
+    act(() => channel.focus());
     expect(container.querySelector('[data-landing-bar]')).toBeNull();
+    for (let iteration = 0; iteration < 3; iteration++) {
+      for (const target of [window, viewport]) {
+        for (const type of ['scroll', 'resize']) {
+          act(() => target.dispatchEvent(new Event(type)));
+          expect(channel).toHaveFocus();
+          expect(container.querySelector('[data-landing-bar]')).toBeNull();
+        }
+      }
+    }
+    focusRect.mockReturnValue({ top: 412, bottom: 500, height: 88 } as DOMRect);
+    fireEvent.scroll(window);
+    expect(channel).toHaveFocus();
+    expect(container.querySelector('[data-landing-bar]')).not.toBeNull();
     unmount();
     expect(remove).toHaveBeenCalledWith('resize', expect.any(Function));
     expect(remove).toHaveBeenCalledWith('scroll', expect.any(Function));
