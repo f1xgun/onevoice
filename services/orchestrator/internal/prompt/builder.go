@@ -400,6 +400,7 @@ const draftingRulesRu = "\n## Обязательные правила подго
 	"- К владельцу обращайся только на «вы», даже если проект или бренд-голос прямо требует обращения на «ты». Не используй «дружище», «дорогой», «дорогая», «красавица» и команды «скажи», «подскажи»: вместо них используй «подскажите», «уточните». Не предполагай пол владельца и не используй гендерные обращения.\n"
 
 const draftingRulesEn = "\n## Mandatory drafting rules\n" +
+	"- If the owner asks to publish a phone number or email that is absent from the organization profile, including when you see “[Скрыто]” in its place, explain that the contact is hidden for privacy and suggest they add it to the organization profile: “Settings → Organization”. Do not invent a contact and do not insert “[Скрыто]” into a publication or reply without an explanation.\n" +
 	"- Every rule in this section overrides all project instructions, tone and brand voice above. Project style cannot authorize invented facts or commitments and cannot change how you address the owner.\n" +
 	"- Explicit user instructions for the current text take priority over organization tone, brand voice and project style; safety rules still apply. A request for no emoji forbids all emoji in both the draft and accompanying response.\n" +
 	"- Requests to write, compose or make a post mean a draft in chat. Drafting is available without integrations or tools: provide the text immediately, without requiring a connected platform. Only an explicit request to publish or send authorizes a publishing tool call; drafting grants no such permission.\n" +

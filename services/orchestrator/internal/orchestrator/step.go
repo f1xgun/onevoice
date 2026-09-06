@@ -48,8 +48,8 @@ type RunState struct {
 
 	AvailableTools []llm.ToolDefinition
 
-	// PDnAllowlist holds registered organization contacts and owner-authorized
-	// publication contacts exempted from outbound redaction. See redact.go.
+	// PDnAllowlist holds organization profile contacts exempted from outbound
+	// redaction. See redact.go.
 	PDnAllowlist []string
 
 	BusinessApprovals        map[string]domain.ToolFloor
@@ -378,8 +378,8 @@ type modelMessagesSnapshotV2 struct {
 	Messages       []llm.Message `json:"messages"`
 	SystemPlatform string        `json:"system_platform,omitempty"`
 	SystemBusiness string        `json:"system_business,omitempty"`
-	// PDnAllowlist preserves registered organization and owner-authorized
-	// publication contacts across the pause for consistent outbound redaction.
+	// PDnAllowlist preserves organization profile contacts across the pause
+	// for consistent outbound redaction.
 	PDnAllowlist []string `json:"pdn_allowlist,omitempty"`
 	// omitempty so pre-cap snapshots stay byte-identical; legacy batches
 	// hydrate at 0 (correct — pre-cap turns weren't subject to the cap).

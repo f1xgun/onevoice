@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
@@ -289,6 +290,35 @@ func TestResume_UnregisteredContactsRemainRedacted(t *testing.T) {
 			}
 			require.Len(t, req.SystemBlocks, 2)
 			assert.Contains(t, req.SystemBlocks[1].Text, "+7 (843) 555-12-34")
+		})
+	}
+}
+
+func TestRun_EnglishContactPrivacyGuidance(t *testing.T) {
+	for _, tt := range []struct {
+		name, contact string
+	}{
+		{"phone", "+7 916 123-45-77"},
+		{"email", "booking@example.org"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &captureLLM{}
+			orch := orchestrator.NewWithOptions(provider, toolregistry.NewRegistry(), orchestrator.Options{RedactOutboundPDn: true})
+			events, err := orch.Run(i18nWithEnglish(t), orchestrator.RunRequest{
+				BusinessContext: prompt.BusinessContext{Locale: language.English},
+				Messages:        []llm.Message{{Role: "user", Content: "Publish this contact: " + tt.contact}},
+			})
+			require.NoError(t, err)
+			require.Empty(t, findEvents(drainEvents(events), orchestrator.EventError))
+			req := provider.firstRequest()
+			require.NotNil(t, req)
+			require.NotEmpty(t, req.Messages)
+			assert.Equal(t, "Publish this contact: [Скрыто]", req.Messages[0].Content)
+			require.Len(t, req.SystemBlocks, 2)
+			assert.Contains(t, req.SystemBlocks[1].Text, "contact is hidden for privacy")
+			assert.Contains(t, req.SystemBlocks[1].Text, "add it to the organization profile: “Settings → Organization”")
+			assert.Contains(t, req.SystemBlocks[1].Text, "Do not invent a contact")
+			assert.Contains(t, req.SystemBlocks[1].Text, "do not insert “[Скрыто]” into a publication or reply without an explanation")
 		})
 	}
 }
