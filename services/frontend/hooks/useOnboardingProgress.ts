@@ -7,7 +7,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
-import { useConversationsQuery } from '@/hooks/useConversations';
+import type { AgentTask } from '@/types/task';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { useMembers } from '@/lib/hooks/useMembers';
 import type { Business } from '@/types/business';
@@ -110,12 +110,6 @@ export function deriveOnboarding(s: OnboardingSignals): OnboardingProgress {
   return { steps, completedCount, total, allDone, loaded };
 }
 
-// useOnboardingProgress composes four queries the app already runs — the
-// business list, the business-integrations list, the business profile, and the
-// conversations list — into a derived checklist. It issues NO new backend
-// endpoint: the integrations/profile/conversations queries reuse the exact
-// QUERY_KEYS other surfaces mount, so they share warm caches. The optional
-// invite step reads the members list, fetched only for actors who can invite.
 export function useOnboardingProgress(): OnboardingProgress {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
@@ -142,7 +136,18 @@ export function useOnboardingProgress(): OnboardingProgress {
     retry: false,
   });
 
-  const conversations = useConversationsQuery();
+  const actions = useQuery<AgentTask[]>({
+    queryKey: [...QUERY_KEYS.BUSINESS_TASKS(activeBusinessId), 'first-action'],
+    queryFn: async ({ signal }) => {
+      const { data } = await bizApi(activeBusinessId!).get<AgentTask[] | { tasks?: AgentTask[] }>(
+        BIZ_API_PATHS.TASKS.ROOT,
+        { signal, params: { status: 'done', limit: 1 } }
+      );
+      return Array.isArray(data) ? data : (data?.tasks ?? []);
+    },
+    enabled: !!activeBusinessId,
+    retry: false,
+  });
 
   const canInvite = usePermission('members.invite').allowed;
   const members = useMembers(canInvite ? activeBusinessId : null);
@@ -159,8 +164,8 @@ export function useOnboardingProgress(): OnboardingProgress {
       profile.isSuccess && typeof description === 'string' && description.trim() !== '',
     profileSettled: profile.isSuccess || profile.isError,
     hasFirstAction:
-      conversations.isSuccess && (conversations.data ?? []).some((c) => !!c.lastMessageAt),
-    conversationsSettled: conversations.isSuccess || conversations.isError,
+      actions.isSuccess && (actions.data ?? []).some((action) => action.status === 'done'),
+    conversationsSettled: actions.isSuccess || actions.isError,
     showInvite: canInvite,
     hasTeammate: members.isSuccess && (members.data?.length ?? 0) > 1,
   });

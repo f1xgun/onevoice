@@ -84,3 +84,23 @@ describe('useConversationFlow — abort in-flight stream on unmount', () => {
     expect(capturedSignal!.aborted).toBe(true);
   });
 });
+
+it('aborts an in-flight history request when the chat unmounts', async () => {
+  useAuthStore.setState({ accessToken: 'test-token', isAuthenticated: true });
+  let signal: AbortSignal | null | undefined;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_url: unknown, init?: RequestInit) => {
+      signal = init?.signal;
+      return new Promise<Response>(() => {});
+    })
+  );
+  const { unmount } = renderHook(() => useConversationFlow({ conversationId: 'old-chat' }), {
+    wrapper: makeQCWrapper(),
+  });
+  await waitFor(() => expect(signal).toBeDefined());
+  expect(signal?.aborted).toBe(false);
+  unmount();
+  expect(signal?.aborted).toBe(true);
+  vi.unstubAllGlobals();
+});

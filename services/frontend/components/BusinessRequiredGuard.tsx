@@ -108,7 +108,8 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   );
   if (
     isLoading ||
-    ((!activeBusinessId || !activeIsAvailable) && !(isAccountScoped && hasNoBusiness))
+    (!activeBusinessId && !(isAccountScoped && hasNoBusiness)) ||
+    (!!activeBusinessId && !activeIsAvailable)
   ) {
     return (
       <div className="flex h-screen items-center justify-center">

@@ -190,3 +190,19 @@ describe('VKCommunityModal — paste flow (fallback)', () => {
     );
   });
 });
+
+it('keeps expanded token content in an internal scroller with reachable dismissal', async () => {
+  const user = userEvent.setup();
+  const { onClose } = renderModal();
+  await expandPaste(user);
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveClass('max-h-[calc(100dvh-2rem)]', 'overflow-hidden');
+  const details = dialog.querySelector('details')!;
+  expect(details).toHaveAttribute('open');
+  expect(details.parentElement).toHaveClass('min-h-0', 'overflow-y-auto');
+  const cancel = screen.getByRole('button', { name: 'Отмена' });
+  expect(details.parentElement).not.toContainElement(cancel);
+  expect(dialog).toHaveClass('[&>button:last-child]:h-8', '[&>button:last-child]:w-8');
+  await user.click(cancel);
+  expect(onClose).toHaveBeenCalledOnce();
+});

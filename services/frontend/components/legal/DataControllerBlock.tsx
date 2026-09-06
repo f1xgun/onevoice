@@ -17,7 +17,7 @@ export function DataControllerBlock() {
       <h2 className="mb-4 text-[18px] font-medium text-[var(--ov-ink)]">
         {t('controllerHeading')}
       </h2>
-      <dl className="grid gap-3 text-[15px] text-[var(--ov-ink-mid)] md:grid-cols-[max-content_1fr] md:gap-x-6 md:gap-y-2">
+      <dl className="grid gap-3 text-[15px] text-[var(--ov-ink-mid)] [overflow-wrap:anywhere] md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-x-6 md:gap-y-2 [&>dd]:min-w-0 [&>dt]:min-w-0">
         <dt className="font-medium text-[var(--ov-ink)]">{t('controllerOperatorLabel')}</dt>
         <dd>{entity.name}</dd>
         <dt className="font-medium text-[var(--ov-ink)]">{t('controllerInnLabel')}</dt>

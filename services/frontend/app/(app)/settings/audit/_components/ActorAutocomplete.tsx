@@ -18,13 +18,13 @@ export function ActorAutocomplete({ businessID, value, onChange }: Props) {
   const t = useTranslations('audit.filters');
   const { data: members = [] } = useMembers(businessID);
   return (
-    <label className="flex flex-col gap-1 text-sm">
+    <label className="flex w-full min-w-0 max-w-full flex-col gap-1 text-sm sm:w-64">
       <span className="text-ink-soft">{t('actorLabel')}</span>
       <select
         data-testid="actor-select"
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || undefined)}
-        className="min-w-[200px] rounded-md border border-line bg-paper-raised px-2 py-1 text-ink"
+        className="w-full min-w-0 max-w-full rounded-md border border-line bg-paper-raised px-2 py-1 text-ink"
       >
         <option value="">{t('actorAny')}</option>
         {members.map((m) => (

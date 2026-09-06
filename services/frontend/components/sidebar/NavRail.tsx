@@ -63,9 +63,10 @@ export interface NavRailProps {
    * isn't left staring at a half-open menu after tapping a tab.
    */
   onNavigate?: () => void;
+  expanded?: boolean;
 }
 
-export function NavRail({ onNavigate }: NavRailProps = {}) {
+export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const tNav = useTranslations('nav');
@@ -96,7 +97,10 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
       <aside
         data-testid="nav-rail"
         aria-label={tSidebar('railWrapperAria')}
-        className="flex h-screen w-14 shrink-0 flex-col items-center border-r border-line bg-paper-raised py-2"
+        className={cn(
+          'flex shrink-0 flex-col items-center border-r border-line bg-paper-raised py-2',
+          expanded ? 'h-auto w-full px-3' : 'h-screen w-14'
+        )}
       >
         {/* OV mark — graphite on paper, the always-visible brand cue. Anchored
             at the very top of the rail, above the organization switcher. */}
@@ -117,7 +121,10 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
         {/* Vertical nav-list. Active state: ink icon + 2px ochre left bar
             (no background change). Idle: ink-soft → ink on hover with
             paper-sunken wash. */}
-        <nav aria-label={tNav('railAria')} className="flex flex-1 flex-col gap-1">
+        <nav
+          aria-label={tNav('railAria')}
+          className={cn('flex flex-1 flex-col gap-1', expanded && 'w-full')}
+        >
           {navItems.map(({ href, labelKey, icon: Icon }) => {
             const isActive = pathname.startsWith(href);
             const label = tNav(labelKey);
@@ -130,7 +137,8 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
                     aria-current={isActive ? 'page' : undefined}
                     onClick={onNavigate}
                     className={cn(
-                      'relative flex h-10 w-10 items-center justify-center rounded-md transition-colors',
+                      'relative flex min-h-10 shrink-0 items-center rounded-md transition-colors',
+                      expanded ? 'w-full gap-3 px-3 py-2' : 'h-10 w-10 justify-center',
                       isActive ? 'text-ink' : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                     )}
                   >
@@ -140,7 +148,8 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
                         className="absolute -left-2 bottom-2 top-2 w-0.5 rounded-r bg-ochre"
                       />
                     )}
-                    <Icon size={18} />
+                    <Icon size={18} className="shrink-0" />
+                    {expanded && <span className="text-sm">{label}</span>}
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">{label}</TooltipContent>

@@ -1,7 +1,8 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useBusinessStore } from '@/lib/stores/business';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { useHighlightMessage } from '@/hooks/useHighlightMessage';
 
@@ -54,10 +55,18 @@ function useMessagesReadyWhenHighlightTargetMounts(targetId: string | null): boo
 export default function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const routeBusinessId = useRef(activeBusinessId);
+  const switched = routeBusinessId.current !== activeBusinessId;
+  useEffect(() => {
+    if (switched) router.replace('/chat');
+  }, [switched, router]);
   const searchParams = useSearchParams();
   const highlightTarget = searchParams.get('highlight');
   const ready = useMessagesReadyWhenHighlightTargetMounts(highlightTarget);
   useHighlightMessage(ready);
+
+  if (switched) return null;
 
   return <ChatWindow conversationId={id} onConversationDeleted={() => router.push('/chat')} />;
 }

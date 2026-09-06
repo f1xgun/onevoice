@@ -89,6 +89,7 @@ describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)
         arg!.queryKey![2] === 'conversations'
       );
     });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['businesses', 'biz-test', 'tasks'] });
     expect(conversationsCalls).toHaveLength(1);
     expect(conversationsCalls[0][0]).toEqual({
       queryKey: ['businesses', 'biz-test', 'conversations'],

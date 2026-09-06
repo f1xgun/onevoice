@@ -113,13 +113,13 @@ export function VKCommunityModal({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden [&>button:last-child]:flex [&>button:last-child]:h-8 [&>button:last-child]:w-8 [&>button:last-child]:items-center [&>button:last-child]:justify-center">
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{tVk('title')}</DialogTitle>
           <DialogDescription>{tVk('authorizeIntro')}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain break-words">
           <Button type="button" onClick={handleAuthorize} disabled={authorizing} className="w-full">
             {authorizing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
             {authorizing ? tVk('authorizing') : tVk('authorize')}
@@ -186,7 +186,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
           </details>
         </div>
 
-        <div className="flex pt-2">
+        <div className="flex shrink-0 pt-2">
           <Button
             type="button"
             variant="outline"

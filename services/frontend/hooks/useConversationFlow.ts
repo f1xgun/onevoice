@@ -6,6 +6,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useAuthStore } from '@/lib/auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import { conversationsQueryKey } from '@/hooks/useConversations';
@@ -231,6 +232,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   // /messages until the reply lands (or the attempt cap is hit).
   useEffect(() => {
     let cancelled = false;
+    const historyController = new AbortController();
     let attempts = 0;
     setIsLoading(true);
     setAwaitingTurn(false);
@@ -288,7 +290,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       }
       let payload: MessagesPayload | null = null;
       try {
-        const r = await authFetch(messagesUrl(activeBusinessId, conversationId));
+        const r = await authFetch(messagesUrl(activeBusinessId, conversationId), {
+          signal: historyController.signal,
+        });
         payload = r.ok ? ((await r.json()) as MessagesPayload) : null;
       } catch {
         payload = null;
@@ -373,6 +377,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
     return () => {
       cancelled = true;
+      historyController.abort();
       clearPoll();
     };
   }, [conversationId, activeBusinessId, queryClient, reloadNonce]);
@@ -382,6 +387,9 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const handleChatSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
       if (event.type === 'done') {
+        void queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.BUSINESS_TASKS(activeBusinessId),
+        });
         queryClient.invalidateQueries({
           queryKey: conversationsQueryKey(activeBusinessId),
         });

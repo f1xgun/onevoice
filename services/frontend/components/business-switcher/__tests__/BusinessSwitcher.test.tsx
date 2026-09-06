@@ -1,3 +1,5 @@
+const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace }) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -154,4 +156,26 @@ describe('BusinessSwitcher', () => {
       screen.getByRole('button', { name: 'Acme, переключить организацию' })
     ).toBeInTheDocument();
   });
+});
+
+it('cancels previous tenant queries and opens the chat list on switch', () => {
+  const { setActive } = arrange({
+    active: 'b1',
+    businesses: [
+      { id: 'b1', name: 'Acme', role: 'owner' },
+      { id: 'b2', name: 'Bravo', role: 'owner' },
+    ],
+  });
+  const client = new QueryClient();
+  const cancel = vi.spyOn(client, 'cancelQueries');
+  render(
+    <QueryClientProvider client={client}>
+      <BusinessSwitcher />
+    </QueryClientProvider>
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Acme/ }));
+  fireEvent.click(screen.getByText('Bravo'));
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(replace).toHaveBeenCalledWith('/chat');
+  expect(setActive).toHaveBeenCalledWith('b2');
 });

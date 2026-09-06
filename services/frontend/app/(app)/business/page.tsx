@@ -1,7 +1,7 @@
 'use client';
 
 // Linen rebuild.
-// Business profile page. Layout: PageHeader + two columns on lg+ (forms
+// Business profile page. Layout: PageHeader + two columns on xl+ (forms
 // left, sticky AI-understanding rail right). Each form section is a
 // paper-raised card with a MonoLabel caption + section title. Mutations
 // are owned per section (ProfileForm, HoursForm, SpecialDatesForm,
@@ -34,8 +34,8 @@ function BusinessSkeleton() {
   return (
     <>
       <PageHeader title={tBusiness('title')} sub={tBusiness('subtitle')} />
-      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
+        <div className="flex min-w-0 flex-col gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="rounded-lg border border-line bg-paper-raised p-6">
               <Skeleton className="h-4 w-24" />
@@ -112,9 +112,9 @@ export default function BusinessPage() {
         <SectionHelp section="business" className="mb-8" />
       </div>
 
-      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
         {/* Main column */}
-        <div className="flex flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-6">
           <Section
             caption={tSections('profile.caption')}
             title={tSections('profile.title')}
@@ -130,7 +130,7 @@ export default function BusinessPage() {
                 title={tSections('voice.title')}
                 sub={tSections('voice.sub')}
               >
-                <div className="flex flex-col gap-6">
+                <div className="flex min-w-0 flex-col gap-6">
                   <VoiceToneSection initial={tones} onChange={setTones} />
                   <div className="border-t border-line-soft pt-6">
                     <MonoLabel>{tSections('voice.profileCaption')}</MonoLabel>
@@ -190,7 +190,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-line bg-paper-raised">
+    <section className="min-w-0 break-words rounded-lg border border-line bg-paper-raised">
       <header className="border-b border-line-soft px-6 py-4">
         <MonoLabel>{caption}</MonoLabel>
         <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">{title}</h2>

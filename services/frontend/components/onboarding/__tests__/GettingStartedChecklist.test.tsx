@@ -120,3 +120,19 @@ describe('GettingStartedChecklist — wizard seam', () => {
     expect(onOpenWizard).toHaveBeenCalledTimes(1);
   });
 });
+
+it('separates optional team invitation from the four counted steps', () => {
+  vi.mocked(useOnboardingProgress).mockReturnValue(
+    makeProgress({
+      steps: [
+        ...STEPS,
+        { id: 'inviteTeam', href: '/settings/team', done: false, loading: false, gating: false },
+      ],
+    })
+  );
+  render(<GettingStartedChecklist dismissible={false} />);
+  expect(screen.getByText('Необязательно')).toBeVisible();
+  expect(screen.getByTestId('onboarding-step-inviteTeam').closest('ol')).toBeNull();
+  expect(screen.getByTestId('onboarding-step-firstAction').closest('ol')?.children).toHaveLength(4);
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '4');
+});

@@ -1,202 +1,73 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock dependencies before importing api.ts
-vi.mock('@/lib/stores/business', () => ({
-  useBusinessStore: {
-    getState: vi.fn(() => ({ clear: vi.fn() })),
-  },
-}));
-
-vi.mock('@/lib/queryClient', () => ({
-  queryClient: {
-    invalidateQueries: vi.fn(),
-  },
-}));
-
-vi.mock('@/lib/hooks/useBusinessList', () => ({
-  BUSINESS_LIST_QUERY_KEY: ['businesses'],
-  useBusinessList: vi.fn(),
-}));
-
-vi.mock('@/lib/telemetry', () => ({
-  trackEvent: vi.fn(),
-}));
-
-vi.mock('@/lib/auth', () => ({
-  useAuthStore: {
-    getState: vi.fn(() => ({
-      accessToken: null,
-      setAuth: vi.fn(),
-      setAccessToken: vi.fn(),
-      logout: vi.fn(),
-    })),
-  },
-}));
-
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
-
-// Import the api module (triggers interceptor registration as side effect)
-const { api } = await import('@/lib/api');
-
-// Import the mocked dependencies to spy on them
-const { useBusinessStore } = await import('@/lib/stores/business');
-const { queryClient } = await import('@/lib/queryClient');
-
-describe('404 interceptor', () => {
-  let clearFn: ReturnType<typeof vi.fn>;
-  let invalidateFn: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    clearFn = vi.fn();
-    invalidateFn = vi.fn();
-    (useBusinessStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({ clear: clearFn });
-    (queryClient.invalidateQueries as ReturnType<typeof vi.fn>).mockImplementation(invalidateFn);
-  });
-
-  async function triggerInterceptors(
-    url: string,
-    status: number,
-    metadata?: { skipBusinessNotFound?: boolean }
-  ) {
-    const error = {
-      config: { url, ...(metadata ? { metadata } : {}) },
-      response: { status, data: {} },
-      message: `Request failed with status code ${status}`,
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (api.interceptors.response as any).handlers as Array<{
-      fulfilled: ((v: unknown) => unknown) | null;
-      rejected: ((e: unknown) => unknown) | null;
-    }>;
-
-    let result: unknown = error;
-    for (const handler of handlers) {
-      if (handler?.rejected) {
-        try {
-          result = await handler.rejected(result);
-        } catch (e) {
-          result = e;
-        }
-      }
-    }
-
-    return Promise.reject(result);
-  }
-
-  it('Test 1: 404 on /businesses/* clears store and invalidates businesses query', async () => {
-    await expect(triggerInterceptors('/businesses/abc/integrations', 404)).rejects.toBeDefined();
-
-    expect(clearFn).toHaveBeenCalled();
-    expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'], exact: true });
-  });
-
-  it('Test 2: skipBusinessNotFound=true prevents store clear and query invalidation', async () => {
-    await expect(
-      triggerInterceptors('/businesses/abc/integrations', 404, { skipBusinessNotFound: true })
-    ).rejects.toBeDefined();
-
-    expect(clearFn).not.toHaveBeenCalled();
-    expect(invalidateFn).not.toHaveBeenCalled();
-  });
-
-  it('Test 3: 404 on non-/businesses/ URL does NOT clear store', async () => {
-    await expect(triggerInterceptors('/auth/me', 404)).rejects.toBeDefined();
-
-    expect(clearFn).not.toHaveBeenCalled();
-    expect(invalidateFn).not.toHaveBeenCalled();
-  });
-
-  it('Test 4: 500 on /businesses/* does NOT clear store (only 404 triggers)', async () => {
-    await expect(triggerInterceptors('/businesses/abc/integrations', 500)).rejects.toBeDefined();
-
-    expect(clearFn).not.toHaveBeenCalled();
-    expect(invalidateFn).not.toHaveBeenCalled();
-  });
-
-  it('Test 5: two response interceptors are registered (401 + 404)', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (api.interceptors.response as any).handlers as Array<unknown>;
-    const nonNullHandlers = handlers.filter(Boolean);
-    expect(nonNullHandlers.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('Test 6: interceptors.response.use was called exactly twice in api.ts', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (api.interceptors.response as any).handlers as Array<unknown>;
-    expect(handlers.filter(Boolean).length).toBeGreaterThanOrEqual(2);
-  });
-});
-
+import { api } from '@/lib/api';
+import { useBusinessStore } from '@/lib/stores/business';
+import { queryClient } from '@/lib/queryClient';
 import { toast } from 'sonner';
-// Re-import mocked modules to access spies in the second describe block
-const { useBusinessStore: bStore } = await import('@/lib/stores/business');
-const { queryClient: qc } = await import('@/lib/queryClient');
 
-describe('404 interceptor — warning toast', () => {
-  let clearFn: ReturnType<typeof vi.fn>;
-  let invalidateFn: ReturnType<typeof vi.fn>;
+vi.mock('sonner', () => ({ toast: { warning: vi.fn() } }));
 
+describe('business availability on resource errors', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
-    clearFn = vi.fn();
-    invalidateFn = vi.fn();
-    (bStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({ clear: clearFn });
-    (qc.invalidateQueries as ReturnType<typeof vi.fn>).mockImplementation(invalidateFn);
+    useBusinessStore.getState().setActive('a');
   });
 
-  async function invokeInterceptor(
-    url: string,
-    status: number,
-    metadata?: { skipBusinessNotFound?: boolean }
-  ) {
-    const error = {
-      config: { url, ...(metadata ? { metadata } : {}) },
-      response: { status, data: {} },
-      message: `Request failed with status code ${status}`,
+  async function reject(url: string, status = 404) {
+    const error = { config: { url }, response: { status } };
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: { rejected: (error: unknown) => Promise<unknown> }[];
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (api.interceptors.response as any).handlers as Array<{
-      fulfilled: ((v: unknown) => unknown) | null;
-      rejected: ((e: unknown) => unknown) | null;
-    }>;
-    let result: unknown = error;
-    for (const handler of handlers) {
-      if (handler?.rejected) {
-        try {
-          result = await handler.rejected(result);
-        } catch (e) {
-          result = e;
-        }
-      }
-    }
-    return Promise.reject(result);
+    await expect(interceptors.handlers[1].rejected(error)).rejects.toBe(error);
   }
 
-  it('fires toast.warning + clears store + invalidates on 404 /businesses/...', async () => {
-    await expect(invokeInterceptor('/businesses/biz-1/members', 404)).rejects.toBeDefined();
-    expect(clearFn).toHaveBeenCalled();
-    expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'], exact: true });
-    await vi.waitFor(() => expect(toast.warning).toHaveBeenCalled());
-    expect(toast.warning).toHaveBeenCalledWith('Эта организация больше недоступна');
-  });
-
-  it('does NOT fire toast.warning when URL is not /businesses/...', async () => {
-    await expect(invokeInterceptor('/auth/me', 404)).rejects.toBeDefined();
+  it('preserves membership when a nested conversation is missing', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue({ data: [{ id: 'a' }] });
+    await reject('/businesses/a/conversations/missing');
+    expect(useBusinessStore.getState().activeBusinessId).toBe('a');
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it('does NOT fire toast.warning when skipBusinessNotFound is true', async () => {
-    await expect(
-      invokeInterceptor('/businesses/biz-1/preview', 404, { skipBusinessNotFound: true })
-    ).rejects.toBeDefined();
-    expect(toast.warning).not.toHaveBeenCalled();
+  it('clears only a confirmed inaccessible active organization', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue({ data: [{ id: 'b' }] });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await reject('/businesses/a/members');
+    expect(useBusinessStore.getState().activeBusinessId).toBeNull();
+    expect(queryClient.getQueryData(['businesses'])).toEqual([{ id: 'b' }]);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['businesses'], exact: true });
+    await vi.waitFor(() => expect(toast.warning).toHaveBeenCalledOnce());
   });
 
-  it('does NOT fire toast.warning on 500 (only 404 triggers the branch)', async () => {
-    await expect(invokeInterceptor('/businesses/biz-1/members', 500)).rejects.toBeDefined();
-    expect(toast.warning).not.toHaveBeenCalled();
+  it('preserves the organization if membership verification fails', async () => {
+    vi.spyOn(api, 'get').mockRejectedValue(new Error('offline'));
+    await reject('/businesses/a/conversations/missing');
+    expect(useBusinessStore.getState().activeBusinessId).toBe('a');
+  });
+
+  it('ignores a late response from the previous organization', async () => {
+    const get = vi.spyOn(api, 'get');
+    useBusinessStore.getState().setActive('b');
+    await reject('/businesses/a/conversations/missing');
+    expect(get).not.toHaveBeenCalled();
+    expect(useBusinessStore.getState().activeBusinessId).toBe('b');
+  });
+
+  it('rechecks the active organization after awaiting memberships', async () => {
+    vi.spyOn(api, 'get').mockImplementation(async () => {
+      useBusinessStore.getState().setActive('b');
+      return { data: [] };
+    });
+    await reject('/businesses/a/conversations/missing');
+    expect(useBusinessStore.getState().activeBusinessId).toBe('b');
+  });
+
+  it.each([
+    ['/auth/me', 404],
+    ['/businesses/a/members', 500],
+  ])('ignores unrelated error %s %s', async (url, status) => {
+    const get = vi.spyOn(api, 'get');
+    await reject(url, status);
+    expect(get).not.toHaveBeenCalled();
+    expect(useBusinessStore.getState().activeBusinessId).toBe('a');
   });
 });

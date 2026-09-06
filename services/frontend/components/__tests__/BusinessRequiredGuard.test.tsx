@@ -264,6 +264,72 @@ describe('BusinessRequiredGuard', () => {
     expect(setActiveMock).toHaveBeenCalledWith('biz-1');
   });
 
+  it.each([
+    ['/chat', false],
+    ['/chat', true],
+    ['/settings/account', false],
+    ['/settings/account', true],
+  ])('blocks stale tenant children on %s (pending deletion: %s)', (path, pendingDeletion) => {
+    usePathnameMock.mockReturnValue(path);
+    storeActiveBusinessId = 'stale-biz-id';
+    useBusinessListMock.mockReturnValue({
+      data: [
+        { id: 'biz-1', name: 'Available business' },
+        ...(pendingDeletion
+          ? [
+              {
+                id: 'stale-biz-id',
+                name: 'Pending business',
+                role: { id: '00000000-0000-0000-0000-000000000001', name: 'owner' },
+                deletion_pending_until: '2026-10-06T12:00:00Z',
+              },
+            ]
+          : []),
+      ],
+      isLoading: false,
+    });
+
+    const { queryByText, getByRole } = render(
+      <Wrapper>
+        <BusinessRequiredGuard>
+          <div>protected</div>
+        </BusinessRequiredGuard>
+      </Wrapper>
+    );
+
+    expect(queryByText('protected')).toBeNull();
+    expect(getByRole('status')).toBeTruthy();
+    expect(setActiveMock).toHaveBeenCalledWith('biz-1');
+  });
+
+  it('waits for a stale selection to clear before mounting account-scoped children', () => {
+    usePathnameMock.mockReturnValue('/settings/account');
+    storeActiveBusinessId = 'stale-biz-id';
+    useBusinessListMock.mockReturnValue({ data: [], isLoading: false });
+
+    const content = (
+      <Wrapper>
+        <BusinessRequiredGuard>
+          <div>protected</div>
+        </BusinessRequiredGuard>
+      </Wrapper>
+    );
+    const { queryByText, getByText, rerender } = render(content);
+
+    expect(queryByText('protected')).toBeNull();
+    expect(setActiveMock).toHaveBeenCalledWith(null);
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    rerender(
+      <Wrapper>
+        <BusinessRequiredGuard>
+          <div>protected</div>
+        </BusinessRequiredGuard>
+      </Wrapper>
+    );
+    expect(getByText('protected')).toBeTruthy();
+  });
+
   it.each([['/settings'], ['/settings/'], ['/settings/account'], ['/settings/privacy']])(
     'Test 10: businesses=[] keeps the account-scoped route %s reachable',
     async (path) => {
