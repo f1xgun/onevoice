@@ -79,7 +79,7 @@ type fakeRateLimiter struct {
 
 	gotUserID     uuid.UUID
 	gotBusinessID uuid.UUID
-	gotTokens     int
+	gotCharge     llm.TokenCharge
 
 	// recordCh receives the reconcile delta. Buffered so the fire-and-forget
 	// goroutine never blocks; tests select on it (or a timeout) to observe the
@@ -87,10 +87,10 @@ type fakeRateLimiter struct {
 	recordCh chan int
 }
 
-func (f *fakeRateLimiter) CheckLimit(_ context.Context, userID, businessID uuid.UUID, _ string, tokens int) (bool, error) {
+func (f *fakeRateLimiter) CheckLimit(_ context.Context, userID, businessID uuid.UUID, _ string, charge llm.TokenCharge) (bool, error) {
 	f.gotUserID = userID
 	f.gotBusinessID = businessID
-	f.gotTokens = tokens
+	f.gotCharge = charge
 	return f.allowed, f.err
 }
 
@@ -351,7 +351,7 @@ func TestRouter_CheckRateLimit_NilUserBusinessAttributed_ReachesCheckLimit(t *te
 // TestRouter_CheckRateLimit_PassesNonZeroEstimate — the router must charge the
 // token gate a pre-flight ESTIMATE derived from the prompt, not a literal 0.
 // This is the fail-on-revert anchor: restore CheckLimit(..., 0) at router.go and
-// this assertion fails because gotTokens drops to 0.
+// this assertion fails because the captured charge drops to 0.
 func TestRouter_CheckRateLimit_PassesNonZeroEstimate(t *testing.T) {
 	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
 	registry := newTestRegistry(entry)
@@ -371,9 +371,9 @@ func TestRouter_CheckRateLimit_PassesNonZeroEstimate(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	assert.Positive(t, frl.gotTokens, "router must pass a non-zero prompt-token estimate to CheckLimit")
-	assert.GreaterOrEqual(t, frl.gotTokens, 2000,
-		"~8000 prompt chars should estimate ~2000 tokens (chars/4), got %d", frl.gotTokens)
+	assert.Positive(t, frl.gotCharge.Total(), "router must pass a non-zero prompt-token estimate to CheckLimit")
+	assert.GreaterOrEqual(t, frl.gotCharge.Total(), 2000,
+		"~8000 prompt chars should estimate ~2000 tokens (chars/4), got %d", frl.gotCharge.Total())
 }
 
 // TestRouter_RateLimit_BlocksWhenEstimateOverGate — with a real RateLimiter and
@@ -386,7 +386,7 @@ func TestRouter_RateLimit_BlocksWhenEstimateOverGate(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 
-	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	limiter := llm.NewRateLimiter(rdb, gateTierLimits(5000))
 	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
 	registry := newTestRegistry(entry)
 	r := llm.NewRouter(registry,
@@ -428,7 +428,7 @@ func TestRouter_RateLimit_BlocksWhenSystemBlocksOverGate(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 
-	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	limiter := llm.NewRateLimiter(rdb, gateTierLimits(5000))
 	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
 	registry := newTestRegistry(entry)
 	r := llm.NewRouter(registry,
@@ -468,7 +468,7 @@ func TestRouter_RateLimit_BlocksWhenToolsOverGate(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 
-	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	limiter := llm.NewRateLimiter(rdb, gateTierLimits(5000))
 	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
 	registry := newTestRegistry(entry)
 	r := llm.NewRouter(registry,
@@ -494,6 +494,101 @@ func TestRouter_RateLimit_BlocksWhenToolsOverGate(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, llm.ErrRateLimitExceeded,
 		"a Tools-heavy prompt whose estimate exceeds TokensPerMin must be blocked")
+}
+
+// ruChatRequest builds a request shaped like a production orchestrator turn:
+// a Russian system prompt and a tool catalog in the cache-stable channels, and
+// a growing Russian conversation in Messages.
+func ruChatRequest(userID uuid.UUID, turns int) llm.ChatRequest {
+	const ruSentence = "Ты — ассистент, который ведёт присутствие организации в социальных сетях и справочниках. "
+
+	tools := make([]llm.ToolDefinition, 0, 8)
+	for i := 0; i < 8; i++ {
+		tools = append(tools, llm.ToolDefinition{
+			Type: llm.ToolCallTypeFunction,
+			Function: llm.FunctionDefinition{
+				Name:        fmt.Sprintf("telegram__action_%d", i),
+				Description: strings.Repeat("Отправляет публикацию в канал организации. ", 6),
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"channel_id": map[string]interface{}{"type": "string", "description": strings.Repeat("иден", 30)},
+						"text":       map[string]interface{}{"type": "string", "description": strings.Repeat("текс", 30)},
+					},
+				},
+			},
+		})
+	}
+
+	messages := make([]llm.Message, 0, turns*2)
+	for i := 0; i < turns; i++ {
+		messages = append(messages,
+			llm.Message{Role: "user", Content: strings.Repeat("Расскажи, что нового у нас в канале? ", 4)},
+			llm.Message{Role: "assistant", Content: strings.Repeat("За последнюю неделю опубликовано несколько постов. ", 6)},
+		)
+	}
+
+	return llm.ChatRequest{
+		Model:        "gpt-4",
+		UserID:       userID,
+		Tier:         "free",
+		SystemBlocks: []llm.SystemBlock{{Text: strings.Repeat(ruSentence, 40)}},
+		Tools:        tools,
+		Messages:     messages,
+	}
+}
+
+// TestRouter_RateLimit_FreeTierAdmitsMultiStepRussianTurn — the core chat flow
+// on the free tier, end-to-end through the real RateLimiter and the real
+// estimator. A tool-using turn is several LLM calls inside one minute window,
+// a HITL approve posts another, and the conversation replays its history every
+// time. Before the fix the second call in the window was already rejected with
+// ErrRateLimitExceeded: the estimator charged Cyrillic bytes (2× the runes) and
+// re-charged the whole system prompt plus tool catalog on every iteration
+// against a 5000-token free cap.
+func TestRouter_RateLimit_FreeTierAdmitsMultiStepRussianTurn(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		stream         bool
+		history, calls int
+	}{
+		{name: "blocking tool turn", calls: 10},
+		{name: "streaming tool turn", stream: true, calls: 10},
+		{name: "blocking long history and resume", history: 49, calls: 2},
+		{name: "streaming long history and resume", stream: true, history: 49, calls: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mr := miniredis.RunT(t)
+			rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+			t.Cleanup(func() { _ = rdb.Close() })
+
+			limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+			entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+			registry := newTestRegistry(entry)
+			r := llm.NewRouter(registry,
+				llm.WithProvider(makeStub("openai")),
+				llm.WithRateLimiter(limiter),
+			)
+
+			userID := uuid.New()
+			for call := 1; call <= tc.calls; call++ {
+				req := ruChatRequest(userID, tc.history+call)
+				var err error
+				if tc.stream {
+					var chunks <-chan llm.StreamChunk
+					chunks, err = r.ChatStream(context.Background(), req)
+					if err == nil {
+						for range chunks {
+						}
+					}
+				} else {
+					_, err = r.Chat(context.Background(), req)
+				}
+				require.NoErrorf(t, err,
+					"call %d of one free-tier minute (tool iteration / HITL resume / next message) must reach the provider", call)
+			}
+		})
+	}
 }
 
 // TestRouter_ReconcileTokens_RecordsDelta — after a successful response the

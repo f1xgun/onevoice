@@ -52,6 +52,32 @@ end
 return {count, healed}
 `)
 
+var reserveChargeScript = redis.NewScript(`
+local result = {1}
+for i, key in ipairs(KEYS) do
+  local offset = (i - 1) * 4
+  local count = tonumber(redis.call('GET', key) or '0')
+  result[i + 1] = 0
+  if redis.call('PTTL', key) == -1 then
+    redis.call('PEXPIRE', key, ARGV[offset + 4])
+    result[i + 1] = 1
+  end
+  if count + tonumber(ARGV[offset + 1]) + tonumber(ARGV[offset + 2]) > tonumber(ARGV[offset + 3]) then
+    result[1] = 0
+  end
+end
+if result[1] == 1 then
+  for i, key in ipairs(KEYS) do
+    local offset = (i - 1) * 4
+    redis.call('INCRBY', key, ARGV[offset + 1])
+    if redis.call('PTTL', key) < 0 then
+      redis.call('PEXPIRE', key, ARGV[offset + 4])
+    end
+  end
+end
+return result
+`)
+
 // Limits defines rate limits for a subscription tier
 type Limits struct {
 	RequestsPerMin int     `json:"requests_per_min"` // Max requests per minute (-1 = unlimited)
@@ -76,11 +102,17 @@ type TierLimits map[string]Limits
 // .env.example and tracked product-side, so listing each as a named constant
 // would just duplicate the table. Override via NewRateLimiter for tests.
 //
+// TokensPerMin is a BURST guard, not the budget: it must comfortably fit the
+// RequestsPerMin-many calls the tier already allows, because one agentic turn
+// is several LLM calls inside the same minute (tool iterations, HITL resume)
+// and a chat conversation replays its history on every one of them. The month
+// counter (reconciled against provider-reported usage) is the actual budget.
+//
 //nolint:mnd // tier defaults table — values are product config, not magic numbers
 var DefaultTierLimits = TierLimits{
 	"free": {
 		RequestsPerMin: 10,
-		TokensPerMin:   5000,
+		TokensPerMin:   30000,
 		TokensPerMonth: 100000,
 		DailySpendUSD:  1.0,
 	},
@@ -198,15 +230,29 @@ func NewRateLimiter(rdb *redis.Client, limits TierLimits, opts ...RateLimiterOpt
 	return rl
 }
 
-// CheckLimit checks if the (user, business) pair can make a request with the
-// given token count.
+// CheckLimit checks if the (user, business) pair can make a request carrying
+// the given pre-flight TokenCharge.
 //
 // Gate order:
 //  1. Daily-spend gate (per-business). Runs BEFORE any Redis side-effect so a
 //     budget-blown business does not bump per-minute counters.
-//  2. Per-minute request count (per-user) via Redis INCR.
-//  3. Per-minute token count (per-user) via Redis INCRBY.
-//  4. Per-month token count (per-user) via Redis INCRBY.
+//  2. Single-request size gate. A charge that alone exceeds a per-minute or
+//     per-month cap can never pass, so it is rejected WITHOUT touching Redis:
+//     charging it would push the shared counter above the cap and block every
+//     later, perfectly-sized request for the rest of the window — and each
+//     retry would re-poison it.
+//  3. Atomically compare all per-user request and token counters, then charge
+//     them only if every gate admits the request. Rejections preserve counters
+//     and existing expiry times; missing expiries are repaired.
+//
+// The per-minute burst gate accumulates charge.Variable only and compares
+// count+charge.Stable against the cap. The stable prefix (system prompt + tool
+// catalog) is identical on every call of an agentic turn, so accumulating it
+// once per call would make the window's occupancy grow with the number of tool
+// iterations rather than with real traffic; comparing against it still rejects
+// a single request whose prefix alone overflows the cap. The per-month gate
+// charges the full total, since that counter is the budget and is later
+// reconciled against provider-reported usage by RecordTokens.
 //
 // businessID may be uuid.Nil — a caller with no business attribution skips the
 // daily-spend gate. userID may be uuid.Nil — a business-attributed system caller
@@ -215,7 +261,7 @@ func NewRateLimiter(rdb *redis.Client, limits TierLimits, opts ...RateLimiterOpt
 // An unknown tier fails closed for a real user (a misconfiguration/attack) but
 // passes for a Nil user, whose ungated background tier (e.g. "background") has
 // no configured limits to apply.
-func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, tokens int) (bool, error) {
+func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, charge TokenCharge) (bool, error) {
 	limits, ok := rl.limits[tier]
 	if !ok {
 		if userID == uuid.Nil {
@@ -241,46 +287,72 @@ func (rl *RateLimiter) CheckLimit(ctx context.Context, userID, businessID uuid.U
 		}
 	}
 
-	now := time.Now()
-
-	if limits.RequestsPerMin > 0 && userID != uuid.Nil {
-		reqKey := fmt.Sprintf("ratelimit:%s:requests:min", userID.String())
-		count, err := rl.incrWithExpiry(ctx, reqKey, 1, time.Minute, gateRequestsMin)
-		if err != nil {
-			return rl.handleRedisError(err)
-		}
-
-		if count > int64(limits.RequestsPerMin) {
-			return false, nil
-		}
+	if userID != uuid.Nil && exceedsAlone(charge.Total(), limits.TokensPerMin, limits.TokensPerMonth) {
+		return false, nil
 	}
 
-	if limits.TokensPerMin > 0 && userID != uuid.Nil {
-		tokKey := fmt.Sprintf("ratelimit:%s:tokens:min", userID.String())
-		count, err := rl.incrWithExpiry(ctx, tokKey, int64(tokens), time.Minute, gateTokensMin)
-		if err != nil {
-			return rl.handleRedisError(err)
-		}
+	if userID == uuid.Nil {
+		return true, nil
+	}
+	return rl.reserveCharge(ctx, userID, limits, charge)
+}
 
-		if count > int64(limits.TokensPerMin) {
-			return false, nil
+func (rl *RateLimiter) reserveCharge(ctx context.Context, userID uuid.UUID, limits Limits, charge TokenCharge) (bool, error) {
+	now := time.Now().UTC()
+	endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+	prefix := "ratelimit:" + userID.String()
+	buckets := []struct {
+		key       string
+		gate      string
+		increment int
+		reserved  int
+		limit     int
+		ttl       time.Duration
+	}{
+		{prefix + ":requests:min", gateRequestsMin, 1, 0, limits.RequestsPerMin, time.Minute},
+		{prefix + ":tokens:min", gateTokensMin, charge.Variable, charge.Stable, limits.TokensPerMin, time.Minute},
+		{prefix + ":tokens:month:" + now.Format("2006-01"), gateTokensMonth, charge.Total(), 0, limits.TokensPerMonth, endOfMonth.Sub(now)},
+	}
+	var keys, gates []string
+	var args []interface{}
+	for _, bucket := range buckets {
+		if bucket.limit <= 0 {
+			continue
+		}
+		keys = append(keys, bucket.key)
+		gates = append(gates, bucket.gate)
+		args = append(args, bucket.increment, bucket.reserved, bucket.limit, bucket.ttl.Milliseconds())
+	}
+	if len(keys) == 0 {
+		return true, nil
+	}
+	result, err := reserveChargeScript.Run(ctx, rl.redis, keys, args...).Int64Slice()
+	if err != nil {
+		return rl.handleRedisError(err)
+	}
+	if len(result) != len(keys)+1 {
+		return rl.handleRedisError(fmt.Errorf("rate-limit reservation returned %d values", len(result)))
+	}
+	for i, healed := range result[1:] {
+		if healed == 1 {
+			metrics.LLMExpireFailure.WithLabelValues(gates[i]).Inc()
 		}
 	}
+	return result[0] == 1, nil
+}
 
-	if limits.TokensPerMonth > 0 && userID != uuid.Nil {
-		monthKey := fmt.Sprintf("ratelimit:%s:tokens:month:%s", userID.String(), now.Format("2006-01"))
-		endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-		count, err := rl.incrWithExpiry(ctx, monthKey, int64(tokens), endOfMonth.Sub(now), gateTokensMonth)
-		if err != nil {
-			return rl.handleRedisError(err)
-		}
-
-		if count > int64(limits.TokensPerMonth) {
-			return false, nil
+// exceedsAlone reports whether a single request's total estimate already
+// exceeds one of the given caps (a cap <= 0 means "gate disabled"). Such a
+// request can never be admitted, so the caller must reject it before any
+// counter is incremented — otherwise the oversize charge stays in the shared
+// fixed window and blocks unrelated, correctly-sized requests until it expires.
+func exceedsAlone(total int, caps ...int) bool {
+	for _, c := range caps {
+		if c > 0 && total > c {
+			return true
 		}
 	}
-
-	return true, nil
+	return false
 }
 
 // RecordTokens best-effort reconciles the per-MONTH token counter against the

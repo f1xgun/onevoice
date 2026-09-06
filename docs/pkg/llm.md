@@ -195,6 +195,54 @@ can branch on the sentinels (`ErrDailySpendExceeded`,
 
 The `tier` defaults to `"free"` when `req.Tier == ""`.
 
+### What the gate is charged: `TokenCharge`
+
+`checkRateLimit` passes a `TokenCharge`, not a single number:
+
+| Field      | Content                           | Charged to                                                |
+| ---------- | --------------------------------- | --------------------------------------------------------- |
+| `Variable` | `req.Messages`                    | Per-minute burst counter                                  |
+| `Stable`   | `req.SystemBlocks` + `req.Tools`   | Compared against the cap, never accumulated                |
+| `Total()`  | Both                              | Per-month budget counter and the single-request size gate  |
+
+One agentic turn is several LLM calls inside the same fixed minute window —
+one per tool iteration, plus a HITL resume — and every one of them re-sends
+the identical system prompt and tool catalog. Accumulating that prefix once
+per call made the window's occupancy scale with the number of iterations
+instead of with the traffic the user generated, so an ordinary multi-step
+turn exhausted the free tier's minute budget and the SSE stream came back as
+`rate_limit_exceeded`. Comparing `count + Stable` against the cap keeps the
+guard against a single oversized prompt without accumulating that prefix
+in the window. This is a burst-control policy, not a claim that the
+provider cached those tokens. The default free
+tier allows 30,000 burst tokens per minute; monthly and daily budgets are
+unchanged.
+
+The per-month counter charges `Total()`. `RecordTokens` adds any positive
+difference from provider-reported usage after the response.
+
+### Single-request size gate
+
+A charge whose `Total()` alone exceeds `TokensPerMin` or `TokensPerMonth` can
+never be admitted, so `CheckLimit` rejects it **before** touching Redis.
+Incrementing first and comparing after left the oversize charge sitting in the
+shared fixed window, blocking every later correctly-sized request until the
+window expired — and each retry re-charged it.
+
+Admission compares all enabled request, minute-token, and month-token gates
+in one Redis script. Only accepted requests increment the counters, so
+repeated rejections cannot consume the remaining capacity in any bucket.
+Existing expiry times are preserved, and missing expiry times are repaired.
+
+### Estimator
+
+`estimateRequestCharge` is a coarse heuristic (≈4 characters per token plus a
+small per-segment framing overhead), not a tokenizer. It counts **runes, not
+bytes**: Russian is the product's primary language and each Cyrillic rune is
+two UTF-8 bytes, so a byte-length estimator charged every RU prompt double.
+Exactness is not required — the month counter is reconciled from the
+provider's reported usage after the response.
+
 ## Retry policy — Chat (blocking)
 
 `Chat` walks at most two candidates (the primary + one sibling) on

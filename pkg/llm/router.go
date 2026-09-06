@@ -32,7 +32,7 @@ const tokensPerMillion = 1_000_000
 // uuid.Nil skips the per-user Redis buckets (system callers) while the
 // per-business daily-spend gate still runs on a non-nil businessID.
 type RateLimitChecker interface {
-	CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, tokens int) (bool, error)
+	CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, charge TokenCharge) (bool, error)
 }
 
 // TokenRecorder is the optional post-response reconcile seam. CheckLimit charges
@@ -138,7 +138,7 @@ func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
 	if req.UserID == uuid.Nil && req.BusinessID == uuid.Nil {
 		return nil
 	}
-	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), estimateRequestTokens(req))
+	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), estimateRequestCharge(req))
 	if err != nil {
 		return err
 	}
