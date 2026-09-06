@@ -134,6 +134,8 @@ func TestRedactPIIExcept(t *testing.T) {
 		{name: "local part dots remain meaningful in reverse", input: "firstlast@example.com", allow: []string{"first.last@example.com"}, want: "[Скрыто]"},
 		{name: "domain dots remain meaningful", input: "a@b.com", allow: []string{"a@bc.om"}, want: "[Скрыто]"},
 		{name: "plus tag remains meaningful", input: "first+last@example.com", allow: []string{"firstlast@example.com"}, want: "[Скрыто]"},
+		{name: "email prefix cannot grant exemption", input: "a@b.com", allow: []string{"contact: a@b.com"}, want: "[Скрыто]"},
+		{name: "phone prefix cannot grant exemption", input: "+78435551234", allow: []string{"phone: +78435551234"}, want: "[Скрыто]"},
 		{name: "email allowlist requires whole value", input: "a@b.com", allow: []string{"a@b.com/path"}, want: "[Скрыто]"},
 		{name: "email whitespace is not ignored", input: "a@b.com", allow: []string{" a@b.com "}, want: "[Скрыто]"},
 		{name: "numeric website cannot allow phone", input: "+78435551234", allow: []string{"7843.5551234"}, want: "[Скрыто]"},

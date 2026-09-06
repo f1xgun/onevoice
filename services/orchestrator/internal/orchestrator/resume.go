@@ -232,17 +232,15 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 		call := batch.Calls[i]
 
-		// Fail-closed: a call is dispatched ONLY when its verdict is an explicit
-		// approval (approve/edit). Any other verdict — reject, or an EMPTY/unknown
-		// verdict left behind when RecordDecisions failed to persist after the
-		// batch transitioned to "resolving" — is treated as a rejection and never
-		// executes, so a call the user intended to reject is not published.
 		if call.Verdict != "approve" && call.Verdict != "edit" {
-			reason := call.RejectReason
-			if reason == "" {
-				reason = reasonUserRejected
+			source, reason, note := rejectionByDecisionState, reasonDecisionUnavailable, decisionUnavailableNote
+			if call.Verdict == "reject" {
+				source, reason, note = rejectionByOwner, call.RejectReason, ownerRejectionNote
+				if reason == "" {
+					reason = reasonUserRejected
+				}
 			}
-			rejectionMsg := buildRejectionMessage(rejectionByOwner, reason, ownerRejectionNote)
+			rejectionMsg := buildRejectionMessage(source, reason, note)
 			mu.Lock()
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",

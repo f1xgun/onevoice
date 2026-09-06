@@ -111,7 +111,7 @@ func normalizedAllowSet(allow []string) map[string]bool {
 				continue
 			}
 			loc := class.pattern.FindStringIndex(value)
-			if loc != nil && loc[0] == 0 && loc[1] == len(value) {
+			if len(loc) == 2 && loc[0] == 0 && loc[1] == len(value) {
 				set[contactAllowKey(class.name, value)] = true
 			}
 		}

@@ -234,45 +234,65 @@ func TestResume_RejectedCall_SynthesizesToolMessage_SkipsDispatch(t *testing.T) 
 	assert.Equal(t, "c-rej", rejects[0].ToolCallID)
 }
 
-// TestResume_EmptyVerdict_FailsClosed_SkipsDispatch — when a batch reaches
-// "resolving" but RecordDecisions never persisted the per-call verdicts (a
-// transient Mongo failure on resolve), every call carries an EMPTY verdict. A
-// resume MUST treat such a call as a rejection and NEVER execute it, otherwise a
-// tool call the user intended to reject gets published with its original args.
-func TestResume_EmptyVerdict_FailsClosed_SkipsDispatch(t *testing.T) {
-	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
-
-	var dispatchedEmpty int32
-	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatchedEmpty, 1) }}
-	reg := toolregistry.NewRegistry()
-	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
-		Type:     llm.ToolCallTypeFunction,
-		Function: llm.FunctionDefinition{Name: "empty_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
-
-	repo := newMockPendingRepo()
-	batch := batchWithCalls(t, "batch-empty", []domain.PendingCall{
-		{CallID: "c-empty", ToolName: "empty_tool", Arguments: map[string]interface{}{"text": "x"}, Verdict: ""},
-	})
-	batch.Status = "resolving"
-	repo.store["batch-empty"] = batch
-
-	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
-	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-empty"})
-	require.NoError(t, err)
-
-	evts := drainEvents(events)
-
-	assert.Equal(t, int32(0), atomic.LoadInt32(&dispatchedEmpty),
-		"empty-verdict call MUST NOT be dispatched (fail-closed)")
-	toolCalls := findEvents(evts, orchestrator.EventToolCall)
-	for _, tc := range toolCalls {
-		assert.NotEqual(t, "c-empty", tc.ToolCallID,
-			"empty-verdict call MUST NOT emit a tool_call event")
+func TestResume_NonApprovalVerdicts_FailClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name, verdict, rejectReason, source, reason, note string
+	}{
+		{name: "empty", source: "decision_state", reason: "decision_unavailable", note: "No valid approval decision"},
+		{name: "unknown", verdict: "unexpected", rejectReason: "stale reason", source: "decision_state", reason: "decision_unavailable", note: "No valid approval decision"},
+		{name: "reject", verdict: "reject", source: "owner", reason: "user_rejected", note: "owner declined"},
+		{name: "reject with reason", verdict: "reject", rejectReason: "off-brand", source: "owner", reason: "off-brand", note: "owner declined"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			capLLM := &captureLLM{}
+			var dispatched atomic.Int32
+			rec := &instrumentedExecutor{onDispatch: func() { dispatched.Add(1) }}
+			reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, rec)
+			repo := newMockPendingRepo()
+			batch := batchWithCalls(t, "batch-verdict", []domain.PendingCall{{
+				CallID: "c-verdict", ToolName: "manual_tool", Arguments: map[string]interface{}{"text": "x"},
+				Verdict: tc.verdict, RejectReason: tc.rejectReason,
+			}})
+			batch.Status = "resolving"
+			repo.store[batch.ID] = batch
+			orch := orchestrator.NewWithHITL(capLLM, reg, repo, orchestrator.Options{MaxIterations: 5})
+			events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: batch.ID})
+			require.NoError(t, err)
+			evts := drainEvents(events)
+			assert.Zero(t, dispatched.Load())
+			assert.Empty(t, findEvents(evts, orchestrator.EventToolCall))
+			assert.Empty(t, findEvents(evts, orchestrator.EventToolResult))
+			assert.Empty(t, findEvents(evts, orchestrator.EventError))
+			rejects := findEvents(evts, orchestrator.EventToolRejected)
+			require.Len(t, rejects, 1)
+			assert.Equal(t, "c-verdict", rejects[0].ToolCallID)
+			assert.Equal(t, tc.reason, rejects[0].Content)
+			req := capLLM.firstRequest()
+			require.NotNil(t, req)
+			var toolMessages []llm.Message
+			for _, msg := range req.Messages {
+				if msg.Role == "tool" && msg.ToolCallID == "c-verdict" {
+					toolMessages = append(toolMessages, msg)
+				}
+			}
+			require.Len(t, toolMessages, 1)
+			var payload struct {
+				Rejected bool   `json:"rejected"`
+				By       string `json:"by"`
+				Reason   string `json:"reason"`
+				Note     string `json:"note"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(toolMessages[0].Content), &payload))
+			assert.True(t, payload.Rejected)
+			assert.Equal(t, tc.source, payload.By)
+			assert.Equal(t, tc.reason, payload.Reason)
+			assert.Contains(t, payload.Note, tc.note)
+			if tc.source == "decision_state" {
+				assert.Contains(t, payload.Note, "does not mean the owner declined")
+				assert.Contains(t, payload.Note, "Do not retry")
+			}
+		})
 	}
-	rejects := findEvents(evts, orchestrator.EventToolRejected)
-	require.Len(t, rejects, 1)
-	assert.Equal(t, "c-empty", rejects[0].ToolCallID)
 }
 
 func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T) {

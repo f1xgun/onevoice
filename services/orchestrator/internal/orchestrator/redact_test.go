@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -116,10 +117,12 @@ func TestStepRun_PassesPDnWhenRedactionDisabled(t *testing.T) {
 }
 
 func TestResume_PDnAllowlistSurvivesPauseRoundTrip(t *testing.T) {
-	for _, verdict := range []string{"approved", "rejected"} {
+	for _, verdict := range []string{"approve", "edit", "reject"} {
 		t.Run(verdict, func(t *testing.T) {
 			ctx := context.Background()
-			reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, nil)
+			var dispatched atomic.Int32
+			rec := &instrumentedExecutor{onDispatch: func() { dispatched.Add(1) }}
+			reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, rec)
 			repo := newMockPendingRepo()
 			options := orchestrator.Options{MaxIterations: 5, RedactOutboundPDn: true}
 			stub := &stubLLM{responses: []*llm.ChatResponse{{
@@ -158,6 +161,27 @@ func TestResume_PDnAllowlistSurvivesPauseRoundTrip(t *testing.T) {
 			completed := drainEvents(events)
 			require.Empty(t, findEvents(completed, orchestrator.EventError))
 			require.Len(t, findEvents(completed, orchestrator.EventDone), 1)
+			if verdict == "reject" {
+				assert.Zero(t, dispatched.Load())
+				assert.Empty(t, findEvents(completed, orchestrator.EventToolCall))
+				assert.Empty(t, findEvents(completed, orchestrator.EventToolResult))
+				rejected := findEvents(completed, orchestrator.EventToolRejected)
+				require.Len(t, rejected, 1)
+				assert.Equal(t, "contact-call", rejected[0].ToolCallID)
+				assert.Equal(t, "user_rejected", rejected[0].Content)
+			} else {
+				assert.Equal(t, int32(1), dispatched.Load())
+				assert.Empty(t, findEvents(completed, orchestrator.EventToolRejected))
+				calls := findEvents(completed, orchestrator.EventToolCall)
+				require.Len(t, calls, 1)
+				assert.Equal(t, "contact-call", calls[0].ToolCallID)
+				results := findEvents(completed, orchestrator.EventToolResult)
+				require.Len(t, results, 1)
+				assert.Equal(t, "contact-call", results[0].ToolCallID)
+				assert.Empty(t, results[0].ToolError)
+				assert.Equal(t, map[string]interface{}{"ok": true}, results[0].ToolResult)
+			}
+
 			req := capLLM.firstRequest()
 			require.NotNil(t, req)
 			require.NotEmpty(t, req.Messages)

@@ -12,15 +12,17 @@ const (
 	rejectionByOwner rejectionSource = "owner"
 	// rejectionByPolicy — the OneVoice tool policy blocked the call; the target
 	// platform never saw it.
-	rejectionByPolicy rejectionSource = "policy"
+	rejectionByPolicy        rejectionSource = "policy"
+	rejectionByDecisionState rejectionSource = "decision_state"
 )
 
 // Reason tokens carried verbatim on both the tool payload and the
 // EventToolRejected wire event (the frontend maps them to badge copy).
 const (
-	reasonPolicyForbidden = "policy_forbidden"
-	reasonPolicyRevoked   = "policy_revoked"
-	reasonUserRejected    = "user_rejected"
+	reasonPolicyForbidden     = "policy_forbidden"
+	reasonPolicyRevoked       = "policy_revoked"
+	reasonUserRejected        = "user_rejected"
+	reasonDecisionUnavailable = "decision_unavailable"
 )
 
 // Notes attached to each rejection shape. Without them the payload is a bare
@@ -29,6 +31,9 @@ const (
 // succeed. Each note states the true origin and forbids both retrying and
 // silently substituting another channel.
 const (
+	decisionUnavailableNote = "No valid approval decision is available for this action. " +
+		"The call was never sent to the platform. This does not mean the owner declined it. " +
+		"Do not retry it or substitute another channel or tool; ask the owner for a new approval."
 	ownerRejectionNote = "The business owner declined this action on the OneVoice approval card. " +
 		"The call was never sent to the platform. Do not retry it and do not substitute another channel or tool; " +
 		"tell the owner the action was canceled and ask what to change."
