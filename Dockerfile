@@ -38,11 +38,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     cd services/api && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/api ./cmd/main.go
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
 
 RUN apk --no-cache add ca-certificates tzdata wget
 
-WORKDIR /root/
+RUN addgroup -S -g 10001 app && adduser -S -D -H -u 10001 -G app app
+
+WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/bin/api .
@@ -51,6 +53,8 @@ RUN chmod +x /entrypoint.sh
 
 # Expose port
 EXPOSE 8080
+
+USER 10001:10001
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["./api"]

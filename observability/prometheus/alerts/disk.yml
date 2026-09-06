@@ -1,0 +1,21 @@
+groups:
+  - name: disk
+    rules:
+      - alert: HostDiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs"}
+          / node_filesystem_size_bytes{job="node-exporter",fstype!~"tmpfs|overlay|squashfs"} < 0.15)
+          and on(instance, device, mountpoint) (node_filesystem_readonly == 0)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host filesystem has less than 15% space available"
+          description: "{{ $labels.instance }} {{ $labels.mountpoint }} is running out of disk space. Check Docker logs, Loki storage and database growth."
+      - alert: HostDiskMetricsMissing
+        expr: up{job="node-exporter"} == 0 or absent(node_filesystem_avail_bytes{job="node-exporter"})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host disk monitoring is unavailable"

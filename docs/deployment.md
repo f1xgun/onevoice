@@ -89,8 +89,26 @@ Host-generated 0600 credentials must belong to that identity to be readable.
 Before deployment and after every rotation, apply the targeted ownership and
 traversal commands in [NATS ownership](../infra/nats/README.md#linux-credential-ownership)
 and [mTLS ownership](../infra/mtls/README.md#linux-credential-ownership), using the
-actual provisioned paths. Keep other services' keys and the CA key private to
-their provisioning identities. Do not recursively chown all credentials.
+actual provisioned paths.
+
+The API, orchestrator, Telegram, VK and Google agents run as UID/GID 10001.
+Before deploying these images on Linux, assign only their mounted leaf keys
+and NATS seeds to that identity, preserving mode 0600:
+
+```bash
+for service in api orchestrator agent-telegram agent-vk agent-google-business; do
+  sudo chown 10001:10001 "infra/mtls/certs/$service.key" "infra/nats/creds/$service.nk"
+  sudo chmod 600 "infra/mtls/certs/$service.key" "infra/nats/creds/$service.nk"
+done
+sudo chmod 755 infra/mtls/certs infra/nats/creds
+```
+
+Apply the same ownership to any separately mounted API KMS service-account
+key at its actual provisioned path. Public certificates remain 0644. Keep the
+CA private key and NATS server key owned by their provisioning identities;
+do not recursively chown credential directories. Repeat after every rotation.
+Verify readability as the service UID before deployment; Docker Desktop file
+sharing does not reproduce Linux bind-mount ownership semantics.
 
 Existing NATS deployments also need [permission refresh](../infra/nats/README.md#updating-reply-permissions-without-rotating-identities)
 to apply the five-minute reply window without rotating identities.
@@ -467,3 +485,27 @@ this upgrade. Reconcile each group using the approved, audited procedure in
 then rerun the report until empty while account writes remain paused. Pending
 account deletion does not remove the collision. Keep the migration's lock and
 abort-on-collision guard; never automatically merge or delete accounts.
+
+## Container resource bounds
+
+All base and observability services use json-file logging with five 50 MB files
+per container (up to roughly 250 MB each). Production services inherit these
+settings; certbot has the same bound. Compose memory limits range from 128 MB
+for nginx/exporters to 2 GB for the browser agent. These are initial ceilings,
+not reservations: size the host for concurrent workloads and tune limits from
+observed peaks before deployment. An exhausted limit can cause an OOM restart.
+
+Loki compaction retains logs for 14 days (336 hours); deletion is asynchronous
+and its markers persist in the Loki volume. See the [Loki retention configuration](https://grafana.com/docs/loki/latest/operations/storage/retention/).
+This is an age bound, not a disk quota. Prometheus scrapes the internal-only
+node-exporter and alerts after 10 minutes below 15% available filesystem space.
+A separate alert detects unavailable disk metrics. The exporter mounts the
+Linux host root read-only; on Docker Desktop this reports the Docker VM.
+Confirm the filesystem holding Docker data is represented before deployment.
+
+Run `make lint-infra` to validate Compose with synthetic credentials, both
+nginx configurations with ephemeral certificates and HTTP probes, NATS/Loki
+configuration, Prometheus rules, seccomp JSON, and shell syntax. It starts only isolated, disposable validator containers, with
+no stand network, ports, credentials, or persistent volumes. Resource and log
+changes take effect when containers are recreated during a planned deployment;
+editing these files does not alter running containers.

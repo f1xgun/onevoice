@@ -14,7 +14,7 @@ GOWORK=off
 GOLANGCI_CONFIG=$(CURDIR)/.golangci.yml
 
 # All Go modules (relative paths)
-GO_MODULES=pkg services/api services/orchestrator services/agent-telegram services/agent-vk services/agent-yandex-business
+GO_MODULES=pkg pkg/audit pkg/email services/api services/orchestrator services/agent-telegram services/agent-vk services/agent-yandex-business services/agent-google-business
 
 # Help target
 help: ## Show this help message
@@ -359,3 +359,10 @@ lint-no-pprof: ## Reject net/http/pprof imports in prod build (SEC-17 CI gate)
 
 docker-test-ulimit: ## Verify ulimit -c 0 is set inside the container (supply ULIMIT_IMAGE=<image>)
 	@docker run --rm $(ULIMIT_IMAGE) sh -c 'ulimit -c' | grep -qx '0' || (echo "ulimit -c should be 0 inside container"; exit 1)
+
+.PHONY: lint-infra lint-guards
+
+lint-guards: lint-migrations lint-compose-env check-legal-versions-parity check-llm-defaults docs-check lint-no-pprof ## Run repository parity and policy guards
+
+lint-infra: ## Validate deployable infrastructure without starting the stack
+	@python3 scripts/check-infra.py

@@ -10,9 +10,37 @@
 # `docker compose port` ad-hoc — do not commit `ports:`.
 # ============================================================
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/credentials)($$|/)
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
   # Loki — log aggregation
   loki:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     image: grafana/loki:3.0.0
     container_name: onevoice-loki
     command: -config.file=/etc/loki/loki-config.yml -target=all
@@ -30,6 +58,11 @@ services:
 
   # Promtail — log collector (ships Docker logs to Loki)
   promtail:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     image: grafana/promtail:3.0.0
     container_name: onevoice-promtail
     command: -config.file=/etc/promtail/promtail-config.yml
@@ -45,6 +78,11 @@ services:
 
   # Prometheus — metrics collection
   prometheus:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     image: prom/prometheus:v2.52.0
     container_name: onevoice-prometheus
     command:
@@ -65,6 +103,11 @@ services:
 
   # Grafana — dashboards and visualization
   grafana:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     image: grafana/grafana:11.0.0
     container_name: onevoice-grafana
     environment:
@@ -95,6 +138,11 @@ services:
   # via bot_token_file / chat_id_file in alertmanager.yml so the
   # secrets never appear inline in any YAML literal.
   alertmanager:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     image: prom/alertmanager:v0.31.0
     container_name: onevoice-alertmanager
     entrypoint:
@@ -126,6 +174,11 @@ services:
   # Pushgateway — receives short-lived job metrics (backup, etc.).
   # No host port — Prometheus scrapes it on the internal network.
   pushgateway:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     image: prom/pushgateway:v1.9.0
     container_name: onevoice-pushgateway
     networks:
@@ -137,6 +190,11 @@ services:
   # (entrypoint.sh); never stored on host in plaintext.
   # BusyBox crond drives the 00:00 UTC schedule.
   backup:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     build:
       context: ./scripts/backup
       args:

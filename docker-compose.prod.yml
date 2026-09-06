@@ -14,6 +14,12 @@
 # First-time TLS bootstrap is one-shot:  ./scripts/init-letsencrypt.sh
 # After that, `docker compose up -d` is enough.
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   # Network exposure baseline: only nginx (80/443) is published to the host
   # in production. The datastores and the api/orchestrator HTTP ports are
@@ -38,7 +44,7 @@ services:
     ports: !reset []
 
   nginx:
-    image: nginx:alpine
+    image: nginx@sha256:1d13701a5f9f3fb01aaa88cef2344d65b6b5bf6b7d9fa4cf0dca557a8d7702ba
     container_name: onevoice-nginx
     ports:
       - "80:80"
@@ -93,7 +99,12 @@ services:
   # only on persistent failure (compose `restart: unless-stopped` then
   # kicks in).
   certbot:
-    image: certbot/certbot:latest
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    image: certbot/certbot:v2.11.0
     container_name: onevoice-certbot
     environment:
       DOMAIN: ${DOMAIN}

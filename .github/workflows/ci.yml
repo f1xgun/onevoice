@@ -33,6 +33,7 @@ jobs:
       backend-docker: ${{ steps.filter.outputs.backend-docker }}
       frontend-docker: ${{ steps.filter.outputs.frontend-docker }}
       observability: ${{ steps.filter.outputs.observability }}
+      infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
 
@@ -75,13 +76,44 @@ jobs:
               - 'Dockerfile.agent-telegram'
               - 'Dockerfile.agent-vk'
               - 'Dockerfile.agent-yandex-business'
+              - 'Dockerfile.agent-google-business'
+              - 'scripts/entrypoint-ulimit.sh'
               - '.github/workflows/ci.yml'
             frontend-docker:
               - 'services/frontend/**'
               - '.github/workflows/ci.yml'
+            infra:
+              - 'migrations/**'
+              - 'services/api/migrations/**'
+              - 'nginx/**'
+              - 'docker-compose*.yml'
+              - 'Dockerfile*'
+              - 'infra/**'
+              - 'scripts/**'
+              - 'observability/**'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
             observability:
               - 'observability/**'
               - '.github/workflows/ci.yml'
+
+  repository-guards:
+    name: Repository parity and policy guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shared guards
+        run: make lint-guards
+
+  infra:
+    name: Infrastructure validation
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose, nginx, Loki and shell syntax
+        run: make lint-infra
 
   go-lint:
     name: Go Lint & Security
@@ -420,6 +452,9 @@ jobs:
           - image: agent-vk
             context: .
             file: Dockerfile.agent-vk
+          - image: agent-google-business
+            context: .
+            file: Dockerfile.agent-google-business
           - image: agent-yandex-business
             context: .
             file: Dockerfile.agent-yandex-business
@@ -433,8 +468,16 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           push: false
+          load: true
+          tags: onevoice-ci:${{ matrix.image }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Verify runtime identity and core dump limit
+        if: matrix.image != 'agent-yandex-business'
+        run: |
+          docker run --rm --network none onevoice-ci:${{ matrix.image }} \
+            sh -ec 'test "$(id -u)" -ne 0; test "$(ulimit -c)" = 0'
 
   docker-build-frontend:
     name: Docker Build (frontend)
@@ -477,7 +520,8 @@ jobs:
                        /o/prometheus/alerts/backup.yml \
                        /o/prometheus/alerts/email.yml \
                        /o/prometheus/alerts/errors.yml \
-                       /o/prometheus/alerts/sweepers.yml
+                       /o/prometheus/alerts/sweepers.yml \
+                       /o/prometheus/alerts/disk.yml
 
       - name: promtool check config
         run: |
