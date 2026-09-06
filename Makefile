@@ -146,11 +146,9 @@ check-llm-defaults: ## Verify LLM_MODEL / TITLER_MODEL / DRAFT_REPLY_MODEL defau
 	@echo "Checking LLM default models..."
 	@bash scripts/check-llm-defaults.sh
 
-# Compose env-propagation guard. A var a service reads but docker-compose.yml
-# never lists in its environment: block is dead in every compose deploy (.env is
-# only interpolated, never injected). Wired into lint-all so a new env var
-# cannot ship without its compose plumbing.
-lint-compose-env: ## Verify every env var a service reads is passed by docker-compose.yml
+# Compose env-propagation guard for detected literal service env reads.
+# See scripts/check-compose-env.sh for exclusions and coverage limits.
+lint-compose-env: ## Check detected literal service env reads against the base Compose mapping
 	@echo "Checking compose env propagation..."
 	@bash scripts/check-compose-env.sh
 

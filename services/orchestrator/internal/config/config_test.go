@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/natsauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/natsauth"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 )
 

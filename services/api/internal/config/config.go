@@ -799,7 +799,7 @@ func isProductionEnv(appEnv string) bool {
 // defaultCORSOrigins is the allow-list used when CORS_ALLOWED_ORIGINS is unset.
 // PublicURL is always included: it is the origin a browser sends behind the
 // reverse proxy, and the handler-level CSRF check on the erasure / consent /
-// organisation-lifecycle endpoints rejects everything outside this list. Outside
+// organization-lifecycle endpoints rejects everything outside this list. Outside
 // production the local Next.js dev server origin is allowed as well.
 func defaultCORSOrigins(publicURL, appEnv string) []string {
 	origins := []string{publicURL}

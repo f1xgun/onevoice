@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# check-compose-env.sh — fail when a service reads an env var that
-# docker-compose.yml never passes to its container.
+# check-compose-env.sh — check detected literal env reads in service Go sources
+# against docker-compose.yml environment mappings.
 #
-# The compose file is used only for ${} interpolation of .env; nothing in .env
-# reaches a container unless the service's `environment:` block names it. Every
-# var a service reads but compose omits is therefore dead in every compose
-# deploy — that is how APP_ENV, PUBLIC_URL, the LEGAL_* block and the Telegram
-# approval secret silently stopped working.
+# Values in .env are available for Compose interpolation but are not automatically
+# passed to containers. This guard checks the base file's environment mappings;
+# it does not account for env_file, image defaults, or Compose overrides.
 #
 # Scans each service's Go sources (excluding _test.go) for os.Getenv /
-# os.LookupEnv / getEnv* call sites and diffs the names against the keys of that
-# service's compose `environment:` block.
+# os.LookupEnv / getEnv* call sites with an uppercase quoted name immediately
+# after the opening parenthesis, then compares against that service's mapping.
+# Shared packages, indirect or dynamically constructed names, other formatting,
+# and other env-reading helpers are not covered. This is not a complete env audit.
 #
 # Usage: ./scripts/check-compose-env.sh   (wired into `make lint-compose-env`)
 
@@ -54,7 +54,7 @@ compose_env_keys() {
   ' "$COMPOSE_FILE"
 }
 
-# go_env_names prints the env var names read by the Go sources under one dir.
+# go_env_names prints detected literal env names from Go sources under one dir.
 go_env_names() {
   grep -rhoE --include='*.go' --exclude='*_test.go' \
     -e 'os\.(Getenv|LookupEnv)\("[A-Z0-9_]+"' \
@@ -90,13 +90,13 @@ $(go_env_names "$dir")
 EOF
 
   if [ -n "$missing" ]; then
-    echo "❌ $svc reads env vars that $COMPOSE_FILE never passes to the container:"
+    echo "❌ $svc: detected env names missing from $COMPOSE_FILE environment mapping:"
     for name in $missing; do
       echo "     $name"
     done
     status=1
   else
-    echo "✓ $svc: every env var it reads is passed by compose"
+    echo "✓ $svc: detected non-ignored literal env names are present in the base Compose mapping"
   fi
 done
 

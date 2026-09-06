@@ -41,6 +41,8 @@ jobs:
         with:
           filters: |
             backend:
+              - 'docker-compose*.yml'
+              - 'scripts/check-compose-env.sh'
               - 'pkg/**'
               - 'services/api/**'
               - 'services/orchestrator/**'
@@ -190,9 +192,8 @@ jobs:
       - name: No-inline-URL check (custom analyzer)
         run: make lint-urls
 
-      # .env is only interpolated by compose, never injected — an env var a
-      # service reads but its `environment:` block omits is dead in every
-      # compose deploy.
+      # Check detected literal service env reads against base Compose mappings.
+      # See the script for exclusions and coverage limits.
       - name: Compose env propagation check
         run: make lint-compose-env
 
