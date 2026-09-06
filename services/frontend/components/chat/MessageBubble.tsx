@@ -7,6 +7,10 @@ import { StreamErrorNotice } from './StreamErrorNotice';
 import { isTrustedImageSrc, safeExternalHref } from '@/lib/trustedImage';
 import type { Message } from '@/types/chat';
 
+/**
+ * Renders messages with a persistent streaming indicator and loads only trusted images inline.
+ * Untrusted image URLs become safe links that require an explicit click.
+ */
 export function MessageBubble({ message }: { message: Message }) {
   const tWindow = useTranslations('chat.window');
   const isUser = message.role === 'user';
@@ -16,16 +20,8 @@ export function MessageBubble({ message }: { message: Message }) {
   const isStreaming = message.status === 'streaming';
   const isStreamingEmpty = isStreaming && !hasContent;
   const isDoneEmpty = message.status === 'done' && !hasContent && !hasError;
-  // Once tokens or a tool call have rendered, the empty-bubble dots are gone —
-  // so without this footer the indicator would vanish during the wait for the
-  // next LLM iteration and the operator can't tell OneVoice is still working.
-  // Gated on hasContent so it never double-renders alongside the dots.
   const showWorkingFooter = isStreaming && hasContent;
 
-  // Never auto-load an image the model emitted from an untrusted host: a
-  // Markdown image in assistant output could be steered by injected review text
-  // into a tracking/exfil fetch. First-party/same-origin images render inline;
-  // anything else becomes a click-through link the operator opens deliberately.
   const markdownComponents = useMemo<Components>(
     () => ({
       img({ src, alt }) {

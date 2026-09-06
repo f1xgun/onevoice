@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
+/** Returns the desktop media-query state, defaulting to mobile when matchMedia is unavailable. */
 export function useIsDesktop(): boolean {
   const [isDesktop, setIsDesktop] = useState<boolean>(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return false; // SSR: keep mobile default
+      return false;
     }
     return window.matchMedia('(min-width: 1280px)').matches;
   });

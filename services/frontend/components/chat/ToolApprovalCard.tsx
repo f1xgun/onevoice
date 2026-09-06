@@ -1,11 +1,11 @@
 'use client';
 
 import { useReducer, useRef, useState } from 'react';
-import { DraftSurface } from '@/components/design-system/DraftSurface';
-import { DecisionMark } from '@/components/design-system/DecisionMark';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { DraftSurface } from '@/components/design-system/DraftSurface';
+import { DecisionMark } from '@/components/design-system/DecisionMark';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ApprovalAction, ApprovalDecision, PendingApproval } from '@/types/chat';
@@ -245,15 +245,6 @@ function ApprovalDraft({ batch: incomingBatch, onSubmit }: ToolApprovalCardProps
             {!allDecided && <TooltipContent>{tCard('submitHelper')}</TooltipContent>}
           </Tooltip>
         </TooltipProvider>
-        {/*
-          The visually-hidden helper span
-          is gated on the same `!allDecided` predicate as the TooltipContent
-          above. Previously this span rendered unconditionally, so once
-          Submit became enabled the visible-to-AT copy contradicted the
-          enabled-button state. Operators (and SR users) saw a stale hint
-          telling them to "pick an action for each task" while the button
-          was already actionable.
-        */}
         {!allDecided && (
           <span id="approval-card-submit-helper" className="sr-only">
             {tCard('submitHelper')}

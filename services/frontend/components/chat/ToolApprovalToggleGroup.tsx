@@ -8,9 +8,6 @@ import type { ApprovalAction } from '@/types/chat';
 
 type ActiveVariant = 'secondary' | 'destructive';
 
-// Variant mapping for the active state of each action (UI-SPEC §Color §Copy).
-// Approve → primary (indigo), Edit → secondary with an extra ring, Reject →
-// destructive (red). Inactive state on every button is `outline`.
 const ACTIVE_VARIANTS: Record<ApprovalAction, ActiveVariant> = {
   approve: 'secondary',
   edit: 'secondary',
@@ -67,6 +64,8 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
 
 /**
  * Mutually-exclusive three-button segmented control for the approval card.
+ * Active approve/edit buttons use secondary styling; reject uses destructive styling.
+ * Every active button has a selection ring; inactive buttons use outline styling.
  * Not a `radiogroup` — users can re-pick freely, so the WAI-ARIA pattern is
  * "buttons with aria-pressed", not RadioGroup. Parent owns the `decision`.
  */
