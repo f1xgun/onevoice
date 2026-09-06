@@ -6,6 +6,13 @@ const createNextIntlPlugin = require('next-intl/plugin');
 // adding english later only requires extending lib/i18n/request.ts and
 // dropping a messages/en.json next to ru.json.
 const withNextIntl = createNextIntlPlugin('./lib/i18n/request.ts');
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || '/api/v1';
+const publicOrigin = new URL(process.env.PUBLIC_URL || 'http://localhost').origin;
+const apiOrigin = new URL(apiUrl, publicOrigin);
+if (!['http:', 'https:'].includes(apiOrigin.protocol)) {
+  throw new Error('API URL must use HTTP or HTTPS');
+}
+const apiConnectSource = apiOrigin.origin === publicOrigin ? '' : ` ${apiOrigin.origin}`;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -19,7 +26,7 @@ const nextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self'",
-      `connect-src 'self' https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru${isDevelopment ? ' ws: wss:' : ''}`,
+      `connect-src 'self'${apiConnectSource} https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru${isDevelopment ? ' ws: wss:' : ''}`,
       "media-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",

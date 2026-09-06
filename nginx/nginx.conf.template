@@ -1,8 +1,8 @@
 # nginx.conf.template — OneVoice production
 #
 # This file is rendered with envsubst at container start
-# (see docker-compose.prod.yml → nginx.entrypoint). Only ${DOMAIN}
-# is expanded; nginx-native $variables are escaped via the envsubst
+# (see docker-compose.prod.yml → nginx.command). Only ${DOMAIN} and
+# ${CSP_API_ORIGIN} are expanded; nginx-native $variables are preserved by the
 # allowlist so the template stays valid.
 #
 # Two-server setup:
@@ -27,7 +27,7 @@ http {
   proxy_hide_header Permissions-Policy;
   proxy_hide_header Cross-Origin-Opener-Policy;
 
-  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; frame-ancestors 'none'" always;
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' ${CSP_API_ORIGIN} https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://smartcaptcha.yandexcloud.net https://smartcaptcha.cloud.yandex.ru; frame-ancestors 'none'" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header X-Frame-Options "DENY" always;
   add_header Referrer-Policy "strict-origin-when-cross-origin" always;

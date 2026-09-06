@@ -399,12 +399,34 @@ Migrations are **forward-only** by convention. If a release introduced a destruc
 
 ## 8. Pre-deploy checklist
 
+Frontend CSP reads `NEXT_PUBLIC_API_URL` at build/config time, falling back to
+`API_URL` when the public variable is empty or unset. Relative API paths keep
+`connect-src` restricted to the existing sources. Absolute URLs add only their
+origin; an origin matching `PUBLIC_URL` is already covered by `'self'`.
+Compose passes `NEXT_PUBLIC_API_URL` (default `/api/v1`) and `PUBLIC_URL` into the
+frontend build so the internal `API_URL` proxy target is not exposed in CSP.
+
+Both nginx configurations render `${CSP_API_ORIGIN}` using an explicit
+`envsubst` allowlist (alongside `${DOMAIN}` in production). Leave
+`CSP_API_ORIGIN` empty for same-origin API requests. For example, with
+`NEXT_PUBLIC_API_URL=https://api.example.test/api/v1`, set
+`CSP_API_ORIGIN=https://api.example.test`. Supply exactly one HTTP(S) origin,
+including any non-default port, without a path, trailing slash, or CSP syntax.
+Changes to the public API URL require a new frontend build and matching nginx
+configuration. `API_URL` remains the server-side rewrite target.
+
+Vitest asserts the exact generated Next.js header maps, unique header names,
+HTTP localhost without HSTS, and development/production CSP differences. These
+are configuration-level assertions; they do not run a browser through nginx or
+prove browser CSP enforcement for complete user flows.
+
 - [ ] DNS resolves (mode A: VM IP reachable; mode B: `dig +short <ip>.nip.io` returns the IP; mode C: A record propagated).
 - [ ] YC security group attached and lets 22 / 80 / 443 in.
 - [ ] `.env` filled in, no blank required fields; **no dev secrets reused**.
 - [ ] `JWT_SECRET` ≥ 32 chars, `ENCRYPTION_KEY` exactly 32 bytes.
 - [ ] `CORS_ALLOWED_ORIGINS` matches the public origin (not `localhost`, not `*`).
 - [ ] `SECURE_COOKIES` unset (it follows the `PUBLIC_URL` scheme), or set to match it: `false` for mode A, `true` for modes B / C.
+- [ ] `CSP_API_ORIGIN` matches the cross-origin API origin, or is empty for same-origin; inspect `connect-src` at the edge and check login, hydration/assets, OAuth popup/redirect return, SSE, and uploads for CSP violations. Confirm each security header occurs once and plain-HTTP localhost has no HSTS.
 - [ ] OAuth redirect URIs (modes B / C) match values in the VK / Yandex dashboards.
 - [ ] NATS and mTLS credentials provisioned; Linux worker ownership and directory traversal verified.
 - [ ] Modes B / C: Let's Encrypt staging cert obtained, then promoted.
