@@ -1443,7 +1443,7 @@
       "headlineLine2Prefix": "for every channel ",
       "headlinePunctuation": ".",
       "wordmark": "OneVoice",
-      "body": "Telegram, VK, Yandex.Business — all in one inbox. OneVoice drafts replies, prepares posts for every channel, and keeps reviews in plain sight while you focus on your work.",
+      "body": "Request a draft, make your edits and approve sending.",
       "cta": "Join the waitlist",
       "secondary": "See how it works",
       "betaBadge": "Early access · onboarding in waves",
@@ -1452,7 +1452,8 @@
       "login": "Log in",
       "register": "Register",
       "start": "Start free",
-      "audience": "For cafés, salons, workshops and clinics."
+      "audience": "For cafés, salons, workshops and clinics.",
+      "headline": "Posts and replies — with your final say"
     },
     "preview": {
       "url": "onevoice.app/inbox",
@@ -1572,8 +1573,8 @@
     },
     "channels": {
       "kicker": "Channels",
-      "headline": "We support the channels your customers actually use.",
-      "body": "In Russia — no compromises. We connect to the real channels, not their Western lookalikes."
+      "headline": "Platforms and availability",
+      "body": "Availability comes from the service. During beta, we connect platforms together with you."
     },
     "platforms": {
       "telegram": {
@@ -1581,7 +1582,7 @@
         "meta": "Channels and bots"
       },
       "vk": {
-        "display": "VK",
+        "display": "VKontakte",
         "meta": "Communities"
       },
       "yandex_business": {
@@ -1589,7 +1590,7 @@
         "meta": "Map and reviews"
       },
       "google_business": {
-        "display": "Google Business",
+        "display": "Google Business Profile",
         "meta": "Under review"
       },
       "2gis": {
@@ -1614,8 +1615,12 @@
       }
     },
     "platformStatus": {
-      "have": "live",
-      "soon": "soon"
+      "have": "Available",
+      "soon": "Not available yet",
+      "loading": "Checking availability",
+      "unknown": "Could not check availability",
+      "unconfigured": "Connection not configured",
+      "unlisted": "Not announced"
     },
     "footer": {
       "rights": "© {year} · All rights reserved",
@@ -1749,6 +1754,36 @@
       "otherSubmit": "Send",
       "thanks": "Vote counted. Thank you.",
       "error": "Couldn't record your vote. Please try again."
+    },
+    "workExample": {
+      "title": "Work example",
+      "demo": "An example using demo data. Nothing is sent.",
+      "requestLabel": "Request",
+      "request": "Draft a post for café guests: on Saturday we open at 10:00 instead of 9:00.",
+      "draftLabel": "Draft",
+      "context": "Post · Telegram · For café guests · Prepared by the assistant",
+      "draftTitle": "See you at 10:00 on Saturday",
+      "draft": "This Saturday we open an hour later, at 10:00. Join us for coffee and breakfast. On Sunday we return to our regular hours.",
+      "editLabel": "Your edit",
+      "before": "Join us for coffee and breakfast.",
+      "after": "We look forward to seeing you for coffee and breakfast.",
+      "decisionLabel": "Your decision",
+      "status": "Review the text",
+      "decision": "After editing, you approve sending. Until then, the text remains a draft.",
+      "result": "In the working chat, the result appears after the platform responds. This is only an example of approval."
+    },
+    "scenarios": {
+      "title": "Two everyday requests",
+      "posts": {
+        "platforms": "Telegram · VKontakte",
+        "title": "Announce a change",
+        "body": "Share new opening hours or an offer. Review the draft for your organization’s visitors and approve sending to the selected platform."
+      },
+      "replies": {
+        "platforms": "Yandex.Business",
+        "title": "Reply to a review",
+        "body": "Request a reply to a review, then refine the details and tone. The text is sent only after your approval."
+      }
     }
   },
   "projects": {
