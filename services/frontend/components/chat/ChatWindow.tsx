@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { useRef, useEffect, useState, useMemo, useCallback, useId } from 'react';
 import { Send, Square } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -19,7 +19,10 @@ import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { ProcessingApprovalBanner } from './ProcessingApprovalBanner';
 import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { AppInput as Input } from '@/components/design-system/AppInput';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { AppTextarea as Input } from '@/components/design-system/AppInput';
 import { SkeletonChat } from '@/components/states';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { useConversationFlow } from '@/hooks/useConversationFlow';
@@ -35,6 +38,10 @@ import { PermissionLoadError } from '@/components/permission/PermissionLoadError
 import { trackEvent } from '@/lib/telemetry';
 import type { Conversation } from '@/lib/conversations';
 
+const FOLLOW_THRESHOLD_PX = 80;
+const IME_KEY_CODE = 229;
+const composerSchema = z.object({ message: z.string() });
+
 interface ChatWindowProps {
   conversationId: string;
   // Forwarded to ChatHeader → ChatRowMenu so the chat owner (chat/[id]/page)
@@ -45,6 +52,7 @@ interface ChatWindowProps {
 
 export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
   const tChat = useTranslations('chat.window');
+  const composerId = useId();
   const {
     messages,
     isLoading,
@@ -57,7 +65,13 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     pendingApproval,
     resolveApproval,
   } = useConversationFlow({ conversationId });
-  const [input, setInput] = useState('');
+  const { register, watch, setValue } = useForm<z.infer<typeof composerSchema>>({
+    resolver: zodResolver(composerSchema),
+    defaultValues: { message: '' },
+  });
+  const input = watch('message');
+  const followingRef = useRef(true);
+  const sendingRef = useRef(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
@@ -76,7 +90,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   // mid-turn). Block new sends — the backend would reject with
   // turn_already_in_progress anyway.
   const composerDisabled =
-    isStreaming || awaitingTurn || pendingApproval !== null || !canSend || loadError;
+    isLoading || isStreaming || awaitingTurn || pendingApproval !== null || !canSend || loadError;
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
@@ -140,14 +154,19 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   }, [messages]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (followingRef.current) bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
   }, [messages]);
 
   const handleSend = async () => {
     const text = input.trim();
     if (!text || composerDisabled) return;
-    setInput('');
-    await sendMessage(text);
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await sendMessage(text, () => setValue('message', ''));
+    } finally {
+      sendingRef.current = false;
+    }
   };
 
   const handlePickerChange = (projectId: string | null) => {
@@ -174,7 +193,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div data-ov-motion className="flex h-full min-h-0 min-w-0 flex-col">
       <FirstActionWizard open={wizardOpen} onClose={closeWizard} />
 
       {/* Chat header — (USER OVERRIDE) Landmine 1:
@@ -198,8 +217,14 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
         />
       )}
 
-      {/* Messages — paper-well backdrop matches mock-ai-chat.jsx (line 146). */}
-      <div className="flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6 md:scroll-py-8">
+      <div
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          followingRef.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD_PX;
+        }}
+        className="min-h-0 flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6 md:scroll-py-8"
+      >
         {isLoading ? (
           <SkeletonChat className="bg-transparent p-0" />
         ) : loadError ? (
@@ -245,43 +270,51 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
         ) : (
           messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
         )}
+
+        {/* Expired approval banner — sits above the card; owned by. */}
+        {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
+
+        {/* Processing banner — the batch was approved and the resume is running
+          server-side (resolving). Replaces the actionable card so a reload
+          mid-resume cannot re-submit (which would 409 already_resolved). */}
+        {pendingApproval?.status === 'resolving' && <ProcessingApprovalBanner />}
+
+        {/* Integration-token-invalid banner — surfaces above the composer when
+          the newest assistant turn's tool call failed with the typed code. */}
+        {tokenInvalidCall && (
+          <IntegrationTokenInvalidBanner platform={tokenInvalidCall.name.split('__')[0] ?? ''} />
+        )}
+
+        {/* Inline approval card — renders only when a pending batch exists. */}
+        {pendingApproval?.status === 'pending' && (
+          <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
+            <ToolApprovalCard batch={pendingApproval} onSubmit={resolveApproval} />
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
-      {/* Expired approval banner — sits above the card; owned by. */}
-      {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
-
-      {/* Processing banner — the batch was approved and the resume is running
-          server-side (resolving). Replaces the actionable card so a reload
-          mid-resume cannot re-submit (which would 409 already_resolved). */}
-      {pendingApproval?.status === 'resolving' && <ProcessingApprovalBanner />}
-
-      {/* Integration-token-invalid banner — surfaces above the composer when
-          the newest assistant turn's tool call failed with the typed code. */}
-      {tokenInvalidCall && (
-        <IntegrationTokenInvalidBanner platform={tokenInvalidCall.name.split('__')[0] ?? ''} />
-      )}
-
-      {/* Inline approval card — renders only when a pending batch exists. */}
-      {pendingApproval?.status === 'pending' && (
-        <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
-          <ToolApprovalCard batch={pendingApproval} onSubmit={resolveApproval} />
-        </div>
-      )}
-
-      {/* Composer — Linen rebuild per mock-ai-chat.jsx Composer (lines
-          308–325): an outer paper section that hosts a paper-sunken
-          inner card. Input handles the ochre focus ring; the send button
-          stays graphite (variant="primary") because ochre is reserved
-          for the single moment of emphasis in this surface (the inline
-          ApprovalCard). The keep-disabled-while-streaming-or-pending
-          contract is unchanged. */}
       <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
-        <div className="flex gap-2 rounded-md border border-line bg-paper-sunken p-2 transition-colors focus-within:border-brand">
+        <label htmlFor={composerId} className="mb-2 block text-meta font-medium">
+          {tChat('messagePlaceholder')}
+        </label>
+        <div className="flex gap-2 rounded-md border border-control bg-paper-sunken p-2 transition-colors focus-within:border-brand">
           <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
+            id={composerId}
+            {...register('message')}
+            rows={3}
+            onKeyDown={(e) => {
+              if (
+                e.key === 'Enter' &&
+                (e.ctrlKey || e.metaKey) &&
+                !e.nativeEvent.isComposing &&
+                e.keyCode !== IME_KEY_CODE
+              ) {
+                e.preventDefault();
+                void handleSend();
+              }
+            }}
             placeholder={tChat('messagePlaceholder')}
             aria-label={tChat('messagePlaceholder')}
             disabled={composerDisabled}
@@ -306,6 +339,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             </Button>
           )}
         </div>
+        <p className="mt-2 text-meta text-ink-soft">{tChat('sendHint')}</p>
         {sendPerm.isError ? (
           <div className="mt-2">
             <PermissionLoadError onRetry={sendPerm.refetch} />

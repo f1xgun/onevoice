@@ -7,13 +7,13 @@ export function useIsDesktop(): boolean {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return false; // SSR: keep mobile default
     }
-    return window.matchMedia('(min-width: 768px)').matches;
+    return window.matchMedia('(min-width: 1280px)').matches;
   });
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
 
-    const query = window.matchMedia('(min-width: 768px)');
+    const query = window.matchMedia('(min-width: 1280px)');
     setIsDesktop(query.matches);
 
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);

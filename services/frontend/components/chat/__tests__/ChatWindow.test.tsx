@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -341,3 +341,51 @@ describe('ChatWindow — IntegrationTokenInvalidBanner detector', () => {
     expect(screen.queryByRole('link', { name: /Переподключить/ })).not.toBeInTheDocument();
   });
 });
+
+describe('composer keyboard and failed submission', () => {
+  it('keeps Enter multiline, ignores IME, and preserves text after a rejected POST', async () => {
+    const fetchMock = mockGetMessages({ messages: [], pendingApprovals: [] });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText('Чем могу помочь?');
+    const input = screen.getByRole('textbox', { name: 'Напишите сообщение…' });
+    expect(input.tagName).toBe('TEXTAREA');
+    fireEvent.change(input, { target: { value: 'Первая строка\nВторая строка' } });
+    fetchMock.mockClear();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true, isComposing: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockResolvedValue(new Response('{}', { status: 503 }));
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(input).not.toBeDisabled());
+    expect(input).toHaveValue('Первая строка\nВторая строка');
+  });
+});
+
+it.each([
+  { frame: 'data: {"type":"done"}\n\n', cleared: true },
+  { frame: 'data: {"type":"error","code":"max_iterations"}\n\n', cleared: false },
+])(
+  'clears the instruction only after successful streaming: $cleared',
+  async ({ frame, cleared }) => {
+    const fetchMock = mockGetMessages({ messages: [], pendingApprovals: [] });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText('Чем могу помочь?');
+    const input = screen.getByRole('textbox', { name: 'Напишите сообщение…' });
+    fireEvent.change(input, { target: { value: 'Проверить текст' } });
+    fetchMock.mockResolvedValue(
+      new Response(frame, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+    );
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    await waitFor(() => expect(input).not.toBeDisabled());
+    await waitFor(() => expect(input).toHaveValue(cleared ? '' : 'Проверить текст'));
+  }
+);

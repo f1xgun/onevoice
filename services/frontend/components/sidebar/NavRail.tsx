@@ -15,6 +15,8 @@ import {
   Compass,
   MessageSquarePlus,
   LogOut,
+  Check,
+  Minus,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -37,14 +39,6 @@ interface Integration {
   last_sync_at?: string;
 }
 
-// Permanent icon-only nav-rail: width 56–64 px, vertical icon column,
-// rendered on every authenticated route. Project tree, search, and pinned
-// rows live in <ProjectPane> — NOT here.
-//
-// Order locked by design handoff README v2 §5: Чат → Интеграции → Профиль
-// бизнеса → Отзывы → Посты → Задачи → Настройки. labelKey resolves through
-// nav.* in messages/ru.json so the rendered tooltip + aria-label localize
-// in lockstep.
 type NavItem = { href: string; labelKey: string; icon: typeof MessageCircle };
 const navItems: NavItem[] = [
   { href: '/chat', labelKey: 'chat', icon: MessageCircle },
@@ -97,10 +91,11 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
     <TooltipProvider delayDuration={150}>
       <aside
         data-testid="nav-rail"
+        data-ov-motion
         aria-label={tSidebar('railWrapperAria')}
         className={cn(
           'flex shrink-0 flex-col items-center border-r border-line bg-paper-raised py-2',
-          expanded ? 'h-auto w-full px-3' : 'h-screen w-14'
+          expanded ? 'h-auto w-full px-3' : 'h-dvh w-52 overflow-y-auto px-3'
         )}
       >
         {/* OV mark — graphite on paper, the always-visible brand cue. Anchored
@@ -119,15 +114,9 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
             memberships and a «+ Создать организацию» footer. */}
         <BusinessSwitcher />
 
-        {/* Vertical nav-list. Active state: ink icon + 2px ochre left bar
-            (no background change). Idle: ink-soft → ink on hover with
-            paper-sunken wash. */}
-        <nav
-          aria-label={tNav('railAria')}
-          className={cn('flex flex-1 flex-col gap-1', expanded && 'w-full')}
-        >
+        <nav aria-label={tNav('railAria')} className={cn('flex flex-1 flex-col gap-1', 'w-full')}>
           {navItems.map(({ href, labelKey, icon: Icon }) => {
-            const isActive = pathname.startsWith(href);
+            const isActive = pathname === href || pathname.startsWith(`${href}/`);
             const label = tNav(labelKey);
             return (
               <Tooltip key={href}>
@@ -138,19 +127,21 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
                     aria-current={isActive ? 'page' : undefined}
                     onClick={onNavigate}
                     className={cn(
-                      'relative flex min-h-10 shrink-0 items-center rounded-md transition-colors',
-                      expanded ? 'w-full gap-3 px-3 py-2' : 'h-10 w-10 justify-center',
-                      isActive ? 'text-ink' : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
+                      'relative flex min-h-11 shrink-0 items-center rounded-md transition-colors',
+                      'w-full gap-3 px-3 py-2',
+                      isActive
+                        ? 'bg-brand-soft font-semibold text-ink'
+                        : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                     )}
                   >
                     {isActive && (
                       <span
                         aria-hidden
-                        className="absolute -left-2 bottom-2 top-2 w-0.5 rounded-r bg-ochre"
+                        className="absolute -left-2 bottom-2 top-2 w-0.5 rounded-r bg-brand"
                       />
                     )}
                     <Icon size={18} className="shrink-0" />
-                    {expanded && <span className="text-sm">{label}</span>}
+                    <span className="text-meta">{label}</span>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">{label}</TooltipContent>
@@ -173,13 +164,13 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
                 const integration = integrations?.find((i) => i.platform === platform);
                 const connected = integration?.status === 'active';
                 return (
-                  <span
-                    key={platform}
-                    className={cn(
-                      'h-2 w-2 rounded-full',
-                      connected ? 'bg-success' : 'bg-ink-faint'
-                    )}
-                  />
+                  <span key={platform} className="flex items-center gap-2 text-meta text-ink-soft">
+                    {connected ? <Check size={18} aria-hidden /> : <Minus size={18} aria-hidden />}
+                    <span>
+                      {platformFullLabels[platform]}:{' '}
+                      {tNav(connected ? 'connected' : 'notConnected')}
+                    </span>
+                  </span>
                 );
               })}
             </div>

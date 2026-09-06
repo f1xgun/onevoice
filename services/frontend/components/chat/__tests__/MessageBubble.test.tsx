@@ -64,3 +64,18 @@ describe('MessageBubble — typing / working indicator', () => {
     expect(screen.queryByText(/\[Error:/)).not.toBeInTheDocument();
   });
 });
+
+it('shows authors beside owner text and semantic Markdown', () => {
+  render(
+    <>
+      <MessageBubble message={{ id: 'u', role: 'user', content: 'Поручение', status: 'done' }} />
+      <MessageBubble
+        message={assistant({ status: 'done', content: '## Черновик\n\n**Проверить** текст' })}
+      />
+    </>
+  );
+  expect(screen.getByText('Вы')).toBeInTheDocument();
+  expect(screen.getByText('OneVoice')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Черновик' })).toBeInTheDocument();
+  expect(screen.getByText('Проверить').tagName).toBe('STRONG');
+});

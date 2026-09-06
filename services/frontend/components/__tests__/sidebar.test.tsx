@@ -108,10 +108,10 @@ describe('Sidebar — projects subtree visibility (preserved on mobile drawer)',
     15000
   );
 
-  it('renders projects subtree on /chat (drawer open)', async () => {
+  it('omits duplicated history on /chat (drawer open)', async () => {
     await renderAndOpenDrawer('/chat');
-    expect(screen.getByText('Без проекта')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
+    expect(screen.queryByText('Без проекта')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /\+ Новый проект/ })).not.toBeInTheDocument();
   });
 
   it('renders projects subtree on /chat/:id (drawer open)', async () => {

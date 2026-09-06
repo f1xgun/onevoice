@@ -6,13 +6,13 @@ import { ActionButton as Button } from '@/components/design-system/ActionButton'
 import { cn } from '@/lib/utils';
 import type { ApprovalAction } from '@/types/chat';
 
-type ActiveVariant = 'default' | 'secondary' | 'destructive';
+type ActiveVariant = 'secondary' | 'destructive';
 
 // Variant mapping for the active state of each action (UI-SPEC §Color §Copy).
 // Approve → primary (indigo), Edit → secondary with an extra ring, Reject →
 // destructive (red). Inactive state on every button is `outline`.
 const ACTIVE_VARIANTS: Record<ApprovalAction, ActiveVariant> = {
-  approve: 'default',
+  approve: 'secondary',
   edit: 'secondary',
   reject: 'destructive',
 };

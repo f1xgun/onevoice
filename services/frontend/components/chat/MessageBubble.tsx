@@ -1,27 +1,9 @@
-// components/chat/MessageBubble.tsx — OneVoice (Linen) chat message
-//
-// Design contract from design_handoff_onevoice 2/mocks/mock-ai-chat.jsx:
-//   - User messages: right-aligned ink-fill bubble (dark graphite bg,
-//     paper text), rounded with a smaller top-right corner — the
-//     conventional chat "tail" trick.
-//   - Assistant messages: left-aligned, prefixed with the OneVoice
-//     ChannelMark, body on a quiet paper-raised card with a 1 px line
-//     border. Markdown rendered inside.
-//   - Streaming dots: bouncing ink-faint discs alongside a visible
-//     localized caption (UI-SPEC: operators need to read the state, not
-//     just see animated dots).
-//
-// Public contract: { message: Message } — unchanged from the previous
-// implementation, so every call-site (ChatWindow, scroll-into-view,
-// data-message-id query selector for the highlight hook) keeps working.
-
 import Markdown, { type Components } from 'react-markdown';
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { ToolCallsBlock } from './ToolCallsBlock';
 import { TypingIndicator } from './TypingIndicator';
 import { StreamErrorNotice } from './StreamErrorNotice';
-import { ChannelMark } from '@/components/ui/channel-mark';
 import { isTrustedImageSrc, safeExternalHref } from '@/lib/trustedImage';
 import type { Message } from '@/types/chat';
 
@@ -75,8 +57,9 @@ export function MessageBubble({ message }: { message: Message }) {
 
   if (isUser) {
     return (
-      <div data-message-id={message.id} className="mb-5 flex justify-end">
-        <div className="max-w-[78%] whitespace-pre-wrap rounded-md rounded-tr-[4px] bg-ink px-4 py-3 text-sm leading-relaxed text-paper">
+      <div data-message-id={message.id} className="mx-auto mb-6 w-full max-w-[66ch]">
+        <div className="min-w-0 whitespace-pre-wrap break-words rounded-md bg-paper-sunken px-4 py-3 text-reading text-ink">
+          <p className="mb-2 text-meta font-medium">{tWindow('authorOwner')}</p>
           {message.content}
         </div>
       </div>
@@ -88,15 +71,15 @@ export function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div data-message-id={message.id} className="mb-5 flex justify-start gap-3">
-      <ChannelMark name="OneVoice" size={22} className="mt-1" />
-      <div className="max-w-[78%] flex-1">
+    <div data-message-id={message.id} className="mx-auto mb-6 w-full min-w-0 max-w-[66ch]">
+      <p className="mb-2 text-meta font-medium">{tWindow('authorAssistant')}</p>
+      <div className="min-w-0">
         {!isDoneEmpty && (
-          <div className="rounded-md border border-line bg-paper-raised px-4 py-3 text-sm leading-relaxed text-ink shadow-ov-1">
+          <div className="min-w-0 break-words text-reading text-ink">
             {isStreamingEmpty ? (
               <TypingIndicator label={tWindow('typingAria')} />
             ) : (
-              <div className="prose prose-sm max-w-none prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0.5">
+              <div className="prose max-w-none text-reading text-ink prose-headings:text-ink prose-p:my-1 prose-a:text-brand prose-blockquote:text-ink-soft prose-strong:text-ink prose-code:text-ink prose-pre:bg-paper-sunken prose-pre:text-ink prose-ol:my-1 prose-ul:my-1 prose-li:my-0.5">
                 <Markdown components={markdownComponents}>{message.content}</Markdown>
               </div>
             )}

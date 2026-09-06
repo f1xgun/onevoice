@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
@@ -66,13 +66,12 @@ export function ConversationItem({
   const displayTitle = getDisplayTitle(conv);
 
   return (
-    <div className="group flex items-center gap-3 rounded-lg border border-line p-4 transition-colors hover:bg-paper-sunken">
-      <MessageCircle size={20} className="shrink-0 text-ink-soft" />
-
+    <div className="group flex min-h-16 items-center gap-3 border-b border-line px-4 py-3 hover:bg-paper-sunken">
       <div className="min-w-0 flex-1">
         {editing ? (
           <Input
             ref={inputRef}
+            aria-label={tRow('rename')}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commitRename}
@@ -87,13 +86,16 @@ export function ConversationItem({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <button type="button" className="block w-full text-left" onClick={onOpen}>
-            <p className="truncate font-medium">{displayTitle}</p>
+          <button type="button" className="block min-h-11 w-full text-left" onClick={onOpen}>
+            <p className="break-words text-action">{displayTitle}</p>
             <p className="text-sm text-ink-soft">
-              {formatDistanceToNow(new Date(conv.createdAt), {
-                addSuffix: true,
-                locale: dateFnsLocale,
-              })}
+              {tRow('created')}{' '}
+              <time dateTime={conv.createdAt}>
+                {formatDistanceToNow(new Date(conv.createdAt), {
+                  addSuffix: true,
+                  locale: dateFnsLocale,
+                })}
+              </time>
             </p>
           </button>
         )}
@@ -106,7 +108,7 @@ export function ConversationItem({
               variant="ghost"
               size="icon"
               aria-label={tRow('triggerAria', { title: displayTitle })}
-              className="h-8 w-8 shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+              className="shrink-0"
               onClick={(e) => e.stopPropagation()}
             >
               <MoreHorizontal size={16} />

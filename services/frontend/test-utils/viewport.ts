@@ -7,7 +7,7 @@
  */
 
 /**
- * Override `window.matchMedia` so any query that asks about `min-width: 768px`
+ * Override `window.matchMedia` so any query that asks about `min-width: 1280px`
  * (the breakpoint `useIsDesktop` uses) reports `matches: true`. All other
  * queries continue to report `false`, matching mobile-first defaults.
  *
@@ -16,7 +16,7 @@
 export function setDesktopViewport(): void {
   window.matchMedia = (query: string) =>
     ({
-      matches: query.includes('min-width: 768px'),
+      matches: query.includes('min-width: 1280px'),
       media: query,
       onchange: null,
       addListener: () => {},

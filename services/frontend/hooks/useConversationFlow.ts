@@ -433,7 +433,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, onAccepted?: () => void) => {
       if (isStreamingRef.current) return;
 
       // Stop any in-flight-turn polling and drop its placeholder — the live
@@ -512,7 +512,12 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           return;
         }
 
-        await consumeSSEStream(response, controller.signal, onEventRef.current);
+        let failed = false;
+        await consumeSSEStream(response, controller.signal, (event) => {
+          if (event.type === 'error') failed = true;
+          onEventRef.current(event);
+        });
+        if (!failed && !controller.signal.aborted) onAccepted?.();
         void queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
         });

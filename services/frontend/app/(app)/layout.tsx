@@ -124,7 +124,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   if (sessionError) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-sm text-ink-mid">{tSession('refreshFailed')}</p>
         <Button type="button" onClick={() => setSessionAttempt((n) => n + 1)}>
           {tSession('retry')}
@@ -137,7 +137,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return null;
   }
 
-  const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
+  const showProjectPane = pathname.startsWith('/chat/') || pathname.startsWith('/projects');
 
   const user = useAuthStore.getState().user;
   const requiresEmailVerification =
@@ -153,7 +153,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             activeBusinessId. Renders no DOM. */}
         <PermissionsCacheGuard />
         {isDesktop ? (
-          <div className="flex h-screen">
+          <div className="flex h-dvh">
             <NavRail />
             <PanelGroup
               direction="horizontal"
@@ -216,13 +216,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 >
                   <DeletionGraceBanner />
                   <VerificationBanner />
-                  <div className="flex-1">{children}</div>
+                  <div className="min-h-0 flex-1">{children}</div>
                 </main>
               </Panel>
             </PanelGroup>
           </div>
         ) : (
-          <div className="flex h-screen flex-col">
+          <div className="flex h-dvh flex-col">
             <Sidebar />
             {/* tabIndex={-1}: see desktop branch above — required for the
                 SkipLink to actually transfer keyboard focus into <main>.
@@ -235,7 +235,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             >
               <DeletionGraceBanner />
               <VerificationBanner />
-              <div className="flex-1">{children}</div>
+              <div className="min-h-0 flex-1">{children}</div>
             </main>
           </div>
         )}

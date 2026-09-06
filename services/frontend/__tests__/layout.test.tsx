@@ -120,7 +120,7 @@ describe('AppLayout route-conditional ProjectPane', () => {
     setDesktopViewport();
   });
 
-  it('renders both NavRail and ProjectPane on /chat', async () => {
+  it('renders NavRail without duplicated history on /chat', async () => {
     usePathnameMock.mockReturnValue('/chat');
     const { container } = render(
       <Wrapper>
@@ -135,7 +135,7 @@ describe('AppLayout route-conditional ProjectPane', () => {
     });
 
     expect(container.querySelector('[data-testid="nav-rail"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="project-pane"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="project-pane"]')).toBeNull();
   });
 
   it('renders ONLY NavRail on /integrations (project-pane hidden)', async () => {

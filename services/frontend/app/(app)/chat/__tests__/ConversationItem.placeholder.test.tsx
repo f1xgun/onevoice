@@ -67,16 +67,11 @@ function renderItem(conv: TestConv) {
 }
 
 describe('ConversationItem placeholder', () => {
-  it('keeps the menu hidden until hover or focus and opens it from the keyboard', async () => {
+  it('keeps the menu visible for touch and opens it from the keyboard', async () => {
     const user = userEvent.setup();
     renderItem(baseConv);
     const trigger = screen.getByRole('button', { name: /Меню чата/ });
-    expect(trigger).toHaveClass(
-      'opacity-0',
-      'group-hover:opacity-100',
-      'focus-visible:opacity-100'
-    );
-    expect(trigger).not.toHaveClass('opacity-100');
+    expect(trigger).not.toHaveClass('opacity-0');
     await user.tab();
     await user.tab();
     expect(trigger).toHaveFocus();

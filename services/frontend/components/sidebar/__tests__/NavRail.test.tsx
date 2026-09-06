@@ -110,7 +110,7 @@ describe('NavRail', () => {
     expect(screen.queryByText('+ Новый проект')).toBeNull();
   });
 
-  it('renders within a w-14 (or w-16) narrow rail container (56–64 px)', () => {
+  it('renders a labelled desktop navigation', () => {
     const { container } = render(
       <Wrapper>
         <NavRail />
@@ -118,7 +118,7 @@ describe('NavRail', () => {
     );
     const rail = container.querySelector('[data-testid="nav-rail"]');
     expect(rail).not.toBeNull();
-    expect(rail?.className ?? '').toMatch(/\bw-(14|16)\b/);
+    expect(screen.getByRole('link', { name: 'Интеграции' })).toHaveTextContent('Интеграции');
   });
 
   it('marks the active route with the Linen indicator (ink text + ochre left bar)', () => {
@@ -131,7 +131,7 @@ describe('NavRail', () => {
     const active = screen.getByRole('link', { name: 'Интеграции' });
     expect(active).toHaveAttribute('aria-current', 'page');
     expect(active.className).toMatch(/\btext-ink\b/);
-    expect(active.querySelector('span.bg-ochre')).not.toBeNull();
+    expect(active.querySelector('span.bg-brand')).not.toBeNull();
   });
 
   it('logout button revokes the server session via POST /auth/logout then clears local state', async () => {
@@ -163,4 +163,19 @@ it('shows text labels and supports keyboard navigation in the mobile menu', asyn
   link.focus();
   await userEvent.keyboard('{Enter}');
   expect(onNavigate).toHaveBeenCalledOnce();
+});
+
+it.each([
+  ['/chat/conversation-id', 'Чат'],
+  ['/settings/team', 'Настройки'],
+  ['/integrations', 'Интеграции'],
+])('matches the direct URL %s to one labelled active section', (pathname, label) => {
+  usePathnameMock.mockReturnValue(pathname);
+  const { container } = render(
+    <Wrapper>
+      <NavRail />
+    </Wrapper>
+  );
+  expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+  expect(screen.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
 });

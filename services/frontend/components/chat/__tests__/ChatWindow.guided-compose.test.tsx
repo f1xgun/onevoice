@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
+import { hasLayoutBrowser, withLayoutPage } from '@/test-utils/browser-layout';
 import { ChatWindow } from '../ChatWindow';
 import { useConversationFlow } from '@/hooks/useConversationFlow';
 import { useBusinessStore } from '@/lib/stores/business';
@@ -123,3 +124,85 @@ describe('ChatWindow — guided compose seeds the existing send path', () => {
     ).toBeInTheDocument();
   });
 });
+
+it('does not scroll away from a reader and resumes following near the end', () => {
+  const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+  const client = makeClient();
+  function view() {
+    return (
+      <QueryClientProvider client={client}>
+        <ChatWindow conversationId="conv-1" />
+      </QueryClientProvider>
+    );
+  }
+  const { container, rerender } = render(view());
+  const feed = container.querySelector('.overflow-y-auto')!;
+  Object.defineProperties(feed, {
+    scrollHeight: { configurable: true, value: 2000 },
+    clientHeight: { configurable: true, value: 500 },
+    scrollTop: { configurable: true, writable: true, value: 200 },
+  });
+  fireEvent.scroll(feed);
+  scroll.mockClear();
+  rerender(view());
+  expect(scroll).not.toHaveBeenCalled();
+  feed.scrollTop = 1500;
+  fireEvent.scroll(feed);
+  rerender(view());
+  expect(scroll).toHaveBeenCalled();
+});
+
+it.skipIf(!hasLayoutBrowser)(
+  'keeps long approval text and its final action reachable across widths and locales',
+  async () => {
+    for (const locale of ['ru', 'en'] as const) {
+      (globalThis as unknown as { __setTestLocale: (locale: string) => void }).__setTestLocale(
+        locale
+      );
+      pendingApproval = {
+        ...singleCallBatch,
+        calls: singleCallBatch.calls.map((call) => ({
+          ...call,
+          args: { ...call.args, text: 'Ёё Йй Щщ ₽ № Long draft. '.repeat(100) },
+        })),
+      };
+      const { container, unmount } = render(
+        <Wrapper>
+          <div className="h-dvh">
+            <ChatWindow conversationId="conv-1" />
+          </div>
+        </Wrapper>
+      );
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: locale === 'ru' ? /^Изменить telegram/ : /^Edit telegram/,
+        })
+      );
+      for (const width of [320, 375, 768, 1024, 1440]) {
+        for (const theme of ['light', 'dark']) {
+          await withLayoutPage(
+            `<div class="${theme}">${container.innerHTML}</div>`,
+            { width, height: 740 },
+            async (page) => {
+              expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+              const text = page.locator('textarea:not([disabled])').first();
+              await text.scrollIntoViewIfNeeded();
+              const bounds = await text.boundingBox();
+              expect(bounds!.width).toBeGreaterThan(Math.min(width - 150, 400));
+              const finalAction = page.getByRole('button', {
+                name: locale === 'ru' ? 'Подтвердить' : 'Confirm',
+                exact: true,
+              });
+              await finalAction.scrollIntoViewIfNeeded();
+              const actionBounds = await finalAction.boundingBox();
+              expect(actionBounds!.y).toBeGreaterThanOrEqual(0);
+              expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(740);
+            }
+          );
+        }
+      }
+      unmount();
+    }
+  },
+  60000
+);

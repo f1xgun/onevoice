@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useReducer, useRef, useState } from 'react';
+import { DraftSurface } from '@/components/design-system/DraftSurface';
+import { DecisionMark } from '@/components/design-system/DecisionMark';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -44,8 +46,7 @@ export type DraftAction =
  *   - Invariant 10: `reject_reason` is sliced to 500 chars at write-time.
  *   - Switching off `reject` clears the staged `rejectReason` so a late
  *     swap to `approve` does not leak a partially-typed reason.
- *   - Invariant 12: the `reset` action is the sole entry point for batch
- *     swaps — called by the `useEffect` keyed on `batchId`.
+ *   - Explicit reload resets drafts; a new batch identity mounts a new editor.
  *   - Amber highlights are cleared on any `select` for the targeted call.
  */
 export function draftReducer(state: CallDraft[], action: DraftAction): CallDraft[] {
@@ -108,25 +109,22 @@ export interface ToolApprovalCardProps {
   onSubmit: (decisions: ApprovalDecision[]) => Promise<void>;
 }
 
-export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
+export function ToolApprovalCard(props: ToolApprovalCardProps) {
+  return <ApprovalDraft key={props.batch.batchId} {...props} />;
+}
+
+function ApprovalDraft({ batch: incomingBatch, onSubmit }: ToolApprovalCardProps) {
+  const [batch, setBatch] = useState(incomingBatch);
+  const changed = JSON.stringify(incomingBatch.calls) !== JSON.stringify(batch.calls);
   const tCard = useTranslations('chat.toolApproval.card');
   const [drafts, dispatch] = useReducer(draftReducer, batch, initialDrafts);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
 
-  useEffect(() => {
-    dispatch({ type: 'reset', drafts: initialDrafts(batch) });
-    // Keyed on batchId identity only: a fresh `batch` object reference with the
-    // same batchId (e.g. an unrelated token-refresh re-render upstream) must NOT
-    // wipe the operator's staged decisions. The closure still reads the latest
-    // `batch` when it does run on a genuine batch swap.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batch.batchId]);
-
   const allDecided = drafts.every((d) => d.decision !== 'undecided');
 
   async function handleSubmit() {
-    if (submittingRef.current) return;
+    if (submittingRef.current || changed) return;
     const undecided = drafts.filter((d) => d.decision === 'undecided');
     if (undecided.length > 0) {
       dispatch({
@@ -170,18 +168,32 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
   const title = tCard('titleWithCount', { count: batch.calls.length });
 
   return (
-    <div
+    <DraftSurface
       role="region"
       aria-labelledby="approval-card-title"
-      className="rounded-lg border border-border bg-card shadow-sm"
+      className="mx-auto max-w-[66ch]"
     >
       <div className="p-4">
-        <h2 id="approval-card-title" className="text-sm font-semibold">
+        <h2 id="approval-card-title" className="text-document-title">
           {title}
         </h2>
         <p className="text-xs text-muted-foreground">{tCard('subtitle')}</p>
       </div>
-      <div className="space-y-2 px-4 pb-2">
+      {changed && (
+        <div role="alert" className="space-y-3 p-4 text-warning">
+          <p>{tCard('changed')}</p>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setBatch(incomingBatch);
+              dispatch({ type: 'reset', drafts: initialDrafts(incomingBatch) });
+            }}
+          >
+            {tCard('reload')}
+          </Button>
+        </div>
+      )}
+      <div className="space-y-4">
         {batch.calls.map((call) => {
           const draft = draftByCallId.get(call.callId);
           if (!draft) return null;
@@ -195,7 +207,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
               key={call.callId}
               call={call}
               draft={entryDraft}
-              disabled={submitting}
+              disabled={submitting || changed}
               amberHighlighted={draft.amberHighlighted}
               onSelectDecision={(action) =>
                 dispatch({ type: 'select', callId: call.callId, decision: action })
@@ -210,15 +222,19 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
           );
         })}
       </div>
-      <div className="flex justify-end border-t p-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t py-4">
+        <span className="flex items-center gap-3 text-meta">
+          <DecisionMark />
+          {tCard('decision')}
+        </span>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex">
                 <Button
                   onClick={handleSubmit}
-                  disabled={submitting}
-                  aria-disabled={!allDecided || submitting}
+                  disabled={submitting || changed}
+                  aria-disabled={!allDecided || submitting || changed}
                   aria-describedby={!allDecided ? 'approval-card-submit-helper' : undefined}
                 >
                   {submitting && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
@@ -244,6 +260,6 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
           </span>
         )}
       </div>
-    </div>
+    </DraftSurface>
   );
 }

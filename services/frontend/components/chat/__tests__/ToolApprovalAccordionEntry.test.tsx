@@ -90,13 +90,13 @@ describe('ToolApprovalAccordionEntry — header + decision toggle', () => {
     expect(onSelectDecision).toHaveBeenCalledWith('approve');
   });
 
-  it('applies ring-amber-400 when amberHighlighted is true', () => {
+  it('applies ring-warning when amberHighlighted is true', () => {
     const { container } = renderEntry({
       call: singleCallBatch.calls[0]!,
       amberHighlighted: true,
     });
     const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper.className).toContain('ring-amber-400');
+    expect(wrapper.className).toContain('ring-warning');
   });
 
   it('when a decision is selected, the collapsible trigger aria-label switches to "свернуть"', () => {

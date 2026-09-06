@@ -6,7 +6,7 @@ import { ToolApprovalCard } from '../ToolApprovalCard';
 import { threeCallBatch } from '@/test-utils/pending-approval-fixtures';
 
 describe('ToolApprovalCard — premature Submit and atomic payload shape', () => {
-  it('Y) clicking Submit with undecided rows does NOT call onSubmit and applies ring-amber-400 to the undecided entries', async () => {
+  it('Y) clicking Submit with undecided rows does NOT call onSubmit and applies ring-warning to the undecided entries', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={onSubmit} />);
@@ -17,12 +17,12 @@ describe('ToolApprovalCard — premature Submit and atomic payload shape', () =>
 
     expect(onSubmit).not.toHaveBeenCalled();
 
-    const entries = document.querySelectorAll<HTMLElement>('[style*="border-left-width"]');
+    const entries = document.querySelectorAll<HTMLElement>('[data-approval-call]');
     expect(entries).toHaveLength(3);
 
-    expect(entries[0]!.className).not.toContain('ring-amber-400');
-    expect(entries[1]!.className).toContain('ring-amber-400');
-    expect(entries[2]!.className).toContain('ring-amber-400');
+    expect(entries[0]!.className).not.toContain('ring-warning');
+    expect(entries[1]!.className).toContain('ring-warning');
+    expect(entries[2]!.className).toContain('ring-warning');
   });
 
   it('clicking Submit premature a second time keeps the amber highlight on still-undecided rows', async () => {
@@ -31,15 +31,15 @@ describe('ToolApprovalCard — premature Submit and atomic payload shape', () =>
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={onSubmit} />);
 
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
-    let entries = document.querySelectorAll<HTMLElement>('[style*="border-left-width"]');
+    let entries = document.querySelectorAll<HTMLElement>('[data-approval-call]');
     expect(entries).toHaveLength(3);
     for (const e of entries) {
-      expect(e.className).toContain('ring-amber-400');
+      expect(e.className).toContain('ring-warning');
     }
 
     await user.click(screen.getByRole('button', { name: /Одобрить telegram__send_channel_post/ }));
-    entries = document.querySelectorAll<HTMLElement>('[style*="border-left-width"]');
-    expect(entries[0]!.className).not.toContain('ring-amber-400');
+    entries = document.querySelectorAll<HTMLElement>('[data-approval-call]');
+    expect(entries[0]!.className).not.toContain('ring-warning');
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -101,10 +101,10 @@ describe('ToolApprovalCard — premature Submit and atomic payload shape', () =>
 
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
 
-    const entries = document.querySelectorAll<HTMLElement>('[style*="border-left-width"]');
+    const entries = document.querySelectorAll<HTMLElement>('[data-approval-call]');
     expect(entries).toHaveLength(3);
     for (const e of entries) {
-      expect(e.className).toContain('ring-amber-400');
+      expect(e.className).toContain('ring-warning');
     }
     expect(onSubmit).not.toHaveBeenCalled();
     void within;

@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { cn } from '@/lib/utils';
-import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
+import { PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
 import type { ApprovalAction, PendingApprovalCall } from '@/types/chat';
 
 import { ToolApprovalArgsForm } from './ToolApprovalArgsForm';
@@ -61,7 +61,6 @@ export function ToolApprovalAccordionEntry({
   }, [draft.decision]);
 
   const platform = getPlatform(call.toolName);
-  const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
   const counterOver = draft.rejectReason.length > REJECT_REASON_MAX_LEN;
@@ -69,24 +68,28 @@ export function ToolApprovalAccordionEntry({
 
   return (
     <div
-      className={cn('rounded-md border', amberHighlighted && 'ring-2 ring-amber-400')}
-      style={{ borderLeftColor: color, borderLeftWidth: 3 }}
+      data-approval-call={call.callId}
+      className={cn('min-w-0 border-b border-line', amberHighlighted && 'ring-2 ring-warning')}
     >
+      {amberHighlighted && (
+        <p role="alert" className="p-3 text-meta text-warning">
+          {t('card.submitHelper')}
+        </p>
+      )}
       <Collapsible open={open} onOpenChange={setOpen}>
         <div className="flex flex-wrap items-center gap-2 px-3 py-2">
           <CollapsibleTrigger
             aria-label={`${call.toolName} — ${triggerLabel}`}
-            className="inline-flex items-center text-ink-mid hover:text-ink"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-ink"
           >
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </CollapsibleTrigger>
-          <span
-            className="rounded px-1.5 py-0.5 text-xs font-bold text-paper"
-            style={{ backgroundColor: color }}
-          >
+          <span className="rounded bg-paper-sunken px-2 py-1 text-meta font-medium text-ink">
             {label}
           </span>
-          <span className="font-mono text-xs text-ink-mid">{call.toolName}</span>
+          <span className="min-w-0 break-all font-mono text-technical text-ink-soft">
+            {call.toolName}
+          </span>
         </div>
 
         <div className="px-3 pb-3">
