@@ -207,7 +207,6 @@ func (p *BrowserPool) ensureBrowser() error {
 		Headless: playwright.Bool(true),
 		Args: []string{
 			"--disable-blink-features=AutomationControlled",
-			"--no-sandbox",
 		},
 	})
 	if err != nil {

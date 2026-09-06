@@ -437,21 +437,28 @@ services:
       - onevoice-network
     restart: unless-stopped
     # Defence-in-depth for the headless-browser worker: it navigates
-    # attacker-influenced content (review text, remote photos) with the
-    # Chromium sandbox off (--no-sandbox), so shrink the blast radius of a
-    # renderer compromise. A headless Chromium launched with --no-sandbox
-    # needs no Linux capabilities, so drop them all, and block privilege
-    # escalation through setuid binaries.
+    # attacker-influenced content (review text, remote photos), so the
+    # Chromium sandbox stays ON and the container shrinks the blast radius of
+    # a renderer compromise on top of it.
+    #
+    # Chromium's namespace sandbox needs unprivileged user namespaces
+    # (clone/unshare/setns with CLONE_NEWUSER), which Docker's default seccomp
+    # profile blocks — that is the only reason --no-sandbox used to be needed.
+    # infra/seccomp/chrome.json is the Docker default profile with exactly
+    # those syscalls allowed, so the sandbox works with every capability
+    # dropped and no-new-privileges set (validated locally against the
+    # Playwright base image under user/read_only/tmpfs/cap_drop).
     #
     # Runs as the base image's non-root `pwuser` on a read-only root
     # filesystem; the only writable surfaces are the tmpfs mounts below
     # (Chromium user-data-dir under /tmp, shared memory on /dev/shm sized up
     # from the 64 MB default so the renderer does not OOM, and pwuser's HOME
-    # for the browser profile/cache). Re-enabling the Chromium sandbox is a
-    # separate step (would require added caps + a smoke-test).
+    # for the browser profile/cache).
     #
     # NEEDS-LIVE-VALIDATION: run one real Yandex RPA tool after deploy to
-    # confirm the browser still launches under user/read_only/tmpfs.
+    # confirm the browser launches sandboxed on the production kernel
+    # (unprivileged user namespaces must be enabled on the host:
+    # sysctl kernel.unprivileged_userns_clone=1 on kernels that gate it).
     user: pwuser
     read_only: true
     tmpfs:
@@ -462,6 +469,7 @@ services:
       - ALL
     security_opt:
       - "no-new-privileges:true"
+      - "seccomp=./infra/seccomp/chrome.json"
 
   # LLM Orchestrator
   orchestrator:
