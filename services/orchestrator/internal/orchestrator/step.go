@@ -283,7 +283,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		manualCalls, forbiddenCalls = enforceOffered(manualCalls, forbiddenCalls, offered)
 
 		for _, tc := range forbiddenCalls {
-			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
+			rejectionMsg := buildRejectionMessage(rejectionByPolicy, reasonPolicyForbidden, policyForbiddenNote)
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
 				Content:    rejectionMsg,
@@ -294,7 +294,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 				Type:       EventToolRejected,
 				ToolCallID: tc.ID,
 				ToolName:   tc.Function.Name,
-				Content:    "policy_forbidden",
+				Content:    reasonPolicyForbidden,
 			}:
 			case <-ctx.Done():
 				return OutcomeError, "", ctx.Err()

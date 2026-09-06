@@ -112,10 +112,16 @@ Each iteration of the for-loop performs:
    `(autoCalls, manualCalls, forbiddenCalls)`. `hitl.Bucket` is a pure
    function so this loop and the resolve-path TOCTOU re-check cannot
    diverge.
-9. **Forbidden calls** → synthetic `{"rejected":true,"reason":
-   "policy_forbidden"}` tool-role message appended to `state.Messages` +
-   `EventToolRejected` emitted. **Not** dispatched. The LLM sees the
-   outcome on the next iteration.
+9. **Forbidden calls** → synthetic rejection tool-role message appended to
+   `state.Messages` + `EventToolRejected` emitted. **Not** dispatched. The
+   LLM sees the outcome on the next iteration. The payload is built by
+   `rejection.go:buildRejectionMessage` and is self-describing —
+   `{"rejected":true,"by":"policy","reason":"policy_forbidden","note":"…"}`.
+   The `note` states that OneVoice (not the platform) blocked the call and
+   forbids both retrying it and substituting another channel; without it the
+   model reliably invents a platform-side cause and offers a retry that can
+   never succeed. The `reason` token on the wire `EventToolRejected` is
+   unchanged — the frontend maps it to badge copy.
 10. **Auto calls** → `dispatchToolCalls(ctx, out, autoCalls,
     &state.Messages)` (parallel fan-out; appends tool-role messages in
     original `tool_calls` order regardless of completion order — preserves

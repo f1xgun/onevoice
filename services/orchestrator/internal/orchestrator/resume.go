@@ -240,9 +240,9 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		if call.Verdict != "approve" && call.Verdict != "edit" {
 			reason := call.RejectReason
 			if reason == "" {
-				reason = "user_rejected"
+				reason = reasonUserRejected
 			}
-			rejectionMsg := fmt.Sprintf(`{"rejected":true,"reason":%q}`, reason)
+			rejectionMsg := buildRejectionMessage(rejectionByOwner, reason, ownerRejectionNote)
 			mu.Lock()
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
@@ -262,7 +262,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 
 		if !offered[call.ToolName] {
-			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
+			rejectionMsg := buildRejectionMessage(rejectionByPolicy, reasonPolicyForbidden, policyForbiddenNote)
 			mu.Lock()
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
@@ -274,7 +274,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
-				Content:    "policy_forbidden",
+				Content:    reasonPolicyForbidden,
 			}) {
 				return
 			}
@@ -284,7 +284,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		floor := o.tools.Floor(call.ToolName)
 		effective := hitl.Resolve(floor, req.BusinessApprovals, req.ProjectApprovalOverrides, call.ToolName)
 		if effective == domain.ToolFloorForbidden {
-			rejectionMsg := `{"rejected":true,"reason":"policy_revoked"}`
+			rejectionMsg := buildRejectionMessage(rejectionByPolicy, reasonPolicyRevoked, policyRevokedNote)
 			mu.Lock()
 			state.Messages = append(state.Messages, llm.Message{
 				Role:       "tool",
@@ -296,7 +296,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
-				Content:    "policy_revoked",
+				Content:    reasonPolicyRevoked,
 			}) {
 				return
 			}
