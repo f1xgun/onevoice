@@ -507,7 +507,11 @@ func (t *Turn) runResumeStream(
 					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 				}
 			case sseEventError:
-				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
+				msg.Status, msg.Content = domain.MessageStatusError, postText.String()
+				msg.ErrorCode = ev.Code
+				if msg.ErrorCode == "" {
+					msg.ErrorCode = "STREAM_ERROR"
+				}
 				t.persistResumeDone(ctx, &msg, businessID, actorUserID, recCalls, recResults)
 				terminated = true
 			case "done":

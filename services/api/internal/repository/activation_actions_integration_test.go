@@ -1,0 +1,163 @@
+//go:build integration
+
+package repository
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+)
+
+func TestActionActivationHistory(t *testing.T) {
+	for _, tt := range []struct {
+		name              string
+		status            string
+		content           string
+		errorCode         string
+		tools             []domain.ToolCall
+		successfulOutcome bool
+		taskStatus        string
+		want              bool
+	}{
+		{name: "success with twenty newer empty chats", status: "complete", content: "Done", successfulOutcome: true, want: true},
+		{name: "pre-upgrade failed stream", status: "complete", content: "Partial answer"},
+		{name: "pre-upgrade interrupted stream", status: "complete", content: "Partial answer"},
+		{name: "ambiguous old completed answer", status: "complete", content: "Done"},
+		{name: "no success"},
+		{name: "failed turn", status: "error", content: "Partial answer"},
+		{name: "legacy answer", content: "Done"},
+		{name: "pending turn", status: "pending_approval", content: "Partial"},
+		{name: "blank answer", successfulOutcome: true, status: "complete", content: " \n\t"},
+		{name: "error code", successfulOutcome: true, status: "complete", content: "Partial", errorCode: "STREAM_ERROR"},
+		{name: "tool answer without successful task", successfulOutcome: true, status: "complete", content: "Done", tools: []domain.ToolCall{{ID: "tool"}}},
+		{name: "unambiguous old successful tool task", taskStatus: "done", want: true},
+		{name: "failed task", taskStatus: "error"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupMongoTestDB(t)
+			ctx := context.Background()
+			org := uuid.New()
+			other := uuid.New()
+			conversations := NewConversationRepository(db)
+			old := &domain.Conversation{ID: "old", BusinessID: org.String()}
+			require.NoError(t, conversations.Create(ctx, old))
+			msg := &domain.Message{ID: "old-answer", ConversationID: old.ID, Role: domain.MessageRoleAssistant, Status: tt.status, Content: tt.content, ErrorCode: tt.errorCode, SuccessfulOutcome: tt.successfulOutcome, ToolCalls: tt.tools, CreatedAt: time.Now().Add(-24 * time.Hour)}
+			_, err := db.Collection("messages").InsertOne(ctx, msg)
+			require.NoError(t, err)
+			for i := 0; i < 20; i++ {
+				require.NoError(t, conversations.Create(ctx, &domain.Conversation{BusinessID: org.String()}))
+			}
+			_, err = db.Collection("agent_tasks").InsertOne(ctx, bson.M{"business_id": org.String(), "status": tt.taskStatus})
+			require.NoError(t, err)
+			_, err = db.Collection("agent_tasks").InsertOne(ctx, bson.M{"business_id": other.String(), "status": "done"})
+			require.NoError(t, err)
+			require.NoError(t, EnsureActionActivation(ctx, db))
+			require.NoError(t, EnsureActionActivation(ctx, db))
+			got, err := NewActionActivationRepository(db).HasFirstSuccessfulAction(ctx, org)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+			var stored domain.Message
+			require.NoError(t, db.Collection("messages").FindOne(ctx, bson.M{"_id": msg.ID}).Decode(&stored))
+			require.Equal(t, org.String(), stored.BusinessID)
+			require.Equal(t, msg.SuccessfulOutcome, stored.SuccessfulOutcome)
+			require.Equal(t, msg.Status, stored.Status)
+			require.Equal(t, msg.Content, stored.Content)
+		})
+	}
+}
+
+func TestActionActivationMessageWrites(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	org := uuid.New()
+	conv := &domain.Conversation{BusinessID: org.String()}
+	require.NoError(t, NewConversationRepository(db).Create(ctx, conv))
+	messages := NewMessageRepository(db)
+	msg := &domain.Message{ConversationID: conv.ID, Role: domain.MessageRoleAssistant, Status: domain.MessageStatusInProgress, Content: "Draft"}
+	require.NoError(t, messages.Create(ctx, msg))
+	reader := NewActionActivationRepository(db)
+	found, err := reader.HasFirstSuccessfulAction(ctx, org)
+	require.NoError(t, err)
+	require.False(t, found)
+	msg.Status = domain.MessageStatusComplete
+	require.NoError(t, messages.Update(ctx, msg))
+	found, err = reader.HasFirstSuccessfulAction(ctx, org)
+	require.NoError(t, err)
+	require.False(t, found)
+	msg.SuccessfulOutcome = true
+	msg.BusinessID = uuid.NewString()
+	require.NoError(t, messages.Update(ctx, msg))
+	found, err = reader.HasFirstSuccessfulAction(ctx, org)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, org.String(), msg.BusinessID)
+}
+
+func TestActionActivationReviews(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		document bson.M
+		write    func(context.Context, domain.ReviewRepository, string) error
+		want     bool
+	}{
+		{name: "generated draft", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateDraft(ctx, id, "Thank you", domain.ReviewDraftStatusReady, "", false)
+		}, want: true},
+		{name: "confirmed reply", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateReplyDispatched(ctx, id, "Thank you", domain.ReviewReplyStatusReplied, "approval")
+		}, want: true},
+		{name: "draft survives reply cleanup", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			if err := repo.UpdateDraft(ctx, id, "Thank you", domain.ReviewDraftStatusReady, "", false); err != nil {
+				return err
+			}
+			return repo.UpdateReply(ctx, id, "Thank you", domain.ReviewReplyStatusReplied, nil)
+		}, want: true},
+		{name: "failed draft", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateDraft(ctx, id, "", domain.ReviewDraftStatusFailed, "failed", false)
+		}},
+		{name: "blank draft", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateDraft(ctx, id, " \n\t", domain.ReviewDraftStatusReady, "", false)
+		}},
+		{name: "failed reply", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateReplyDispatched(ctx, id, "Thank you", domain.ReviewReplyStatusError, "approval")
+		}},
+		{name: "storage only reply", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateReply(ctx, id, "Thank you", domain.ReviewReplyStatusReplied, nil)
+		}},
+		{name: "legacy ready draft", document: bson.M{"draft_status": "ready", "draft_reply": "Thank you"}, want: true},
+		{name: "ambiguous draft", document: bson.M{"draft_reply": "Thank you"}},
+		{name: "generating draft", document: bson.M{"draft_status": "generating", "draft_reply": "Thank you"}},
+		{name: "draft with error", document: bson.M{"draft_status": "ready", "draft_reply": "Thank you", "draft_error": "failed"}},
+		{name: "imported reply", document: bson.M{"reply_status": "replied", "reply_text": "Thank you"}},
+		{name: "unconfirmed dispatch", document: bson.M{"dispatch_approval_id": "approval", "reply_text": "Thank you"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupMongoTestDB(t)
+			ctx := context.Background()
+			businessID := uuid.New()
+			doc := tt.document
+			if doc == nil {
+				doc = bson.M{}
+			}
+			doc["_id"] = "review"
+			doc["business_id"] = businessID.String()
+			_, err := db.Collection("reviews").InsertOne(ctx, doc)
+			require.NoError(t, err)
+			_, err = db.Collection("reviews").InsertOne(ctx, bson.M{"business_id": uuid.NewString(), "successful_action": true})
+			require.NoError(t, err)
+			if tt.write != nil {
+				require.NoError(t, tt.write(ctx, NewReviewRepository(db), "review"))
+			}
+			require.NoError(t, EnsureActionActivation(ctx, db))
+			got, err := NewActionActivationRepository(db).HasFirstSuccessfulAction(ctx, businessID)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

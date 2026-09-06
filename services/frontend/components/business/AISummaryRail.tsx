@@ -71,7 +71,7 @@ export function AISummaryRail({ business, tones }: AISummaryRailProps) {
   return (
     <aside
       aria-label={t('railAria')}
-      className="flex flex-col gap-3 lg:sticky lg:top-8 lg:self-start"
+      className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere] xl:sticky xl:top-8 xl:self-start"
     >
       {/* AI understanding */}
       <section className="flex flex-col gap-3 rounded-lg border border-line bg-paper-sunken p-5">

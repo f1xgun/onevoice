@@ -847,6 +847,10 @@ components:
       - createdAt
       - updatedAt
       properties:
+        hasFirstSuccessfulAction:
+          type: boolean
+          readOnly: true
+          description: Whether the organization has a persisted completed platform tool task or text-only assistant answer with an explicit successful outcome across its entire history, or a successfully generated review draft or confirmed review reply dispatch. Imported replies and ambiguous review attempts do not count. Ambiguous historical turns do not count; organization ID backfills never assign success. Authoritative on GET business profile.
         id:
           type: string
           format: uuid
@@ -2295,6 +2299,10 @@ components:
           additionalProperties: true
         status:
           type: string
+          description: Complete denotes a successful turn; error denotes a failed stream, including partial text. An absent legacy status is not proof of success.
+        errorCode:
+          type: string
+          description: Machine-readable stream error code; STREAM_ERROR when no upstream code is supplied.
         createdAt:
           type: string
           format: date-time

@@ -57,7 +57,13 @@ type PgxBeginner interface {
 	BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)
 }
 
+// FirstActionSource reads successful actions across an organization's full history.
+type FirstActionSource interface {
+	HasFirstSuccessfulAction(context.Context, uuid.UUID) (bool, error)
+}
+
 type businessService struct {
+	firstActions   FirstActionSource
 	repo           domain.BusinessRepository
 	membershipRepo domain.BusinessMembershipRepository
 	roleRepo       domain.RoleRepository
@@ -75,6 +81,7 @@ func NewBusinessService(
 	roleRepo domain.RoleRepository,
 	pool PgxBeginner,
 	auditLogger audit.Logger,
+	firstActions ...FirstActionSource,
 ) BusinessService {
 	if repo == nil {
 		panic("repo cannot be nil")
@@ -91,7 +98,12 @@ func NewBusinessService(
 	if auditLogger == nil {
 		auditLogger = audit.Nop()
 	}
+	var actions FirstActionSource
+	if len(firstActions) > 0 {
+		actions = firstActions[0]
+	}
 	return &businessService{
+		firstActions:   actions,
 		repo:           repo,
 		membershipRepo: membershipRepo,
 		roleRepo:       roleRepo,
@@ -224,6 +236,12 @@ func (s *businessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Bu
 		return nil, fmt.Errorf("get business: %w", err)
 	}
 
+	if s.firstActions != nil {
+		business.HasFirstSuccessfulAction, err = s.firstActions.HasFirstSuccessfulAction(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get first successful action: %w", err)
+		}
+	}
 	return business, nil
 }
 

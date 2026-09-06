@@ -520,17 +520,20 @@ type BillingErrorResponse struct {
 
 // Business defines model for Business.
 type Business struct {
-	Address     *string                `json:"address,omitempty"`
-	Category    *string                `json:"category,omitempty"`
-	CreatedAt   time.Time              `json:"createdAt" validate:"required"`
-	Description *string                `json:"description,omitempty"`
-	Id          openapi_types.UUID     `json:"id" validate:"required,uuid"`
-	LogoUrl     *string                `json:"logoUrl,omitempty"`
-	Name        string                 `json:"name" validate:"required"`
-	Phone       *string                `json:"phone,omitempty"`
-	Settings    map[string]interface{} `json:"settings" validate:"required"`
-	UpdatedAt   time.Time              `json:"updatedAt" validate:"required"`
-	Website     *string                `json:"website"`
+	Address     *string   `json:"address,omitempty"`
+	Category    *string   `json:"category,omitempty"`
+	CreatedAt   time.Time `json:"createdAt" validate:"required"`
+	Description *string   `json:"description,omitempty"`
+
+	// HasFirstSuccessfulAction Whether the organization has a persisted completed platform tool task or text-only assistant answer with an explicit successful outcome across its entire history, or a successfully generated review draft or confirmed review reply dispatch. Imported replies and ambiguous review attempts do not count. Ambiguous historical turns do not count; organization ID backfills never assign success. Authoritative on GET business profile.
+	HasFirstSuccessfulAction *bool                  `json:"hasFirstSuccessfulAction,omitempty"`
+	Id                       openapi_types.UUID     `json:"id" validate:"required,uuid"`
+	LogoUrl                  *string                `json:"logoUrl,omitempty"`
+	Name                     string                 `json:"name" validate:"required"`
+	Phone                    *string                `json:"phone,omitempty"`
+	Settings                 map[string]interface{} `json:"settings" validate:"required"`
+	UpdatedAt                time.Time              `json:"updatedAt" validate:"required"`
+	Website                  *string                `json:"website"`
 }
 
 // BusinessMembershipRoleRef defines model for BusinessMembershipRoleRef.
@@ -1053,16 +1056,21 @@ type Member struct {
 
 // Message defines model for Message.
 type Message struct {
-	Attachments    *[]MessageAttachment    `json:"attachments,omitempty"`
-	Content        string                  `json:"content" validate:"required"`
-	ConversationId string                  `json:"conversationId" validate:"required"`
-	CreatedAt      time.Time               `json:"createdAt" validate:"required"`
-	Id             string                  `json:"id" validate:"required"`
-	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
-	Role           MessageRole             `json:"role" validate:"required,oneof=user assistant system"`
-	Status         *string                 `json:"status,omitempty"`
-	ToolCalls      *[]MessageToolCall      `json:"toolCalls,omitempty"`
-	ToolResults    *[]MessageToolResult    `json:"toolResults,omitempty"`
+	Attachments    *[]MessageAttachment `json:"attachments,omitempty"`
+	Content        string               `json:"content" validate:"required"`
+	ConversationId string               `json:"conversationId" validate:"required"`
+	CreatedAt      time.Time            `json:"createdAt" validate:"required"`
+
+	// ErrorCode Machine-readable stream error code; STREAM_ERROR when no upstream code is supplied.
+	ErrorCode *string                 `json:"errorCode,omitempty"`
+	Id        string                  `json:"id" validate:"required"`
+	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
+	Role      MessageRole             `json:"role" validate:"required,oneof=user assistant system"`
+
+	// Status Complete denotes a successful turn; error denotes a failed stream, including partial text. An absent legacy status is not proof of success.
+	Status      *string              `json:"status,omitempty"`
+	ToolCalls   *[]MessageToolCall   `json:"toolCalls,omitempty"`
+	ToolResults *[]MessageToolResult `json:"toolResults,omitempty"`
 }
 
 // MessageRole defines model for Message.Role.

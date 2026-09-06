@@ -149,3 +149,18 @@ describe('NavRail', () => {
     expect(logoutMock).toHaveBeenCalled();
   });
 });
+
+it('shows text labels and supports keyboard navigation in the mobile menu', async () => {
+  const onNavigate = vi.fn();
+  render(
+    <Wrapper>
+      <NavRail expanded onNavigate={onNavigate} />
+    </Wrapper>
+  );
+  const link = screen.getByRole('link', { name: 'Интеграции' });
+  expect(link).toHaveTextContent('Интеграции');
+  expect(screen.getByTestId('nav-rail')).toHaveClass('w-full', 'h-auto');
+  link.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onNavigate).toHaveBeenCalledOnce();
+});

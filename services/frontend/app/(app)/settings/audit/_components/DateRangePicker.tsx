@@ -65,7 +65,7 @@ export function DateRangePicker({ from, to, onChange }: Props) {
   }
 
   return (
-    <fieldset className="flex flex-col gap-1">
+    <fieldset className="flex min-w-0 max-w-full flex-col gap-1">
       <legend className="text-sm text-ink-soft">{t('dateLabel')}</legend>
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((p) => {

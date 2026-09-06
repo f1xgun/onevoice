@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -1564,6 +1565,27 @@ func TestListUserBusinessesIncludesRestorationDeadline(t *testing.T) {
 			} else {
 				require.NotContains(t, got[0], "deletion_pending_until")
 			}
+		})
+	}
+}
+
+func TestBusinessHandler_FirstSuccessfulAction(t *testing.T) {
+	for _, success := range []bool{false, true} {
+		t.Run(fmt.Sprintf("success=%t", success), func(t *testing.T) {
+			businessID, userID := uuid.New(), uuid.New()
+			svc := new(MockBusinessService)
+			svc.On("GetByID", mock.Anything, businessID).Return(&domain.Business{ID: businessID, HasFirstSuccessfulAction: success}, nil)
+			h, err := NewBusinessHandler(svc, nil, nil)
+			require.NoError(t, err)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/businesses/"+businessID.String(), http.NoBody)
+			req = withBizCtx(req, bizPerms(businessID, userID))
+			w := httptest.NewRecorder()
+			h.GetBusiness(w, req)
+			require.Equal(t, http.StatusOK, w.Code)
+			var body map[string]interface{}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			require.Equal(t, success, body["hasFirstSuccessfulAction"])
+			svc.AssertExpectations(t)
 		})
 	}
 }

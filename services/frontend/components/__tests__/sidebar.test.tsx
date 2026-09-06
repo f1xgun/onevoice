@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Sidebar } from '../sidebar';
+import { hasLayoutBrowser, withLayoutPage } from '@/test-utils/browser-layout';
 import type { Project } from '@/types/project';
 
 // Mock next/navigation — usePathname drives the projects-subtree visibility gate.
@@ -76,6 +77,36 @@ describe('Sidebar — projects subtree visibility (preserved on mobile drawer)',
   beforeEach(() => {
     pathnameRef.current = '/chat';
   });
+
+  it('sizes the Close target and dismisses the drawer without a browser', async () => {
+    await renderAndOpenDrawer('/chat');
+    const dialog = screen.getByRole('dialog');
+    const close = screen.getByRole('button', { name: 'Закрыть', exact: true });
+    expect(dialog).toHaveClass('[&>button:first-child]:h-8', '[&>button:first-child]:w-8');
+    expect(dialog.querySelector('button:first-child')).toBe(close);
+    await userEvent.setup().click(close);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it.skipIf(!hasLayoutBrowser)(
+    'measures the Close target at a mobile viewport',
+    async () => {
+      await renderAndOpenDrawer('/chat');
+      await withLayoutPage(
+        screen.getByRole('dialog').outerHTML,
+        { width: 375, height: 667 },
+        async (page) => {
+          const box = await page
+            .getByRole('button', { name: 'Закрыть', exact: true })
+            .boundingBox();
+          expect(box).not.toBeNull();
+          expect(box!.width).toBeGreaterThanOrEqual(24);
+          expect(box!.height).toBeGreaterThanOrEqual(24);
+        }
+      );
+    },
+    15000
+  );
 
   it('renders projects subtree on /chat (drawer open)', async () => {
     await renderAndOpenDrawer('/chat');

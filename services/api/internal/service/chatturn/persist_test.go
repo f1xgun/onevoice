@@ -233,3 +233,34 @@ func TestPersistContext_DetachesFromParentCancellation(t *testing.T) {
 	assert.Equal(t, "corr-detach", logger.CorrelationIDFromContext(ctx),
 		"values must still be copied off a canceled parent")
 }
+
+func TestPersistAfterStream_ErrorOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name, text, content, code, wantCode string
+	}{
+		{"immediate", "", "Provider unavailable", "PROVIDER_ERROR", "PROVIDER_ERROR"},
+		{"partial", "Draft so far", "Provider unavailable", "PROVIDER_ERROR", "PROVIDER_ERROR"},
+		{"uncoded", "", "Provider unavailable", "", "STREAM_ERROR"},
+		{"empty error", "Draft so far", "", "", "STREAM_ERROR"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeMessageRepo{}
+			turn := &Turn{deps: Deps{Messages: repo}}
+			state := newStreamState()
+			turn.dispatchEvent(context.Background(), "", state, sse.Event{Type: "text", Content: tc.text})
+			turn.dispatchEvent(context.Background(), "", state, sse.Event{Type: "error", Content: tc.content, Code: tc.code})
+			turn.persistAfterStream(context.Background(), TurnRequest{ConversationID: "conv-error"},
+				&enrichmentResult{}, "reply", time.Now(), state)
+			require.Len(t, repo.updated, 1)
+			msg := repo.updated[0]
+			assert.Equal(t, domain.MessageStatusError, msg.Status)
+			assert.Equal(t, tc.wantCode, msg.ErrorCode)
+			assert.Empty(t, msg.ToolCalls)
+			if tc.text != "" {
+				assert.Equal(t, tc.text, msg.Content)
+			} else {
+				assert.Contains(t, msg.Content, tc.content)
+			}
+		})
+	}
+}

@@ -1352,7 +1352,8 @@
       "topicPlaceholder": "For example: a new hall now open on Saturdays",
       "submit": "Prepare in chat",
       "cancel": "Cancel"
-    }
+    },
+    "optional": "Optional"
   },
   "help": {
     "reopen": "Help",

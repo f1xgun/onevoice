@@ -7,7 +7,6 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
-import { useConversationsQuery } from '@/hooks/useConversations';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { useMembers } from '@/lib/hooks/useMembers';
 import type { Business } from '@/types/business';
@@ -110,12 +109,6 @@ export function deriveOnboarding(s: OnboardingSignals): OnboardingProgress {
   return { steps, completedCount, total, allDone, loaded };
 }
 
-// useOnboardingProgress composes four queries the app already runs — the
-// business list, the business-integrations list, the business profile, and the
-// conversations list — into a derived checklist. It issues NO new backend
-// endpoint: the integrations/profile/conversations queries reuse the exact
-// QUERY_KEYS other surfaces mount, so they share warm caches. The optional
-// invite step reads the members list, fetched only for actors who can invite.
 export function useOnboardingProgress(): OnboardingProgress {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
@@ -142,8 +135,6 @@ export function useOnboardingProgress(): OnboardingProgress {
     retry: false,
   });
 
-  const conversations = useConversationsQuery();
-
   const canInvite = usePermission('members.invite').allowed;
   const members = useMembers(canInvite ? activeBusinessId : null);
 
@@ -158,9 +149,8 @@ export function useOnboardingProgress(): OnboardingProgress {
     hasDescription:
       profile.isSuccess && typeof description === 'string' && description.trim() !== '',
     profileSettled: profile.isSuccess || profile.isError,
-    hasFirstAction:
-      conversations.isSuccess && (conversations.data ?? []).some((c) => !!c.lastMessageAt),
-    conversationsSettled: conversations.isSuccess || conversations.isError,
+    hasFirstAction: profile.isSuccess && profile.data?.hasFirstSuccessfulAction === true,
+    conversationsSettled: profile.isSuccess || profile.isError,
     showInvite: canInvite,
     hasTeammate: members.isSuccess && (members.data?.length ?? 0) > 1,
   });

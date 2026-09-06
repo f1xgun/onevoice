@@ -57,3 +57,10 @@ describe('AuditFilters', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ action: 'rbac.role_granted' }));
   });
 });
+
+it('constrains the native action selector independently of option length', () => {
+  render(<AuditFilters value={{ category: 'all' }} onChange={vi.fn()} businessID="b" />);
+  const select = screen.getByTestId('action-select');
+  expect(select).toHaveClass('w-full', 'min-w-0', 'max-w-full');
+  expect(select.parentElement).toHaveClass('w-full', 'min-w-0', 'sm:w-64');
+});

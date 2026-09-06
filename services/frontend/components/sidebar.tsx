@@ -38,12 +38,15 @@ export function Sidebar() {
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className={`flex gap-0 p-0 ${showProjectPane ? 'w-72' : 'w-14'}`}>
+        <SheetContent
+          side="left"
+          className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-y-auto overscroll-contain p-0 pt-12 [&>button:first-child]:grid [&>button:first-child]:h-8 [&>button:first-child]:w-8 [&>button:first-child]:place-items-center"
+        >
           <SheetTitle className="sr-only">{tSide('menuLabel')}</SheetTitle>
           <SheetDescription className="sr-only">{tSide('menuDescription')}</SheetDescription>
-          <NavRail onNavigate={() => setOpen(false)} />
+          <NavRail expanded onNavigate={() => setOpen(false)} />
           {showProjectPane && (
-            <div className="flex-1">
+            <div className="min-h-80 min-w-0 shrink-0">
               <ProjectPane onNavigate={() => setOpen(false)} />
             </div>
           )}

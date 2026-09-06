@@ -121,6 +121,7 @@ function WizardBody({ onClose }: { onClose: () => void }) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
       setPhase('done');
     },
     onError: () => toast.error(t('publishError')),
@@ -205,6 +206,7 @@ function WizardBody({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (phase !== 'preparing') return;
     if (readyReview) {
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
       setPhase('ready');
       return;
     }
@@ -227,6 +229,8 @@ function WizardBody({ onClose }: { onClose: () => void }) {
     }
   }, [
     phase,
+    qc,
+    activeBusinessId,
     readyReview,
     anyGenerating,
     pollDeadline,

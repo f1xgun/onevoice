@@ -18,6 +18,8 @@ import (
 // agent can't pin the connection forever.
 const streamBudget = 10 * time.Minute
 
+const sseEventDone = "done"
+
 // StreamBudget exposes streamBudget to the wiring layer so the SSE
 // concurrency counter can size its slot-key TTL to outlive a single stream
 // (ssecounter.NewWithKeyTTL). Keeping it derived from the same constant means
@@ -28,11 +30,13 @@ const StreamBudget = streamBudget
 // Owned by Run on its stack; passed by pointer to the per-event handlers so
 // they can mutate it.
 type streamState struct {
+	doneSeen         bool
 	assistantText    strings.Builder
 	toolCalls        []domain.ToolCall
 	toolResults      []domain.ToolResult
 	pauseEvent       *sse.Event
 	streamErrContent string
+	streamErrCode    string
 	// idMap propagates LLM tool_call.id -> internal agent_task.id mapping so
 	// tool_result events can correlate even when the orchestrator's
 	// tool_call.id and the dispatched agent task have different identifiers.
@@ -99,6 +103,8 @@ func (t *Turn) streamOrchestrator(
 // progress live).
 func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, state *streamState, ev sse.Event) {
 	switch ev.Type {
+	case sseEventDone:
+		state.doneSeen = true
 	case "text":
 		state.assistantText.WriteString(ev.Content)
 	case "tool_call":
@@ -128,6 +134,10 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 		state.pauseEvent = &evCopy
 	case "error":
 		state.streamErrContent = ev.Content
+		state.streamErrCode = ev.Code
+		if state.streamErrCode == "" {
+			state.streamErrCode = "STREAM_ERROR"
+		}
 	}
 }
 

@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { useBusinessStore } from '@/lib/stores/business';
+import { queryClient } from '@/lib/queryClient';
 
 export interface User {
   id: string;
@@ -59,6 +61,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
 
   setAuth: (user, accessToken) => {
+    if (useBusinessStore.getState().userId !== user.id) queryClient.clear();
+    useBusinessStore.getState().reconcileUser(user.id);
     set({ user, accessToken, isAuthenticated: true });
   },
 
@@ -67,6 +71,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
+    useBusinessStore.getState().clear();
     set({ user: null, accessToken: null, isAuthenticated: false });
   },
 }));

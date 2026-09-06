@@ -390,6 +390,7 @@ func TestStreamSSE_ClientGone_StopsWritesButDrainsUpstream(t *testing.T) {
 			atomic.AddInt32(&emittedFrames, 1)
 			time.Sleep(2 * time.Millisecond)
 		}
+		_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
 	}))
 	defer srv.Close()
 
@@ -412,8 +413,8 @@ func TestStreamSSE_ClientGone_StopsWritesButDrainsUpstream(t *testing.T) {
 		t.Fatalf("StreamSSE: %v", err)
 	}
 
-	if got := atomic.LoadInt32(&seenViaOnEvent); int(got) != totalFrames {
-		t.Errorf("OnEvent count = %d, want %d (full drain expected)", got, totalFrames)
+	if got := atomic.LoadInt32(&seenViaOnEvent); int(got) != totalFrames+1 {
+		t.Errorf("OnEvent count = %d, want %d (full drain expected)", got, totalFrames+1)
 	}
 	writtenLines := strings.Count(rec.body.String(), "data: ")
 	if writtenLines >= totalFrames {

@@ -57,6 +57,17 @@ func (m *multiReviewRepo) UpdateReply(_ context.Context, id, replyText, status s
 	return nil
 }
 
+func (m *multiReviewRepo) UpdateReplyDispatched(_ context.Context, id, replyText, status, approvalID string) error {
+	rv, ok := m.byID[id]
+	if !ok {
+		return domain.ErrReviewNotFound
+	}
+	rv.ReplyText = replyText
+	rv.ReplyStatus = status
+	rv.DispatchApprovalID = approvalID
+	return nil
+}
+
 // healthyBusinessService returns a live business for the soft-delete gate.
 type healthyBusinessService struct {
 	BusinessService
@@ -317,6 +328,8 @@ func TestBulkApprove_ExcludesNegativeAndNeedsReview(t *testing.T) {
 	require.Equal(t, BatchItemStatusSkipped, byID["neg"].Status, "a negative review must never be bulk-published")
 	require.Equal(t, BatchItemStatusPublished, byID["pos"].Status)
 	require.Equal(t, 1, nc.calls, "exactly one (positive) reply must be dispatched")
+	require.NotEmpty(t, pos.DispatchApprovalID)
+	require.Empty(t, neg.DispatchApprovalID)
 	require.Equal(t, domain.ReviewReplyStatusReplied, repo.byID["pos"].ReplyStatus)
 	require.NotEqual(t, domain.ReviewReplyStatusReplied, repo.byID["neg"].ReplyStatus, "the negative review must remain unanswered")
 }

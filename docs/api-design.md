@@ -109,3 +109,34 @@ Sync/bulk operations (e.g. "apply change to all connected platforms") return a `
 - Default page size: 20; max: 100.
 - Query params: `?limit=20&offset=0` (offset pagination) or `?limit=20&after=<cursor>` (cursor pagination when ordering is stable).
 - Include total count in responses only when cheap; otherwise prefer "has_more" boolean.
+
+## Persisted Chat Outcomes
+
+Assistant messages from failed streams have `status: "error"` and an
+`errorCode` (the upstream code, or `STREAM_ERROR` when absent). Partial text
+is retained; immediate errors retain the localized error content. Successful
+turns have `status: "complete"` and an internal `successful_outcome: true` marker. Clients must not infer success from nonempty
+content or an absent legacy status. Successful tool tasks independently prove
+that an action completed.
+
+## Onboarding first action
+
+`GET /api/v1/businesses/{id}` includes `hasFirstSuccessfulAction`. The API reads
+all persisted history for the authorized organization: an `agent_tasks` record
+with status `done`, or an assistant message with explicit `successful_outcome: true`, status `complete`, nonblank
+content, no error code, and no tool calls. Failed, pending, and ambiguous legacy
+turns do not count. Review drafts count only when ready and nonblank with no
+draft error, or when their successful generation was durably recorded. Confirmed
+reply dispatches also persist this marker; imported replies and storage-only
+reply updates do not. The marker survives draft cleanup and later failed attempts.
+New empty conversations cannot reset completion. Read errors
+fail the profile request instead of returning a misleading `false`.
+
+The Mongo startup backfill copies organization IDs from conversations onto
+existing messages without changing their outcomes; message writes maintain this
+field. Organization/status indexes support one bounded-result aggregation over
+messages, tasks, and reviews. No PostgreSQL migration or new collection is needed.
+The checklist uses the profile flag and refreshes it after a chat finishes,
+when the first-action wizard observes a ready draft, and after publishing a reply.
+The existing signup-to-connected integration funnel remains unchanged; this
+checkout has no first-action funnel gauge.

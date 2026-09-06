@@ -80,9 +80,9 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       bizApi(activeBusinessId!)
-        .get<Conversation>(BIZ_API_PATHS.CONVERSATIONS.BY_ID(conversationId))
+        .get<Conversation>(BIZ_API_PATHS.CONVERSATIONS.BY_ID(conversationId), { signal })
         .then((r) => r.data),
     enabled: !!conversationId && !!activeBusinessId,
   });

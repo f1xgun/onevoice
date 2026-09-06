@@ -11,11 +11,11 @@ const (
 	TitleStatusManual      = "manual"
 )
 
-// Message.Status values (POLICY / HITL). An empty string is
-// semantically equivalent to MessageStatusComplete for backward compatibility
-// with legacy messages; see the docstring on Message.Status.
+// Message.Status values for persisted chat turns. An empty legacy status
+// remains renderable but does not establish whether the turn succeeded.
 const (
 	MessageStatusComplete        = "complete"
+	MessageStatusError           = "error"
 	MessageStatusPendingApproval = "pending_approval"
 	MessageStatusInProgress      = "in_progress"
 )
@@ -76,21 +76,24 @@ type Conversation struct {
 }
 
 type Message struct {
-	ID             string                 `json:"id" bson:"_id,omitempty"`
-	ConversationID string                 `json:"conversationId" bson:"conversation_id"`
-	Role           string                 `json:"role" bson:"role"`
-	Content        string                 `json:"content" bson:"content"`
-	Attachments    []Attachment           `json:"attachments,omitempty" bson:"attachments,omitempty"`
-	ToolCalls      []ToolCall             `json:"toolCalls,omitempty" bson:"tool_calls,omitempty"`
-	ToolResults    []ToolResult           `json:"toolResults,omitempty" bson:"tool_results,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
+	SuccessfulOutcome bool                   `json:"-" bson:"successful_outcome,omitempty"`
+	BusinessID        string                 `json:"-" bson:"business_id,omitempty"`
+	ID                string                 `json:"id" bson:"_id,omitempty"`
+	ConversationID    string                 `json:"conversationId" bson:"conversation_id"`
+	Role              string                 `json:"role" bson:"role"`
+	Content           string                 `json:"content" bson:"content"`
+	Attachments       []Attachment           `json:"attachments,omitempty" bson:"attachments,omitempty"`
+	ToolCalls         []ToolCall             `json:"toolCalls,omitempty" bson:"tool_calls,omitempty"`
+	ToolResults       []ToolResult           `json:"toolResults,omitempty" bson:"tool_results,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
+	ErrorCode         string                 `json:"errorCode,omitempty" bson:"error_code,omitempty"`
 	// Status is the HITL message lifecycle marker. Valid non-empty
-	// values: "complete", "pending_approval", "in_progress" (see
+	// values: "complete", "error", "pending_approval", "in_progress" (see
 	// MessageStatus* constants above).
 	//
-	// Empty string == "complete" for backward compatibility with legacy
-	// messages (no backfill write needed). Any reader that branches on Status
-	// MUST treat "" and "complete" identically.
+	// Legacy messages may have an empty status (no backfill write needed).
+	// Readers may render these like complete messages, but must not use an
+	// absent status as proof of success.
 	Status    string    `json:"status,omitempty" bson:"status,omitempty"`
 	CreatedAt time.Time `json:"createdAt" bson:"created_at"`
 }

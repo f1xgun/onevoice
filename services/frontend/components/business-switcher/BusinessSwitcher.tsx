@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -29,6 +31,8 @@ const ANNOUNCE_RESET_MS = 1000;
  * pattern); Tab enters the list once and falls through to the «+ Создать» link.
  */
 export function BusinessSwitcher() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const tSwitcher = useTranslations('team.switcher');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const setActive = useBusinessStore((s) => s.setActive);
@@ -43,7 +47,11 @@ export function BusinessSwitcher() {
   const initials = active ? active.name.slice(0, 2).toUpperCase() : '';
 
   function handleSelect(b: BusinessSummary) {
-    setActive(b.id);
+    if (b.id !== activeBusinessId) {
+      void queryClient.cancelQueries();
+      router.replace('/chat');
+      setActive(b.id);
+    }
     setAnnounceName(b.name);
     setOpen(false);
   }

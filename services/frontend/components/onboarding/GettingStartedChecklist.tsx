@@ -1,15 +1,5 @@
 'use client';
 
-// components/onboarding/GettingStartedChecklist.tsx — post-org activation card.
-// Mounted in the chat empty-state (alongside ConnectChannelHint) and on the
-// dedicated /getting-started route. Every step's completion is DERIVED from a
-// query the app already runs (see useOnboardingProgress) — no new backend.
-//
-// The "Run your first AI action" step exposes an `onOpenWizard` seam: it
-// defaults to a /chat deep-link, so the parallel 60-second wizard can plug in
-// later by passing a handler WITHOUT introducing a new completion flag (the
-// done-signal stays `lastMessageAt`).
-
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -24,8 +14,7 @@ import { cn } from '@/lib/utils';
 export interface GettingStartedChecklistProps {
   /**
    * Opens the first-action wizard for the "Run your first AI action" step.
-   * When omitted, that step deep-links to /chat. The parallel wizard team
-   * passes a handler here later — no completion-flag change required.
+   * When omitted, that step deep-links to /chat.
    */
   onOpenWizard?: () => void;
   /**
@@ -151,10 +140,24 @@ function ChecklistBody({ onOpenWizard, dismissible, onDismiss, className }: Chec
       </div>
 
       <ol className="mt-4 flex flex-col gap-1">
-        {progress.steps.map((step) => (
-          <StepRow key={step.id} step={step} onOpenWizard={onOpenWizard} />
-        ))}
+        {progress.steps
+          .filter((step) => step.gating)
+          .map((step) => (
+            <StepRow key={step.id} step={step} onOpenWizard={onOpenWizard} />
+          ))}
       </ol>
+      {progress.steps.some((step) => !step.gating) && (
+        <div className="mt-4 border-t border-line pt-4">
+          <p className="text-sm text-ink-soft">{t('optional')}</p>
+          <ul>
+            {progress.steps
+              .filter((step) => !step.gating)
+              .map((step) => (
+                <StepRow key={step.id} step={step} />
+              ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

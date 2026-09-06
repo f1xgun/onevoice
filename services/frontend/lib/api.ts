@@ -114,11 +114,6 @@ api.interceptors.response.use(
   }
 );
 
-// 404 interceptor: on /businesses/{id}/.. 404, the active business
-// is stale (server-side membership removed). Clear the store + re-fetch
-// the list + show a sonner warning toast. The redirect to /onboarding or
-// /chat happens implicitly via BusinessRequiredGuard on the next render
-// (RESEARCH P-04: do not call router from a module-level interceptor).
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -126,12 +121,25 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const skipBusinessNotFound = error.config?.metadata?.skipBusinessNotFound === true;
 
+    const businessId = /^\/businesses\/([^/?]+)(?:\/|$|\?)/.exec(url)?.[1];
     if (
+      businessId &&
+      businessId === useBusinessStore.getState().activeBusinessId &&
       status === HTTP_STATUS.NOT_FOUND &&
       url.startsWith('/businesses/') &&
       !skipBusinessNotFound
     ) {
-      useBusinessStore.getState().clear();
+      const { data: businesses } = await api
+        .get<{ id: string }[]>('/businesses')
+        .catch(() => ({ data: null }));
+      if (
+        !businesses ||
+        businesses.some((business) => business.id === businessId) ||
+        useBusinessStore.getState().activeBusinessId !== businessId
+      )
+        return Promise.reject(error);
+      queryClient.setQueryData(BUSINESS_LIST_QUERY_KEY, businesses);
+      useBusinessStore.getState().setActive(null);
       queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY, exact: true });
       void showStaleBusinessToast();
     }

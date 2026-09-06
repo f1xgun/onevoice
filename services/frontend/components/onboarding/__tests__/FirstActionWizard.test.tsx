@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 // Mocks must precede the component import so its transitive imports resolve to
@@ -23,6 +23,7 @@ vi.mock('@/lib/api/business-api', () => ({
 }));
 
 import { toast } from 'sonner';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 
 interface ReviewRow {
@@ -187,5 +188,74 @@ describe('FirstActionWizard — controlled + generating', () => {
 
     expect(await screen.findByText('Готовим первое действие')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Опубликовать' })).not.toBeInTheDocument();
+  });
+});
+
+function ProfileProbe({ fetchProfile }: { fetchProfile: () => Promise<boolean> }) {
+  const { data } = useQuery({
+    queryKey: QUERY_KEYS.BUSINESS_PROFILE('biz-1'),
+    queryFn: fetchProfile,
+    staleTime: Infinity,
+  });
+  return <output aria-label="Activation">{String(data)}</output>;
+}
+
+describe('FirstActionWizard profile refresh', () => {
+  it.each([true, false])(
+    'refreshes after a ready draft and only after a successful publish (%s)',
+    async (publishSucceeds) => {
+      const fetchProfile = vi.fn().mockResolvedValue(false);
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      await client.prefetchQuery({
+        queryKey: QUERY_KEYS.BUSINESS_PROFILE('biz-1'),
+        queryFn: fetchProfile,
+        staleTime: Infinity,
+      });
+      fetchProfile.mockResolvedValue(true);
+      get.mockResolvedValue({ data: [readyReview()] });
+      if (!publishSucceeds) put.mockRejectedValue(new Error('publish failed'));
+
+      render(
+        <QueryClientProvider client={client}>
+          <ProfileProbe fetchProfile={fetchProfile} />
+          <FirstActionWizard open onClose={vi.fn()} />
+        </QueryClientProvider>
+      );
+
+      await screen.findByText('Спасибо за отзыв!');
+      await waitFor(() => expect(screen.getByLabelText('Activation')).toHaveTextContent('true'));
+      expect(fetchProfile).toHaveBeenCalledTimes(2);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Опубликовать' }));
+
+      if (publishSucceeds) {
+        await screen.findByText('Готово — ответ опубликован');
+        await waitFor(() => expect(fetchProfile).toHaveBeenCalledTimes(3));
+      } else {
+        await waitFor(() => expect(toast.error).toHaveBeenCalled());
+        expect(fetchProfile).toHaveBeenCalledTimes(2);
+      }
+      client.clear();
+    }
+  );
+
+  it.each([
+    [],
+    [readyReview({ draftStatus: 'generating', draftReply: '' })],
+    [readyReview({ draftStatus: 'failed', draftReply: '' })],
+    [readyReview({ draftStatus: 'ready', draftReply: '  ' })],
+  ])('does not refresh the profile without a successful draft (%j)', async (reviews) => {
+    const fetchProfile = vi.fn().mockResolvedValue(false);
+    get.mockResolvedValue({ data: reviews });
+    render(
+      <Wrapper>
+        <ProfileProbe fetchProfile={fetchProfile} />
+        <FirstActionWizard open onClose={vi.fn()} />
+      </Wrapper>
+    );
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/reviews/batch-draft', { reviewIds: [] })
+    );
+    await waitFor(() => expect(screen.getByLabelText('Activation')).toHaveTextContent('false'));
+    expect(fetchProfile).toHaveBeenCalledTimes(1);
   });
 });

@@ -330,7 +330,8 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 	require.NotNil(t, assistant, "assistant message must be finalized on error")
 	assert.NotEmpty(t, assistant.Content, "assistant content must NOT be empty on error (poisons OpenAI history)")
 	assert.Contains(t, assistant.Content, "openrouter chat", "error reason must be carried in content")
-	assert.Equal(t, domain.MessageStatusComplete, assistant.Status)
+	assert.Equal(t, domain.MessageStatusError, assistant.Status)
+	assert.Equal(t, "STREAM_ERROR", assistant.ErrorCode)
 }
 
 // TestChatProxy_LoadHistory_SkipsEmptyAssistant guards against the OpenAI
@@ -984,7 +985,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 // pending_approval forever, so the next POST /chat hit the gate's
 // "turn_already_in_progress" branch and the conversation was permanently stuck
 // behind a hanging loader. After the fix: the error event flips Status to
-// complete (Content / ToolCall statuses preserved) so the chat unblocks.
+// error (Content / ToolCall statuses preserved) so the chat unblocks.
 func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
@@ -1060,7 +1061,8 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 	require.NotEmpty(t, persistedUpdates, "Update must be called when error event fires")
 	final := persistedUpdates[len(persistedUpdates)-1]
 	assert.Equal(t, "msg-stuck", final.ID, "same message ID preserved")
-	assert.Equal(t, domain.MessageStatusComplete, final.Status, "error must clear pending_approval")
+	assert.Equal(t, domain.MessageStatusError, final.Status, "error must clear pending_approval")
+	assert.Equal(t, "STREAM_ERROR", final.ErrorCode)
 	require.Len(t, final.ToolCalls, 1)
 	assert.Equal(t, domain.ToolCallStatusRejected, final.ToolCalls[0].Status, "tool_rejected status preserved")
 }
@@ -1139,7 +1141,9 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	assert.Equal(t, http.StatusOK, rr.Code)
 	require.NotEmpty(t, persistedUpdates, "Update must run on stream-end-without-done")
 	final := persistedUpdates[len(persistedUpdates)-1]
-	assert.Equal(t, domain.MessageStatusComplete, final.Status, "fall-through must clear pending_approval")
+	assert.Equal(t, domain.MessageStatusError, final.Status, "premature EOF must fail and clear pending_approval")
+	assert.Equal(t, "STREAM_INTERRUPTED", final.ErrorCode)
+	assert.Contains(t, rr.Body.String(), "STREAM_INTERRUPTED")
 	require.Len(t, final.ToolCalls, 1)
 	assert.Equal(t, domain.ToolCallStatusRejected, final.ToolCalls[0].Status, "tool_rejected status preserved on fall-through")
 }

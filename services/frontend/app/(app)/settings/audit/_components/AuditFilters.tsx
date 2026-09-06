@@ -54,7 +54,7 @@ export function AuditFilters({ value, onChange, businessID }: Props) {
   return (
     <div className="flex flex-wrap items-end gap-4">
       {/* Category chips */}
-      <fieldset className="flex flex-col gap-1">
+      <fieldset className="flex min-w-0 max-w-full flex-col gap-1">
         <legend className="text-sm text-ink-soft">{t('categoryLabel')}</legend>
         <div role="tablist" aria-label={t('categoryLabel')} className="flex flex-wrap gap-2">
           {CATEGORIES.map((c) => {
@@ -81,13 +81,13 @@ export function AuditFilters({ value, onChange, businessID }: Props) {
       </fieldset>
 
       {/* Action select (scoped by category) */}
-      <label className="flex flex-col gap-1 text-sm">
+      <label className="flex w-full min-w-0 max-w-full flex-col gap-1 text-sm sm:w-64">
         <span className="text-ink-soft">{t('actionLabel')}</span>
         <select
           data-testid="action-select"
           value={value.action ?? ''}
           onChange={(e) => onChange({ ...value, action: e.target.value || undefined })}
-          className="min-w-[200px] rounded-md border border-line bg-paper-raised px-2 py-1 text-ink"
+          className="w-full min-w-0 max-w-full rounded-md border border-line bg-paper-raised px-2 py-1 text-ink"
         >
           <option value="">{t('actionAny')}</option>
           {actions.map((a) => (
