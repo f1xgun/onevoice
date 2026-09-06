@@ -1,3 +1,5 @@
+//go:build integration
+
 package repository
 
 import (
@@ -95,4 +97,67 @@ func TestActionActivationMessageWrites(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, org.String(), msg.BusinessID)
+}
+
+func TestActionActivationReviews(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		document bson.M
+		write    func(context.Context, domain.ReviewRepository, string) error
+		want     bool
+	}{
+		{name: "generated draft", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateDraft(ctx, id, "Thank you", domain.ReviewDraftStatusReady, "", false)
+		}, want: true},
+		{name: "confirmed reply", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateReplyDispatched(ctx, id, "Thank you", domain.ReviewReplyStatusReplied, "approval")
+		}, want: true},
+		{name: "draft survives reply cleanup", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			if err := repo.UpdateDraft(ctx, id, "Thank you", domain.ReviewDraftStatusReady, "", false); err != nil {
+				return err
+			}
+			return repo.UpdateReply(ctx, id, "Thank you", domain.ReviewReplyStatusReplied, nil)
+		}, want: true},
+		{name: "failed draft", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateDraft(ctx, id, "", domain.ReviewDraftStatusFailed, "failed", false)
+		}},
+		{name: "blank draft", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateDraft(ctx, id, " \n\t", domain.ReviewDraftStatusReady, "", false)
+		}},
+		{name: "failed reply", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateReplyDispatched(ctx, id, "Thank you", domain.ReviewReplyStatusError, "approval")
+		}},
+		{name: "storage only reply", write: func(ctx context.Context, repo domain.ReviewRepository, id string) error {
+			return repo.UpdateReply(ctx, id, "Thank you", domain.ReviewReplyStatusReplied, nil)
+		}},
+		{name: "legacy ready draft", document: bson.M{"draft_status": "ready", "draft_reply": "Thank you"}, want: true},
+		{name: "ambiguous draft", document: bson.M{"draft_reply": "Thank you"}},
+		{name: "generating draft", document: bson.M{"draft_status": "generating", "draft_reply": "Thank you"}},
+		{name: "draft with error", document: bson.M{"draft_status": "ready", "draft_reply": "Thank you", "draft_error": "failed"}},
+		{name: "imported reply", document: bson.M{"reply_status": "replied", "reply_text": "Thank you"}},
+		{name: "unconfirmed dispatch", document: bson.M{"dispatch_approval_id": "approval", "reply_text": "Thank you"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupMongoTestDB(t)
+			ctx := context.Background()
+			businessID := uuid.New()
+			doc := tt.document
+			if doc == nil {
+				doc = bson.M{}
+			}
+			doc["_id"] = "review"
+			doc["business_id"] = businessID.String()
+			_, err := db.Collection("reviews").InsertOne(ctx, doc)
+			require.NoError(t, err)
+			_, err = db.Collection("reviews").InsertOne(ctx, bson.M{"business_id": uuid.NewString(), "successful_action": true})
+			require.NoError(t, err)
+			if tt.write != nil {
+				require.NoError(t, tt.write(ctx, NewReviewRepository(db), "review"))
+			}
+			require.NoError(t, EnsureActionActivation(ctx, db))
+			got, err := NewActionActivationRepository(db).HasFirstSuccessfulAction(ctx, businessID)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }

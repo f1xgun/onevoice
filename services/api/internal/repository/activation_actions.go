@@ -39,12 +39,28 @@ func (r *ActionActivationRepository) HasFirstSuccessfulAction(ctx context.Contex
 	}
 	answer := successfulAnswerFilter()
 	answer["business_id"] = businessID.String()
+	review := bson.M{
+		"business_id": businessID.String(),
+		"$or": bson.A{
+			bson.M{"successful_action": true},
+			bson.M{
+				"draft_status": domain.ReviewDraftStatusReady,
+				"draft_reply":  bson.M{"$regex": `\S`},
+				"draft_error":  bson.M{"$in": bson.A{nil, ""}},
+			},
+		},
+	}
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"business_id": businessID.String(), "status": taskStatusDone}}},
 		{{Key: "$limit", Value: 1}},
 		{{Key: "$project", Value: bson.M{"_id": 1}}},
 		{{Key: "$unionWith", Value: bson.M{"coll": "messages", "pipeline": mongo.Pipeline{
 			{{Key: "$match", Value: answer}},
+			{{Key: "$limit", Value: 1}},
+			{{Key: "$project", Value: bson.M{"_id": 1}}},
+		}}}},
+		{{Key: "$unionWith", Value: bson.M{"coll": "reviews", "pipeline": mongo.Pipeline{
+			{{Key: "$match", Value: review}},
 			{{Key: "$limit", Value: 1}},
 			{{Key: "$project", Value: bson.M{"_id": 1}}},
 		}}}},
@@ -75,6 +91,15 @@ func EnsureActionActivation(ctx context.Context, db *mongo.Database) error {
 		})
 		if err != nil {
 			return fmt.Errorf("index action activation %s: %w", collection, err)
+		}
+	}
+	for _, field := range []string{"successful_action", "draft_status"} {
+		_, err := db.Collection("reviews").Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys:    bson.D{{Key: "business_id", Value: 1}, {Key: field, Value: 1}},
+			Options: options.Index().SetName("activation_business_" + field),
+		})
+		if err != nil {
+			return fmt.Errorf("index review activation %s: %w", field, err)
 		}
 	}
 	return nil

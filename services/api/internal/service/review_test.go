@@ -22,10 +22,11 @@ import (
 // unexpected call surfaces loudly.
 type stubReviewRepo struct {
 	domain.ReviewRepository
-	review        *domain.Review
-	updateReplies int
-	lastReplyText string
-	lastFeedback  *domain.ReviewDraftFeedback
+	review            *domain.Review
+	updateReplies     int
+	lastReplyText     string
+	lastFeedback      *domain.ReviewDraftFeedback
+	dispatchedReplies int
 }
 
 func (s *stubReviewRepo) GetByID(_ context.Context, _ string) (*domain.Review, error) {
@@ -37,6 +38,12 @@ func (s *stubReviewRepo) UpdateReply(_ context.Context, _, replyText, status str
 	s.review.ReplyStatus = status
 	s.lastReplyText = replyText
 	s.lastFeedback = feedback
+	return nil
+}
+
+func (s *stubReviewRepo) UpdateReplyDispatched(_ context.Context, _, _, _, approvalID string) error {
+	s.dispatchedReplies++
+	s.review.DispatchApprovalID = approvalID
 	return nil
 }
 
@@ -646,4 +653,35 @@ func TestReply_FailedTextCanBeEdited(t *testing.T) {
 	require.Equal(t, 1, nc.calls)
 	require.Equal(t, "corrected text", repo.lastReplyText)
 	require.Equal(t, domain.ReviewReplyStatusReplied, review.ReplyStatus)
+}
+
+func TestReplyActivationRequiresConfirmedDispatch(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		platform  string
+		connected bool
+		want      int
+		wantError bool
+	}{
+		{name: "confirmed publication", platform: a2a.AgentYandexBusiness, connected: true, want: 1},
+		{name: "storage only", platform: a2a.AgentYandexBusiness},
+		{name: "unsupported platform", platform: "unsupported", connected: true},
+		{name: "invalid dispatch", platform: a2a.AgentTelegram, connected: true, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			businessID := uuid.New()
+			repo := &stubReviewRepo{review: &domain.Review{ID: "review", BusinessID: businessID.String(), ExternalID: "external", Platform: tt.platform, ReplyStatus: domain.ReviewReplyStatusPending}}
+			svc := &reviewService{repo: repo, dispatchTimeout: time.Second}
+			if tt.connected {
+				svc.nc = &capturingRequester{}
+			}
+			err := svc.Reply(context.Background(), businessID, "review", "Thank you")
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.want, repo.dispatchedReplies)
+		})
+	}
 }

@@ -525,7 +525,7 @@ type Business struct {
 	CreatedAt   time.Time `json:"createdAt" validate:"required"`
 	Description *string   `json:"description,omitempty"`
 
-	// HasFirstSuccessfulAction Whether the organization has a persisted successful task or completed text-only assistant answer across its entire history. Authoritative on GET business profile.
+	// HasFirstSuccessfulAction Whether the organization has a persisted completed platform tool task or text-only assistant answer with an explicit successful outcome across its entire history, or a successfully generated review draft or confirmed review reply dispatch. Imported replies and ambiguous review attempts do not count. Ambiguous historical turns do not count; organization ID backfills never assign success. Authoritative on GET business profile.
 	HasFirstSuccessfulAction *bool                  `json:"hasFirstSuccessfulAction,omitempty"`
 	Id                       openapi_types.UUID     `json:"id" validate:"required,uuid"`
 	LogoUrl                  *string                `json:"logoUrl,omitempty"`

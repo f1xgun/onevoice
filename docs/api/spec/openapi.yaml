@@ -850,7 +850,7 @@ components:
         hasFirstSuccessfulAction:
           type: boolean
           readOnly: true
-          description: Whether the organization has a persisted completed platform tool task or text-only assistant answer with an explicit successful outcome across its entire history. Ambiguous historical turns do not count; organization ID backfills never assign success. Authoritative on GET business profile.
+          description: Whether the organization has a persisted completed platform tool task or text-only assistant answer with an explicit successful outcome across its entire history, or a successfully generated review draft or confirmed review reply dispatch. Imported replies and ambiguous review attempts do not count. Ambiguous historical turns do not count; organization ID backfills never assign success. Authoritative on GET business profile.
         id:
           type: string
           format: uuid

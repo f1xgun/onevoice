@@ -125,13 +125,18 @@ that an action completed.
 all persisted history for the authorized organization: an `agent_tasks` record
 with status `done`, or an assistant message with explicit `successful_outcome: true`, status `complete`, nonblank
 content, no error code, and no tool calls. Failed, pending, and ambiguous legacy
-turns do not count. New empty conversations cannot reset completion. Read errors
+turns do not count. Review drafts count only when ready and nonblank with no
+draft error, or when their successful generation was durably recorded. Confirmed
+reply dispatches also persist this marker; imported replies and storage-only
+reply updates do not. The marker survives draft cleanup and later failed attempts.
+New empty conversations cannot reset completion. Read errors
 fail the profile request instead of returning a misleading `false`.
 
 The Mongo startup backfill copies organization IDs from conversations onto
 existing messages without changing their outcomes; message writes maintain this
 field. Organization/status indexes support one bounded-result aggregation over
-messages and tasks. No PostgreSQL migration or new collection is needed.
-The checklist uses the profile flag and refreshes it after a chat finishes.
+messages, tasks, and reviews. No PostgreSQL migration or new collection is needed.
+The checklist uses the profile flag and refreshes it after a chat finishes,
+when the first-action wizard observes a ready draft, and after publishing a reply.
 The existing signup-to-connected integration funnel remains unchanged; this
 checkout has no first-action funnel gauge.

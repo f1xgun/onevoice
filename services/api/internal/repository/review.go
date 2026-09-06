@@ -307,6 +307,9 @@ func (r *reviewRepository) updateReply(ctx context.Context, id, replyText, reply
 	// survives the clear of the transient draft_* fields.
 	if replyStatus == domain.ReviewReplyStatusReplied {
 		set["replied_at"] = time.Now().UTC()
+		if dispatchApprovalID != "" && strings.TrimSpace(replyText) != "" {
+			set["successful_action"] = true
+		}
 		if feedback != nil {
 			set["draft_accepted_unedited"] = feedback.AcceptedUnedited
 			set["draft_edit_distance"] = feedback.EditDistance
@@ -615,6 +618,9 @@ func (r *reviewRepository) UpdateDraft(ctx context.Context, id, draft, status, e
 		set["draft_generated_at"] = time.Now().UTC()
 		set["draft_error"] = ""
 		set["needs_review"] = needsReview
+		if strings.TrimSpace(draft) != "" {
+			set["successful_action"] = true
+		}
 	case domain.ReviewDraftStatusFailed:
 		set["draft_error"] = errMsg
 	}

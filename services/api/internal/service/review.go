@@ -305,6 +305,12 @@ func (s *reviewService) publishReply(ctx context.Context, review *domain.Review,
 		s.auditReviewReplied(ctx, review, toolName)
 	}
 
+	if dispatchErr == nil && toolName != "" {
+		if err := s.repo.UpdateReplyDispatched(ctx, review.ID, replyText, finalStatus, manualReplyApprovalID(review)); err != nil {
+			return fmt.Errorf("record successful review dispatch: %w", err)
+		}
+	}
+
 	feedback := draftReplyFeedback(review.DraftReply, replyText)
 	if isAutoPublishSignal(ctx) {
 		feedback = nil
