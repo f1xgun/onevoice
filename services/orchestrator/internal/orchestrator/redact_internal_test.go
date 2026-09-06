@@ -188,8 +188,31 @@ func TestPublicationContactAllowlist(t *testing.T) {
 	}{
 		{"booking", "user", "Сделай пост… запись по телефону +7 916 123-45-77", true},
 		{"formatted", "user", "Добавь в пост телефон: +7 (916) 123-45-77", true},
-		{"trunk", "user", "Телефон для публикации: 8 916 123 45 77", true},
+		{"trunk", "user", "Опубликуй: телефон для публикации: 8 916 123 45 77", true},
 		{"english", "user", "Write a post. Booking phone: +79161234577", true},
+		{"visitor_summary", "user", "Перескажи сообщение посетителя: запись по телефону +7 916 123-45-77", false},
+		{"clients_post", "user", "Сделай пост для клиентов: запись по телефону +7 916 123-45-77", true},
+		{"salon", "user", "Сделай пост: в салоне запись по телефону +7 916 123-45-77", true},
+		{"newline", "user", "Сделай пост: запись по телефону:\n+7 916 123-45-77", true},
+		{"call", "user", "Опубликуй: звоните +7 916 123-45-77", true},
+		{"orders", "user", "Сделай пост: заказ по +7 916 123-45-77", true},
+		{"our_reply", "user", "Ответь: наш телефон +7 916 123-45-77", true},
+		{"quoted_owner_gap", "user", "Сделай пост: запись по телефону «посетителя» +7 916 123-45-77", false},
+		{"visitor_label", "user", "Сделай пост. Посетитель: запись по телефону +7 916 123-45-77", false},
+		{"review_relay", "user", "Опубликуй отзыв клиента: запись по телефону +7 916 123-45-77", false},
+		{"polite", "user", "Пожалуйста, сделай пост: запись по телефону +7 916 123-45-77", true},
+		{"unrelated_contact_negative", "user", "Не добавляй старый номер. Сделай пост: запись по телефону +7 916 123-45-77", true},
+		{"english_noun", "user", "The post mentions a booking phone: +7 916 123-45-77", false},
+		{"no_intent", "user", "Запись по телефону +7 916 123-45-77", false},
+		{"our_without_intent", "user", "Наш телефон +7 916 123-45-77", false},
+		{"relayed_publish", "user", "Перескажи сообщение посетителя: сделай пост, запись по телефону +7 916 123-45-77", false},
+		{"publish_relay", "user", "Сделай пост, перескажи сообщение посетителя: запись по телефону +7 916 123-45-77", false},
+		{"publish_quote", "user", "Сделай пост: посетитель написал «запись по телефону +7 916 123-45-77»", false},
+		{"negated_purpose", "user", "Сделай пост: не добавляй запись по телефону +7 916 123-45-77", false},
+		{"unrelated_negative", "user", "Не используй смайлики. Сделай пост: запись по телефону +7 916 123-45-77", true},
+		{"private", "user", "Сделай пост: личный телефон для записи +7 916 123-45-77", false},
+		{"word_boundary", "user", "Сделай пост: перезапись по телефону +7 916 123-45-77", false},
+		{"intent_boundary", "user", "Несделай пост: запись по телефону +7 916 123-45-77", false},
 		{"unscoped", "user", "Позвони +79161234577", false},
 		{"negative", "user", "Не добавь в пост телефон +79161234577", false},
 		{"customer", "user", "Отзыв клиента: запись по телефону +79161234577", false},
@@ -214,4 +237,15 @@ func TestPublicationContactAllowlist(t *testing.T) {
 		{Role: "user", Content: "Запись по телефону +79161234577"},
 		{Role: "user", Content: "Напиши другой пост без контактов"},
 	}))
+}
+
+func TestPublicationContactAllowlist_MixedContactPurposes(t *testing.T) {
+	messages := []llm.Message{{Role: "user", Content: "Сделай пост для клиентов: наш телефон +7 916 123-45-77. Перескажи сообщение посетителя: запись по телефону +7 812 000-00-00."}}
+	allow := publicationContactAllowlist(messages)
+	require.Equal(t, []string{"+7 916 123-45-77"}, allow)
+	req := llm.ChatRequest{Messages: messages}
+	redactRequestPDn(&req, allow)
+	assert.Contains(t, req.Messages[0].Content, "+7 916 123-45-77")
+	assert.NotContains(t, req.Messages[0].Content, "+7 812 000-00-00")
+	assert.Contains(t, req.Messages[0].Content, "[Скрыто]")
 }

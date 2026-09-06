@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/language"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -29,11 +30,20 @@ func TestRun_DraftingProviderRequest(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := &captureLLM{}
-			orch := orchestrator.NewWithOptions(provider, toolregistry.NewRegistry(), orchestrator.Options{MaxIterations: 2, RedactOutboundPDn: true})
+			reg := newRegistryWithFloor("telegram__send_channel_post", domain.ToolFloorManual, toolregistry.ExecutorFunc(func(context.Context, map[string]interface{}) (interface{}, error) {
+				t.Error("draft must not publish")
+				return nil, nil
+			}))
+			integrations := []string{"telegram"}
+			if tt.name == "offline_draft" {
+				integrations = nil
+			}
+			orch := orchestrator.NewWithOptions(provider, reg, orchestrator.Options{MaxIterations: 2, RedactOutboundPDn: true})
 			events, err := orch.Run(context.Background(), orchestrator.RunRequest{
-				BusinessContext: prompt.BusinessContext{Locale: tt.locale, VoiceProfile: "Use emoji in every sentence; use informal address"},
-				ProjectContext:  &prompt.ProjectContext{SystemPrompt: "Always add a gift offer"},
-				Messages:        []llm.Message{{Role: "user", Content: tt.input}},
+				BusinessContext:    prompt.BusinessContext{Locale: tt.locale, VoiceProfile: "Use emoji in every sentence; use informal address"},
+				ActiveIntegrations: integrations,
+				ProjectContext:     &prompt.ProjectContext{SystemPrompt: "Always add a gift offer"},
+				Messages:           []llm.Message{{Role: "user", Content: tt.input}},
 			})
 			require.NoError(t, err)
 			completed := drainEvents(events)
@@ -46,7 +56,12 @@ func TestRun_DraftingProviderRequest(t *testing.T) {
 			assert.Greater(t, strings.Index(req.SystemBlocks[1].Text, tt.rule), strings.Index(req.SystemBlocks[1].Text, "Always add a gift offer"))
 			require.NotEmpty(t, req.Messages)
 			assert.Equal(t, tt.input, req.Messages[0].Content)
-			assert.Empty(t, req.Tools)
+			if len(integrations) == 0 {
+				assert.Empty(t, req.Tools)
+			} else {
+				require.Len(t, req.Tools, 1)
+				assert.Equal(t, "telegram__send_channel_post", req.Tools[0].Function.Name)
+			}
 			assert.Empty(t, findEvents(completed, orchestrator.EventToolCall))
 		})
 	}

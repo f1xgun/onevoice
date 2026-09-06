@@ -15,9 +15,9 @@ import (
 // transborder personal-data transfer or when inference is routed exclusively to
 // RU/self-hosted endpoints. See docs/orchestrator/config.md.
 //
-// allow carries the business's OWN registered contact values, which are the
-// business's public data rather than third-party personal data and therefore
-// survive the scrub.
+// allow carries registered organization contacts and owner-supplied contacts
+// explicitly designated for a post or reply in the latest user instruction.
+// Quoted or relayed third-party contacts do not qualify for that exemption.
 func (o *Orchestrator) applyOutboundRedaction(req *llm.ChatRequest, allow []string) {
 	if !o.options.RedactOutboundPDn {
 		return
@@ -77,21 +77,37 @@ func businessContactAllowlist(ctx prompt.BusinessContext) []string {
 	return out
 }
 
-var publicationContact = regexp.MustCompile(`(?i)(?:запись по телефону|телефон для (?:записи|заказов|публикации)|(?:укажи|добавь) в (?:пост|публикацию) телефон|booking phone|phone for (?:bookings|orders|publication))[ :—-]*((?:\+7|8)[ \-(]*\d{3}[ \-)]*\d{3}[ \-]*\d{2}[ \-]*\d{2}\b)`)
-var unsafeContactContext = regexp.MustCompile(`(?i)(?:не |нельзя|клиент|отзыв|цитат|чуж|сотрудник|личн|customer|review|quote|private|do not|don't|[«»"` + "`" + `<>])`)
+const contactWordStart = `(?:^|[^\p{L}\p{N}_])`
+const contactWordEnd = `(?:$|[^\p{L}\p{N}_])`
+
+var publicationContact = regexp.MustCompile(`(?i)` + contactWordStart + `(?:запись\s+по\s+телефону|звоните(?:\s+по(?:\s+телефону)?)?|заказ(?:ы)?\s+по(?:\s+телефону)?|наш\s+телефон|телефон\s+для\s+(?:записи|заказов|публикации)|(?:укажи|добавь)\s+в\s+(?:пост|публикацию)\s+телефон|booking\s+phone|phone\s+for\s+(?:bookings|orders|publication))[\s:—-]*((?:\+7|8)[ \-(]*\d{3}[ \-)]*\d{3}[ \-]*\d{2}[ \-]*\d{2})` + contactWordEnd)
+var publicationIntent = regexp.MustCompile(`(?i)(?:^|[.!?;:\n])\s*(?:(?:пожалуйста|please)[,\s]+)?(?:(?:сделай|напиши|подготовь|составь)\s+(?:пост|публикацию|ответ)|(?:добавь|укажи)\s+в\s+(?:пост|публикацию|ответ)|опубликуй|размести|ответь|(?:write|make|draft)\s+(?:a\s+)?(?:post|reply)|publish|post|reply)` + contactWordEnd)
+var relayedContactContext = regexp.MustCompile(`(?i)` + contactWordStart + `(?:перескажи|перешли|процитируй|(?:посетитель|клиент|сотрудник)\s*:|цитата|цитату|(?:сообщение|отзыв)\s+(?:посетителя|клиента|сотрудника)|(?:посетитель|клиент|сотрудник|он|она)\s+(?:написал[аи]?|сообщил[аи]?|сказал[аи]?)|summarize|forward|quote|(?:visitor|customer)\s+(?:message|said|wrote))` + contactWordEnd)
+var privateContactContext = regexp.MustCompile(`(?i)` + contactWordStart + `(?:личный|чужой|телефон\s+(?:клиента|посетителя|сотрудника)|private|personal)` + contactWordEnd)
+var negatedContactContext = regexp.MustCompile(`(?i)` + contactWordStart + `(?:не|нельзя|do\s+not|don't)\s+(?:добав\p{L}*|указ\p{L}*|публик\p{L}*|опублик\p{L}*|размещ\p{L}*|размест\p{L}*|звон\p{L}*|запись|наш|телефон|сделай|напиши|подготовь|составь|ответь|publish|post|reply|write|add|include)` + contactWordEnd)
+var quotedContactText = regexp.MustCompile("(?s)«[^»]*(?:»|$)|\"[^\"]*(?:\"|$)|`[^`]*(?:`|$)|“[^”]*(?:”|$)|<[^>]*(?:>|$)")
 
 func publicationContactAllowlist(messages []llm.Message) []string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role != "user" {
 			continue
 		}
-		text := messages[i].Content
-		if unsafeContactContext.MatchString(text) {
-			return nil
-		}
+		text := quotedContactText.ReplaceAllString(messages[i].Content, " [quoted] ")
 		var allow []string
-		for _, match := range publicationContact.FindAllStringSubmatch(text, -1) {
-			allow = append(allow, match[1])
+		for _, match := range publicationContact.FindAllStringSubmatchIndex(text, -1) {
+			prefix := text[:match[2]]
+			if relayedContactContext.MatchString(prefix) {
+				continue
+			}
+			intent := publicationIntent.FindStringIndex(prefix)
+			if intent == nil {
+				continue
+			}
+			clause := prefix[strings.LastIndexAny(prefix, ".!?;")+1:]
+			if privateContactContext.MatchString(clause) || negatedContactContext.MatchString(clause) {
+				continue
+			}
+			allow = append(allow, text[match[2]:match[3]])
 		}
 		return allow
 	}

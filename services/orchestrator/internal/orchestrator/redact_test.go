@@ -197,7 +197,12 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 		t.Run(verdict, func(t *testing.T) {
 			ctx := context.Background()
 			var dispatched atomic.Int32
-			rec := &instrumentedExecutor{onDispatch: func() { dispatched.Add(1) }}
+			var executedArgs map[string]interface{}
+			rec := toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+				dispatched.Add(1)
+				executedArgs = args
+				return map[string]interface{}{"ok": true}, nil
+			})
 			reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, rec)
 			repo := newMockPendingRepo()
 			options := orchestrator.Options{MaxIterations: 5, RedactOutboundPDn: true}
@@ -229,6 +234,9 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 			require.NotEmpty(t, snapshot.Messages)
 			assert.Contains(t, snapshot.Messages[0].Content, "+7 916 123-45-77")
 			batch.Calls[0].Verdict = verdict
+			if verdict == "edit" {
+				batch.Calls[0].EditedArgs = map[string]interface{}{"text": "Запись: +7 (843) 555-12-34; +78120000000"}
+			}
 
 			capLLM := &captureLLM{}
 			resumed := orchestrator.NewWithHITL(capLLM, reg, repo, options)
@@ -251,6 +259,10 @@ func TestResume_PublicationContactSurvivesPauseRoundTrip(t *testing.T) {
 				calls := findEvents(completed, orchestrator.EventToolCall)
 				require.Len(t, calls, 1)
 				assert.Equal(t, "contact-call", calls[0].ToolCallID)
+				if verdict == "edit" {
+					assert.Equal(t, batch.Calls[0].EditedArgs, calls[0].ToolArgs)
+					assert.Equal(t, batch.Calls[0].EditedArgs, executedArgs)
+				}
 				results := findEvents(completed, orchestrator.EventToolResult)
 				require.Len(t, results, 1)
 				assert.Equal(t, "contact-call", results[0].ToolCallID)
