@@ -207,3 +207,6 @@ var (
 	ErrInvalidScope        = errors.New("search: invalid scope (business_id and user_id required)")
 	ErrSearchIndexNotReady = errors.New("search: index not ready")
 )
+
+// ErrInvalidLandingEvent identifies an invalid CTA or pathname.
+var ErrInvalidLandingEvent = errors.New("invalid landing event")

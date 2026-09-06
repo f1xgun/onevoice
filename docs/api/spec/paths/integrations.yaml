@@ -246,6 +246,7 @@
   post:
     operationId: connectTelegram
     summary: Store a Telegram channel integration using the system bot token.
+    description: Classified Telegram failures include a stable reason and localized error message.
     tags:
     - integrations
     requestBody:
@@ -266,13 +267,37 @@
         content:
           application/json:
             schema:
-              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              anyOf:
+              - $ref: ../openapi.yaml#/components/schemas/TelegramConnectError
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
       '403':
         description: Insufficient permission.
         content:
           application/json:
             schema:
-              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              anyOf:
+              - $ref: ../openapi.yaml#/components/schemas/TelegramConnectError
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: Bot lacks administrator or posting rights, or channel is already connected.
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: ../openapi.yaml#/components/schemas/TelegramConnectError
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '429':
+        description: Telegram rate limit; reason is rate_limited.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/TelegramConnectError
+      '502':
+        description: Telegram transport failure; reason is unreachable.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/TelegramConnectError
       '500':
         description: Internal failure.
         content:

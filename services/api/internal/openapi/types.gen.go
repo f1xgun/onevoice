@@ -166,6 +166,17 @@ const (
 	IntegrationHealthStatusUnknown  IntegrationHealthStatus = "unknown"
 )
 
+// Defines values for LandingEventRequestCta.
+const (
+	HeroRegister            LandingEventRequestCta = "hero-register"
+	HeroWaitlist            LandingEventRequestCta = "hero-waitlist"
+	NavLogin                LandingEventRequestCta = "nav-login"
+	NavRegister             LandingEventRequestCta = "nav-register"
+	PricingFreeRegister     LandingEventRequestCta = "pricing-free-register"
+	PricingProWaitlist      LandingEventRequestCta = "pricing-pro-waitlist"
+	WaitlistSuccessRegister LandingEventRequestCta = "waitlist-success-register"
+)
+
 // Defines values for MeResponsePreferredLocale.
 const (
 	MeResponsePreferredLocaleEn MeResponsePreferredLocale = "en"
@@ -369,6 +380,18 @@ const (
 	Card    WaitlistRequestPain = "card"
 	Posts   WaitlistRequestPain = "posts"
 	Reviews WaitlistRequestPain = "reviews"
+)
+
+// Defines values for WaitlistRequestPlan.
+const (
+	Pro WaitlistRequestPlan = "pro"
+)
+
+// Defines values for WaitlistRequestSource.
+const (
+	Billing       WaitlistRequestSource = "billing"
+	BusinessLimit WaitlistRequestSource = "business-limit"
+	Landing       WaitlistRequestSource = "landing"
 )
 
 // Defines values for WaitlistRequestSphere.
@@ -955,6 +978,17 @@ type InvitationStateErrorResponse struct {
 	Error  string  `json:"error" validate:"required"`
 	Reason *string `json:"reason,omitempty"`
 }
+
+// LandingEventRequest defines model for LandingEventRequest.
+type LandingEventRequest struct {
+	Cta LandingEventRequestCta `json:"cta" validate:"required,oneof=hero-waitlist hero-register nav-register nav-login pricing-free-register pricing-pro-waitlist waitlist-success-register"`
+
+	// Path Local pathname starting with a single slash, without query or fragment.
+	Path string `json:"path" validate:"required,min=1,max=1024"`
+}
+
+// LandingEventRequestCta defines model for LandingEventRequest.Cta.
+type LandingEventRequestCta string
 
 // ListConsentsResponse defines model for ListConsentsResponse.
 type ListConsentsResponse struct {
@@ -1641,6 +1675,14 @@ type StatusOkResponse struct {
 // StatusOkResponseStatus defines model for StatusOkResponse.Status.
 type StatusOkResponseStatus string
 
+// TelegramConnectError defines model for TelegramConnectError.
+type TelegramConnectError struct {
+	Error string `json:"error" validate:"required"`
+
+	// Reason Stable Telegram connection failure reason.
+	Reason string `json:"reason" validate:"required"`
+}
+
 // TelegramLoginRequest defines model for TelegramLoginRequest.
 type TelegramLoginRequest struct {
 	AuthDate             TelegramLoginRequest_AuthDate `json:"auth_date" validate:"required"`
@@ -1977,12 +2019,24 @@ type WaitlistRequest struct {
 	// Pain Optional strongest-pain segment.
 	Pain *WaitlistRequestPain `json:"pain,omitempty" validate:"omitempty,oneof=reviews posts card"`
 
+	// Plan Optional requested plan; omitted values preserve existing interest.
+	Plan *WaitlistRequestPlan `json:"plan,omitempty" validate:"omitempty,oneof=pro"`
+
+	// Source Optional latest signup source; omitted values preserve existing attribution.
+	Source *WaitlistRequestSource `json:"source,omitempty" validate:"omitempty,oneof=landing billing business-limit"`
+
 	// Sphere Optional organization-sphere segment.
 	Sphere *WaitlistRequestSphere `json:"sphere,omitempty" validate:"omitempty,oneof=cafe beauty services retail other"`
 }
 
 // WaitlistRequestPain Optional strongest-pain segment.
 type WaitlistRequestPain string
+
+// WaitlistRequestPlan Optional requested plan; omitted values preserve existing interest.
+type WaitlistRequestPlan string
+
+// WaitlistRequestSource Optional latest signup source; omitted values preserve existing attribution.
+type WaitlistRequestSource string
 
 // WaitlistRequestSphere Optional organization-sphere segment.
 type WaitlistRequestSphere string
@@ -2335,6 +2389,9 @@ type OrchestratorResumeJSONRequestBody = ResumeRequest
 
 // OrchestratorDraftReplyJSONRequestBody defines body for OrchestratorDraftReply for application/json ContentType.
 type OrchestratorDraftReplyJSONRequestBody = DraftReplyRequest
+
+// RecordLandingEventJSONRequestBody defines body for RecordLandingEvent for application/json ContentType.
+type RecordLandingEventJSONRequestBody = LandingEventRequest
 
 // IngestTelemetryJSONRequestBody defines body for IngestTelemetry for application/json ContentType.
 type IngestTelemetryJSONRequestBody = IngestTelemetryJSONBody

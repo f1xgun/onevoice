@@ -15,8 +15,8 @@ func TestLanding_InsertWaitlist_DedupSuffix(t *testing.T) {
 	repo := NewLandingRepository(mock)
 
 	sphere := "cafe"
-	mock.ExpectExec(`INSERT INTO waitlist_signups .* ON CONFLICT \(email\) DO NOTHING`).
-		WithArgs("owner@cafe.ru", &sphere, (*string)(nil), true).
+	mock.ExpectExec(`INSERT INTO waitlist_signups .* ON CONFLICT \(email\) DO UPDATE SET source = COALESCE\(EXCLUDED.source, waitlist_signups.source\), plan = COALESCE\(EXCLUDED.plan, waitlist_signups.plan\)`).
+		WithArgs("owner@cafe.ru", &sphere, (*string)(nil), true, (*string)(nil), (*string)(nil)).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	err = repo.InsertWaitlist(context.Background(), WaitlistSignupRow{
@@ -57,4 +57,29 @@ func TestLanding_InsertChannelVote_NullNote(t *testing.T) {
 	err = repo.InsertChannelVote(context.Background(), ChannelVoteRow{Channel: "whatsapp"})
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestLanding_InsertEvent(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+	mock.ExpectExec(`INSERT INTO landing_events \(cta,path\) VALUES \(\$1,\$2\)`).WithArgs("nav-login", "/ru").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	require.NoError(t, NewLandingRepository(mock).InsertLandingEvent(context.Background(), LandingEventRow{CTA: "nav-login", Path: "/ru"}))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestLandingWaitlistAttributionUpsert(t *testing.T) {
+	for _, source := range []string{"billing", "business-limit"} {
+		t.Run(source, func(t *testing.T) {
+			pool, err := pgxmock.NewPool()
+			require.NoError(t, err)
+			defer pool.Close()
+			plan := "pro"
+			pool.ExpectExec(`INSERT INTO waitlist_signups \(email,sphere,pain,consent,source,plan\) VALUES \(\$1,\$2,\$3,\$4,\$5,\$6\) ON CONFLICT \(email\) DO UPDATE SET source = COALESCE\(EXCLUDED.source, waitlist_signups.source\), plan = COALESCE\(EXCLUDED.plan, waitlist_signups.plan\)`).
+				WithArgs("owner@example.org", (*string)(nil), (*string)(nil), true, &source, &plan).
+				WillReturnResult(pgxmock.NewResult("INSERT", 1))
+			require.NoError(t, NewLandingRepository(pool).InsertWaitlist(context.Background(), WaitlistSignupRow{Email: "owner@example.org", Consent: true, Source: &source, Plan: &plan}))
+			require.NoError(t, pool.ExpectationsWereMet())
+		})
+	}
 }

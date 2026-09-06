@@ -93,5 +93,6 @@ var en = map[string]string{
 	"connect.telegram.connect_failed":       "Couldn't connect the channel — please try again",
 
 	// Proactive connection-health owner nudge.
-	"notify.connection.reconnect_yandex": "OneVoice lost access to Yandex.Business — review replies and profile updates are paused. Reconnect the organization in settings, it takes about two minutes.",
+	"notify.connection.reconnect_yandex":   "OneVoice lost access to Yandex.Business — review replies and profile updates are paused. Reconnect the organization in settings, it takes about two minutes.",
+	"connect.telegram.channel_unavailable": "Could not access the channel. Check that it exists, its address is correct, and the bot is an administrator with permission to post.",
 }

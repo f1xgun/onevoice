@@ -5,7 +5,8 @@
     description: |
       Public, unauthenticated. Records a marketing-landing visitor's interest
       in the closed beta. Deduplicated by email; the response never reveals
-      whether the email was already present.
+      whether the email was already present. Repeated signups update supplied
+      source and plan; omitted fields preserve existing attribution.
     tags:
     - landing
     security: []
@@ -73,3 +74,25 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/landing-events:
+  post:
+    operationId: recordLandingEvent
+    summary: Record an anonymous landing CTA click.
+    description: Body is limited to 4096 bytes. Path is limited to 1024 bytes and is never a metric label.
+    tags: [landing]
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/LandingEventRequest
+    responses:
+      '204':
+        description: Click persisted and counted.
+      '400':
+        description: Invalid CTA, pathname, JSON, or oversized body.
+      '429':
+        description: Too many requests from this IP.
+      '500':
+        description: Persistence failed.
