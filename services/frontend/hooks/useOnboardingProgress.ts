@@ -64,6 +64,8 @@ interface PersistedAnswer {
   toolCalls?: unknown[];
 }
 
+const MAX_ONBOARDING_HISTORIES = 20;
+
 const ROUTES = {
   createOrg: API_PATHS.BUSINESS.ROOT,
   connectChannel: API_PATHS.INTEGRATIONS.ROOT,
@@ -166,32 +168,30 @@ export function useOnboardingProgress(): OnboardingProgress {
     queryKey: [...conversationsQueryKey(activeBusinessId), 'first-action'],
     queryFn: async ({ signal }) => {
       const api = bizApi(activeBusinessId!);
-      const limit = 100;
-      for (let offset = 0; ; offset += limit) {
-        const { data: conversations } = await api.get<Conversation[]>(
-          BIZ_API_PATHS.CONVERSATIONS.ROOT,
-          { signal, params: { limit, offset } }
+      const limit = MAX_ONBOARDING_HISTORIES;
+      const { data: conversations } = await api.get<Conversation[]>(
+        BIZ_API_PATHS.CONVERSATIONS.ROOT,
+        { signal, params: { limit, offset: 0 } }
+      );
+      for (const conversation of conversations.slice(0, MAX_ONBOARDING_HISTORIES)) {
+        const { data } = await api.get<PersistedAnswer[] | { messages: PersistedAnswer[] }>(
+          BIZ_API_PATHS.CONVERSATIONS.MESSAGES(conversation.id),
+          { signal }
         );
-        for (const conversation of conversations) {
-          const { data } = await api.get<PersistedAnswer[] | { messages: PersistedAnswer[] }>(
-            BIZ_API_PATHS.CONVERSATIONS.MESSAGES(conversation.id),
-            { signal }
-          );
-          const messages = Array.isArray(data) ? data : data.messages;
-          if (
-            messages.some(
-              (message) =>
-                message.role === 'assistant' &&
-                message.status === 'complete' &&
-                !message.errorCode &&
-                message.content.trim() !== '' &&
-                !message.toolCalls?.length
-            )
+        const messages = Array.isArray(data) ? data : data.messages;
+        if (
+          messages.some(
+            (message) =>
+              message.role === 'assistant' &&
+              message.status === 'complete' &&
+              !message.errorCode &&
+              message.content.trim() !== '' &&
+              !message.toolCalls?.length
           )
-            return true;
-        }
-        if (conversations.length < limit) return false;
+        )
+          return true;
       }
+      return false;
     },
     enabled: !!activeBusinessId && (actions.isSuccess || actions.isError) && !hasSuccessfulTask,
     retry: false,

@@ -170,6 +170,7 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 		clientGone = ctx.Done()
 	}
 
+	var doneSeen, errorSeen, pauseSeen bool
 	for scanner.Scan() {
 		line := scanner.Text()
 		write := true
@@ -184,9 +185,6 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 			_, _ = fmt.Fprintf(req.Writer, "%s\n", line)
 			flusher.Flush()
 		}
-		if req.OnEvent == nil {
-			continue
-		}
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -194,11 +192,37 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 		if err != nil {
 			continue
 		}
-		req.OnEvent(ev)
+		switch ev.Type {
+		case "done":
+			doneSeen = true
+		case "error":
+			errorSeen = true
+		case "tool_approval_required":
+			pauseSeen = true
+		}
+		if req.OnEvent != nil {
+			req.OnEvent(ev)
+		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("orchestratorclient: scanner: %w", err)
+	streamErr := scanner.Err()
+	if streamErr == nil && !doneSeen && !errorSeen && !pauseSeen {
+		streamErr = io.ErrUnexpectedEOF
+	}
+	if streamErr != nil {
+		if !errorSeen && !pauseSeen {
+			ev := sse.Event{Type: "error", Code: "STREAM_INTERRUPTED"}
+			if req.OnEvent != nil {
+				req.OnEvent(ev)
+			}
+			if ctx.Err() == nil {
+				if _, err := fmt.Fprint(req.Writer, "\n\ndata: {\"type\":\"error\",\"code\":\"STREAM_INTERRUPTED\"}\n\n"); err != nil {
+					return fmt.Errorf("orchestratorclient: write stream failure: %w", err)
+				}
+				flusher.Flush()
+			}
+		}
+		return fmt.Errorf("orchestratorclient: scanner: %w", streamErr)
 	}
 	return nil
 }

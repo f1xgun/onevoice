@@ -234,6 +234,7 @@ func TestReserveThenFinalize_NoStrandedActiveMessage(t *testing.T) {
 	turn.reserveAssistantPlaceholder(context.Background(), convID, "placeholder-9", start)
 
 	state := newStreamState()
+	state.doneSeen = true
 	state.assistantText.WriteString("final answer")
 	req := TurnRequest{ConversationID: convID}
 	enriched := &enrichmentResult{business: &domain.Business{}}
@@ -269,6 +270,7 @@ func TestFinalize_AbsentPlaceholder_PersistsViaCreate(t *testing.T) {
 
 	// No reserveAssistantPlaceholder call: the row is ABSENT (reservation failed).
 	state := newStreamState()
+	state.doneSeen = true
 	state.assistantText.WriteString("answer that must not be dropped")
 	req := TurnRequest{ConversationID: convID}
 	enriched := &enrichmentResult{business: &domain.Business{}}

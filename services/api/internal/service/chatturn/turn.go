@@ -199,7 +199,7 @@ func (t *Turn) Run(
 		return OutcomePauseHITL, nil
 	}
 	if state.streamErrCode != "" {
-		return OutcomeError, nil
+		return OutcomeError, streamErr
 	}
 	return OutcomeDone, nil
 }
@@ -329,6 +329,9 @@ func (t *Turn) persistAfterStream(
 
 	saveCtx, cancel := t.persistContext(parentCtx)
 	defer cancel()
+	if !state.doneSeen && state.streamErrCode == "" {
+		state.streamErrCode = "STREAM_INTERRUPTED"
+	}
 	content := state.assistantText.String()
 	if content == "" && state.streamErrContent != "" {
 		content = i18n.Tr(saveCtx, "api.chat.stream_error_wrapper", state.streamErrContent)

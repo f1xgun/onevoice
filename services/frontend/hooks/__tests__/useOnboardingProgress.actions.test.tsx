@@ -185,3 +185,35 @@ it('stops history requests after the first successful answer', async () => {
     get.mock.calls.filter(([path]) => path.endsWith('/messages')).map(([path]) => path)
   ).toEqual(['/conversations/first/messages']);
 });
+
+it('caps history requests even when the conversation endpoint returns more than requested', async () => {
+  get.mockReset();
+  get.mockImplementation(async (path: string) => ({
+    data:
+      path === '/conversations'
+        ? Array.from({ length: 100 }, (_, index) => ({ id: String(index) }))
+        : path.endsWith('/messages')
+          ? {
+              messages: [
+                {
+                  role: 'assistant',
+                  status: 'error',
+                  errorCode: 'STREAM_INTERRUPTED',
+                  content: 'Partial',
+                },
+              ],
+            }
+          : [],
+  }));
+  const { result } = renderHook(() => useOnboardingProgress(), { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.loaded).toBe(true));
+  expect(result.current.steps.find((s) => s.id === 'firstAction')?.done).toBe(false);
+  expect(get.mock.calls.filter(([path]) => path.endsWith('/messages'))).toHaveLength(20);
+  expect(get.mock.calls.filter(([path]) => path === '/conversations')).toHaveLength(1);
+  expect(get).toHaveBeenCalledWith(
+    '/conversations',
+    expect.objectContaining({
+      params: { limit: 20, offset: 0 },
+    })
+  );
+});

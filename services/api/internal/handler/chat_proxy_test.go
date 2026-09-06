@@ -1141,7 +1141,9 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	assert.Equal(t, http.StatusOK, rr.Code)
 	require.NotEmpty(t, persistedUpdates, "Update must run on stream-end-without-done")
 	final := persistedUpdates[len(persistedUpdates)-1]
-	assert.Equal(t, domain.MessageStatusComplete, final.Status, "fall-through must clear pending_approval")
+	assert.Equal(t, domain.MessageStatusError, final.Status, "premature EOF must fail and clear pending_approval")
+	assert.Equal(t, "STREAM_INTERRUPTED", final.ErrorCode)
+	assert.Contains(t, rr.Body.String(), "STREAM_INTERRUPTED")
 	require.Len(t, final.ToolCalls, 1)
 	assert.Equal(t, domain.ToolCallStatusRejected, final.ToolCalls[0].Status, "tool_rejected status preserved on fall-through")
 }

@@ -464,7 +464,8 @@ func TestResumeApproved_RecordsExecutedToolOnNoTerminalFallback(t *testing.T) {
 	assert.Equal(t, OutcomeRejoinedResume, outcome)
 
 	require.NotNil(t, msgRepo.updated, "fallback MUST persist the finalized message")
-	assert.Equal(t, domain.MessageStatusComplete, msgRepo.updated.Status)
+	assert.Equal(t, domain.MessageStatusError, msgRepo.updated.Status)
+	assert.Equal(t, "STREAM_INTERRUPTED", msgRepo.updated.ErrorCode)
 
 	require.Len(t, posts.created, 1,
 		"the tool executed before the stream dropped must be recorded on the fallback, not dropped")
