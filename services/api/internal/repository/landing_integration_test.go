@@ -25,8 +25,8 @@ func TestLandingPersistenceAndMigrations(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	for _, tc := range []struct{ name, base, migration string }{
-		{"production", "../../../../migrations/postgres/000036_landing_capture.up.sql", "../../../../migrations/postgres/000037_landing_events_attribution.up.sql"},
-		{"integration", "../../migrations/000035_landing_capture.up.sql", "../../migrations/000036_landing_events_attribution.up.sql"},
+		{"production", "../../../../migrations/postgres/000036_landing_capture.up.sql", "../../../../migrations/postgres/000039_landing_events_attribution.up.sql"},
+		{"integration", "../../migrations/000035_landing_capture.up.sql", "../../migrations/000038_landing_events_attribution.up.sql"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			schema := "landing_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
