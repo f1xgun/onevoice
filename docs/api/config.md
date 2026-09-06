@@ -137,7 +137,8 @@ Operators tune via `RATE_LIMIT_*` env vars when the service sees abnormal traffi
 | Field | Env var | Default | Notes |
 |---|---|---|---|
 | `RateLimitRegister` | `RATE_LIMIT_REGISTER` | `5` | Tightest — register is the highest-abuse target. |
-| `RateLimitLogin` | `RATE_LIMIT_LOGIN` | `10` | Also used for `/auth/refresh` and invitation preview/accept. |
+| `RateLimitLogin` | `RATE_LIMIT_LOGIN` | `10` | Also used for invitation preview/accept. |
+| `RateLimitRefresh` | `RATE_LIMIT_REFRESH` | `60` | Per-IP budget for `/auth/refresh`. Every authenticated page load spends one, so it must not share the tight `Login` budget. |
 | `RateLimitChat` | `RATE_LIMIT_CHAT` | `10` | Per-user budget. Shared with HITL. |
 | `RateLimitHITL` | `RATE_LIMIT_HITL` | `10` | |
 | `RateLimitConsents` | `RATE_LIMIT_CONSENTS` | `10` | Per-user budget for `/auth/consents` + `/users/me/consents/pdn/withdraw`. 10/min/user is generous (genuine retry budget, blocks UPSERT thrash). |

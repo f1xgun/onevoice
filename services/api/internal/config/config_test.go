@@ -172,6 +172,7 @@ func TestLoad_RateLimits(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 5, cfg.RateLimitRegister)
 		assert.Equal(t, 10, cfg.RateLimitLogin)
+		assert.Equal(t, 60, cfg.RateLimitRefresh)
 		assert.Equal(t, 10, cfg.RateLimitChat)
 		assert.Equal(t, 10, cfg.RateLimitHITL)
 		assert.Equal(t, 10, cfg.RateLimitConsents)
@@ -182,6 +183,7 @@ func TestLoad_RateLimits(t *testing.T) {
 		minTestEnv(t)
 		t.Setenv("RATE_LIMIT_REGISTER", "2")
 		t.Setenv("RATE_LIMIT_LOGIN", "20")
+		t.Setenv("RATE_LIMIT_REFRESH", "120")
 		t.Setenv("RATE_LIMIT_CHAT", "30")
 		t.Setenv("RATE_LIMIT_HITL", "40")
 		t.Setenv("RATE_LIMIT_CONSENTS", "50")
@@ -191,6 +193,7 @@ func TestLoad_RateLimits(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 2, cfg.RateLimitRegister)
 		assert.Equal(t, 20, cfg.RateLimitLogin)
+		assert.Equal(t, 120, cfg.RateLimitRefresh)
 		assert.Equal(t, 30, cfg.RateLimitChat)
 		assert.Equal(t, 40, cfg.RateLimitHITL)
 		assert.Equal(t, 50, cfg.RateLimitConsents)
@@ -225,6 +228,7 @@ func TestLoad_AuthRateLimits_NonPositiveFailsLoud(t *testing.T) {
 	keys := []string{
 		"RATE_LIMIT_REGISTER",
 		"RATE_LIMIT_LOGIN",
+		"RATE_LIMIT_REFRESH",
 	}
 	for _, key := range keys {
 		for _, value := range []string{"0", "-1", "notanint"} {
@@ -243,11 +247,13 @@ func TestLoad_AuthRateLimits_PositiveLoadsCleanly(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("RATE_LIMIT_REGISTER", "3")
 	t.Setenv("RATE_LIMIT_LOGIN", "11")
+	t.Setenv("RATE_LIMIT_REFRESH", "90")
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
 	assert.Equal(t, 3, cfg.RateLimitRegister)
 	assert.Equal(t, 11, cfg.RateLimitLogin)
+	assert.Equal(t, 90, cfg.RateLimitRefresh)
 }
 
 func TestLoad_UserRateLimits_PositiveLoadsCleanly(t *testing.T) {

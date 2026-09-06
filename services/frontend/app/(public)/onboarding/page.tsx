@@ -56,10 +56,6 @@ export default function OnboardingPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-12">
       <div className="w-full max-w-2xl">
-        {/* Escape hatch: this page is the landing spot for anybody without an
-            organization, and it is otherwise a dead end — no nav rail mounts
-            here, so without these controls signing out or switching language
-            would require clearing cookies. */}
         <div className="mb-4 flex items-center justify-end gap-1">
           <LanguageSwitcher />
           <Button

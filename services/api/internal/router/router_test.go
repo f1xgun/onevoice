@@ -489,7 +489,11 @@ func TestRouter_RegenerateTitleRateLimited(t *testing.T) {
 // middleware, so the captured chain is mounted directly.
 func replayResetRequestChain(t *testing.T, src *chi.Mux) *chi.Mux {
 	t.Helper()
-	const wantPattern = "/api/v1/auth/password-reset/request"
+	return replayPostChain(t, src, "/api/v1/auth/password-reset/request")
+}
+
+func replayPostChain(t *testing.T, src *chi.Mux, wantPattern string) *chi.Mux {
+	t.Helper()
 	var chain []func(http.Handler) http.Handler
 	var found bool
 	err := chi.Walk(src, func(method, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
@@ -553,6 +557,47 @@ func TestRouter_PasswordResetRequestRateLimited(t *testing.T) {
 	}
 	assert.Equal(t, http.StatusTooManyRequests, lastCode,
 		"the (Register+1)th POST /auth/password-reset/request from one IP must be throttled")
+}
+
+func TestRouter_RefreshUsesItsOwnRateLimitBudget(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	cache := authz.NewCacheForTest(&fakeLoader{}, time.Minute, time.Minute)
+	hc := health.New()
+	handlers := buildTestHandlers()
+	const (
+		testOrigin   = "http://localhost:3000"
+		loginLimit   = 2
+		refreshLimit = 5
+	)
+	r := router.Setup(handlers, []byte("test-secret"), redisClient, hc,
+		[]string{testOrigin},
+		router.RateLimits{
+			Register: 10, Login: loginLimit, Refresh: refreshLimit,
+			Chat: 10, HITL: 10, Writes: 1000, Invitations: 1000,
+		},
+		cache, nil, nil, nil)
+
+	refresh := replayPostChain(t, r, "/api/v1/auth/refresh")
+
+	var lastCode int
+	for i := 0; i <= refreshLimit; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
+		req.RemoteAddr = "198.51.100.9:5555"
+		rec := httptest.NewRecorder()
+		refresh.ServeHTTP(rec, req)
+		lastCode = rec.Code
+		if i < refreshLimit {
+			require.Equal(t, http.StatusOK, rec.Code,
+				"refresh %d/%d must pass — the route must not spend the Login budget (%d)",
+				i+1, refreshLimit, loginLimit)
+		}
+	}
+	assert.Equal(t, http.StatusTooManyRequests, lastCode,
+		"the (Refresh+1)th POST /auth/refresh from one IP must still be throttled")
 }
 
 // TestRouter_SingularBusinessRouteGone asserts that GET /api/v1/business

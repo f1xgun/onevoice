@@ -59,7 +59,7 @@ const DELETION_GRACE_MS =
 export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalProps) {
   const t = useTranslations('account.deletion.confirmModal');
   const tErrors = useTranslations('account.deletion.errors');
-  const tCopy = useTranslations(); // top-level for COPY i18nKey resolution
+  const tCopy = useTranslations();
   const locale = useLocale();
 
   const [password, setPassword] = useState('');

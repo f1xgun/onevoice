@@ -1918,6 +1918,10 @@
       "emailTaken": "This email is already used by another account.",
       "alreadyVerified": "Email is already verified."
     },
+    "session": {
+      "refreshFailed": "Couldn't restore your session. Check your connection and try again.",
+      "retry": "Try again"
+    },
     "blockedModal": {
       "day0": {
         "title": "Verify your email",

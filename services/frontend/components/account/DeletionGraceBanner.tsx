@@ -33,7 +33,7 @@ const HTTP_GONE = 410;
 
 export function DeletionGraceBanner() {
   const t = useTranslations('account.deletion');
-  const tCopy = useTranslations(); // top-level for COPY i18nKey resolution
+  const tCopy = useTranslations();
   const locale = useLocale();
   const user = useAuthStore((s) => s.user);
   const [submitting, setSubmitting] = useState(false);

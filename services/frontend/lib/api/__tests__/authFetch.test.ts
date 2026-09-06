@@ -111,12 +111,14 @@ describe('authFetch', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does NOT log out on a transient refresh failure (network / 5xx)', async () => {
+  it.each([
+    { name: 'rate limit', error: { response: { status: 429 } } },
+    { name: 'server failure', error: { response: { status: 500 } } },
+    { name: 'network failure', error: new Error('Network Error') },
+  ])('does not log out on refresh $name', async ({ error }) => {
     const fetchMock = vi.fn().mockResolvedValue(resp(401, { code: 'unauthorized' }));
     vi.stubGlobal('fetch', fetchMock);
-    // A backend 500 (Redis/DB blip) — not session-terminal. Also covers a
-    // bare network error (no `response` at all).
-    axiosH.post.mockRejectedValue({ response: { status: 500 } });
+    axiosH.post.mockRejectedValue(error);
 
     const res = await authFetch('/api/v1/x');
 

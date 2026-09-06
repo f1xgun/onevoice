@@ -45,6 +45,7 @@ const corsMaxAge = 300
 type RateLimits struct {
 	Register    int
 	Login       int
+	Refresh     int
 	Chat        int
 	HITL        int
 	Consents    int
@@ -121,7 +122,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		} else {
 			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/login", handlers.Auth.Login)
 		}
-		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
+		r.With(middleware.RateLimit(redisClient, rateLimits.Refresh, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
 		r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).
 			Post("/auth/password-reset/request", handlers.Auth.RequestPasswordReset)

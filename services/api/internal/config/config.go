@@ -211,6 +211,7 @@ type Config struct {
 
 	RateLimitRegister  int
 	RateLimitLogin     int
+	RateLimitRefresh   int
 	RateLimitChat      int
 	RateLimitHITL      int
 	RateLimitConsents  int
@@ -555,6 +556,7 @@ func Load() (*Config, error) {
 	const (
 		defaultRateLimitRegister    = 5
 		defaultRateLimitLogin       = 10
+		defaultRateLimitRefresh     = 60
 		defaultRateLimitChat        = 10
 		defaultRateLimitHITL        = 10
 		defaultRateLimitConsents    = 10
@@ -570,6 +572,7 @@ func Load() (*Config, error) {
 	}{
 		{"RATE_LIMIT_REGISTER", defaultRateLimitRegister, &cfg.RateLimitRegister},
 		{"RATE_LIMIT_LOGIN", defaultRateLimitLogin, &cfg.RateLimitLogin},
+		{"RATE_LIMIT_REFRESH", defaultRateLimitRefresh, &cfg.RateLimitRefresh},
 		{"RATE_LIMIT_CHAT", defaultRateLimitChat, &cfg.RateLimitChat},
 		{"RATE_LIMIT_HITL", defaultRateLimitHITL, &cfg.RateLimitHITL},
 		{"RATE_LIMIT_CONSENTS", defaultRateLimitConsents, &cfg.RateLimitConsents},
