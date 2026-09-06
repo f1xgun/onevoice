@@ -255,7 +255,11 @@ func (h *ConnectHandler) probeTelegramLinkedGroup(ctx context.Context, botToken 
 		return "no_linked_group"
 	}
 	if _, err := h.telegramGetChat(ctx, botToken, strconv.FormatInt(linkedChatID, 10)); err != nil {
-		return "bot_not_member"
+		var apiErr *telegramAPIError
+		if errors.As(err, &apiErr) && apiErr.Kind == telegramErrForbidden {
+			return "bot_not_member"
+		}
+		return "unknown"
 	}
 	return "ok"
 }

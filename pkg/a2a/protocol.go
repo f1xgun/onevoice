@@ -1,6 +1,9 @@
 package a2a
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // AgentID is the canonical identifier for a platform agent.
 type AgentID = string
@@ -69,6 +72,7 @@ type TelegramOwnerLink struct {
 
 // ToolRequest is sent from the orchestrator to an agent over NATS.
 type ToolRequest struct {
+	Deadline   *time.Time             `json:"deadline,omitempty"`
 	TaskID     string                 `json:"task_id"`
 	Tool       string                 `json:"tool"`
 	Args       map[string]interface{} `json:"args"`

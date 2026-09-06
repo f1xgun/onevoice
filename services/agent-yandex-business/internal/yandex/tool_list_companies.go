@@ -26,6 +26,21 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 
 	var result []map[string]interface{}
 	err := bb.runStep(ctx, "listCompanies", 2, func(page playwright.Page) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		closed := make(chan struct{})
+		stop := context.AfterFunc(ctx, func() {
+			defer close(closed)
+			if err := page.Close(); err != nil {
+				slog.Debug("close canceled companies page", "error", err)
+			}
+		})
+		defer func() {
+			if !stop() {
+				<-closed
+			}
+		}()
 		if _, err := page.Goto(companiesURL, playwright.PageGotoOptions{
 			WaitUntil: playwright.WaitUntilStateNetworkidle,
 			Timeout:   playwright.Float(pageNavTimeoutMs),
@@ -77,5 +92,8 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 		debugScreenshot(page, "list_companies_done")
 		return nil
 	})
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	return result, err
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -517,6 +518,8 @@ func TestRoleRepository_DeleteInTx_Success(t *testing.T) {
 	tx, err := mockPool.Begin(ctx)
 	require.NoError(t, err)
 
+	mockPool.ExpectExec(`UPDATE invitations SET role_id = \$1 WHERE role_id = \$2 AND \(accepted_at IS NOT NULL OR revoked_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP\)`).WithArgs(nil, pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
 	mockPool.ExpectExec(`DELETE FROM roles`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
@@ -533,6 +536,8 @@ func TestRoleRepository_DeleteInTx_NotFound(t *testing.T) {
 	mockPool.ExpectBegin()
 	tx, err := mockPool.Begin(ctx)
 	require.NoError(t, err)
+
+	mockPool.ExpectExec(`UPDATE invitations SET role_id = \$1 WHERE role_id = \$2 AND \(accepted_at IS NOT NULL OR revoked_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP\)`).WithArgs(nil, pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	mockPool.ExpectExec(`DELETE FROM roles`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -559,6 +564,8 @@ func TestRoleRepository_DeleteInTx_ForeignKeyViolation(t *testing.T) {
 	mockPool.ExpectBegin()
 	tx, err := mockPool.Begin(ctx)
 	require.NoError(t, err)
+
+	mockPool.ExpectExec(`UPDATE invitations SET role_id = \$1 WHERE role_id = \$2 AND \(accepted_at IS NOT NULL OR revoked_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP\)`).WithArgs(nil, pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	mockPool.ExpectExec(`DELETE FROM roles`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -590,6 +597,7 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"user_id"}).
 				AddRow(user1).AddRow(user2).AddRow(user3))
+		mockPool.ExpectExec(`UPDATE invitations SET role_id = \$1 WHERE role_id = \$2 AND \(accepted_at IS NOT NULL OR revoked_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP\)`).WithArgs(nil, pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mockPool.ExpectExec(`DELETE FROM roles`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("DELETE", 1))
@@ -628,6 +636,7 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 		mockPool.ExpectQuery(`UPDATE business_members .* RETURNING user_id`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"user_id"}))
+		mockPool.ExpectExec(`UPDATE invitations SET role_id = \$1 WHERE role_id = \$2 AND \(accepted_at IS NOT NULL OR revoked_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP\)`).WithArgs(nil, pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mockPool.ExpectExec(`DELETE FROM roles`).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("DELETE", 0))
@@ -810,12 +819,12 @@ func TestRoleRepository_CountMembersByRole(t *testing.T) {
 // --- CountInvitationsByRole ----------------------------------------
 
 func TestRoleRepository_CountInvitationsByRole(t *testing.T) {
-	t.Run("returns_count_for_any_referencing_invitation", func(t *testing.T) {
+	t.Run("returns_count_for_pending_invitations", func(t *testing.T) {
 		ctx := context.Background()
 		r, mockPool := newTestRoleRepo(t)
 
 		rows := pgxmock.NewRows([]string{"count"}).AddRow(3)
-		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE`).
+		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE accepted_at IS NULL AND revoked_at IS NULL AND role_id = \$1 AND expires_at > CURRENT_TIMESTAMP`).
 			WithArgs(pgxmock.AnyArg()).
 			WillReturnRows(rows)
 
@@ -830,7 +839,7 @@ func TestRoleRepository_CountInvitationsByRole(t *testing.T) {
 		r, mockPool := newTestRoleRepo(t)
 
 		rows := pgxmock.NewRows([]string{"count"}).AddRow(0)
-		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE`).
+		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE accepted_at IS NULL AND revoked_at IS NULL AND role_id = \$1 AND expires_at > CURRENT_TIMESTAMP`).
 			WithArgs(pgxmock.AnyArg()).
 			WillReturnRows(rows)
 
@@ -844,7 +853,7 @@ func TestRoleRepository_CountInvitationsByRole(t *testing.T) {
 		ctx := context.Background()
 		r, mockPool := newTestRoleRepo(t)
 
-		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE`).
+		mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM invitations WHERE accepted_at IS NULL AND revoked_at IS NULL AND role_id = \$1 AND expires_at > CURRENT_TIMESTAMP`).
 			WillReturnError(errors.New("connection lost"))
 
 		_, err := r.CountInvitationsByRole(ctx, uuid.New())
@@ -909,4 +918,26 @@ func TestRoleRepository_GetByMemberInBusiness(t *testing.T) {
 		assert.NotErrorIs(t, err, domain.ErrMembershipNotFound)
 		assert.Contains(t, err.Error(), "query role by member")
 	})
+}
+
+func TestRoleDelete_DetachFailureAbortsDelete(t *testing.T) {
+	for _, reassign := range []bool{false, true} {
+		t.Run(fmt.Sprint(reassign), func(t *testing.T) {
+			repo, pool := newTestRoleRepo(t)
+			pool.ExpectBegin()
+			tx, err := pool.Begin(context.Background())
+			require.NoError(t, err)
+			if reassign {
+				pool.ExpectQuery(`UPDATE business_members .* RETURNING user_id`).WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"user_id"}))
+			}
+			pool.ExpectExec(`UPDATE invitations`).WithArgs(nil, pgxmock.AnyArg()).WillReturnError(errors.New("detach failed"))
+			if reassign {
+				_, err = repo.DeleteWithReassignInTx(context.Background(), tx, uuid.New(), uuid.New(), uuid.New(), uuid.New())
+			} else {
+				err = repo.DeleteInTx(context.Background(), tx, uuid.New())
+			}
+			require.ErrorContains(t, err, "detach terminal invitations")
+			require.NoError(t, pool.ExpectationsWereMet())
+		})
+	}
 }

@@ -181,7 +181,7 @@ func (h *OAuthHandler) yandexCookiesArg(cookiesJSON string) (map[string]any, err
 
 // yandexListCompaniesTimeout caps the agent's list_companies RPA (Playwright
 // SPA hydration ~25-45s).
-const yandexListCompaniesTimeout = 60 * time.Second
+const yandexListCompaniesTimeout = 120 * time.Second
 
 // ListYandexCompanies dispatches the list_companies RPA and returns picker rows.
 // Synchronous; blocks the request for the full Playwright run.
@@ -227,7 +227,7 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 		Args:       args,
 		BusinessID: bc.BusinessID.String(),
 	}
-	resp, callErr := h.taskPublisher.RequestTool(r.Context(), a2a.Subject(a2a.AgentYandexBusiness), toolReq, yandexListCompaniesTimeout)
+	resp, callErr := h.requestYandexCompanies(r.Context(), toolReq)
 	if callErr != nil {
 		slog.Info("yandex list companies: agent call failed", "business_id", bc.BusinessID, "error", callErr)
 		writeJSONErrorKey(w, r, http.StatusBadGateway, "oauth.yandex.list_orgs_failed")
@@ -239,7 +239,15 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 			agentErr = resp.Error
 		}
 		slog.Info("yandex list companies: agent returned error", "business_id", bc.BusinessID, "error", agentErr)
-		writeJSONErrorKey(w, r, http.StatusBadGateway, "oauth.yandex.list_orgs_failed")
+		key := "oauth.yandex.list_orgs_failed"
+		code := "transient"
+		if resp != nil && resp.Code == "integration_token_invalid" {
+			key = "oauth.yandex.session_expired"
+			code = resp.Code
+		} else if resp != nil && resp.Code == "rate_limit_exceeded" {
+			code = resp.Code
+		}
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": i18n.Tr(r.Context(), key), "code": code})
 		return
 	}
 
@@ -329,7 +337,7 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 		Args:       map[string]any{},
 		BusinessID: businessID.String(),
 	}
-	resp, callErr := h.taskPublisher.RequestTool(ctx, a2a.Subject(a2a.AgentYandexBusiness), req, yandexListCompaniesTimeout)
+	resp, callErr := h.requestYandexCompanies(ctx, req)
 	if callErr != nil {
 		slog.Info("yandex name refresh: agent call failed", "integration_id", integrationID, "error", callErr)
 		return
@@ -484,4 +492,13 @@ func (h *OAuthHandler) yandexProbeURL() string {
 		return h.cfg.yandexProbeBaseURL
 	}
 	return defaultYandexProbeURL
+}
+
+func (h *OAuthHandler) requestYandexCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	deadline := time.Now().Add(yandexListCompaniesTimeout - 10*time.Second)
+	if callerDeadline, ok := ctx.Deadline(); ok && callerDeadline.Before(deadline) {
+		deadline = callerDeadline
+	}
+	req.Deadline = &deadline
+	return h.taskPublisher.RequestTool(ctx, a2a.Subject(a2a.AgentYandexBusiness), req, yandexListCompaniesTimeout)
 }

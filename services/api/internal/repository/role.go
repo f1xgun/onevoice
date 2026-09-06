@@ -358,6 +358,9 @@ func (r *roleRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID
 	if tx == nil {
 		return fmt.Errorf("DeleteInTx: tx is required")
 	}
+	if err := r.detachTerminalInvitations(ctx, tx, id); err != nil {
+		return err
+	}
 	sqlStr, args, err := r.sb.
 		Delete("roles").
 		Where(squirrel.Eq{"id": id, "is_system": false}).
@@ -429,6 +432,9 @@ func (r *roleRepository) DeleteWithReassignInTx(
 	if err != nil {
 		return nil, fmt.Errorf("reassign members: %w", err)
 	}
+	if err := r.detachTerminalInvitations(ctx, tx, oldRoleID); err != nil {
+		return nil, err
+	}
 	delSQL, delArgs, err := r.sb.
 		Delete("roles").
 		Where(squirrel.Eq{"id": oldRoleID, "is_system": false}).
@@ -499,17 +505,13 @@ func (r *roleRepository) CountMembersByRole(ctx context.Context, businessID, rol
 	return count, nil
 }
 
-// CountInvitationsByRole counts every invitations row referencing roleID in any
-// state. The FK invitations.role_id REFERENCES roles(id) ON DELETE RESTRICT
-// (migrations/postgres/000007_rbac_data_model.up.sql:51) pins the role for ALL
-// rows — terminal (accepted/revoked/expired) invitations are never hard-deleted,
-// so they would still raise a restrict_violation on DELETE. Counting any row lets
-// the handler refuse with ErrRoleInUse (422) instead of letting the FK 500.
+// CountInvitationsByRole counts pending, unexpired invitations referencing the role.
 func (r *roleRepository) CountInvitationsByRole(ctx context.Context, roleID uuid.UUID) (int, error) {
 	sqlStr, args, err := r.sb.
 		Select("COUNT(*)").
 		From("invitations").
-		Where(squirrel.Eq{"role_id": roleID}).
+		Where(squirrel.Eq{"role_id": roleID, "accepted_at": nil, "revoked_at": nil}).
+		Where("expires_at > CURRENT_TIMESTAMP").
 		ToSql()
 	if err != nil {
 		return 0, fmt.Errorf("build count invitations: %w", err)
@@ -546,4 +548,22 @@ func (r *roleRepository) GetByMemberInBusiness(ctx context.Context, businessID, 
 		return nil, fmt.Errorf("query role by member: %w", scanErr)
 	}
 	return &role, nil
+}
+
+func (r *roleRepository) detachTerminalInvitations(ctx context.Context, tx pgx.Tx, roleID uuid.UUID) error {
+	query, args, err := r.sb.Update("invitations").
+		Set("role_id", nil).
+		Where(squirrel.Eq{"role_id": roleID}).
+		Where(squirrel.Or{
+			squirrel.NotEq{"accepted_at": nil},
+			squirrel.NotEq{"revoked_at": nil},
+			squirrel.Expr("expires_at <= CURRENT_TIMESTAMP"),
+		}).ToSql()
+	if err != nil {
+		return fmt.Errorf("build detach terminal invitations: %w", err)
+	}
+	if _, err := tx.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("detach terminal invitations: %w", err)
+	}
+	return nil
 }

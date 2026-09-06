@@ -400,3 +400,33 @@ func TestAgent_Stop_NoInflight(t *testing.T) {
 
 	assert.Less(t, elapsed.Milliseconds(), int64(50), "Stop() should return immediately when no in-flight handlers")
 }
+
+func TestAgent_PropagatesRequestDeadline(t *testing.T) {
+	for _, offset := range []time.Duration{-time.Second, 20 * time.Millisecond} {
+		t.Run(offset.String(), func(t *testing.T) {
+			transport := &fakeTransport{}
+			done := make(chan error, 1)
+			deadline := time.Now().Add(offset)
+			agent := a2a.NewAgent(a2a.AgentYandexBusiness, transport, func(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+				got, ok := ctx.Deadline()
+				if !ok || !got.Equal(deadline) {
+					done <- errors.New("request deadline not propagated")
+					return nil, ctx.Err()
+				}
+				<-ctx.Done()
+				done <- ctx.Err()
+				return nil, ctx.Err()
+			})
+			require.NoError(t, agent.Start(context.Background()))
+			payload, err := json.Marshal(a2a.ToolRequest{TaskID: "deadline", Deadline: &deadline})
+			require.NoError(t, err)
+			transport.Trigger(a2a.Subject(a2a.AgentYandexBusiness), "reply", payload)
+			select {
+			case err := <-done:
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+			case <-time.After(time.Second):
+				t.Fatal("agent ignored deadline")
+			}
+		})
+	}
+}
