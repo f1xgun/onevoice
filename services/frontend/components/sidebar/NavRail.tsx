@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { FeedbackDialog } from '@/components/feedback/FeedbackDialog';
 import { BusinessSwitcher } from '@/components/business-switcher/BusinessSwitcher';
@@ -217,6 +218,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
             icon column. Sits directly above logout so locale + identity
             controls live in the same footer cluster; the menu opens to the
             right of the rail like the nav tooltips. */}
+        <ThemeSwitcher className="mb-2" side="right" align="end" />
         <LanguageSwitcher className="mb-2" side="right" align="end" />
 
         {/* Logout */}

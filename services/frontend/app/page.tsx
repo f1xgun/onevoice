@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { ChannelMark } from '@/components/ui/channel-mark';
+import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
@@ -85,7 +86,8 @@ function SiteNav({ mode }: LandingEntryProps) {
           ))}
         </nav>
         <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
-          <div className="hidden sm:block">
+          <div className="flex items-center gap-1">
+            <ThemeSwitcher />
             <LanguageSwitcher />
           </div>
           <Link

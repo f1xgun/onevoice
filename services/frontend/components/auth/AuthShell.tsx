@@ -9,6 +9,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { MonoLabel } from '@/components/ui/mono-label';
 
@@ -32,7 +33,8 @@ export function AuthShell({ eyebrow, title, description, children, aside }: Auth
       {/* Pre-login locale toggle. Anchored top-right so it doesn't fight
           the editorial column on md+ but stays reachable on mobile (where
           the editorial pane collapses). z-10 keeps it above the form. */}
-      <div className="absolute right-4 top-4 z-10">
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-1">
+        <ThemeSwitcher />
         <LanguageSwitcher />
       </div>
       {/* Form column */}

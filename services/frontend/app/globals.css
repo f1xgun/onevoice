@@ -57,6 +57,29 @@
     --ov-overlay: rgb(0 0 0 / 0.64);
     --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.32);
   }
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+      color-scheme: dark;
+      --ov-paper: #202724;
+      --ov-paper-raised: #29332e;
+      --ov-paper-sunken: #35433b;
+      --ov-ink: #f2f3ed;
+      --ov-ink-soft: #b9c3ba;
+      --ov-line: #48564d;
+      --ov-control: #829389;
+      --ov-brand: #99c6ba;
+      --ov-on-brand: #202724;
+      --ov-brand-hover: #b3d9cf;
+      --ov-brand-soft: #23453e;
+      --ov-success: #b6d3a0;
+      --ov-warning: #e6c186;
+      --ov-danger: #f1a39a;
+      --ov-on-danger: #202724;
+      --ov-info: #a7c8eb;
+      --ov-overlay: rgb(0 0 0 / 0.64);
+      --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.32);
+    }
+  }
   :root,
   .dark {
     --ov-paper-well: var(--ov-paper-sunken);

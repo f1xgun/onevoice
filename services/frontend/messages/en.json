@@ -1,4 +1,11 @@
 {
+  "theme": {
+    "label": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark",
+    "saveFailed": "Could not change the theme. Please try again."
+  },
   "metadata": {
     "title": "OneVoice — manage your digital presence",
     "description": "A platform that automates digital presence for small businesses"

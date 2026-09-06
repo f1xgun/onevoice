@@ -1,3 +1,6 @@
+import { cookies } from 'next/headers';
+import { THEME_COOKIE, resolveTheme } from '@/lib/theme';
+import { ThemeProvider } from '@/components/design-system/ThemeProvider';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Golos_Text, JetBrains_Mono } from 'next/font/google';
@@ -34,6 +37,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
+  const theme = resolveTheme((await cookies()).get(THEME_COOKIE)?.value);
   const locale = await getLocale();
   const messages = await getMessages();
 
@@ -41,12 +45,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html
       lang={locale}
       data-ov-motion
-      className={`${sans.variable} ${mono.variable} scroll-pb-32 scroll-pt-24 md:scroll-pb-8 md:scroll-pt-28`}
+      className={`${sans.variable} ${mono.variable} ${theme === 'system' ? '' : theme} scroll-pb-32 scroll-pt-24 md:scroll-pb-8 md:scroll-pt-28`}
     >
       <body className="font-sans antialiased">
         <IntlClientProvider locale={locale} messages={messages}>
           <SkipLink />
-          <Providers>{children}</Providers>
+          <ThemeProvider theme={theme}>
+            <Providers>{children}</Providers>
+          </ThemeProvider>
         </IntlClientProvider>
       </body>
     </html>

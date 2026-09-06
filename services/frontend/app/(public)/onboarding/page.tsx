@@ -11,6 +11,7 @@ import { Plus, Link2, LogOut } from 'lucide-react';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
+import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { useLogout } from '@/lib/hooks/useLogout';
 
@@ -57,6 +58,7 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-12">
       <div className="w-full max-w-2xl">
         <div className="mb-4 flex items-center justify-end gap-1">
+          <ThemeSwitcher />
           <LanguageSwitcher />
           <Button
             type="button"
