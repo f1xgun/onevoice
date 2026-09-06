@@ -23,15 +23,14 @@ import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
 // content (sticky top-0 keeps it visible while the page scrolls).
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 // persistent RED banner when accountDeletion !== null.
-// UI-SPEC Surface 10: outranks VerificationBanner — mounts ABOVE so the
+// Outranks VerificationBanner — mounts ABOVE so the
 // deletion-grace state visually wins when both could fire (the user
 // can be both unverified AND mid-grace).
 import { DeletionGraceBanner } from '@/components/account/DeletionGraceBanner';
 // forced re-consent modal — z-50 portal that
 // renders OUTSIDE <main> when the user has stale policy versions and
 // is past the email-verification gate. Mutually exclusive with
-// EmailVerifiedRequiredModal per the modal-precedence rule (UI-SPEC
-// §Cross-surface stacking).
+// EmailVerifiedRequiredModal to show only one required-action modal at a time.
 import { ReConsentModal } from '@/components/legal/ReConsentModal';
 import type { ReactNode } from 'react';
 

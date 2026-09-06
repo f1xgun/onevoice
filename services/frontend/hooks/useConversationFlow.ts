@@ -471,7 +471,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         await consumeSSEStream(response, controller.signal, (event) => {
           if (controller.signal.aborted || sendAbortRef.current !== controller) return;
           if (event.type === 'error') failed = true;
-          if (event.type === 'done') completed = true;
+          if (event.type === 'done' || event.type === 'tool_approval_required') completed = true;
           onEventRef.current(event);
         });
         if (!failed && !controller.signal.aborted && sendAbortRef.current === controller) {

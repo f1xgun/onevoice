@@ -366,6 +366,12 @@ describe('composer keyboard and failed submission', () => {
 
 it.each([
   { frame: 'data: {"type":"done"}\n\n', cleared: true },
+  {
+    frame:
+      'data: {"type":"text","content":"Подготовлен пост"}\n\n' +
+      'data: {"type":"tool_approval_required","batch_id":"b1","calls":[{"call_id":"c1","tool_name":"telegram__send_channel_post","args":{"text":"Публикация"},"editable_fields":["text"],"floor":"manual"}]}\n\n',
+    cleared: true,
+  },
   { frame: 'data: {"type":"text","content":"Частичный ответ"}\n\n', cleared: false },
   { frame: '', cleared: false },
   {
@@ -389,8 +395,20 @@ it.each([
       new Response(frame, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
     );
     fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
-    await waitFor(() => expect(input).not.toBeDisabled());
+    if (frame.includes('tool_approval_required')) {
+      await screen.findByRole('region', { name: /Ожидает подтверждения/ });
+      expect(input).toBeDisabled();
+    } else {
+      await waitFor(() => expect(input).not.toBeDisabled());
+    }
     await waitFor(() => expect(input).toHaveValue(cleared ? '' : 'Проверить текст'));
+    if (cleared) {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    }
+    if (frame.includes('tool_approval_required')) {
+      expect(screen.getByText('Подготовлен пост')).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: /Ожидает подтверждения/ })).toBeInTheDocument();
+    }
     if (!frame || frame.includes('Частичный ответ')) {
       expect(
         await screen.findByText(
