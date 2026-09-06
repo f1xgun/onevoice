@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -99,6 +101,13 @@ func (m *MockUserService) UpdateName(ctx context.Context, userID uuid.UUID, name
 	return args.Error(0)
 }
 
+// registerConsentsJSON renders the consents object of a register body at the
+// build's current legal versions, so the fixtures follow legalconfig bumps
+// instead of hardcoding a version string.
+func registerConsentsJSON(pdnVersion string) string {
+	return fmt.Sprintf(`"consents":{"tos":%q,"privacy":%q,"pdn":%q}`, legalconfig.TOSVersion, legalconfig.PrivacyVersion, pdnVersion)
+}
+
 func TestRegister(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -109,7 +118,7 @@ func TestRegister(t *testing.T) {
 	}{
 		{
 			name:        "successful registration",
-			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123",` + registerConsentsJSON(legalconfig.PDNVersion) + `}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(&domain.User{
@@ -193,7 +202,7 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "user already exists",
-			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123",` + registerConsentsJSON(legalconfig.PDNVersion) + `}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(nil, domain.ErrUserExists)
@@ -214,7 +223,7 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "internal server error",
-			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123",` + registerConsentsJSON(legalconfig.PDNVersion) + `}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(nil, errors.New("database connection failed"))
@@ -241,7 +250,7 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "phase 22 stale pdn version",
-			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v0.9"}}`,
+			requestBody: `{"email":"user@example.com","name":"Test User","password":"password123",` + registerConsentsJSON("v0.9") + `}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
@@ -877,7 +886,7 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 
 	handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","name":"Test User","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","name":"Test User","password":"password123",`+registerConsentsJSON(legalconfig.PDNVersion)+`}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 

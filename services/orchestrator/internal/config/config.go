@@ -440,6 +440,13 @@ func (c *Config) RateLimiterGate() (RateLimiterDecision, error) {
 	return RateLimiterDecision{Degraded: true}, nil
 }
 
+// IsProduction reports whether the orchestrator runs with APP_ENV=production —
+// the same idiom RateLimiterGate and RequireInternalSecret use for their
+// fail-closed branches, exposed so wiring code can gate on it too.
+func (c *Config) IsProduction() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
+}
+
 // RequireInternalSecret decides whether the orchestrator may boot without the
 // shared internal-inbound secret. The chat / resume / tool-registry /
 // draft-reply routes trust attacker-controllable request bodies (UserID,

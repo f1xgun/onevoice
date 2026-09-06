@@ -82,12 +82,22 @@ func BuildRateLimiter(cfg *config.Config, log *slog.Logger, rdb *redis.Client, s
 // client + base URL) for the billing sink. Provider registration itself is
 // shared with services/api via llmwire.RegisterConfiguredProviders.
 func LLMRouter(cfg *config.Config, log *slog.Logger, extraOpts ...llm.RouterOption) (*llm.Router, error) {
+	models := allConfiguredModelIDs(cfg)
+	if err := llm.EnforceResidency(
+		cfg.IsProduction(),
+		cfg.AllowTransborderLLM,
+		llm.HostedKeysSet(cfg.OpenRouterAPIKey, cfg.OpenAIAPIKey, cfg.AnthropicAPIKey),
+		models,
+		cfg.SelfHostedEndpoints,
+	); err != nil {
+		return nil, err
+	}
 	registry := llm.NewRegistry()
 	opts := llmwire.RegisterConfiguredProviders(registry, log, llmwire.ProviderKeys{
 		OpenRouter: cfg.OpenRouterAPIKey,
 		OpenAI:     cfg.OpenAIAPIKey,
 		Anthropic:  cfg.AnthropicAPIKey,
-	}, allConfiguredModelIDs(cfg), cfg.SelfHostedEndpoints)
+	}, models, cfg.SelfHostedEndpoints)
 	if len(opts) == 0 {
 		return nil, fmt.Errorf("no LLM provider API key set — set OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY")
 	}

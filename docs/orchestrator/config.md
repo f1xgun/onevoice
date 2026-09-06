@@ -77,7 +77,7 @@ via env.
 
 | Field | Env | Default | Range / Semantic |
 |---|---|---|---|
-| `AllowTransborderLLM` | `ALLOW_TRANSBORDER_LLM` | `false` | When `false` (default) the orchestrator redacts personal data from every outbound LLM request before it can reach a provider running outside Russia. `cmd/main.go` wires `Options.RedactOutboundPDn = !AllowTransborderLLM`, so the *safe* posture is the zero value. **Boot error** on a non-boolean value. |
+| `AllowTransborderLLM` | `ALLOW_TRANSBORDER_LLM` | `false` | When `false` (default) the orchestrator redacts personal data from every outbound LLM request before it can reach a provider running outside Russia. `cmd/main.go` wires `Options.RedactOutboundPDn = !AllowTransborderLLM`, so the *safe* posture is the zero value. In production (`APP_ENV=production`) the same flag gates the LLM residency check in `wire.LLMRouter`: with the flag `false`, boot is refused when any hosted key (`OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) is set or when `LLM_MODEL` / `DRAFT_REPLY_MODEL` is not served by a `SELF_HOSTED_N_*` endpoint (`llm.EnforceResidency`). **Boot error** on a non-boolean value. |
 
 The redaction chokepoint lives in `internal/orchestrator/redact.go` (`applyOutboundRedaction`), invoked in `stepRun` just before `o.llm.Chat` — so it covers both the fresh `Run` and the HITL `Resume` path (both route through `stepRun`). It scrubs, via `pkg/security.RedactPII`:
 

@@ -75,17 +75,23 @@ type Config struct {
 	// AppEnv is the deployment environment ("production" enables fail-closed
 	// gates; any other value, including empty, is treated as dev/non-prod).
 	// Compare via IsProduction rather than reading the field directly.
-	AppEnv       string
-	Port         string
-	PostgresHost string
-	PostgresPort string
-	PostgresUser string
-	PostgresPass string
-	PostgresDB   string
-	MongoURI     string
-	MongoDB      string
-	RedisHost    string
-	RedisPort    string
+	AppEnv string
+	// AllowTransborderLLM, when true, records that the operator has a filed
+	// legal basis for cross-border personal-data transfer and lifts the
+	// production LLM residency gate (hosted providers outside the RF perimeter
+	// are otherwise refused at boot). Mirrors the orchestrator's flag; default
+	// false.
+	AllowTransborderLLM bool
+	Port                string
+	PostgresHost        string
+	PostgresPort        string
+	PostgresUser        string
+	PostgresPass        string
+	PostgresDB          string
+	MongoURI            string
+	MongoDB             string
+	RedisHost           string
+	RedisPort           string
 	// RedisPassword authenticates the Redis connection (requirepass). Empty
 	// keeps the connection unauthenticated for local dev.
 	RedisPassword string
@@ -488,6 +494,13 @@ func Load() (*Config, error) {
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
 	cfg.AnthropicAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 	cfg.SelfHostedEndpoints = llm.ParseIndexedEndpoints(os.Getenv)
+	if v := os.Getenv("ALLOW_TRANSBORDER_LLM"); v != "" {
+		b, perr := strconv.ParseBool(v)
+		if perr != nil {
+			return nil, fmt.Errorf("ALLOW_TRANSBORDER_LLM must be a boolean, got %q: %w", v, perr)
+		}
+		cfg.AllowTransborderLLM = b
+	}
 
 	if v := os.Getenv("LLM_FREE_TIER_DAILY_SPEND_USD"); v != "" {
 		if f, perr := strconv.ParseFloat(v, 64); perr == nil {
@@ -711,6 +724,15 @@ func Load() (*Config, error) {
 	if cfg.IsProduction() {
 		if err := validateLegalProduction(cfg); err != nil {
 			return nil, fmt.Errorf("LEGAL_* validation failed in production: %w", err)
+		}
+		if err := llm.EnforceResidency(
+			true,
+			cfg.AllowTransborderLLM,
+			llm.HostedKeysSet(cfg.OpenRouterAPIKey, cfg.OpenAIAPIKey, cfg.AnthropicAPIKey),
+			[]string{cfg.LLMModel, cfg.TitlerModel},
+			cfg.SelfHostedEndpoints,
+		); err != nil {
+			return nil, err
 		}
 	} else if err := validateLegalProduction(cfg); err != nil {
 		slog.Warn("LEGAL_* placeholders present (allowed in non-production)", "issue", err.Error())

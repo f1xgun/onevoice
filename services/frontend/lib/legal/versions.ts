@@ -5,12 +5,14 @@
 // Go constants in pkg/legalconfig/versions.go — ships a CI parity
 // script (grep both files and diff). Mismatch → CI fails before deploy.
 //
-// v1.0 is the initial ship (effective_from frontmatter date
-// 2026-06-01 in services/frontend/content/legal/{slug}.{locale}.md).
+// v1.0 was the initial ship (effective_from 2026-06-01). v1.1 (effective_from
+// 2026-09-08) moved the LLM processor to RF-hosted Yandex AI Studio, dropped
+// the cross-border section, and added the third-party data / AI-content /
+// processing-mandate clauses — see services/frontend/content/legal/{slug}.{locale}.md.
 
-export const TOS_VERSION = 'v1.0';
-export const PRIVACY_VERSION = 'v1.0';
-export const PDN_VERSION = 'v1.0';
+export const TOS_VERSION = 'v1.1';
+export const PRIVACY_VERSION = 'v1.1';
+export const PDN_VERSION = 'v1.1';
 
 // PolicySlug — typed consent slug. Mirrors the user_consents.purpose column.
 // Exactly these three values; marketing consent + 18+ confirmation deferred.
