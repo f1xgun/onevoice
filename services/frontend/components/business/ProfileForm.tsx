@@ -46,6 +46,9 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
     handleSubmit,
     control,
     reset,
+    getValues,
+    watch,
+    setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<BusinessInput>({
     resolver: zodResolver(businessSchema),
@@ -64,9 +67,13 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
       return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.ROOT, data);
     },
     onSuccess: (_response, values) => {
+      const category = getValues('category');
       reset(values);
+      if (category !== values.category) {
+        setValue('category', category, { shouldDirty: true });
+      }
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
-      toast.success(tProfileForm('saved'));
+      if (category === values.category) toast.success(tProfileForm('saved'));
     },
     onError: () => toast.error(tProfileForm('saveError')),
   });
@@ -237,7 +244,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         </Field>
       </div>
 
-      {mutation.isSuccess && (
+      {mutation.isSuccess && watch('category') === mutation.variables?.category && (
         <StatusLine role="status" tone="success" icon={Check} text={tProfileForm('saved')} />
       )}
       {mutation.isError && (

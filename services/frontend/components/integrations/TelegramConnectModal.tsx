@@ -43,7 +43,6 @@ export function TelegramConnectModal({ open, onClose }: Props) {
 
         {step === 1 && (
           <div className="space-y-4">
-            <p className="text-sm text-ink-soft">{tIntegrations('telegramStep1Intro')}</p>
             <ol className="list-inside list-decimal space-y-2 text-sm text-ink-soft">
               <li>{tIntegrations('telegramStep1Item1')}</li>
               <li>{tIntegrations('telegramStep1Item2')}</li>

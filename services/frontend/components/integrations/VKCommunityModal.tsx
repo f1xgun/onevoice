@@ -25,6 +25,8 @@ import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { extractApiErrorCode, useMapEmailVerificationError } from '@/lib/resolveErrorMap';
 
 const TOKEN_ERROR_ID = 'vk-token-error';
+const communityTokenSchema = z.object({ token: z.string().trim().min(1) });
+type CommunityTokenInput = z.infer<typeof communityTokenSchema>;
 
 interface Props {
   open: boolean;
@@ -63,8 +65,8 @@ export function VKCommunityModal({ open, onClose }: Props) {
     watch,
     reset,
     handleSubmit: submitForm,
-  } = useForm<{ token: string }>({
-    resolver: zodResolver(z.object({ token: z.string().trim().min(1) })),
+  } = useForm<CommunityTokenInput>({
+    resolver: zodResolver(communityTokenSchema),
     defaultValues: { token: '' },
   });
   const token = watch('token');
@@ -103,7 +105,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
     }
   }
 
-  async function handleSubmit(values: { token: string }) {
+  async function handleSubmit(values: CommunityTokenInput) {
     const trimmed = values.token.trim();
     setError(null);
     if (!trimmed || !activeBusinessId) return;

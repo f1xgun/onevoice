@@ -97,3 +97,16 @@ describe('TelegramConnectModal — connect flow', () => {
     }
   );
 });
+
+it.each(['ru', 'en'] as const)(
+  'renders the %s introduction once as the dialog description',
+  (locale) => {
+    globalThis.__setTestLocale(locale);
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    const description = document.getElementById(dialog.getAttribute('aria-describedby')!)!;
+    expect(description).not.toBeNull();
+    expect(screen.getAllByText(description.textContent!)).toHaveLength(1);
+    expect(dialog).toHaveAccessibleDescription(description.textContent!);
+  }
+);

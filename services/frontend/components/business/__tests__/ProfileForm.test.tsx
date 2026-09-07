@@ -136,3 +136,40 @@ it('associates validation with the field and preserves edits on a failed save', 
   expect(name).toHaveValue('Draft');
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
+
+it('preserves category edits made during saving and submits them on the next save', async () => {
+  const draft = 'Custom initial draft';
+  const user = userEvent.setup();
+  let finish!: (value: unknown) => void;
+  saveProfile.mockReset();
+  saveProfile.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    })
+  );
+  const { rerender } = render(
+    <ProfileForm defaultValues={{ name: 'Old', category: 'Custom initial' }} />,
+    { wrapper: wrapper(new QueryClient()) }
+  );
+  const name = screen.getByRole('textbox', { name: /Название/ });
+  await user.clear(name);
+  await user.type(name, 'Updated');
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+  await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));
+  expect(name).toBeDisabled();
+  const category = screen.getByDisplayValue('Custom initial');
+  await user.type(category, ' draft');
+  await act(async () => finish({ data: {} }));
+  expect(category).toHaveValue(draft);
+  expect(name).toHaveValue('Updated');
+  expect(name).toBeEnabled();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+  rerender(<ProfileForm defaultValues={{ name: 'Updated', category: 'Custom initial' }} />);
+  expect(category).toHaveValue(draft);
+  saveProfile.mockResolvedValueOnce({ data: {} });
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+  await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(2));
+  expect(saveProfile.mock.calls[1][1]).toMatchObject({ name: 'Updated', category: draft });
+  expect(await screen.findByRole('status')).toHaveTextContent('Данные сохранены');
+});
