@@ -54,6 +54,10 @@ locally rather than wrapping a monolithic table component (D-21).
 
 ## Rules
 
+- Follow the [OneVoice design system](../../docs/design-system.md) for tokens, themes and component contracts.
+- Build application compositions outside `components/ui/*`, through primitives’ typed public props; do not edit generated primitives.
+- Use `brand` in new application code; new `ochre` names outside the compatibility layer are forbidden.
+
 - **Server components by default.** Add `"use client"` only when using hooks/events.
 - **Tailwind only.** No inline styles, no CSS modules.
 - **Forms:** Always react-hook-form + zod. Never manual `useState` for form fields.

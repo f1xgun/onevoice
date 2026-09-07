@@ -52,6 +52,10 @@ src/
 
 ## Styling Rules
 
+- Follow the [OneVoice design system](design-system.md) for tokens, themes and component contracts.
+- Build application compositions outside `components/ui/*`, through primitives’ typed public props; do not edit generated primitives.
+- Use `brand` in new application code; new `ochre` names outside the compatibility layer are forbidden.
+
 - Tailwind utility classes grouped logically (layout → spacing → typography → color).
 - shadcn/ui primitives live in `components/ui/` — do not hand-edit them; re-run the CLI to regenerate.
 - Prefer design tokens (`text-muted-foreground`, `bg-background`) over raw color values.
