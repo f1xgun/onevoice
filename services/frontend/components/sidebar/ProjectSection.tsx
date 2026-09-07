@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { RefObject } from 'react';
 import Link from 'next/link';
+import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { useRouter } from 'next/navigation';
 import {
   Bookmark,
@@ -143,7 +144,10 @@ export function ProjectSection({
                   {pinned && (
                     <Bookmark size={10} className="shrink-0 text-yellow-400" aria-hidden />
                   )}
-                  <span className="flex-1 truncate">{getDisplayTitle(conv)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{getDisplayTitle(conv)}</span>
+                    <ConversationPreview conversationId={conv.id} />
+                  </span>
                 </Link>
                 <ChatRowMenu
                   conversation={conv}

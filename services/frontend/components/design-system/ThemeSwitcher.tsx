@@ -15,11 +15,17 @@ import { useThemeSwitcher } from '@/hooks/useThemeSwitcher';
 
 interface ThemeSwitcherProps {
   className?: string;
+  showLabel?: boolean;
   side?: 'top' | 'right' | 'bottom' | 'left';
   align?: 'start' | 'center' | 'end';
 }
 
-export function ThemeSwitcher({ className, side = 'bottom', align = 'end' }: ThemeSwitcherProps) {
+export function ThemeSwitcher({
+  className,
+  showLabel = false,
+  side = 'bottom',
+  align = 'end',
+}: ThemeSwitcherProps) {
   const t = useTranslations('theme');
   const { active, disabled, select } = useThemeSwitcher();
 
@@ -36,6 +42,7 @@ export function ThemeSwitcher({ className, side = 'bottom', align = 'end' }: The
           )}
         >
           <SunMoon size={18} aria-hidden />
+          {showLabel && <span>{t('label')}</span>}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

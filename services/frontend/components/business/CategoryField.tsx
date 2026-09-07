@@ -27,6 +27,8 @@ import type { BusinessInput } from '@/lib/schemas';
 
 const PRESET_CATEGORY_IDS = ['cafe', 'retail', 'service', 'beauty', 'education'] as const;
 const OTHER_CATEGORY = 'other';
+const CUSTOM_CATEGORY_HELP_ID = 'custom-category-help';
+const CATEGORY_ERROR_ID = 'category-description';
 
 export interface CategoryFieldProps {
   control: Control<BusinessInput>;
@@ -50,6 +52,7 @@ export function CategoryField({ control, error }: CategoryFieldProps) {
             presets={presets}
             placeholder={tProfileForm('categoryPlaceholder')}
             otherLabel={tCategories(OTHER_CATEGORY)}
+            customHelp={tProfileForm('customCategoryHelp')}
             categoryAria={tProfileForm('fields.category')}
             customPlaceholder={tProfileForm('customCategoryPlaceholder')}
             customAria={tProfileForm('customCategoryAria')}
@@ -68,6 +71,7 @@ interface CategoryControlProps {
   categoryAria: string;
   customPlaceholder: string;
   customAria: string;
+  customHelp: string;
   error?: string;
 }
 
@@ -79,6 +83,7 @@ function CategoryControl({
   categoryAria,
   customPlaceholder,
   customAria,
+  customHelp,
   error,
 }: CategoryControlProps) {
   const value = field.value ?? '';
@@ -124,15 +129,26 @@ function CategoryControl({
         </SelectContent>
       </Select>
       {isOther && (
-        <Input
-          aria-invalid={!!error}
-          aria-describedby={error ? 'category-description' : undefined}
-          value={value}
-          onChange={(e) => field.onChange(e.target.value)}
-          onBlur={field.onBlur}
-          placeholder={customPlaceholder}
-          aria-label={customAria}
-        />
+        <div className="space-y-2">
+          <p id="custom-category-help" className="text-meta text-ink-soft">
+            {customHelp}
+          </p>
+          <label htmlFor="custom-category" className="block text-meta font-medium">
+            {customAria}
+          </label>
+          <Input
+            id="custom-category"
+            aria-invalid={!!error}
+            aria-describedby={[CUSTOM_CATEGORY_HELP_ID, error && CATEGORY_ERROR_ID]
+              .filter(Boolean)
+              .join(' ')}
+            value={value === OTHER_CATEGORY ? '' : value}
+            onChange={(e) => field.onChange(e.target.value)}
+            onBlur={field.onBlur}
+            placeholder={customPlaceholder}
+            aria-label={customAria}
+          />
+        </div>
       )}
     </div>
   );

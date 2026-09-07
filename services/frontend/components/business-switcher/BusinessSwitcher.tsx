@@ -68,15 +68,22 @@ export function BusinessSwitcher() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         aria-label={triggerAria}
+        title={triggerAria}
         disabled={isLoading}
         className={cn(
-          'mb-2 flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          'mb-2 flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-2 text-meta font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           active
-            ? 'hover:bg-paper-sunken/80 bg-paper-sunken text-ink'
+            ? 'bg-paper-sunken text-ink hover:bg-paper-raised'
             : 'bg-paper-sunken text-ink-soft hover:text-ink'
         )}
       >
-        {active ? initials : <Plus size={18} aria-hidden />}
+        <span
+          aria-hidden
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-control"
+        >
+          {active ? initials : <Plus size={18} />}
+        </span>
+        <span className="min-w-0 break-words text-left">{triggerAria}</span>
       </PopoverTrigger>
       <PopoverContent
         side="right"

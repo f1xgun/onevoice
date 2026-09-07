@@ -75,9 +75,9 @@ export function AISummaryRail({ business, tones }: AISummaryRailProps) {
     >
       {/* AI understanding */}
       <section className="flex flex-col gap-3 rounded-lg border border-line bg-paper-sunken p-5">
-        <MonoLabel>{t('sample')}</MonoLabel>
+        <h2 className="text-document-title">{t('sample')}</h2>
+        <p className="text-meta text-ink-soft">{t('sampleBody')}</p>
         <p className="text-sm leading-relaxed text-ink">{summary}</p>
-        <p className="text-xs leading-relaxed text-ink-mid">{t('sampleBody')}</p>
       </section>
 
       {/* Tips */}
