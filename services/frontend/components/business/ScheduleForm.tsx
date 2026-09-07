@@ -187,7 +187,7 @@ function DayRow({
   return (
     <div className="grid grid-cols-[120px_1fr] items-center gap-4 rounded-md border border-line-soft bg-paper px-4 py-2.5 sm:grid-cols-[120px_140px_1fr]">
       <span className="text-sm font-medium text-ink">{label}</span>
-      <div className="flex items-center gap-2">
+      <label className="flex min-h-11 cursor-pointer items-center gap-2">
         <Switch
           checked={open}
           onCheckedChange={(checked) => onChange({ closed: !checked })}
@@ -196,7 +196,7 @@ function DayRow({
         <span className="text-xs text-ink-mid">
           {open ? tSchedule('open') : tSchedule('closedShort')}
         </span>
-      </div>
+      </label>
       <div
         className={`flex items-center gap-2 transition-opacity ${open ? 'opacity-100' : 'opacity-40'}`}
         aria-hidden={!open}
