@@ -1,10 +1,11 @@
 'use client';
 
-import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+
+import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';

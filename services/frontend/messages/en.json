@@ -1788,11 +1788,11 @@
       "after": "11:00",
       "decisionLabel": "Your decision",
       "status": "Review the text",
-      "decision": "In the working chat, choose “Approve”, “Edit” or “Reject”, then press “Confirm”. Sending is authorized only after confirming approval or an edit.",
+      "decision": "Review the edited text, then press “Confirm” in the approval card. Only then will sending with your edit be authorized.",
       "result": "In the working chat, the result appears after the platform responds. This is only an example of approval.",
-      "editHelp": "To change the time, write your correction in chat. The assistant will prepare a new draft for review.",
-      "editRequest": "Your chat message: “Change 10:00 to 11:00”.",
-      "decisionExample": "Example of actions in the working chat — these are labels, not buttons."
+      "editHelp": "To change the time, choose “Edit” in the approval card. You can edit the text directly in the card’s fields.",
+      "editRequest": "In the “Text” field, replace 10:00 with 11:00.",
+      "decisionExample": "Example of actions in the approval card — these are labels, not buttons. In this example, “Edit” is selected."
     },
     "scenarios": {
       "title": "Two everyday requests",

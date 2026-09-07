@@ -1,6 +1,5 @@
 'use client';
 
-import { connectionStatus } from './connectionStatus';
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -20,6 +19,7 @@ import {
   Minus,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
@@ -33,6 +33,8 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePlatformFullLabels } from '@/lib/platforms';
 import { useLogout } from '@/lib/hooks/useLogout';
+
+import { connectionStatus } from './connectionStatus';
 
 interface Integration {
   platform: string;

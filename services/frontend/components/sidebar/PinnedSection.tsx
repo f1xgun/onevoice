@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import type { RefObject } from 'react';
 import Link from 'next/link';
-import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { Bookmark, ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+
+import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { cn } from '@/lib/utils';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';

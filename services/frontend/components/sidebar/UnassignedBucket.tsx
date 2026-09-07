@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import type { RefObject } from 'react';
 import Link from 'next/link';
-import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { useRouter } from 'next/navigation';
 import {
   Bookmark,
@@ -14,8 +13,10 @@ import {
   Plus,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { toast } from 'sonner';
+
+import { ConversationPreview } from '@/components/chat/ConversationPreview';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
 import { usePermission } from '@/lib/hooks/usePermission';
