@@ -137,39 +137,61 @@ it('associates validation with the field and preserves edits on a failed save', 
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
 
-it('preserves category edits made during saving and submits them on the next save', async () => {
-  const draft = 'Custom initial draft';
-  const user = userEvent.setup();
-  let finish!: (value: unknown) => void;
-  saveProfile.mockReset();
-  saveProfile.mockReturnValueOnce(
-    new Promise((resolve) => {
-      finish = resolve;
-    })
-  );
-  const { rerender } = render(
-    <ProfileForm defaultValues={{ name: 'Old', category: 'Custom initial' }} />,
-    { wrapper: wrapper(new QueryClient()) }
-  );
-  const name = screen.getByRole('textbox', { name: /Название/ });
-  await user.clear(name);
-  await user.type(name, 'Updated');
-  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
-  await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));
-  expect(name).toBeDisabled();
-  const category = screen.getByDisplayValue('Custom initial');
-  await user.type(category, ' draft');
-  await act(async () => finish({ data: {} }));
-  expect(category).toHaveValue(draft);
-  expect(name).toHaveValue('Updated');
-  expect(name).toBeEnabled();
-  expect(screen.queryByRole('status')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
-  rerender(<ProfileForm defaultValues={{ name: 'Updated', category: 'Custom initial' }} />);
-  expect(category).toHaveValue(draft);
-  saveProfile.mockResolvedValueOnce({ data: {} });
-  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
-  await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(2));
-  expect(saveProfile.mock.calls[1][1]).toMatchObject({ name: 'Updated', category: draft });
-  expect(await screen.findByRole('status')).toHaveTextContent('Данные сохранены');
-});
+it.each([
+  { kind: 'custom', initial: 'Custom initial', draft: 'Custom initial draft' },
+  { kind: 'preset', initial: 'cafe', draft: 'retail' },
+])(
+  'preserves $kind category edits made during saving and submits them on the next save',
+  async ({ kind, initial, draft }) => {
+    const user = userEvent.setup();
+    let finish!: (value: unknown) => void;
+    saveProfile.mockReset();
+    saveProfile.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const { rerender } = render(
+      <ProfileForm defaultValues={{ name: 'Old', category: initial }} />,
+      { wrapper: wrapper(new QueryClient()) }
+    );
+    const name = screen.getByRole('textbox', { name: /Название/ });
+    await user.clear(name);
+    await user.type(name, 'Updated');
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));
+    expect(name).toBeDisabled();
+    expect(saveProfile.mock.calls[0][1]).toMatchObject({ name: 'Updated', category: initial });
+    if (kind === 'custom') {
+      await user.type(screen.getByDisplayValue(initial), ' draft');
+    } else {
+      await user.click(screen.getByRole('combobox', { name: 'Категория' }));
+      await user.click(await screen.findByRole('option', { name: 'Розничная торговля' }));
+    }
+    await act(async () => finish({ data: {} }));
+    if (kind === 'custom') {
+      expect(screen.getByRole('textbox', { name: 'Своя категория' })).toHaveValue(draft);
+    } else {
+      expect(screen.getByRole('combobox', { name: 'Категория' })).toHaveTextContent(
+        'Розничная торговля'
+      );
+    }
+    expect(name).toHaveValue('Updated');
+    expect(name).toBeEnabled();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+    rerender(<ProfileForm defaultValues={{ name: 'Updated', category: initial }} />);
+    if (kind === 'custom') {
+      expect(screen.getByRole('textbox', { name: 'Своя категория' })).toHaveValue(draft);
+    } else {
+      expect(screen.getByRole('combobox', { name: 'Категория' })).toHaveTextContent(
+        'Розничная торговля'
+      );
+    }
+    saveProfile.mockResolvedValueOnce({ data: {} });
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(2));
+    expect(saveProfile.mock.calls[1][1]).toMatchObject({ name: 'Updated', category: draft });
+    expect(await screen.findByRole('status')).toHaveTextContent('Данные сохранены');
+  }
+);
