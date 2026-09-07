@@ -10,7 +10,7 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from '@/components/design-system/AppSheet';
 import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 
 const JSON_INDENT = 2;

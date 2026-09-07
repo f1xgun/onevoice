@@ -40,7 +40,9 @@ export async function listConversations(activeBusinessId: string): Promise<Conve
       params: { limit: 100 },
     }
   );
-  return Array.isArray(data) ? data : [];
+  if (data === null) return [];
+  if (!Array.isArray(data)) throw new Error('Invalid conversation list response');
+  return data;
 }
 
 export async function createConversation(

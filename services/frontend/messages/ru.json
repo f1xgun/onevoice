@@ -407,16 +407,16 @@
     "toolCalls": {
       "showActions": "Показать действия ({count})",
       "hideActions": "Скрыть действия ({count})",
-      "doneCount": "✓ {done}/{total}",
+      "doneCount": "Выполнено {done} из {total}",
       "failCount": "{failed} не удалось"
     },
     "toolCard": {
       "running": "Выполняется",
       "done": "Готово",
       "error": "Ошибка",
-      "aborted": "Прервано",
-      "abortedTooltip": "Выполнение прервано — результат не получен",
-      "abortedNote": "Выполнение прервано — результат не получен",
+      "aborted": "Исход неизвестен",
+      "abortedTooltip": "Результат не получен — не удалось проверить выполнение",
+      "abortedNote": "Не удалось проверить выполнение. Проверьте площадку перед повторным действием.",
       "rejectedBadge": "Отклонено пользователем",
       "rejectedReason": "Причина: {reason}",
       "rejectedByPolicyBadge": "Запрещено политикой",

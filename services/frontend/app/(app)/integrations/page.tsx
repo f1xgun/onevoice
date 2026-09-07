@@ -158,7 +158,7 @@ export default function IntegrationsPage() {
 
   const {
     data: integrations = [],
-    isLoading: integrationsLoading,
+    isPending: integrationsLoading,
     isError: integrationsError,
     refetch: refetchIntegrations,
   } = useQuery<Integration[]>({
@@ -166,7 +166,10 @@ export default function IntegrationsPage() {
     queryFn: () =>
       bizApi(activeBusinessId!)
         .get(BIZ_API_PATHS.INTEGRATIONS.ROOT)
-        .then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+        .then((r) => {
+          if (!Array.isArray(r.data)) throw new Error('Invalid integration list response');
+          return r.data as Integration[];
+        }),
     enabled: !!activeBusinessId,
   });
 
@@ -186,7 +189,7 @@ export default function IntegrationsPage() {
   }, [activeBusinessId]);
 
   useEffect(() => {
-    if (integrationsLoading) return;
+    if (integrationsLoading || integrationsError) return;
 
     const currentIds = new Set(integrations.map((i) => i.id));
     const prev = prevIntegrationIdsRef.current;
@@ -207,7 +210,7 @@ export default function IntegrationsPage() {
       });
     }
     prevIntegrationIdsRef.current = currentIds;
-  }, [integrations, business?.id, integrationsLoading, activeBusinessId]);
+  }, [integrations, business?.id, integrationsLoading, integrationsError, activeBusinessId]);
 
   const disconnectMutation = useMutation({
     mutationFn: (integrationId: string) => {
@@ -298,30 +301,29 @@ export default function IntegrationsPage() {
             </InlineEmpty>
           </div>
         ) : null}
-        <div
-          id="integrations-platform-grid"
-          className="grid grid-cols-1 items-start gap-4 md:grid-cols-2"
-        >
-          {activePlatforms.map((p) => {
-            const platformIntegrations = getIntegrationsForPlatform(p.id);
-            return (
-              <PlatformCard
-                key={p.id}
-                platform={p.id}
-                label={p.fullLabel}
-                description={tPlatformDesc(p.id)}
-                integrations={platformIntegrations}
-                onConnect={() => handleConnect(p.id)}
-                onDisconnect={(integrationId) => disconnectMutation.mutate(integrationId)}
-                canConnect={canConnect}
-                canDisconnect={canDisconnect}
-                isPreview={p.id === 'google_business'}
-              />
-            );
-          })}
-        </div>
+        {!integrationsError && !integrationsLoading && (
+          <div id="integrations-platform-grid" className="grid grid-cols-1 items-start gap-4">
+            {activePlatforms.map((p) => {
+              const platformIntegrations = getIntegrationsForPlatform(p.id);
+              return (
+                <PlatformCard
+                  key={p.id}
+                  platform={p.id}
+                  label={p.fullLabel}
+                  description={tPlatformDesc(p.id)}
+                  integrations={platformIntegrations}
+                  onConnect={() => handleConnect(p.id)}
+                  onDisconnect={(integrationId) => disconnectMutation.mutate(integrationId)}
+                  canConnect={canConnect}
+                  canDisconnect={canDisconnect}
+                  isPreview={p.id === 'google_business'}
+                />
+              );
+            })}
+          </div>
+        )}
 
-        {activeBusinessId && integrations.length > 0 && (
+        {activeBusinessId && !integrationsError && integrations.length > 0 && (
           <IntegrationsSyncPanel businessId={activeBusinessId} integrations={integrations} />
         )}
 

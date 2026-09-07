@@ -56,7 +56,9 @@ export function ToolApprovalToggle({
                 <span className="sr-only">{t('blockedHint')}</span>
               </span>
             </TooltipTrigger>
-            <TooltipContent>{t('blockedHint')}</TooltipContent>
+            <TooltipContent className="max-w-[calc(100vw-2rem)] border-control bg-card text-ink shadow-overlay">
+              {t('blockedHint')}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       ) : (
@@ -94,7 +96,7 @@ function ApprovalSegmented({
       aria-disabled={disabled || undefined}
       className={cn(
         'inline-flex shrink-0 gap-0.5 rounded-md bg-paper-sunken p-0.5',
-        disabled && 'opacity-50'
+        disabled && 'text-ink-soft'
       )}
     >
       {opts.map((o) => {
@@ -105,14 +107,36 @@ function ApprovalSegmented({
             type="button"
             role="radio"
             aria-checked={selected}
+            data-mode={o.id}
+            onKeyDown={(event) => {
+              if (
+                !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
+                  event.key
+                )
+              )
+                return;
+              event.preventDefault();
+              const next =
+                event.key === 'Home'
+                  ? 'manual'
+                  : event.key === 'End'
+                    ? 'auto'
+                    : o.id === 'manual'
+                      ? 'auto'
+                      : 'manual';
+              onChange(next);
+              event.currentTarget.parentElement
+                ?.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)
+                ?.focus();
+            }}
             tabIndex={selected ? 0 : -1}
             disabled={disabled}
             onClick={() => onChange(o.id)}
             className={cn(
-              'rounded-sm px-3 py-1 text-xs font-medium transition-colors',
+              'min-h-11 min-w-11 rounded-md px-3 py-2 text-action transition-colors motion-reduce:transition-none',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
               selected
-                ? 'border border-line bg-paper text-ink shadow-ov-1'
+                ? 'border border-control bg-brand-soft text-ink shadow-none'
                 : 'border border-transparent text-ink-mid hover:text-ink',
               disabled && 'cursor-not-allowed'
             )}

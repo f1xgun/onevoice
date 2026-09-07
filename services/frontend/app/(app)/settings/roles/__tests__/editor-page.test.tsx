@@ -179,6 +179,7 @@ describe('NewRolePage create flow', () => {
     await user.type(screen.getByLabelText(/Название/i), 'BadRole');
     await user.click(screen.getByRole('button', { name: /Сохранить/i }));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(screen.getByRole('alert')).toHaveTextContent(String(toastError.mock.calls[0][0]));
     expect(screen.getByLabelText(/Название/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });

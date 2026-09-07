@@ -170,12 +170,17 @@ export function InviteModal({
             </DialogHeader>
             <form onSubmit={handleSubmit(onSubmit)} className="mt-6 flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-medium text-ink-mid">{tInvite('fields.role')}</Label>
+                <Label htmlFor="invite-role" className="text-meta font-medium text-ink">
+                  {tInvite('fields.role')}
+                </Label>
                 <Select value={currentRoleId} onValueChange={(v) => setValue('roleId', v)}>
-                  <SelectTrigger>
+                  <SelectTrigger
+                    id="invite-role"
+                    className="h-auto min-h-11 border-control bg-paper-raised text-reading"
+                  >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="border-control bg-card text-ink shadow-overlay">
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
                         {getRoleLabel(r.name)}
@@ -186,17 +191,20 @@ export function InviteModal({
                 <p className="text-xs text-ink-soft">{tInvite('fields.roleHelper')}</p>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-medium text-ink-mid">
+                <Label htmlFor="invite-expiry" className="text-meta font-medium text-ink">
                   {tInvite('fields.expiry')}
                 </Label>
                 <Select
                   value={currentExpiresIn}
                   onValueChange={(v) => setValue('expiresIn', v as ExpiryValue)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger
+                    id="invite-expiry"
+                    className="h-auto min-h-11 border-control bg-paper-raised text-reading"
+                  >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="border-control bg-card text-ink shadow-overlay">
                     {EXPIRY_OPTIONS.map((v) => (
                       <SelectItem key={v} value={v}>
                         {expiryLabel(v)}

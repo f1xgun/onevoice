@@ -102,7 +102,7 @@ export function DateRangePicker({ from, to, onChange }: Props) {
               {labelFor('custom')}
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto max-w-[calc(100vw-0.5rem)] p-1">
+          <PopoverContent className="w-auto max-w-[calc(100vw-2rem)] border-control bg-card p-1 text-ink shadow-overlay">
             <Calendar
               mode="range"
               selected={{

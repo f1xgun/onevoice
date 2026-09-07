@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -11,11 +11,13 @@ const BIZ_ID = 'test-biz-id';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
+const saveProfile = vi.fn();
+
 vi.mock('@/lib/api/business-api', () => ({
   bizApi: () => ({
     get: vi.fn(),
     post: vi.fn(),
-    put: vi.fn().mockResolvedValue({ data: {} }),
+    put: (...args: unknown[]) => saveProfile(...args),
     patch: vi.fn(),
     delete: vi.fn(),
   }),
@@ -43,6 +45,7 @@ function wrapper(client: QueryClient) {
 describe('ProfileForm preserves unsaved edits across a BUSINESS_PROFILE refetch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    saveProfile.mockResolvedValue({ data: {} });
   });
 
   it.each(['profile', 'new'])(
@@ -94,4 +97,79 @@ describe('ProfileForm preserves unsaved edits across a BUSINESS_PROFILE refetch'
       'New Draft'
     );
   });
+});
+
+it('announces saving only after a successful response and clears stale confirmation on edit', async () => {
+  let finish!: (value: unknown) => void;
+  saveProfile.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    })
+  );
+  render(<ProfileForm defaultValues={{ name: 'Old', category: 'cafe' }} />, {
+    wrapper: wrapper(new QueryClient()),
+  });
+  const name = screen.getByRole('textbox', { name: /Название/ });
+  await userEvent.clear(name);
+  await userEvent.type(name, 'Updated');
+  await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  await act(async () => finish({ data: {} }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Данные сохранены');
+  await userEvent.type(name, ' draft');
+  await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+});
+
+it('associates validation with the field and preserves edits on a failed save', async () => {
+  saveProfile.mockRejectedValueOnce(new Error('offline'));
+  render(<ProfileForm defaultValues={{ name: 'Old', category: 'cafe' }} />, {
+    wrapper: wrapper(new QueryClient()),
+  });
+  const name = screen.getByRole('textbox', { name: /Название/ });
+  await userEvent.clear(name);
+  await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  await waitFor(() => expect(name).toHaveAttribute('aria-invalid', 'true'));
+  expect(name).toHaveAccessibleDescription();
+  await userEvent.type(name, 'Draft');
+  await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Не получилось сохранить');
+  expect(name).toHaveValue('Draft');
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+
+it('preserves category edits made during saving and submits them on the next save', async () => {
+  const draft = 'Custom initial draft';
+  const user = userEvent.setup();
+  let finish!: (value: unknown) => void;
+  saveProfile.mockReset();
+  saveProfile.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    })
+  );
+  const { rerender } = render(
+    <ProfileForm defaultValues={{ name: 'Old', category: 'Custom initial' }} />,
+    { wrapper: wrapper(new QueryClient()) }
+  );
+  const name = screen.getByRole('textbox', { name: /Название/ });
+  await user.clear(name);
+  await user.type(name, 'Updated');
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+  await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));
+  expect(name).toBeDisabled();
+  const category = screen.getByDisplayValue('Custom initial');
+  await user.type(category, ' draft');
+  await act(async () => finish({ data: {} }));
+  expect(category).toHaveValue(draft);
+  expect(name).toHaveValue('Updated');
+  expect(name).toBeEnabled();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+  rerender(<ProfileForm defaultValues={{ name: 'Updated', category: 'Custom initial' }} />);
+  expect(category).toHaveValue(draft);
+  saveProfile.mockResolvedValueOnce({ data: {} });
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+  await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(2));
+  expect(saveProfile.mock.calls[1][1]).toMatchObject({ name: 'Updated', category: draft });
+  expect(await screen.findByRole('status')).toHaveTextContent('Данные сохранены');
 });

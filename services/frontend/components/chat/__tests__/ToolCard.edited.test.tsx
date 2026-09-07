@@ -23,7 +23,7 @@ describe('ToolCard — edited', () => {
 
   it('ZZ bis: tooltip-wrapped Pencil preserves the existing green check for a done + edited tool', () => {
     render(<ToolCard tool={makeDone({ wasEdited: true })} />);
-    expect(screen.getByText('✅')).toBeInTheDocument();
+    expect(screen.getByLabelText('Готово')).toBeInTheDocument();
     expect(screen.getByLabelText('Аргументы изменены пользователем')).toBeInTheDocument();
   });
 
@@ -32,8 +32,8 @@ describe('ToolCard — edited', () => {
     expect(screen.queryByLabelText('Аргументы изменены пользователем')).not.toBeInTheDocument();
   });
 
-  it('BBB: existing pending/done/error/aborted branches remain unchanged', () => {
-    const { rerender, container } = render(
+  it('BBB: distinguishes pending, confirmed, failed and unknown outcomes', () => {
+    const { rerender } = render(
       <ToolCard
         tool={{
           id: 'p1',
@@ -43,7 +43,7 @@ describe('ToolCard — edited', () => {
         }}
       />
     );
-    expect(container.querySelector('.border-t-blue-500')).not.toBeNull();
+    expect(screen.getByLabelText('Выполняется')).toBeInTheDocument();
 
     rerender(
       <ToolCard
@@ -55,7 +55,7 @@ describe('ToolCard — edited', () => {
         }}
       />
     );
-    expect(screen.getByText('✅')).toBeInTheDocument();
+    expect(screen.getByLabelText('Готово')).toBeInTheDocument();
 
     rerender(
       <ToolCard
@@ -68,7 +68,7 @@ describe('ToolCard — edited', () => {
         }}
       />
     );
-    expect(screen.getByText('❌')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ошибка')).toBeInTheDocument();
     expect(screen.getByText('boom')).toBeInTheDocument();
 
     rerender(
@@ -81,7 +81,11 @@ describe('ToolCard — edited', () => {
         }}
       />
     );
-    expect(screen.getByText('⏸')).toBeInTheDocument();
-    expect(screen.getByText('Выполнение прервано — результат не получен')).toBeInTheDocument();
+    expect(screen.getByLabelText('Исход неизвестен')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Не удалось проверить выполнение. Проверьте площадку перед повторным действием.'
+      )
+    ).toBeInTheDocument();
   });
 });

@@ -1,18 +1,6 @@
-// components/chat/ToolNeedsHelpCard.tsx — OneVoice (Linen) "needs help"
-//
-// Mirrors the "AI отказался от задачи" frame from
-// design_handoff_onevoice 2/mocks/mock-states.jsx (ErrorStatesPage):
-// rendered inside a chat thread when an agent task can't complete on
-// its own — usually because the model isn't sure how to answer and
-// would rather defer to the operator than guess.
-//
-// Public contract is intentionally minimal — this is a render-only
-// card. The wiring (when to show it, what "Помочь" actually does) is
-// out of scope for the design pass; call-sites pass an `onHelp`
-// callback and a plain-Russian explanation, the card paints them.
-
 'use client';
 
+import { CircleHelp } from 'lucide-react';
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
@@ -57,12 +45,9 @@ export function ToolNeedsHelpCard({
         className
       )}
     >
-      <div className="mb-2 flex items-center gap-2.5">
-        <span
-          aria-hidden="true"
-          className="inline-block h-[22px] w-[22px] shrink-0 rounded-md border border-line-soft bg-paper-sunken"
-        />
-        <span className="truncate font-mono text-[13px] font-medium text-ink">{toolName}</span>
+      <div className="mb-2 flex flex-wrap items-center gap-2.5">
+        <CircleHelp aria-hidden className="h-5 w-5 shrink-0 text-warning" />
+        <span className="min-w-0 break-all font-mono text-technical text-ink">{toolName}</span>
         <span
           className={cn(
             'ml-auto inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium',

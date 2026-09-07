@@ -47,7 +47,7 @@ describe('conversations — bizApi migration', () => {
     );
   });
 
-  it('listConversations returns array even when data is not an array', async () => {
+  it('listConversations preserves legacy successful null as an empty list', async () => {
     mockGet.mockResolvedValue({ data: null });
     const result = await listConversations(BIZ_ID);
     expect(result).toEqual([]);
@@ -128,3 +128,11 @@ describe('conversations — bizApi migration', () => {
     expect(mockDelete).toHaveBeenCalledWith(BIZ_ID, `/conversations/${CONV_ID}`, undefined);
   });
 });
+
+it.each([{}, { error: 'offline' }, 'invalid'])(
+  'rejects malformed successful list payloads: %j',
+  async (data) => {
+    mockGet.mockResolvedValue({ data });
+    await expect(listConversations(BIZ_ID)).rejects.toThrow('Invalid conversation list response');
+  }
+);

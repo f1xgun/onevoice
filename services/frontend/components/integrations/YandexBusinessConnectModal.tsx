@@ -9,10 +9,14 @@ import {
   AppDialog as DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/design-system/AppDialog';
 import { AppInput as Input } from '@/components/design-system/AppInput';
 import { useYandexBusinessConfig, useYandexDelegatedForm } from '@/hooks/useYandexBusinessConnect';
 import type { DelegatedFlowProps } from '@/hooks/useYandexBusinessConnect';
+
+const LINK_HINT_ID = 'yandex-link-hint';
+const LINK_ERROR_IDS = 'yandex-link-hint yandex-connect-error';
 
 interface Props {
   open: boolean;
@@ -36,14 +40,12 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{tYa('title')}</DialogTitle>
+          <DialogDescription>{tYa('security')}</DialogDescription>
         </DialogHeader>
 
-        <p className="rounded-md border border-line bg-paper-sunken p-4 text-sm">
-          {tYa('security')}
-        </p>
         {configLoading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            <Loader2 className="h-8 w-8 animate-spin text-ink-soft" />
           </div>
         ) : !delegatedAvailable ? (
           <div className="space-y-4">
@@ -85,10 +87,10 @@ function DelegatedFlow({ activeBusinessId, repLogin, onClose }: DelegatedFlowPro
   if (step === 'working') {
     return (
       <div className="flex flex-col items-center gap-4 py-12">
-        <Loader2 className="h-10 w-10 animate-spin text-gray-500" />
+        <Loader2 className="h-10 w-10 animate-spin text-ink-soft" />
         <div className="text-center">
           <p className="font-medium text-ink">{tD('working')}</p>
-          <p className="mt-1 text-sm text-gray-500">{tD('workingBody')}</p>
+          <p className="mt-1 text-sm text-ink-soft">{tD('workingBody')}</p>
         </div>
       </div>
     );
@@ -102,7 +104,7 @@ function DelegatedFlow({ activeBusinessId, repLogin, onClose }: DelegatedFlowPro
             {error}
           </p>
         )}
-        <div className="space-y-2 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="space-y-2 rounded-lg bg-paper-raised p-4 text-sm text-warning">
           <p className="font-medium">{tD('unverifiedTitle')}</p>
           <p>{tD('unverifiedBody')}</p>
         </div>
@@ -146,7 +148,7 @@ function DelegatedFlow({ activeBusinessId, repLogin, onClose }: DelegatedFlowPro
           </code>
           <Button type="button" variant="outline" size="sm" onClick={copyRepLogin}>
             {copied ? (
-              <Check className="mr-1 h-3.5 w-3.5 text-green-600" />
+              <Check className="mr-1 h-3.5 w-3.5 text-success" />
             ) : (
               <Copy className="mr-1 h-3.5 w-3.5" />
             )}
@@ -165,11 +167,13 @@ function DelegatedFlow({ activeBusinessId, repLogin, onClose }: DelegatedFlowPro
           spellCheck={false}
           {...register('link')}
           aria-invalid={!!error}
-          aria-describedby={error ? 'yandex-connect-error' : undefined}
+          aria-describedby={error ? LINK_ERROR_IDS : LINK_HINT_ID}
           placeholder={tD('linkPlaceholder')}
-          className="font-mono text-xs"
+          className="font-mono"
         />
-        <p className="text-xs text-ink-soft">{tD('linkHint')}</p>
+        <p id="yandex-link-hint" className="text-meta text-ink-soft">
+          {tD('linkHint')}
+        </p>
       </div>
 
       {error && (

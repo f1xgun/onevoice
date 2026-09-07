@@ -1,23 +1,10 @@
 'use client';
 
-// components/chat/ToolCard.tsx — OneVoice (Linen) tool-call card
-//
-// One tool call = one card with the platform tag, the tool name in
-// JetBrains Mono, and a status pill on the right. The card carries a
-// 3 px platform-tinted left border (var(--destructive) when the
-// user rejected the call). Linen background + 1 px line border on the
-// rest of the card.
-//
-// Visual contracts preserved verbatim (rejected/expired badges,
-// line-through name, Pencil tooltip, "Причина:" copy). Test fixtures in
-// components/chat/__tests__/ToolCard.{rejected,expired,edited}.test.tsx
-// pin these classes/strings — this rebuild keeps them.
-
-import { Pencil } from 'lucide-react';
+import { Pencil, Check, CircleAlert, Loader2, CircleHelp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { ErrorCode, ToolCall } from '@/types/chat';
-import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
+import { PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -52,12 +39,9 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   const tCard = useTranslations('chat.toolCard');
   const tToolNames = useTranslations('agentTasks.displayName');
   const platform = getPlatform(tool.name);
-  const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
   const decisionUnavailable = tool.rejectReason === 'decision_unavailable';
-  const borderLeftColor =
-    tool.status === 'rejected' && !decisionUnavailable ? 'var(--destructive)' : color;
 
   const policyReasonKey = tool.rejectReason
     ? POLICY_REJECT_REASON_KEYS[tool.rejectReason]
@@ -70,7 +54,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   })();
 
   const toolNameClasses = cn(
-    'font-mono text-xs',
+    'min-w-0 break-words text-meta',
     tool.status === 'rejected' || tool.status === 'expired'
       ? 'line-through text-muted-foreground'
       : 'text-ink-mid'
@@ -78,28 +62,25 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
 
   return (
     <div
-      className="space-y-1 rounded-md border border-line bg-paper-raised p-3 text-sm"
-      style={{ borderLeftColor, borderLeftWidth: 3 }}
+      className={cn(
+        'min-w-0 space-y-2 rounded-lg border border-line bg-paper-raised p-4 text-meta',
+        tool.status === 'rejected' && !decisionUnavailable && 'border-l-danger'
+      )}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            className="rounded px-1.5 py-0.5 text-xs font-bold text-paper"
-            style={{ backgroundColor: color }}
-          >
-            {label}
-          </span>
+          <span className="rounded bg-paper-sunken px-2 py-1 text-meta text-ink">{label}</span>
           <span className={toolNameClasses}>{displayName}</span>
         </div>
         {tool.status === 'pending' && (
           <Badge tone="info" dot aria-label={tCard('running')}>
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-line border-t-blue-500" />
+            <Loader2 aria-hidden className="h-4 w-4" />
             {tCard('running')}
           </Badge>
         )}
         {tool.status === 'done' && (
           <Badge tone="success" aria-label={tCard('done')}>
-            <span className="text-[var(--ov-success)]">✅</span>
+            <Check aria-hidden className="h-4 w-4" />
             {tCard('done')}
           </Badge>
         )}
@@ -115,19 +96,21 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
                   />
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{tCard('editedTooltip')}</TooltipContent>
+              <TooltipContent className="max-w-[calc(100vw-2rem)] border-control bg-card text-ink shadow-overlay">
+                {tCard('editedTooltip')}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
         {tool.status === 'error' && (
           <Badge tone="danger" aria-label={tCard('error')}>
-            <span className="text-[var(--ov-danger)]">❌</span>
+            <CircleAlert aria-hidden className="h-4 w-4" />
             {tCard('error')}
           </Badge>
         )}
         {tool.status === 'aborted' && (
           <Badge tone="neutral" aria-label={tCard('aborted')} title={tCard('abortedTooltip')}>
-            <span className="text-ink-soft">⏸</span>
+            <CircleHelp aria-hidden className="h-4 w-4" />
             {tCard('aborted')}
           </Badge>
         )}
@@ -145,7 +128,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
         )}
         {tool.status === 'expired' && <Badge tone="warning">{tCard('expiredBadge')}</Badge>}
       </div>
-      {tool.result && summarizeResult(tCard, tool.name, tool.result) && (
+      {tool.status === 'done' && tool.result && summarizeResult(tCard, tool.name, tool.result) && (
         <p className="text-xs text-ink-soft">{summarizeResult(tCard, tool.name, tool.result)}</p>
       )}
       {tool.error && (

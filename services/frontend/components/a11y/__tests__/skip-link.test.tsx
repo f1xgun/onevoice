@@ -127,9 +127,18 @@ vi.mock('@/lib/hooks/usePermission', () => ({
 }));
 
 describe('skip link geometry and keyboard access in route shells', () => {
-  it.skipIf(!hasLayoutBrowser).each(['/login', '/chat', '/settings'])(
-    'fits a 320px viewport before and after keyboard focus on %s',
-    async (route) => {
+  it
+    .skipIf(!hasLayoutBrowser)
+    .each(
+      ['/login', '/chat', '/settings'].flatMap((route) =>
+        (['ru', 'en'] as const).map((locale) => ({ route, locale }))
+      )
+    )(
+    'does not scroll horizontally and preserves keyboard navigation on $route in $locale',
+    async ({ route, locale }) => {
+      (globalThis as unknown as { __setTestLocale: (locale: 'ru' | 'en') => void }).__setTestLocale(
+        locale
+      );
       usePathnameMock.mockReturnValue(route);
       const content =
         route === '/login' ? (
@@ -156,7 +165,13 @@ describe('skip link geometry and keyboard access in route shells', () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       await withLayoutPage(container.innerHTML, { width: 320, height: 640 }, async (page) => {
-        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+        expect(
+          await page.evaluate(() => {
+            document.documentElement.style.scrollBehavior = 'auto';
+            window.scrollTo(100, 0);
+            return window.scrollX;
+          })
+        ).toBe(0);
         await page.keyboard.press('Tab');
         const link = page.locator('a[href="#main-content"]');
         expect(await link.evaluate((element) => element === document.activeElement)).toBe(true);
@@ -164,10 +179,22 @@ describe('skip link geometry and keyboard access in route shells', () => {
         expect(bounds!.x).toBeGreaterThanOrEqual(0);
         expect(bounds!.width).toBeGreaterThan(1);
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
-        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+        expect(
+          await page.evaluate(() => {
+            document.documentElement.style.scrollBehavior = 'auto';
+            window.scrollTo(100, 0);
+            return window.scrollX;
+          })
+        ).toBe(0);
         await page.keyboard.press('Enter');
         expect(await page.evaluate(() => document.activeElement?.id)).toBe('main-content');
-        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+        expect(
+          await page.evaluate(() => {
+            document.documentElement.style.scrollBehavior = 'auto';
+            window.scrollTo(100, 0);
+            return window.scrollX;
+          })
+        ).toBe(0);
       });
     }
   );

@@ -30,6 +30,8 @@ import { Label } from '@/components/ui/label';
 // validation messages to be plain codes ('name_required') that the
 // `nameErrorMessage` mapper below translates at render time — the schema
 // itself has no React hook context. Add a new code → add a branch below.
+const NAME_ERROR_ID = 'role-name-error';
+
 const roleEditorSchema = z.object({
   name: z.string().trim().min(1, { message: 'name_required' }),
   description: z.string(),
@@ -115,6 +117,7 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
   const isPending = createMut.isPending || updateMut.isPending;
 
   const onSubmit = form.handleSubmit(async (values) => {
+    form.clearErrors('root');
     try {
       if (mode === 'create') {
         await createMut.mutateAsync({
@@ -134,6 +137,7 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
       }
       router.push('/settings/roles');
     } catch (err) {
+      form.setError('root', { message: mapRoleError(err) });
       toast.error(mapRoleError(err));
     }
   });
@@ -174,10 +178,11 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
               placeholder={t('namePlaceholder')}
               disabled={isPending}
               aria-invalid={!!nameError}
+              aria-describedby={nameError ? NAME_ERROR_ID : undefined}
               {...form.register('name')}
             />
             {nameErrorMessage && (
-              <p className="text-sm text-[var(--ov-danger)]" role="alert">
+              <p id={NAME_ERROR_ID} className="text-meta text-danger" role="alert">
                 {nameErrorMessage}
               </p>
             )}
@@ -209,7 +214,12 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
           />
         </Card>
 
-        <div className="fixed inset-x-0 bottom-0 z-10 flex justify-end gap-2 border-t border-[var(--ov-line)] bg-[var(--ov-paper-raised)] px-4 py-3 sm:px-12 md:left-48">
+        {form.formState.errors.root && (
+          <p role="alert" className="text-meta text-danger">
+            {form.formState.errors.root.message}
+          </p>
+        )}
+        <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
           <Button asChild variant="ghost" disabled={isPending}>
             <Link href="/settings/roles">{t('cancel')}</Link>
           </Button>

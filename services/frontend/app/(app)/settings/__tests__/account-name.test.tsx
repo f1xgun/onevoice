@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -54,5 +54,28 @@ describe('SettingsPage — editable display name', () => {
 
     expect(await screen.findByText('Минимум 2 символа')).toBeInTheDocument();
     expect(api.patch).not.toHaveBeenCalled();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAccessibleDescription('Минимум 2 символа');
   });
+});
+
+it('keeps password errors beside the form and announces success only after the response', async () => {
+  let finish!: (value: unknown) => void;
+  vi.mocked(api.put).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    })
+  );
+  render(<SettingsPage />, { wrapper });
+  const current = screen.getByLabelText('Текущий пароль');
+  const next = screen.getByLabelText('Новый пароль');
+  const confirmation = document.getElementById('confirmPassword')!;
+  await userEvent.type(current, 'old-password');
+  await userEvent.type(next, 'new-password');
+  await userEvent.type(confirmation, 'new-password');
+  await userEvent.click(screen.getByRole('button', { name: 'Изменить пароль' }));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  await act(async () => finish({ data: {} }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Пароль изменён');
+  expect(current).toHaveValue('');
 });

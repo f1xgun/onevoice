@@ -16,6 +16,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
 import { VoiceToneSection } from '@/components/business/VoiceToneSection';
@@ -60,7 +61,7 @@ export default function BusinessPage() {
   const tBusiness = useTranslations('business');
   const tSections = useTranslations('business.sections');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  const { data, isLoading, isError, error } = useQuery<Business>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Business>({
     queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
     queryFn: () =>
       bizApi(activeBusinessId!)
@@ -85,9 +86,7 @@ export default function BusinessPage() {
       <>
         <PageHeader title={tBusiness('title')} />
         <div className="px-4 pb-10 sm:px-12 sm:pb-16">
-          <div className="border-[var(--ov-danger)]/40 rounded-lg border bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
-            {tBusiness('errorLoad')}
-          </div>
+          <ListLoadError onRetry={() => void refetch()} />
         </div>
       </>
     );

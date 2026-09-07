@@ -26,11 +26,12 @@ describe('ToolCard — expired', () => {
     expect(nameNode.className).toMatch(/\bline-through\b/);
   });
 
-  it('YY: expired wrapper keeps the platform border color (telegram blue)', () => {
+  it('YY: expiry stays distinct from rejection and completion', () => {
     const { container } = render(<ToolCard tool={makeExpired()} />);
     const wrapper = container.firstElementChild as HTMLElement | null;
     expect(wrapper).not.toBeNull();
-    expect(wrapper?.style.borderLeftColor).toBe('rgb(42, 171, 238)'); // #2AABEE
+    expect(wrapper).not.toHaveClass('border-l-danger');
+    expect(screen.queryByLabelText('Готово')).not.toBeInTheDocument();
     const styleAttr = wrapper?.getAttribute('style') ?? '';
     expect(styleAttr).not.toContain('var(--destructive)');
   });
