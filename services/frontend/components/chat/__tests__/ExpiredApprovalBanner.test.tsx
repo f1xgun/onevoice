@@ -47,12 +47,24 @@ describe('ExpiredApprovalBanner', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it('QQ: root element carries the amber palette utility classes', () => {
+  it.each([
+    [
+      'ru',
+      'Это согласование больше недоступно. Проверьте результат действия перед созданием нового запроса.',
+    ],
+    [
+      'en',
+      'This approval is no longer available. Check the action result before creating another request.',
+    ],
+  ] as const)('renders the truthful unavailable notice in %s', (locale, message) => {
+    (globalThis as unknown as { __setTestLocale: (value: string) => void }).__setTestLocale(locale);
+    render(<ExpiredApprovalBanner status="unavailable" />);
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
+  });
+
+  it('uses warning tokens that adapt to the current theme', () => {
     render(<ExpiredApprovalBanner />);
     const alert = screen.getByRole('alert');
-    const classes = alert.className.split(/\s+/);
-    const amberTokens = ['bg-amber-50', 'border-amber-200', 'text-amber-900'];
-    const hit = amberTokens.some((token) => classes.includes(token));
-    expect(hit).toBe(true);
+    expect(alert).toHaveClass('bg-warning-soft', 'border-warning', 'text-warning-ink');
   });
 });

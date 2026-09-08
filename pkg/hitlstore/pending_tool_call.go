@@ -126,9 +126,10 @@ func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingTool
 // non-terminal batch can outlive its 24h window in the collection. Any
 // non-terminal status ("pending", "resolving" or "resuming") is virtualized so
 // downstream expiry guards — which key off Status == "expired" — reject
-// resolve/resume attempts that land after the deadline. Terminal states
-// (resolved, expired) and not-yet-promoted "preparing" rows carry no expires_at
-// and are left untouched.
+// resolve/resume attempts that land after the deadline. Terminal rows are
+// left untouched. Promoted rows retain expires_at across
+// MarkResolved/MarkExpired and remain eligible for physical TTL deletion;
+// not-yet-promoted "preparing" rows have no expires_at.
 func virtualizeExpiry(doc *domain.PendingToolCallBatch) {
 	if doc.ExpiresAt.IsZero() {
 		return
@@ -348,7 +349,9 @@ func (r *pendingToolCallRepo) MarkDispatched(ctx context.Context, batchID, callI
 	return err
 }
 
-// MarkResolved transitions the batch to terminal status="resolved".
+// MarkResolved transitions the batch to terminal status="resolved". It
+// intentionally retains expires_at, so the TTL monitor still removes the
+// terminal document at the original 24-hour deadline.
 func (r *pendingToolCallRepo) MarkResolved(ctx context.Context, batchID string) error {
 	now := time.Now().UTC()
 	res, err := r.coll.UpdateOne(ctx,

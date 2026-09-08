@@ -227,6 +227,31 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
     });
     expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
   });
+
+  it('unavailable path has no approval actions and dismissal unlocks the composer', async () => {
+    mockGetMessages({
+      messages: [],
+      pendingApprovals: [{ ...expiredBatch, status: 'unavailable', expiresAt: undefined }],
+    });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+
+    expect(
+      await screen.findByText(
+        'Это согласование больше недоступно. Проверьте результат действия перед созданием нового запроса.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Одобрить|Отклонить/ })).not.toBeInTheDocument();
+    const composer = screen.getByPlaceholderText('Напишите сообщение…');
+    expect(composer).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть сообщение' }));
+    await waitFor(() => expect(composer).toBeEnabled());
+  });
 });
 
 describe('ChatWindow — history load failure', () => {

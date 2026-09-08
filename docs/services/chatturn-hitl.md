@@ -83,3 +83,15 @@ After `StreamSSE` returns, three cases are distinguished:
 - `services/orchestrator/internal/resume` — the orchestrator-side resume goroutine that produces the SSE events consumed here.
 - `docs/services/approval-telemetry.md` — approval funnel events and stable
   correlation identities.
+
+## Recovery without an approval batch
+
+A missing batch cannot establish whether the owner approved a call or whether it
+executed. The read path projects an unavailable notice for the latest active
+approval message, excluding calls with saved results. It does not change history.
+
+When a later request recovers a stranded message, `finalizeStranded` marks only
+the message complete. It preserves recorded tool decisions and results, including
+pending decisions with an unknown outcome. A reload uses the existing
+no-result presentation, which asks the operator to check the platform before
+repeating an action. Recovery never creates an approval or dispatches a tool.

@@ -399,6 +399,10 @@
       "message": "This action expired — send a new message to continue.",
       "dismissLabel": "Dismiss message"
     },
+    "unavailableBanner": {
+      "message": "This approval is no longer available. Check the action result before creating another request.",
+      "dismissLabel": "Dismiss message"
+    },
     "processingBanner": {
       "message": "Action approved — running…"
     },

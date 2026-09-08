@@ -53,6 +53,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     sendMessage,
     stop,
     pendingApproval,
+    dismissApproval,
     resolveApproval,
   } = useConversationFlow({ conversationId });
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -211,7 +212,9 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
         ) : (
           messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
         )}
-        {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
+        {(pendingApproval?.status === 'expired' || pendingApproval?.status === 'unavailable') && (
+          <ExpiredApprovalBanner status={pendingApproval.status} onDismiss={dismissApproval} />
+        )}
         {pendingApproval?.status === 'resolving' && <ProcessingApprovalBanner />}
         {tokenInvalidCall && (
           <IntegrationTokenInvalidBanner platform={tokenInvalidCall.name.split('__')[0] ?? ''} />

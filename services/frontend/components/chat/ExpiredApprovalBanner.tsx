@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 
 export interface ExpiredApprovalBannerProps {
+  status?: 'expired' | 'unavailable';
   /**
    * Optional callback invoked after the user dismisses the banner. The banner
    * self-manages its visibility via internal state — parents use this hook for
@@ -16,8 +17,13 @@ export interface ExpiredApprovalBannerProps {
   onDismiss?: () => void;
 }
 
-export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps) {
-  const t = useTranslations('chat.expiredBanner');
+export function ExpiredApprovalBanner({
+  status = 'expired',
+  onDismiss,
+}: ExpiredApprovalBannerProps) {
+  const t = useTranslations(
+    status === 'unavailable' ? 'chat.unavailableBanner' : 'chat.expiredBanner'
+  );
   const [visible, setVisible] = useState(true);
 
   if (!visible) {
@@ -31,8 +37,8 @@ export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps)
       className={cn(
         'flex items-start gap-3 border-b px-4 py-3 text-sm',
         'bg-warning-soft',
-        'border-amber-200',
-        'text-amber-900'
+        'border-warning',
+        'text-warning-ink'
       )}
     >
       <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -44,7 +50,7 @@ export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps)
           setVisible(false);
           onDismiss?.();
         }}
-        className="shrink-0 rounded p-1 hover:bg-warning-soft"
+        className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded hover:bg-paper-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X size={14} aria-hidden="true" />
       </button>

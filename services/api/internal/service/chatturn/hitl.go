@@ -137,9 +137,9 @@ func (t *Turn) isRecentInProgress(msg *domain.Message) bool {
 
 // finalizeStranded marks an orphaned active message complete so a stranded
 // conversation self-heals instead of dead-ending every later turn with
-// turn_already_in_progress. Pending tool calls flip to approved — the resume
-// executed them; only the write-back was lost. Best-effort: a failed Update is
-// logged, not fatal (the fresh turn still proceeds). See docs/services/chatturn-hitl.md.
+// turn_already_in_progress. Stored tool decisions and results are preserved:
+// a missing batch does not establish approval or execution. Best-effort: a failed
+// Update is logged, not fatal. See docs/services/chatturn-hitl.md.
 func (t *Turn) finalizeStranded(parentCtx context.Context, msg *domain.Message) {
 	if msg == nil {
 		return
@@ -151,11 +151,6 @@ func (t *Turn) finalizeStranded(parentCtx context.Context, msg *domain.Message) 
 	healed.Status = domain.MessageStatusComplete
 	healed.ToolCalls = make([]domain.ToolCall, len(msg.ToolCalls))
 	copy(healed.ToolCalls, msg.ToolCalls)
-	for i := range healed.ToolCalls {
-		if healed.ToolCalls[i].Status == domain.ToolCallStatusPending {
-			healed.ToolCalls[i].Status = domain.ToolCallStatusApproved
-		}
-	}
 	if err := t.deps.Messages.Update(saveCtx, &healed); err != nil {
 		slog.WarnContext(saveCtx, "chatturn: failed to finalize stranded message",
 			"error", err, "message_id", msg.ID)
