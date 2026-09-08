@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 func TestBuildDelegationMetrics_ExactWeeksAndKnownDenominator(t *testing.T) {

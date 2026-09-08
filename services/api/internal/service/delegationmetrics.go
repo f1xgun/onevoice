@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-const delegationMetricWeeks = 8
+const (
+	delegationMetricWeeks = 8
+	daysPerWeek           = 7
+)
 
 type DelegationMetricWeek struct {
 	WeekStart        time.Time
@@ -33,14 +37,14 @@ type DelegationMetrics struct {
 func mondayUTC(t time.Time) time.Time {
 	t = t.UTC()
 	d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-	offset := (int(d.Weekday()) + 6) % 7
+	offset := (int(d.Weekday()) + daysPerWeek - 1) % daysPerWeek
 	return d.AddDate(0, 0, -offset)
 }
 
 func (s *reviewService) DelegationMetrics(ctx context.Context, businessID uuid.UUID) (DelegationMetrics, error) {
 	current := mondayUTC(time.Now())
-	from := current.AddDate(0, 0, -7*(delegationMetricWeeks-1))
-	to := current.AddDate(0, 0, 7)
+	from := current.AddDate(0, 0, -daysPerWeek*(delegationMetricWeeks-1))
+	to := current.AddDate(0, 0, daysPerWeek)
 	rows, err := s.repo.AggregateDelegationMetrics(ctx, businessID.String(), from, to)
 	if err != nil {
 		return DelegationMetrics{}, fmt.Errorf("aggregate delegation metrics: %w", err)
@@ -50,8 +54,8 @@ func (s *reviewService) DelegationMetrics(ctx context.Context, businessID uuid.U
 
 func buildDelegationMetrics(rows []domain.ReviewDelegationWeek, current time.Time) DelegationMetrics {
 	current = mondayUTC(current)
-	from := current.AddDate(0, 0, -7*(delegationMetricWeeks-1))
-	to := current.AddDate(0, 0, 7)
+	from := current.AddDate(0, 0, -daysPerWeek*(delegationMetricWeeks-1))
+	to := current.AddDate(0, 0, daysPerWeek)
 	byWeek := make(map[time.Time]DelegationMetricWeek, len(rows))
 	for _, row := range rows {
 		unknown := row.Replied - row.AcceptedUnedited - row.Edited
@@ -62,7 +66,7 @@ func buildDelegationMetrics(rows []domain.ReviewDelegationWeek, current time.Tim
 	}
 	out := DelegationMetrics{From: from, To: to, Weeks: make([]DelegationMetricWeek, 0, delegationMetricWeeks)}
 	for i := 0; i < delegationMetricWeeks; i++ {
-		start := from.AddDate(0, 0, i*7)
+		start := from.AddDate(0, 0, i*daysPerWeek)
 		week := byWeek[start]
 		week.WeekStart = start
 		out.Weeks = append(out.Weeks, week)

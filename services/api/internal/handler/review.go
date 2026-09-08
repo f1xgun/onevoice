@@ -62,6 +62,19 @@ type ReviewService interface {
 	DelegationMetrics(ctx context.Context, businessID uuid.UUID) (service.DelegationMetrics, error)
 }
 
+// ReviewHandler handles review-related HTTP requests
+type ReviewHandler struct {
+	reviewService ReviewService
+
+	// sseCounter caps in-flight expensive fanouts per user; nil disables the
+	// gate. RefreshReviews drives the same multi-platform NATS fanout budget as
+	// the chat and resume streams, so it shares their per-user concurrency cap.
+	sseCounter *ssecounter.Counter
+
+	// defaultTier labels the SSE concurrency block metric; empty → "free".
+	defaultTier string
+}
+
 func (h *ReviewHandler) GetDelegationMetrics(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "GetDelegationMetrics", authz.PermContentRead)
 	if !ok {
@@ -82,19 +95,6 @@ func (h *ReviewHandler) GetDelegationMetrics(w http.ResponseWriter, r *http.Requ
 		weeks = append(weeks, openapi.ReviewDelegationWeek{WeekStart: week.WeekStart, Replied: week.Replied, AcceptedUnedited: week.AcceptedUnedited, Edited: week.Edited, Unknown: week.Unknown})
 	}
 	writeJSON(w, http.StatusOK, openapi.ReviewDelegationMetrics{From: metrics.From, To: metrics.To, Replied: metrics.Replied, AcceptedUnedited: metrics.AcceptedUnedited, Edited: metrics.Edited, Unknown: metrics.Unknown, Measurable: metrics.Measurable, Weeks: weeks})
-}
-
-// ReviewHandler handles review-related HTTP requests
-type ReviewHandler struct {
-	reviewService ReviewService
-
-	// sseCounter caps in-flight expensive fanouts per user; nil disables the
-	// gate. RefreshReviews drives the same multi-platform NATS fanout budget as
-	// the chat and resume streams, so it shares their per-user concurrency cap.
-	sseCounter *ssecounter.Counter
-
-	// defaultTier labels the SSE concurrency block metric; empty → "free".
-	defaultTier string
 }
 
 // SetSSECounter wires the per-user concurrency cap (optional). Mirrors

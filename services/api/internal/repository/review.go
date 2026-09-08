@@ -269,7 +269,7 @@ func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 			Keys: bson.D{
 				{Key: "business_id", Value: 1},
 				{Key: "reply_status", Value: 1},
-				{Key: "draft_accepted_unedited", Value: 1},
+				{Key: "draft_accepted_unedited", Value: -1},
 				{Key: "created_at", Value: -1},
 			},
 			Options: options.Index().SetName("reviews_business_reply_status_accepted_created_desc"),
