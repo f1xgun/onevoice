@@ -1541,7 +1541,7 @@ type ReviewAutopilotResponse struct {
 	MinRating int `json:"minRating" validate:"required"`
 }
 
-// ReviewDelegationMetrics Aggregate feedback on saved draft replies. Legacy rows without an edit signal remain unknown.
+// ReviewDelegationMetrics Aggregate feedback on saved draft replies with replied_at in the recent weekly interval. Unknown counts timestamped replies without an edit signal. Legacy rows missing replied_at cannot be assigned to a week and are excluded from all totals.
 type ReviewDelegationMetrics struct {
 	AcceptedUnedited int       `json:"acceptedUnedited" validate:"required"`
 	Edited           int       `json:"edited" validate:"required"`
