@@ -54,6 +54,7 @@ export function useChannelDemand(businessId: string | null, canRead: boolean, ca
       trackEvent('activation', 'waitlist_platform', {
         page: '/integrations',
         metadata: { platform: channel, business_id: id },
+        businessId: id,
       });
       if (activeBusiness.current === id) toast.success(t('savedToast'));
     },

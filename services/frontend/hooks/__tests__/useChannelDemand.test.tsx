@@ -61,6 +61,7 @@ describe('useChannelDemand', () => {
     expect(trackEvent).toHaveBeenCalledExactlyOnceWith('activation', 'waitlist_platform', {
       page: '/integrations',
       metadata: { platform: 'avito', business_id: 'org-a' },
+      businessId: 'org-a',
     });
     act(() => result.current.request('avito'));
     expect(post).toHaveBeenCalledTimes(1);
@@ -110,6 +111,7 @@ describe('useChannelDemand', () => {
     expect(trackEvent).toHaveBeenCalledWith('activation', 'waitlist_platform', {
       page: '/integrations',
       metadata: { platform: 'wildberries', business_id: 'org-a' },
+      businessId: 'org-a',
     });
     rerender({ id: 'org-a', canRead: true, canWrite: true });
     expect(result.current.requested.has('wildberries')).toBe(true);
