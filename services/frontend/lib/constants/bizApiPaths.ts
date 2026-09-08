@@ -66,6 +66,9 @@ export const INTEGRATION_ENDPOINTS: Partial<Record<PlatformId, IntegrationPlatfo
 };
 
 export const BIZ_API_PATHS = {
+  CHANNEL_REQUESTS: {
+    ROOT: '/channel-requests',
+  },
   // Root business document — bizApi(id).get('') → GET /businesses/{id}.
   // The empty string is intentional: bizApi already adds the prefix and
   // the API route has no trailing slash.

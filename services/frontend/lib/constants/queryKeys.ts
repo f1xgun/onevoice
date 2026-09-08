@@ -12,6 +12,8 @@
 // referenced from multiple pages.
 
 export const QUERY_KEYS = {
+  BUSINESS_CHANNEL_DEMAND: (bizId: string | null) =>
+    ['businesses', bizId, 'channel-demand'] as const,
   CONVERSATIONS: ['conversations'] as const,
   CONVERSATION_BY_ID: (id: string) => ['conversations', id] as const,
   // Business-scoped keys (RBAC: cache must be partitioned per active business).
