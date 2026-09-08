@@ -15,7 +15,7 @@ vi.mock('@/lib/hooks/usePermission', () => ({
 }));
 
 vi.mock('@/lib/hooks/usePlatforms', () => ({
-  usePlatforms: () => ({ platforms: registryPlatforms }),
+  usePlatforms: () => ({ platforms: registryPlatforms, isSuccess: registryReady }),
 }));
 
 vi.mock('@/lib/api/business-api', () => ({
@@ -35,6 +35,7 @@ vi.mock('@/lib/telemetry', () => ({
 // Capture which modal opens. Each modal mock spies on its `open` prop
 // transitioning to true so the assertion below can verify the page
 // flipped exactly one state setter.
+let registryReady = true;
 let registryPlatforms: { id: string; status: string }[] = [];
 const openSpies = {
   telegram: vi.fn(),
@@ -198,6 +199,7 @@ describe('IntegrationsPage — ?reconnect query handler', () => {
 describe('first-connect deep links', () => {
   beforeEach(() => {
     Object.values(openSpies).forEach((spy) => spy.mockReset());
+    registryReady = true;
   });
   it.each(['telegram', 'vk', 'yandex_business'])('opens the existing %s flow', async (platform) => {
     registryPlatforms = [{ id: platform, status: 'active' }];
@@ -224,4 +226,22 @@ describe('first-connect deep links', () => {
       expect(openSpies.vk).not.toHaveBeenCalled();
     }
   );
+});
+
+it('waits for server registry evidence before opening a first-connect modal', async () => {
+  Object.values(openSpies).forEach((spy) => spy.mockReset());
+  registryReady = false;
+  registryPlatforms = [{ id: 'telegram', status: 'active' }];
+  searchParamsValue = { connect: 'telegram' };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = () => (
+    <QueryClientProvider client={client}>
+      <IntegrationsPage />
+    </QueryClientProvider>
+  );
+  const { rerender } = render(view());
+  expect(openSpies.telegram).not.toHaveBeenCalled();
+  registryReady = true;
+  rerender(view());
+  await waitFor(() => expect(openSpies.telegram).toHaveBeenCalled());
 });

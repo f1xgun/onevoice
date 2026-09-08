@@ -87,7 +87,7 @@ export default function IntegrationsPage() {
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
   const baselineBusinessIdRef = useRef<string | null>(null);
 
-  const { platforms } = usePlatforms();
+  const { platforms, isSuccess: platformsReady } = usePlatforms();
   const activePlatforms = platforms.filter((p) => p.status === 'active');
   const comingSoonPlatforms = platforms.filter((p) => p.status === 'coming_soon');
 
@@ -130,6 +130,7 @@ export default function IntegrationsPage() {
     const connect = searchParams.get('connect');
     if (
       canConnect &&
+      platformsReady &&
       connect &&
       Object.hasOwn(MODAL_COMPONENTS, connect) &&
       platforms.some((platform) => platform.id === connect && platform.status === 'active') &&
@@ -166,7 +167,7 @@ export default function IntegrationsPage() {
       toast.error(message);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
-  }, [searchParams, qc, activeBusinessId, tIntegrations, canConnect, platforms]);
+  }, [searchParams, qc, activeBusinessId, tIntegrations, canConnect, platforms, platformsReady]);
 
   const {
     data: integrations = [],
