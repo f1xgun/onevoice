@@ -78,7 +78,11 @@ func (r *conversationRepository) ListByUserID(ctx context.Context, userID, busin
 		{{Key: "$sort", Value: bson.D{{Key: recencySortKey, Value: -1}, {Key: "_id", Value: -1}}}},
 		{{Key: "$skip", Value: int64(offset)}},
 		{{Key: "$limit", Value: int64(limit)}},
-		{{Key: "$unset", Value: recencySortKey}},
+		conversationPreviewLookup(),
+		{{Key: "$set", Value: bson.M{"preview": bson.M{"$ifNull": bson.A{
+			bson.M{"$arrayElemAt": bson.A{"$_preview.text", 0}}, "",
+		}}}}},
+		{{Key: "$unset", Value: bson.A{recencySortKey, "_preview"}}},
 	}
 
 	cursor, err := r.collection.Aggregate(ctx, pipeline)

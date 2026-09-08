@@ -2216,6 +2216,11 @@ components:
         title:
           type: string
           description: Empty with titleStatus auto marks a settled fallback; localize from createdAt at display time.
+        preview:
+          type: string
+          readOnly: true
+          maxLength: 161
+          description: Computed on conversation list responses from the latest nonblank user or assistant message, ordered by createdAt then message ID descending. Unicode whitespace is collapsed before truncation to 160 code points plus an ellipsis. Empty for chats without readable messages. Other conversation endpoints do not populate this field.
         titleStatus:
           type: string
           enum:

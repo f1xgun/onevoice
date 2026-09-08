@@ -435,6 +435,8 @@ func TestEnsureMessageIndexes_Idempotent(t *testing.T) {
 	}
 	assert.True(t, names["conversation_id_1_created_at_1"],
 		"index conversation_id_1_created_at_1 must exist")
+	assert.True(t, names["messages_conversation_preview_recency"],
+		"named index messages_conversation_preview_recency must exist")
 	assert.True(t, names["messages_conversation_role_status_created_desc"],
 		"named index messages_conversation_role_status_created_desc must exist")
 }
@@ -471,6 +473,8 @@ func TestEnsureMessageIndexes_CoexistsWithInitJS(t *testing.T) {
 	}
 	assert.True(t, names["conversation_id_1_created_at_1"],
 		"the {conversation_id, created_at} index must exist")
+	assert.True(t, names["messages_conversation_preview_recency"],
+		"named index messages_conversation_preview_recency must exist")
 	assert.True(t, names["messages_conversation_role_status_created_desc"],
 		"named index messages_conversation_role_status_created_desc must exist")
 }

@@ -103,7 +103,7 @@ export function PinnedSection({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{getDisplayTitle(conv)}</span>
-                    <ConversationPreview conversationId={conv.id} />
+                    <ConversationPreview preview={conv.preview} />
                   </span>
                 </Link>
                 {/* Only chats with a real project get the mini chip.

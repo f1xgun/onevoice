@@ -468,12 +468,19 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
 
         let failed = false;
         let completed = false;
+        let sawApproval = false;
         await consumeSSEStream(response, controller.signal, (event) => {
           if (controller.signal.aborted || sendAbortRef.current !== controller) return;
           if (event.type === 'error') failed = true;
           if (event.type === 'done' || event.type === 'tool_approval_required') completed = true;
+          if (event.type === 'tool_approval_required') sawApproval = true;
           onEventRef.current(event);
         });
+        if (sawApproval && !controller.signal.aborted && sendAbortRef.current === controller) {
+          void queryClient.invalidateQueries({
+            queryKey: conversationsQueryKey(activeBusinessId),
+          });
+        }
         if (!failed && !controller.signal.aborted && sendAbortRef.current === controller) {
           if (completed) onAccepted?.();
           else applyEventToLastAssistant({ type: 'error', code: 'stream_interrupted' });
@@ -607,6 +614,15 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
           if (event.type === 'tool_approval_required') sawNextApproval = true;
           handleChatSSEEvent(event);
         });
+        if (
+          sawNextApproval &&
+          !controller.signal.aborted &&
+          resumingConversationIdRef.current === conversationId
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: conversationsQueryKey(activeBusinessId),
+          });
+        }
         void queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
         });

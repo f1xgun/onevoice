@@ -45,6 +45,17 @@ the titler service is wired. See [docs/api/handlers/titler.md](titler.md).
 Nil deps return `fmt.Errorf` from the constructor — wire fails loud at
 startup.
 
+## List previews
+
+The organization-scoped list route checks `content:read` and calls
+`ConversationService.List` with the authorized business and user IDs. Each list
+item includes `preview`: normalized text from the latest readable user/assistant
+message, at most 161 Unicode code points including the truncation ellipsis, or
+an empty string when no readable message exists. The frontend renders this field
+from the shared conversation-list cache; it does not request `/messages` per row.
+List read failures use the existing list error state. Missing preview fields from
+older API responses display the existing unavailable label.
+
 ## Constants
 
 - `DefaultConversationLimit = 20` — page size when `?limit=` is absent.

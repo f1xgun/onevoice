@@ -4,6 +4,8 @@ Owns conversation operations that compose more than one repository write or read
 
 ## Public API
 
+- `List` — rejects missing organization/user scope and retrieves one paginated list with bounded message previews from the conversation repository. It does not load chat history or approval state.
+
 - `MoveToProject` — replaces an inline four-op sequence in `ConversationHandler.MoveConversation`. Moves a conversation to a different project (or to no project when `projectID` is nil/empty) and returns the post-move conversation.
 - `OpenChat` — replaces an inline four-op sequence + soft-error + projection in `ConversationHandler.ListMessages`, returning a fully-projected `*ChatView` ready for JSON encoding by the handler.
 

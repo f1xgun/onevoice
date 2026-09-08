@@ -11,6 +11,31 @@ The Mongo document mirrors `domain.Conversation`. Two fields are nullable but **
 
 Both invariants are domain-layer concerns enforced at the BSON-tag level; this repo only consumes them.
 
+## Conversation list previews
+
+`ListByUserID` matches both `user_id` and `business_id`, applies recency sorting
+and pagination, then joins the page to `messages` in the same aggregation.
+Each lookup selects the newest nonblank `user` or `assistant` message, ordered
+by `created_at DESC, _id DESC`. Tool/system messages and empty text are excluded.
+Unicode whitespace is collapsed before truncation to 160 code points plus `…`;
+only that bounded `preview` reaches the API. Empty/tool-only chats return `""`.
+No message-history or pending-approval read is involved.
+
+`EnsureMessageIndexes` installs `messages_conversation_preview_recency` on
+`{conversation_id: 1, role: 1, created_at: -1, _id: -1}`. The role and tie-break
+fields let MongoDB filter tool/system rows and traverse readable candidates in
+the required order without an in-memory sort.
+The query-budget regression places 5,000 newer tool messages ahead of readable
+user and assistant messages; MongoDB 7 examines two keys and one document in
+that representative writer-path case. Normal chat turns persist a nonempty user
+message before the assistant placeholder/final message, so this is the expected
+shape. The nonblank-content predicate is an expression and cannot be satisfied
+by this index: a pathological run of whitespace-only user/assistant messages is
+still scanned linearly until a readable candidate is found. The API response
+remains bounded and never returns that scanned history.
+The preview is computed on each list read, so historical messages need no backfill
+and subsequent list-cache invalidation observes the latest persisted message.
+
 ## Write-order discipline and idempotence
 
 The repo distinguishes three kinds of writes:

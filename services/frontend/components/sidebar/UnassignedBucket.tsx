@@ -135,7 +135,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{getDisplayTitle(conv)}</span>
-                    <ConversationPreview conversationId={conv.id} />
+                    <ConversationPreview preview={conv.preview} />
                   </span>
                 </Link>
                 <ChatRowMenu

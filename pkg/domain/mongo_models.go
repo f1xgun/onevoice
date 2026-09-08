@@ -63,6 +63,7 @@ const ReviewNeedsReviewMaxRating = 3
 // for the migration that drops the legacy bool via $unset and migrates
 // any pinned:true rows to pinned_at = updated_at.
 type Conversation struct {
+	Preview       string     `json:"preview" bson:"preview,omitempty"`
 	ID            string     `json:"id" bson:"_id,omitempty"`
 	UserID        string     `json:"userId" bson:"user_id"`
 	BusinessID    string     `json:"businessId" bson:"business_id"`
