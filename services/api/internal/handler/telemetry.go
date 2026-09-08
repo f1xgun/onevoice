@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -23,6 +23,7 @@ const maxTelemetryPayloadBytes = 256 * 1024
 // telemetryIngester is the narrow service surface the handler depends on.
 type telemetryIngester interface {
 	Ingest(ctx context.Context, userID uuid.UUID, events []service.TelemetryEvent) error
+	IngestForBusiness(ctx context.Context, userID, businessID uuid.UUID, events []service.TelemetryEvent) error
 }
 
 // TelemetryHandler handles frontend telemetry ingestion.
@@ -39,6 +40,28 @@ func NewTelemetryHandler(svc telemetryIngester) *TelemetryHandler {
 // the authenticated user_id stamped server-side. The request context carries a
 // correlation_id from CorrelationID middleware.
 func (h *TelemetryHandler) Ingest(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	h.ingest(w, r, userID, nil)
+}
+
+// IngestForBusiness accepts frontend telemetry for the authorized business in
+// the request context. Both identifiers are stamped from server-owned context.
+func (h *TelemetryHandler) IngestForBusiness(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "IngestForBusiness", authz.PermBusinessRead)
+	if !ok {
+		return
+	}
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	h.ingest(w, r, userID, &bc.BusinessID)
+}
+
+func (h *TelemetryHandler) ingest(w http.ResponseWriter, r *http.Request, userID uuid.UUID, businessID *uuid.UUID) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxTelemetryPayloadBytes)
 
 	var events []openapi.TelemetryEvent
@@ -52,12 +75,13 @@ func (h *TelemetryHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// userID is best-effort: the route is JWT-gated so it is normally present,
-	// but a missing id degrades to a NULL-user row rather than dropping the
-	// event.
-	userID, _ := middleware.GetUserID(r.Context())
-
-	if err := h.svc.Ingest(r.Context(), userID, toServiceTelemetry(events)); err != nil {
+	var err error
+	if businessID == nil {
+		err = h.svc.Ingest(r.Context(), userID, toServiceTelemetry(events))
+	} else {
+		err = h.svc.IngestForBusiness(r.Context(), userID, *businessID, toServiceTelemetry(events))
+	}
+	if err != nil {
 		slog.ErrorContext(r.Context(), "telemetry ingest failed", "error", err)
 		http.Error(w, `{"error":"internal_server_error"}`, http.StatusInternalServerError)
 		return

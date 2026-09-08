@@ -46,6 +46,20 @@ function readClientLocale(): string {
   return isLocale(value) ? value : DEFAULT_LOCALE;
 }
 
+// Capture telemetry scope before the request starts. Response interceptors may
+// run after an organization switch, so the active store is no longer a safe
+// source of attribution at that point. Non-business API URLs are explicitly
+// global even while an organization is active.
+function telemetryBusinessId(url: string | undefined): string | null {
+  const encoded = /^\/businesses\/([^/?]+)(?:[/?]|$)/.exec(url ?? '')?.[1];
+  if (!encoded) return null;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
+}
+
 // Attach access token + Accept-Language to every request.
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
@@ -53,6 +67,10 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   config.headers['Accept-Language'] = readClientLocale();
+  config.metadata = {
+    ...config.metadata,
+    telemetryBusinessId: telemetryBusinessId(config.url),
+  };
   return config;
 });
 
@@ -77,6 +95,7 @@ api.interceptors.response.use(
               `${error.response.status} ${original?.method?.toUpperCase()} ${url}`,
               {
                 correlationId,
+                businessId: original?.metadata?.telemetryBusinessId ?? null,
                 metadata: {
                   status: String(error.response.status),
                   url,

@@ -40,6 +40,7 @@ func TestTelemetryService_Ingest_StampsUserAndMaps(t *testing.T) {
 	require.Len(t, repo.rows, 2)
 
 	require.NotNil(t, repo.rows[0].UserID)
+	assert.Nil(t, repo.rows[0].BusinessID)
 	assert.Equal(t, uid, *repo.rows[0].UserID)
 	assert.Equal(t, "page_view", repo.rows[0].EventType)
 	require.NotNil(t, repo.rows[0].CorrelationID)
@@ -48,6 +49,27 @@ func TestTelemetryService_Ingest_StampsUserAndMaps(t *testing.T) {
 	assert.Nil(t, repo.rows[0].Metadata)
 
 	assert.JSONEq(t, `{"k":"v"}`, string(repo.rows[1].Metadata))
+}
+
+func TestTelemetryService_IngestForBusiness_StampsBusinessAndKeepsApprovalGlobal(t *testing.T) {
+	repo := &fakeTelemetryRepo{}
+	svc := NewTelemetryService(repo)
+	userID, businessID := uuid.New(), uuid.New()
+
+	err := svc.IngestForBusiness(context.Background(), userID, businessID, []TelemetryEvent{
+		{EventType: "page_view", Action: "open", Metadata: map[string]string{"business_id": uuid.NewString(), "user_id": uuid.NewString()}},
+		{EventType: "approval", Action: "draft_shown", Metadata: map[string]string{
+			"draft_id": strings.Repeat("a", 64), "kind": "post", "source": "chat",
+		}},
+	})
+	require.NoError(t, err)
+	require.Len(t, repo.rows, 2)
+	require.NotNil(t, repo.rows[0].UserID)
+	require.NotNil(t, repo.rows[0].BusinessID)
+	assert.Equal(t, userID, *repo.rows[0].UserID)
+	assert.Equal(t, businessID, *repo.rows[0].BusinessID)
+	assert.Nil(t, repo.rows[1].UserID)
+	assert.Nil(t, repo.rows[1].BusinessID)
 }
 
 func TestTelemetryService_Ingest_NilUserStoredAsNull(t *testing.T) {

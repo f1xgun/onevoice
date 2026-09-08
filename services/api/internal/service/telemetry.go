@@ -61,6 +61,16 @@ func validClientTelemetryEventType(eventType string) bool {
 // server-emitted value events attribute the business directly. A uuid.Nil
 // userID is stored as NULL. No-op on an empty batch.
 func (s *TelemetryService) Ingest(ctx context.Context, userID uuid.UUID, events []TelemetryEvent) error {
+	return s.ingest(ctx, userID, nil, events)
+}
+
+// IngestForBusiness persists client telemetry attributed to a business whose
+// membership was authorized at the HTTP boundary.
+func (s *TelemetryService) IngestForBusiness(ctx context.Context, userID, businessID uuid.UUID, events []TelemetryEvent) error {
+	return s.ingest(ctx, userID, &businessID, events)
+}
+
+func (s *TelemetryService) ingest(ctx context.Context, userID uuid.UUID, businessID *uuid.UUID, events []TelemetryEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -92,11 +102,12 @@ func (s *TelemetryService) Ingest(ctx context.Context, userID uuid.UUID, events 
 			continue
 		}
 		row := repository.TelemetryEventRow{
-			UserID:    userPtr,
-			EventType: e.EventType,
-			Action:    e.Action,
-			Page:      e.Page,
-			Metadata:  marshalTelemetryMetadata(e.Metadata),
+			UserID:     userPtr,
+			BusinessID: businessID,
+			EventType:  e.EventType,
+			Action:     e.Action,
+			Page:       e.Page,
+			Metadata:   marshalTelemetryMetadata(e.Metadata),
 		}
 		if e.CorrelationID != "" {
 			cid := e.CorrelationID

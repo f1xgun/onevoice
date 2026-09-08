@@ -79,6 +79,7 @@ These are the user's escape hatches from the soft-deleted state plus idempotent 
 Single chokepoint: `authz.RequireBusinessAccess(authzCache, GetUserID)` parses and validates the business UUID, looks up membership (returns `404` on non-member, not `403`), and injects `BusinessContext` with the caller's role + permissions into ctx.
 
 #### Business profile
+- `POST /telemetry` — frontend telemetry ingest stamped with the authorized business; requires `business.read` and uses the telemetry rate-limit bucket.
 - `GET /` — get business.
 - `PUT /` — update business.
 - `PUT /schedule`, `PUT /voice-tone`, `PUT /logo`

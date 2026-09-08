@@ -195,7 +195,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Post("/businesses", handlers.Business.CreateBusiness)
 			}
 
-			r.With(middleware.RateLimitByUser(redisClient, rateLimits.Telemetry, time.Minute, "telemetry")).
+			telemetryLimit := middleware.RateLimitByUser(redisClient, rateLimits.Telemetry, time.Minute, "telemetry")
+			r.With(telemetryLimit).
 				Post("/telemetry", handlers.Telemetry.Ingest)
 
 			if handlers.Feedback != nil {
@@ -210,6 +211,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			r.Route("/businesses/{id}", func(r chi.Router) {
 				r.Use(authz.RequireBusinessAccess(authzCache, middleware.GetUserID))
+				r.With(telemetryLimit).Post("/telemetry", handlers.Telemetry.IngestForBusiness)
 
 				// Per-user rate limits for state-changing routes. writeLimit
 				// guards routes that trigger external work (integration
