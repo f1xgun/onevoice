@@ -10,6 +10,9 @@ export type AuditCategory =
   | 'business'
   | 'project'
   | 'rpa'
+  | 'platform'
+  | 'review'
+  | 'hitl'
   | 'other';
 
 export interface AuditLogDTO {
@@ -61,9 +64,9 @@ export const AUDIT_ACTIONS = [
   'integration.disconnected',
   'integration.token_rotated',
   'integration.token_decrypted',
-  'integration.token_expired',
   'integration.metadata_updated',
   'integration.external_id_updated',
+  'integration.token_expired',
   'integration.deleted',
   'business.created',
   'business.updated',
@@ -80,6 +83,11 @@ export const AUDIT_ACTIONS = [
   'rpa.photo_uploaded',
   'rpa.info_updated',
   'rpa.hours_updated',
+  'platform.post_published',
+  'platform.dm_sent',
+  'platform.review_replied',
+  'review.auto_replied',
+  'hitl.approval_resolved',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -99,6 +107,8 @@ export const AUDIT_RESOURCES = [
   'business',
   'project',
   'policy',
+  'review',
+  'conversation',
 ] as const;
 
 export type AuditResource = (typeof AUDIT_RESOURCES)[number];

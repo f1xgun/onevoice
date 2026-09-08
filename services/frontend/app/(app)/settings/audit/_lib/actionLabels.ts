@@ -23,6 +23,12 @@ export function actionsForCategory(category: 'all' | string): readonly AuditActi
   return AUDIT_ACTIONS.filter((a) => a.startsWith(category + '.'));
 }
 
+const KNOWN_ACTIONS = new Set<string>(AUDIT_ACTIONS);
+
+export function isKnownAuditAction(action: string): action is AuditAction {
+  return KNOWN_ACTIONS.has(action);
+}
+
 // ACTION_LABEL_KEYS is the compile-time-checked mapping from every action
 // to its i18n key. The Record<AuditAction, string> shape causes a TS
 // error if AUDIT_ACTIONS and this map drift out of sync — this is the
@@ -64,4 +70,9 @@ export const ACTION_LABEL_KEYS: Record<AuditAction, string> = {
   'rpa.photo_uploaded': 'audit.actions.rpa_photo_uploaded',
   'rpa.info_updated': 'audit.actions.rpa_info_updated',
   'rpa.hours_updated': 'audit.actions.rpa_hours_updated',
+  'platform.post_published': 'audit.actions.platform_post_published',
+  'platform.dm_sent': 'audit.actions.platform_dm_sent',
+  'platform.review_replied': 'audit.actions.platform_review_replied',
+  'review.auto_replied': 'audit.actions.review_auto_replied',
+  'hitl.approval_resolved': 'audit.actions.hitl_approval_resolved',
 };

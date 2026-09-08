@@ -2232,6 +2232,9 @@
       "categoryBusiness": "Организация",
       "categoryProject": "Проекты",
       "categoryRpa": "Действия на площадках",
+      "categoryPlatform": "Действия через API площадок",
+      "categoryReview": "Автоматизация отзывов",
+      "categoryHitl": "Согласования",
       "actionLabel": "Действие",
       "actionAny": "Любое",
       "dateLabel": "Период",
@@ -2270,7 +2273,9 @@
       "integration": "Интеграция",
       "business": "Организация",
       "project": "Проект",
-      "policy": "Политика"
+      "policy": "Политика",
+      "review": "Отзыв",
+      "conversation": "Диалог"
     },
     "errors": {
       "loadFailed": "Не удалось загрузить журнал. Попробуйте позже.",
@@ -2330,7 +2335,9 @@
       "rpa_hours_updated": "Часы работы обновлены",
       "platform_post_published": "Публикация размещена",
       "platform_dm_sent": "Личное сообщение отправлено",
-      "platform_review_replied": "Ответ на отзыв опубликован"
+      "platform_review_replied": "Ответ на отзыв опубликован",
+      "review_auto_replied": "Ответ на отзыв опубликован автоматически",
+      "hitl_approval_resolved": "Согласование завершено"
     }
   },
   "sidebar": {

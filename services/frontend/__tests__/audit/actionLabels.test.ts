@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { AUDIT_ACTIONS, type AuditAction } from '@/app/(app)/settings/audit/_lib/types';
 import {
   actionToI18nKey,
   actionsForCategory,
   ACTION_LABEL_KEYS,
+  isKnownAuditAction,
 } from '@/app/(app)/settings/audit/_lib/actionLabels';
 import ru from '@/messages/ru.json';
 import en from '@/messages/en.json';
@@ -19,15 +22,37 @@ import en from '@/messages/en.json';
 //      message at CI time human-readable rather than a TS error).
 //   4. actionsForCategory filters from the canonical list.
 
-const EXPECTED_ACTION_COUNT = 36;
-
 function localeLabels(bundle: unknown): Record<string, string> {
   return (bundle as { audit: { actions: Record<string, string> } }).audit.actions;
 }
 
+function openAPIAuditActions(): string[] {
+  const spec = readFileSync(resolve(process.cwd(), '../../docs/api/spec/openapi.yaml'), 'utf8');
+  const block = spec.match(
+    /    AuditAction:\n      type: string\n      enum:\n((?:      - .+\n)+)/
+  );
+  if (!block) throw new Error('AuditAction enum not found in OpenAPI spec');
+  return block[1]
+    .trim()
+    .split('\n')
+    .map((line) => line.replace(/^\s*-\s*/, ''));
+}
+
 describe('audit action labels drift guard', () => {
-  it('AUDIT_ACTIONS has the expected count', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(EXPECTED_ACTION_COUNT);
+  it('contains the emitted platform, review autopilot, and HITL actions', () => {
+    expect(AUDIT_ACTIONS).toEqual(
+      expect.arrayContaining([
+        'platform.post_published',
+        'platform.dm_sent',
+        'platform.review_replied',
+        'review.auto_replied',
+        'hitl.approval_resolved',
+      ])
+    );
+  });
+
+  it('matches the OpenAPI business-feed action enum exactly', () => {
+    expect([...AUDIT_ACTIONS]).toEqual(openAPIAuditActions());
   });
 
   it('every action has a non-empty label in both ru.json and en.json', () => {
@@ -64,5 +89,10 @@ describe('audit action labels drift guard', () => {
     for (const a of authOnly) {
       expect(a.startsWith('auth.')).toBe(true);
     }
+  });
+
+  it('recognizes catalog actions and preserves an unknown-action fallback', () => {
+    expect(isKnownAuditAction('review.auto_replied')).toBe(true);
+    expect(isKnownAuditAction('future.action')).toBe(false);
   });
 });

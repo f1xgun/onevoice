@@ -26,12 +26,18 @@ const (
 	AuthPasswordChanged          AuditAction = "auth.password_changed"
 	AuthUserRegistered           AuditAction = "auth.user_registered"
 	BusinessCreated              AuditAction = "business.created"
+	BusinessDeletionCanceled     AuditAction = "business.deletion_canceled"
+	BusinessDeletionRequested    AuditAction = "business.deletion_requested"
+	BusinessNotOwnerBlocked      AuditAction = "business.not_owner_blocked"
+	BusinessSelfDeleted          AuditAction = "business.self_deleted"
 	BusinessUpdated              AuditAction = "business.updated"
 	HitlApprovalResolved         AuditAction = "hitl.approval_resolved"
 	IntegrationConnected         AuditAction = "integration.connected"
+	IntegrationDeleted           AuditAction = "integration.deleted"
 	IntegrationDisconnected      AuditAction = "integration.disconnected"
 	IntegrationExternalIdUpdated AuditAction = "integration.external_id_updated"
 	IntegrationMetadataUpdated   AuditAction = "integration.metadata_updated"
+	IntegrationTokenDecrypted    AuditAction = "integration.token_decrypted"
 	IntegrationTokenExpired      AuditAction = "integration.token_expired"
 	IntegrationTokenRotated      AuditAction = "integration.token_rotated"
 	PlatformDmSent               AuditAction = "platform.dm_sent"
@@ -49,17 +55,26 @@ const (
 	RbacRoleGranted              AuditAction = "rbac.role_granted"
 	RbacRoleUpdated              AuditAction = "rbac.role_updated"
 	ReviewAutoReplied            AuditAction = "review.auto_replied"
+	RpaHoursUpdated              AuditAction = "rpa.hours_updated"
+	RpaInfoUpdated               AuditAction = "rpa.info_updated"
+	RpaPhotoUploaded             AuditAction = "rpa.photo_uploaded"
+	RpaPostPublished             AuditAction = "rpa.post_published"
+	RpaReviewReplied             AuditAction = "rpa.review_replied"
+	RpaScopeViolation            AuditAction = "rpa.scope_violation"
 )
 
 // Defines values for AuditEventActionCategory.
 const (
 	AuditEventActionCategoryAuth        AuditEventActionCategory = "auth"
 	AuditEventActionCategoryBusiness    AuditEventActionCategory = "business"
+	AuditEventActionCategoryHitl        AuditEventActionCategory = "hitl"
 	AuditEventActionCategoryIntegration AuditEventActionCategory = "integration"
 	AuditEventActionCategoryOther       AuditEventActionCategory = "other"
+	AuditEventActionCategoryPlatform    AuditEventActionCategory = "platform"
 	AuditEventActionCategoryProject     AuditEventActionCategory = "project"
 	AuditEventActionCategoryRbac        AuditEventActionCategory = "rbac"
 	AuditEventActionCategoryReview      AuditEventActionCategory = "review"
+	AuditEventActionCategoryRpa         AuditEventActionCategory = "rpa"
 )
 
 // Defines values for ChannelRequestChannel.
@@ -414,9 +429,13 @@ const (
 const (
 	ListAuditLogsParamsCategoryAuth        ListAuditLogsParamsCategory = "auth"
 	ListAuditLogsParamsCategoryBusiness    ListAuditLogsParamsCategory = "business"
+	ListAuditLogsParamsCategoryHitl        ListAuditLogsParamsCategory = "hitl"
 	ListAuditLogsParamsCategoryIntegration ListAuditLogsParamsCategory = "integration"
+	ListAuditLogsParamsCategoryPlatform    ListAuditLogsParamsCategory = "platform"
 	ListAuditLogsParamsCategoryProject     ListAuditLogsParamsCategory = "project"
 	ListAuditLogsParamsCategoryRbac        ListAuditLogsParamsCategory = "rbac"
+	ListAuditLogsParamsCategoryReview      ListAuditLogsParamsCategory = "review"
+	ListAuditLogsParamsCategoryRpa         ListAuditLogsParamsCategory = "rpa"
 )
 
 // Defines values for ListReviewsParamsReplyStatus.
@@ -486,7 +505,7 @@ type AuditAction string
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
 	Action           AuditAction              `json:"action"`
-	ActionCategory   AuditEventActionCategory `json:"action_category" validate:"required,oneof=rbac auth integration business project review other"`
+	ActionCategory   AuditEventActionCategory `json:"action_category" validate:"required,oneof=rbac auth integration business project rpa platform review hitl other"`
 	ActorDisplayName *string                  `json:"actor_display_name"`
 	ActorEmail       *openapi_types.Email     `json:"actor_email" validate:"omitempty,email"`
 	ActorId          *openapi_types.UUID      `json:"actor_id" validate:"omitempty,uuid"`

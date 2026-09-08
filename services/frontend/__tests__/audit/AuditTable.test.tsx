@@ -54,6 +54,12 @@ describe('AuditTable actor + action labels', () => {
     expect(screen.getByText('Система')).toBeInTheDocument();
   });
 
+  it('renders an unknown action as its raw stable wire value', () => {
+    renderTable([makeRow({ id: 'future', action: 'future.action' })]);
+    expect(screen.getByText('future.action')).toBeInTheDocument();
+    expect(screen.queryByText('audit.actions.future_action')).not.toBeInTheDocument();
+  });
+
   it('shows the editable display name when present', () => {
     renderTable([makeRow({ actor_display_name: 'Анна П.', actor_email: 'anna@test.local' })]);
     expect(screen.getByText('Анна П.')).toBeInTheDocument();

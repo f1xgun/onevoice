@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import type { AuditLogDTO } from '../_lib/types';
-import { actionToI18nKey } from '../_lib/actionLabels';
+import { actionToI18nKey, isKnownAuditAction } from '../_lib/actionLabels';
 import { isKnownResource } from '../_lib/resourceLabels';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
@@ -46,6 +46,7 @@ const SYSTEM_ACTIONS = new Set<string>([
   'integration.token_decrypted',
   'integration.token_rotated',
   'rpa.scope_violation',
+  'review.auto_replied',
 ]);
 
 function actorLabel(item: AuditLogDTO, tFilters: AuditFiltersTranslator): string {
@@ -116,7 +117,9 @@ export function AuditTable({
                   {formatRelative(it.created_at, t)}
                 </td>
                 <td className="py-2 pr-4">{actorLabel(it, tFilters)}</td>
-                <td className="py-2 pr-4">{tActions(actionToI18nKey(it.action))}</td>
+                <td className="py-2 pr-4">
+                  {isKnownAuditAction(it.action) ? tActions(actionToI18nKey(it.action)) : it.action}
+                </td>
                 <td className="py-2 pr-4">
                   {isKnownResource(it.resource) ? tResources(it.resource) : it.resource}
                 </td>

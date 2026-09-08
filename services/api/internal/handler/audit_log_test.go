@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -354,6 +355,46 @@ func TestAuditLogHandler_List_IntegrationDeleted_Accepted(t *testing.T) {
 	assert.Equal(t, audit.ActionIntegrationDeleted, stub.gotFilter.Action)
 }
 
+func TestAuditLogHandler_List_NewBusinessActionsAccepted(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{audit.ActionReviewAutoReplied, audit.ActionHITLApprovalResolved} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			biz := uuid.New()
+			stub := &fakeAuditLister{}
+			h := NewAuditLogHandler(stub)
+			ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+			req := httptest.NewRequest(http.MethodGet, "/?action="+action, http.NoBody).WithContext(ctx)
+			w := httptest.NewRecorder()
+
+			h.List(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, action, stub.gotFilter.Action)
+		})
+	}
+}
+
+func TestAuditLogHandler_List_BusinessCategoriesAccepted(t *testing.T) {
+	t.Parallel()
+	for _, category := range []string{"rpa", "platform", "review", "hitl"} {
+		t.Run(category, func(t *testing.T) {
+			t.Parallel()
+			biz := uuid.New()
+			stub := &fakeAuditLister{}
+			h := NewAuditLogHandler(stub)
+			ctx := businessContextWithPerms(context.Background(), biz, uuid.New(), authz.PermAuditRead)
+			req := httptest.NewRequest(http.MethodGet, "/?category="+category, http.NoBody).WithContext(ctx)
+			w := httptest.NewRecorder()
+
+			h.List(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, category, stub.gotFilter.Category)
+		})
+	}
+}
+
 // --- Error paths ---
 
 func TestAuditLogHandler_List_Forbidden_WithoutPerm(t *testing.T) {
@@ -528,4 +569,88 @@ func TestAuditLogHandler_RepoSatisfiesAuditLogLister(t *testing.T) {
 	repo := repository.NewAuditLogRepository(mockPool)
 	_, ok := repo.(AuditLogLister)
 	require.True(t, ok, "NewAuditLogRepository must return a value satisfying handler.AuditLogLister")
+}
+
+func TestAuditLogHandler_ActionCatalogMatchesBusinessScope(t *testing.T) {
+	t.Parallel()
+	want := make(map[string]struct{})
+	for _, action := range audit.BusinessFeedActions() {
+		want[action] = struct{}{}
+	}
+	require.Equal(t, want, knownActions)
+	for _, userOrGlobalAction := range []string{
+		audit.ActionPasswordResetRequested,
+		audit.ActionConsentPolicyVersionBumped,
+		audit.ActionUserSelfDeleted,
+	} {
+		assert.NotContains(t, knownActions, userOrGlobalAction)
+	}
+}
+
+func TestAuditLogHandler_GeneratedOpenAPICatalogMatchesPackage(t *testing.T) {
+	t.Parallel()
+	generated := []string{
+		string(openapi.RbacRoleGranted), string(openapi.RbacMemberRemoved),
+		string(openapi.RbacRoleCreated), string(openapi.RbacRoleUpdated),
+		string(openapi.RbacRoleDeleted), string(openapi.RbacInvitationCreated),
+		string(openapi.RbacInvitationRevoked), string(openapi.RbacInvitationAccepted),
+		string(openapi.AuthLoginSuccess), string(openapi.AuthLoginFailed),
+		string(openapi.AuthLogout), string(openapi.AuthPasswordChanged),
+		string(openapi.AuthUserRegistered), string(openapi.IntegrationConnected),
+		string(openapi.IntegrationDisconnected), string(openapi.IntegrationTokenRotated),
+		string(openapi.IntegrationTokenDecrypted), string(openapi.IntegrationDeleted),
+		string(openapi.IntegrationMetadataUpdated), string(openapi.IntegrationExternalIdUpdated),
+		string(openapi.IntegrationTokenExpired), string(openapi.BusinessCreated),
+		string(openapi.BusinessUpdated), string(openapi.BusinessDeletionRequested),
+		string(openapi.BusinessDeletionCanceled), string(openapi.BusinessNotOwnerBlocked),
+		string(openapi.BusinessSelfDeleted), string(openapi.ProjectCreated),
+		string(openapi.ProjectUpdated), string(openapi.ProjectDeleted),
+		string(openapi.RpaScopeViolation), string(openapi.RpaReviewReplied),
+		string(openapi.RpaPostPublished), string(openapi.RpaPhotoUploaded),
+		string(openapi.RpaInfoUpdated), string(openapi.RpaHoursUpdated),
+		string(openapi.PlatformPostPublished), string(openapi.PlatformDmSent),
+		string(openapi.PlatformReviewReplied), string(openapi.ReviewAutoReplied),
+		string(openapi.HitlApprovalResolved),
+	}
+	require.ElementsMatch(t, audit.BusinessFeedActions(), generated)
+
+	generatedCategories := map[string]struct{}{
+		string(openapi.AuditEventActionCategoryRbac):        {},
+		string(openapi.AuditEventActionCategoryAuth):        {},
+		string(openapi.AuditEventActionCategoryIntegration): {},
+		string(openapi.AuditEventActionCategoryBusiness):    {},
+		string(openapi.AuditEventActionCategoryProject):     {},
+		string(openapi.AuditEventActionCategoryRpa):         {},
+		string(openapi.AuditEventActionCategoryPlatform):    {},
+		string(openapi.AuditEventActionCategoryReview):      {},
+		string(openapi.AuditEventActionCategoryHitl):        {},
+	}
+	for _, action := range audit.BusinessFeedActions() {
+		assert.Contains(t, generatedCategories, audit.ActionCategory(action), action)
+	}
+	assert.Equal(t, "other", string(openapi.AuditEventActionCategoryOther))
+}
+
+func TestAuditLogHandler_List_RejectsUserAndGlobalActions(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{
+		audit.ActionPasswordResetRequested,
+		audit.ActionConsentPolicyVersionBumped,
+		audit.ActionUserSelfDeleted,
+	} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			stub := &fakeAuditLister{}
+			h := NewAuditLogHandler(stub)
+			ctx := businessContextWithPerms(context.Background(), uuid.New(), uuid.New(), authz.PermAuditRead)
+			req := httptest.NewRequest(http.MethodGet, "/?action="+action, http.NoBody).WithContext(ctx)
+			w := httptest.NewRecorder()
+
+			h.List(w, req)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			assertErrorCode(t, w, "invalid_action")
+			require.Zero(t, stub.calls)
+		})
+	}
 }
