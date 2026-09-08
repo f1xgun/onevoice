@@ -92,8 +92,12 @@ export function trackEvent(
 /**
  * Convenience wrapper for button_click events.
  */
-export function trackClick(action: string, metadata?: Record<string, string>): void {
-  trackEvent('button_click', action, { metadata });
+export function trackClick(
+  action: string,
+  metadata?: Record<string, string>,
+  businessId?: string | null
+): void {
+  trackEvent('button_click', action, { metadata, businessId });
 }
 
 /**

@@ -213,12 +213,11 @@ export default function IntegrationsPage() {
   }, [integrations, business?.id, integrationsLoading, integrationsError, activeBusinessId]);
 
   const disconnectMutation = useMutation({
-    mutationFn: (integrationId: string) => {
-      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
-      return bizApi(activeBusinessId).delete(BIZ_API_PATHS.INTEGRATIONS.BY_ID(integrationId));
+    mutationFn: ({ integrationId, businessId }: { integrationId: string; businessId: string }) => {
+      return bizApi(businessId).delete(BIZ_API_PATHS.INTEGRATIONS.BY_ID(integrationId));
     },
-    onSuccess: () => {
-      trackClick('disconnect_integration');
+    onSuccess: (_, { businessId }) => {
+      trackClick('disconnect_integration', undefined, businessId);
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       toast.success(tIntegrations('page.channelDisconnected'));
     },
@@ -324,7 +323,10 @@ export default function IntegrationsPage() {
                   description={tPlatformDesc(p.id)}
                   integrations={platformIntegrations}
                   onConnect={() => handleConnect(p.id)}
-                  onDisconnect={(integrationId) => disconnectMutation.mutate(integrationId)}
+                  onDisconnect={(integrationId) =>
+                    activeBusinessId &&
+                    disconnectMutation.mutate({ integrationId, businessId: activeBusinessId })
+                  }
                   canConnect={canConnect}
                   canDisconnect={canDisconnect}
                   isPreview={p.id === 'google_business'}

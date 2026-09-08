@@ -50,12 +50,12 @@ export default function ChatListPage() {
   });
 
   const { mutate: createConversation, isPending } = useMutation({
-    mutationFn: () =>
-      bizApi(activeBusinessId!)
+    mutationFn: (businessId: string) =>
+      bizApi(businessId)
         .post<Conversation>(BIZ_API_PATHS.CONVERSATIONS.ROOT, { title: tChat('newConversation') })
         .then((r) => r.data),
-    onSuccess: (conv: Conversation) => {
-      trackClick('create_conversation');
+    onSuccess: (conv: Conversation, businessId) => {
+      trackClick('create_conversation', undefined, businessId);
       queryClient.invalidateQueries({
         queryKey: conversationsQueryKey(activeBusinessId),
       });
@@ -93,10 +93,10 @@ export default function ChatListPage() {
   });
 
   const { mutate: deleteConversation } = useMutation({
-    mutationFn: (id: string) =>
-      bizApi(activeBusinessId!).delete(BIZ_API_PATHS.CONVERSATIONS.BY_ID(id)),
-    onSuccess: () => {
-      trackClick('delete_conversation');
+    mutationFn: ({ id, businessId }: { id: string; businessId: string }) =>
+      bizApi(businessId).delete(BIZ_API_PATHS.CONVERSATIONS.BY_ID(id)),
+    onSuccess: (_, { businessId }) => {
+      trackClick('delete_conversation', undefined, businessId);
       setDeleteTarget(null);
       queryClient.invalidateQueries({
         queryKey: conversationsQueryKey(activeBusinessId),
@@ -110,7 +110,7 @@ export default function ChatListPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-page-title">{tChat('heading')}</h1>
         {canCreate && (
-          <Button onClick={() => createConversation()} disabled={isPending}>
+          <Button onClick={() => createConversation(activeBusinessId!)} disabled={isPending}>
             <Plus size={16} className="mr-2" />
             {tChat('newConversation')}
           </Button>
@@ -160,7 +160,11 @@ export default function ChatListPage() {
             <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant="danger"
-              onClick={() => deleteTarget && deleteConversation(deleteTarget)}
+              onClick={() =>
+                deleteTarget &&
+                activeBusinessId &&
+                deleteConversation({ id: deleteTarget, businessId: activeBusinessId })
+              }
             >
               {tCommon('delete')}
             </AlertDialogAction>
