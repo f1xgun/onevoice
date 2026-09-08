@@ -72,7 +72,7 @@ func toServiceTelemetry(events []openapi.TelemetryEvent) []service.TelemetryEven
 	out := make([]service.TelemetryEvent, 0, len(events))
 	for _, e := range events {
 		ev := service.TelemetryEvent{
-			EventType:     e.EventType,
+			EventType:     string(e.EventType),
 			Action:        e.Action,
 			Page:          e.Page,
 			CorrelationID: strDeref(e.CorrelationId),
