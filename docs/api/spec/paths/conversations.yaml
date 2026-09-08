@@ -22,7 +22,7 @@
         minimum: 0
     responses:
       '200':
-        description: Conversation list.
+        description: Conversation list with bounded message previews, fetched in one tenant-scoped aggregation.
         content:
           application/json:
             schema:

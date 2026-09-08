@@ -36,6 +36,7 @@ type ProjectService interface {
 // Declared as an interface so conversation_test.go can swap in a noop
 // fake for handler tests that don't exercise these paths.
 type ConversationService interface {
+	List(ctx context.Context, businessID, userID uuid.UUID, limit, offset int) ([]domain.Conversation, error)
 	MoveToProject(
 		ctx context.Context,
 		conversationID string,

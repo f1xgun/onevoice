@@ -45,6 +45,17 @@ the titler service is wired. See [docs/api/handlers/titler.md](titler.md).
 Nil deps return `fmt.Errorf` from the constructor — wire fails loud at
 startup.
 
+## List previews
+
+The organization-scoped list route checks `content:read` and calls
+`ConversationService.List` with the authorized business and user IDs. Each list
+item includes `preview`: normalized text from the latest readable user/assistant
+message, at most 161 Unicode code points including the truncation ellipsis, or
+an empty string when no readable message exists. The frontend renders this field
+from the shared conversation-list cache; it does not request `/messages` per row.
+List read failures use the existing list error state. Missing preview fields from
+older API responses display the existing unavailable label.
+
 ## Constants
 
 - `DefaultConversationLimit = 20` — page size when `?limit=` is absent.
@@ -74,17 +85,17 @@ if !authz.Can(r.Context(), authz.Perm<Verb>) {
 
 Permission lattice per route:
 
-| Route                                | Permission             |
-|--------------------------------------|------------------------|
-| `POST /conversations`                | `PermContentCreate`    |
-| `GET /conversations`                 | `PermContentRead`      |
-| `GET /conversations/{id}`            | `PermContentRead`      |
-| `PUT /conversations/{id}`            | `PermContentUpdate`    |
-| `DELETE /conversations/{id}`         | `PermContentDelete`    |
-| `GET /conversations/{id}/messages`   | `PermContentRead`      |
-| `POST /conversations/{id}/move`      | `PermContentUpdate`    |
-| `POST /conversations/{id}/pin`       | `PermContentUpdate`    |
-| `POST /conversations/{id}/unpin`     | `PermContentUpdate`    |
+| Route                              | Permission          |
+| ---------------------------------- | ------------------- |
+| `POST /conversations`              | `PermContentCreate` |
+| `GET /conversations`               | `PermContentRead`   |
+| `GET /conversations/{id}`          | `PermContentRead`   |
+| `PUT /conversations/{id}`          | `PermContentUpdate` |
+| `DELETE /conversations/{id}`       | `PermContentDelete` |
+| `GET /conversations/{id}/messages` | `PermContentRead`   |
+| `POST /conversations/{id}/move`    | `PermContentUpdate` |
+| `POST /conversations/{id}/pin`     | `PermContentUpdate` |
+| `POST /conversations/{id}/unpin`   | `PermContentUpdate` |
 
 Pin / unpin are `PermContentUpdate` because they mutate metadata on a
 conversation the user already owns; they do NOT need create or delete
@@ -159,13 +170,13 @@ be more surprising than a missing note.
 
 Error mapping:
 
-| Service error                      | HTTP |
-|------------------------------------|------|
-| `domain.ErrConversationNotFound`   | 404  |
-| `domain.ErrForbidden`              | 403  |
-| `domain.ErrProjectNotFound`        | 404  |
-| `service.ErrInvalidProjectID`      | 400  |
-| anything else                      | 500  |
+| Service error                    | HTTP |
+| -------------------------------- | ---- |
+| `domain.ErrConversationNotFound` | 404  |
+| `domain.ErrForbidden`            | 403  |
+| `domain.ErrProjectNotFound`      | 404  |
+| `service.ErrInvalidProjectID`    | 400  |
+| anything else                    | 500  |
 
 ### ListMessages → ChatView
 
@@ -178,11 +189,11 @@ remain unchanged.
 
 Sentinel mapping:
 
-| Service error                      | HTTP |
-|------------------------------------|------|
-| `domain.ErrConversationNotFound`   | 404  |
-| `domain.ErrForbidden`              | 403  |
-| anything else                      | 500  |
+| Service error                    | HTTP |
+| -------------------------------- | ---- |
+| `domain.ErrConversationNotFound` | 404  |
+| `domain.ErrForbidden`            | 403  |
+| anything else                    | 500  |
 
 ### UpdateConversation
 

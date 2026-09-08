@@ -146,7 +146,7 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 
 	limit, offset := parseLimitOffset(r, DefaultConversationLimit, MaxConversationLimit)
 
-	conversations, err := h.conversationRepo.ListByUserID(r.Context(), bc.UserID.String(), bc.BusinessID.String(), limit, offset)
+	conversations, err := h.conversationService.List(r.Context(), bc.BusinessID, bc.UserID, limit, offset)
 	if err != nil {
 		slog.Error("failed to list conversations", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")

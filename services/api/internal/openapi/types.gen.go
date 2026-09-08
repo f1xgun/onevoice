@@ -702,7 +702,10 @@ type Conversation struct {
 	Id            string             `json:"id" validate:"required"`
 	LastMessageAt *time.Time         `json:"lastMessageAt"`
 	PinnedAt      *time.Time         `json:"pinnedAt"`
-	ProjectId     *string            `json:"projectId"`
+
+	// Preview Computed on conversation list responses from the latest nonblank user or assistant message, ordered by createdAt then message ID descending. Unicode whitespace is collapsed before truncation to 160 code points plus an ellipsis. Empty for chats without readable messages. Other conversation endpoints do not populate this field.
+	Preview   *string `json:"preview,omitempty" validate:"omitempty,max=161"`
+	ProjectId *string `json:"projectId"`
 
 	// Title Empty with titleStatus auto marks a settled fallback; localize from createdAt at display time.
 	Title       string                  `json:"title" validate:"required"`

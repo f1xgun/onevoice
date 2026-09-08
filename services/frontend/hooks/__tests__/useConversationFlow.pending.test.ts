@@ -27,8 +27,7 @@ vi.mock('@/lib/stores/business', () => ({
 // QueryClientProvider — the React Query cache is unused by these test
 // scenarios (they cover SSE pause / resume / hydration paths) but the hook
 // requires the context.
-function makeQCWrapper() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function makeQCWrapper(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return ({ children }: { children: React.ReactNode }) =>
     React.createElement(QueryClientProvider, { client: qc }, children);
 }
@@ -48,7 +47,10 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
   });
 
   it('sets pendingApproval when tool_approval_required event arrives and stream closes naturally', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const fetchMock = vi.fn();
+    let streamController: ReadableStreamDefaultController<Uint8Array>;
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(
         /\/api\/v1\/businesses\/biz-test\/conversations\/.+\/messages$/
@@ -60,32 +62,53 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
     });
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
       expect(String(input)).toMatch(/\/api\/v1\/businesses\/biz-test\/chat\/cid-1$/);
-      return mockSSEResponse([
-        sseLine({ type: 'text', content: 'I will post to ' }),
-        sseLine({
-          type: 'tool_approval_required',
-          batch_id: 'b1',
-          calls: [
-            {
-              call_id: 'c1',
-              tool_name: 'telegram__send_channel_post',
-              args: { chat_id: 1, text: 'hi' },
-              editable_fields: ['text'],
-              floor: 'manual',
-            },
-          ],
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+            controller.enqueue(
+              new TextEncoder().encode(
+                sseLine({ type: 'text', content: 'I will post to ' }) +
+                  sseLine({
+                    type: 'tool_approval_required',
+                    batch_id: 'b1',
+                    calls: [
+                      {
+                        call_id: 'c1',
+                        tool_name: 'telegram__send_channel_post',
+                        args: { chat_id: 1, text: 'hi' },
+                        editable_fields: ['text'],
+                        floor: 'manual',
+                      },
+                    ],
+                  })
+              )
+            );
+          },
         }),
-      ]);
+        { headers: { 'Content-Type': 'text/event-stream' } }
+      );
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-1' }), {
-      wrapper: makeQCWrapper(),
+      wrapper: makeQCWrapper(queryClient),
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
+    let send: Promise<void>;
     await act(async () => {
-      await result.current.sendMessage('post hi');
+      send = result.current.sendMessage('post hi');
+    });
+
+    await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: ['businesses', 'biz-test', 'conversations'],
+    });
+
+    await act(async () => {
+      streamController.close();
+      await send;
     });
 
     expect(result.current.isStreaming).toBe(false);
@@ -103,6 +126,9 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
     expect(assistant).toBeDefined();
     expect(assistant!.content).toBe('I will post to ');
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['businesses', 'biz-test', 'conversations'],
+    });
   });
 
   it('does NOT abort the fetch controller on tool_approval_required — lets stream end naturally', async () => {

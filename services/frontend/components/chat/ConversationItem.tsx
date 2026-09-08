@@ -23,6 +23,7 @@ import { MoveChatMenuItem } from '@/components/chat/MoveChatMenuItem';
 export interface Conversation {
   id: string;
   title: string;
+  preview?: string;
   titleStatus?: 'auto_pending' | 'auto' | 'manual';
   createdAt: string;
   projectId?: string | null;
@@ -90,7 +91,7 @@ export function ConversationItem({
         ) : (
           <button type="button" className="block min-h-11 w-full text-left" onClick={onOpen}>
             <p className="break-words text-action">{displayTitle}</p>
-            <ConversationPreview conversationId={conv.id} />
+            <ConversationPreview preview={conv.preview} />
             <p className="text-sm text-ink-soft">
               {tRow('created')}{' '}
               <time dateTime={conv.createdAt}>

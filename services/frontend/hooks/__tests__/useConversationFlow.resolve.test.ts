@@ -73,8 +73,7 @@ function QueryWrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: makeQueryClient() }, children);
 }
 
-function makeQCWrapper() {
-  const qc = makeQueryClient();
+function makeQCWrapper(qc = makeQueryClient()) {
   return ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client: qc }, children);
 }
@@ -361,7 +360,10 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
   });
 
   it('keeps the next approval card when the resume chain re-pauses (sequential fan-out)', async () => {
+    const queryClient = makeQueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const fetchMock = vi.fn();
+    let streamController: ReadableStreamDefaultController<Uint8Array>;
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/messages')) {
@@ -379,43 +381,67 @@ describe('useConversationFlow.resolveApproval — happy path', () => {
       // Resume: the first tool executes, then the chain pauses AGAIN on the next
       // tool. The card must switch to that batch, not clear (the bug: the resume
       // consumer dropped tool_approval_required and the chain looked dead-ended).
-      return mockSSEResponse([
-        sseLine({
-          type: 'tool_result',
-          tool_call_id: 'srv-1',
-          tool_name: 'yandex_business__update_hours',
-          result: { ok: true },
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+            controller.enqueue(
+              new TextEncoder().encode(
+                sseLine({
+                  type: 'tool_result',
+                  tool_call_id: 'srv-1',
+                  tool_name: 'yandex_business__update_hours',
+                  result: { ok: true },
+                }) +
+                  sseLine({
+                    type: 'tool_approval_required',
+                    batch_id: 'batch-next',
+                    calls: [
+                      {
+                        call_id: 'call-next-1',
+                        tool_name: 'telegram__send_channel_post',
+                        args: { text: 'announcement' },
+                        editable_fields: [],
+                        floor: 'manual',
+                      },
+                    ],
+                  })
+              )
+            );
+          },
         }),
-        sseLine({
-          type: 'tool_approval_required',
-          batch_id: 'batch-next',
-          calls: [
-            {
-              call_id: 'call-next-1',
-              tool_name: 'telegram__send_channel_post',
-              args: { text: 'announcement' },
-              editable_fields: [],
-              floor: 'manual',
-            },
-          ],
-        }),
-      ]);
+        { headers: { 'Content-Type': 'text/event-stream' } }
+      );
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-resolve-1' }), {
-      wrapper: makeQCWrapper(),
+      wrapper: makeQCWrapper(queryClient),
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
 
+    let resolve: Promise<void>;
     await act(async () => {
-      await result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
+      resolve = result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
+    });
+
+    await waitFor(() => expect(result.current.pendingApproval?.batchId).toBe('batch-next'));
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: ['businesses', 'biz-test', 'conversations'],
+    });
+
+    await act(async () => {
+      streamController.close();
+      await resolve;
     });
 
     expect(result.current.pendingApproval).not.toBeNull();
     expect(result.current.pendingApproval!.batchId).toBe('batch-next');
     expect(result.current.pendingApproval!.calls[0].toolName).toBe('telegram__send_channel_post');
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['businesses', 'biz-test', 'conversations'],
+    });
   });
 });
 

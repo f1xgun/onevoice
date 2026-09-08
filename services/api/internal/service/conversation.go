@@ -100,6 +100,18 @@ type ApprovalCallSummary struct {
 	EditableFields []string               `json:"editableFields"`
 }
 
+// List returns one scoped page with previews already projected by MongoDB.
+func (s *ConversationService) List(ctx context.Context, businessID, userID uuid.UUID, limit, offset int) ([]domain.Conversation, error) {
+	if businessID == uuid.Nil || userID == uuid.Nil {
+		return nil, domain.ErrInvalidScope
+	}
+	conversations, err := s.convRepo.ListByUserID(ctx, userID.String(), businessID.String(), limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list conversations: %w", err)
+	}
+	return conversations, nil
+}
+
 // defaultMessageListLimit caps the number of messages OpenChat returns.
 const defaultMessageListLimit = 200
 

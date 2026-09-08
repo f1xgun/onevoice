@@ -17,6 +17,7 @@ export interface Conversation {
   businessId: string;
   projectId: string | null;
   title: string;
+  preview?: string;
   titleStatus?: TitleStatus;
   // PinnedAt is the SINGLE SOURCE OF TRUTH for
   // the pinned state. Backend serializes ISO timestamp under JSON key

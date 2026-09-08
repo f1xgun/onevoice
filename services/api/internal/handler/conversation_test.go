@@ -336,6 +336,10 @@ func (s *noopProjectService) CountConversations(_ context.Context, _, _ uuid.UUI
 // *service.ConversationService.
 type noopConversationService struct{}
 
+func (noopConversationService) List(_ context.Context, _, _ uuid.UUID, _, _ int) ([]domain.Conversation, error) {
+	panic("noopConversationService.List: test must wire a real service")
+}
+
 func (noopConversationService) MoveToProject(_ context.Context, _ string, _, _ uuid.UUID, _ *string) (*domain.Conversation, error) {
 	panic("noopConversationService.MoveToProject: test must wire a real *service.ConversationService when exercising MoveConversation")
 }
@@ -1066,7 +1070,7 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(raw, &m))
 
-	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
+	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt", "preview"} {
 		_, ok := m[key]
 		assert.Truef(t, ok, "expected key %q in JSON shape; got keys: %v", key, keysOf(m))
 	}
@@ -1151,7 +1155,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 	require.Len(t, items, 1)
 
 	item := items[0]
-	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
+	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt", "preview"} {
 		_, ok := item[key]
 		assert.Truef(t, ok, "GET /api/v1/conversations item must carry key %q; got: %v", key, keysOf(item))
 	}

@@ -154,6 +154,9 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 //   - {conversation_id, role, status, created_at} serves FindByConversationActive
 //     (filter conversation_id+role+status, sort created_at desc).
 //
+// The preview recency index includes role and _id to serve the deterministic
+// latest-readable-message lookup with indexed role filtering and ordering.
+//
 // created_at is stamped once at insert and never mutated, so indexing it is safe.
 //
 // The {conversation_id, created_at} index uses Mongo's default-generated name
@@ -163,6 +166,15 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 func EnsureMessageIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("messages")
 	models := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "conversation_id", Value: 1},
+				{Key: "role", Value: 1},
+				{Key: "created_at", Value: -1},
+				{Key: "_id", Value: -1},
+			},
+			Options: options.Index().SetName("messages_conversation_preview_recency"),
+		},
 		{
 			Keys: bson.D{
 				{Key: "conversation_id", Value: 1},
