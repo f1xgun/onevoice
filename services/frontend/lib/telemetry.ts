@@ -1,6 +1,7 @@
 import { API_BASE_URL, API_PATHS } from '@/lib/constants/apiPaths';
 
 import { useAuthStore } from './auth';
+import { useBusinessStore } from './stores/business';
 
 export interface TelemetryEvent {
   eventType: string;
@@ -14,7 +15,12 @@ export interface TelemetryEvent {
 const BATCH_INTERVAL = 5000; // 5 seconds
 const MAX_BATCH_SIZE = 50;
 
-let buffer: TelemetryEvent[] = [];
+interface BufferedTelemetry {
+  event: TelemetryEvent;
+  businessId: string | null;
+}
+
+let buffer: BufferedTelemetry[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -27,6 +33,7 @@ export function trackEvent(
     page?: string;
     correlationId?: string;
     metadata?: Record<string, string>;
+    businessId?: string | null;
   }
 ): void {
   if (!useAuthStore.getState().accessToken) return;
@@ -59,7 +66,15 @@ export function trackEvent(
     event.page = `/${event.metadata.source}`;
   }
 
-  buffer.push(event);
+  buffer.push({
+    event,
+    businessId:
+      eventType === 'approval'
+        ? null
+        : opts?.businessId === undefined
+          ? (useBusinessStore.getState?.().activeBusinessId ?? null)
+          : opts.businessId,
+  });
 
   if (buffer.length >= MAX_BATCH_SIZE) {
     void flushTelemetry();
@@ -103,18 +118,31 @@ async function sendBufferedTelemetry(keepalive: boolean): Promise<void> {
   }
   const token = useAuthStore.getState().accessToken;
   if (!token || batch.length === 0) return;
-  try {
-    await fetch(`${API_BASE_URL}${API_PATHS.TELEMETRY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(batch),
-      keepalive,
-      credentials: 'include',
-    });
-  } catch {}
+  const grouped = new Map<string | null, TelemetryEvent[]>();
+  for (const item of batch) {
+    const events = grouped.get(item.businessId) ?? [];
+    events.push(item.event);
+    grouped.set(item.businessId, events);
+  }
+  await Promise.all(
+    [...grouped].map(async ([businessId, events]) => {
+      const path = businessId
+        ? `${API_BASE_URL}/businesses/${encodeURIComponent(businessId)}/telemetry`
+        : `${API_BASE_URL}${API_PATHS.TELEMETRY}`;
+      try {
+        await fetch(path, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(events),
+          keepalive,
+          credentials: 'include',
+        });
+      } catch {}
+    })
+  );
 }
 
 if (typeof document !== 'undefined') {

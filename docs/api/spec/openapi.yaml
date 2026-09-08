@@ -220,6 +220,8 @@ paths:
     $ref: paths/audit.yaml#/~1businesses~1{id}~1audit-logs
   /telemetry:
     $ref: paths/telemetry.yaml#/~1telemetry
+  /businesses/{id}/telemetry:
+    $ref: paths/telemetry.yaml#/~1businesses~1{id}~1telemetry
   /landing-events:
     $ref: paths/landing.yaml#/~1landing-events
   /waitlist:

@@ -47,6 +47,33 @@ func (f *fakeLoader) LoadMembership(_ context.Context, _, _ uuid.UUID) (*authz.C
 	return nil, domain.ErrMembershipNotFound
 }
 
+type telemetryLoader struct {
+	permissions   []authz.Permission
+	membershipErr error
+	roleID        uuid.UUID
+}
+
+func (l *telemetryLoader) LoadMembership(_ context.Context, _, _ uuid.UUID) (*authz.CachedMember, error) {
+	if l.membershipErr != nil {
+		return nil, l.membershipErr
+	}
+	return &authz.CachedMember{RoleID: l.roleID, Status: "active"}, nil
+}
+
+func (l *telemetryLoader) LoadRole(_ context.Context, _ uuid.UUID) (*authz.CachedRole, error) {
+	return &authz.CachedRole{Permissions: l.permissions}, nil
+}
+
+type routerTelemetryIngester struct{}
+
+func (routerTelemetryIngester) Ingest(context.Context, uuid.UUID, []service.TelemetryEvent) error {
+	return nil
+}
+
+func (routerTelemetryIngester) IngestForBusiness(context.Context, uuid.UUID, uuid.UUID, []service.TelemetryEvent) error {
+	return nil
+}
+
 func (f *fakeLoader) LoadRole(_ context.Context, _ uuid.UUID) (*authz.CachedRole, error) {
 	return nil, domain.ErrMembershipNotFound
 }
@@ -218,6 +245,69 @@ func mintAccessToken(t *testing.T, secret []byte, userID uuid.UUID) string {
 	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
 	require.NoError(t, err)
 	return signed
+}
+
+func buildTelemetryRouter(t *testing.T, loader authz.MembershipLoader, limit int) *chi.Mux {
+	t.Helper()
+	redisClient, _ := setupRouterTestRedis(t)
+	t.Cleanup(func() { _ = redisClient.Close() })
+	handlers := buildTestHandlers()
+	handlers.Telemetry = handler.NewTelemetryHandler(routerTelemetryIngester{})
+	return router.Setup(
+		handlers,
+		routerTestJWTSecret,
+		redisClient,
+		health.New(),
+		[]string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: 1000, Invitations: 1000, Telemetry: limit},
+		authz.NewCacheForTest(loader, time.Minute, time.Minute),
+		nil, nil, nil,
+	)
+}
+
+func TestRouter_BusinessTelemetryScopeGuards(t *testing.T) {
+	userID := uuid.New()
+	token := mintAccessToken(t, routerTestJWTSecret, userID)
+	body := `[{"eventType":"page_view","page":"/","action":"open","timestamp":"2026-01-01T00:00:00Z"}]`
+	tests := []struct {
+		name       string
+		businessID string
+		loader     authz.MembershipLoader
+		want       int
+	}{
+		{name: "invalid business id", businessID: "invalid", loader: &fakeLoader{}, want: http.StatusBadRequest},
+		{name: "non-member", businessID: uuid.NewString(), loader: &fakeLoader{}, want: http.StatusNotFound},
+		{name: "missing business read", businessID: uuid.NewString(), loader: &telemetryLoader{roleID: uuid.New()}, want: http.StatusForbidden},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := buildTelemetryRouter(t, tt.loader, 10)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/businesses/"+tt.businessID+"/telemetry", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.want, w.Code)
+		})
+	}
+}
+
+func TestRouter_BusinessTelemetrySharesGlobalRateBucket(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+	userID, businessID := uuid.New(), uuid.New()
+	loader := &telemetryLoader{roleID: uuid.New(), permissions: []authz.Permission{authz.PermBusinessRead}}
+	r := buildTelemetryRouter(t, loader, 1)
+	token := mintAccessToken(t, routerTestJWTSecret, userID)
+	body := `[{"eventType":"page_view","page":"/","action":"open","timestamp":"2026-01-01T00:00:00Z"}]`
+
+	request := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+	assert.Equal(t, http.StatusNoContent, request("/api/v1/telemetry").Code)
+	assert.Equal(t, http.StatusTooManyRequests, request("/api/v1/businesses/"+businessID.String()+"/telemetry").Code)
 }
 
 // replayResumeChain rebuilds the HITL resume route's exact route-scoped
