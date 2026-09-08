@@ -5,14 +5,14 @@ stored in `telemetry_events` with `event_type = value`. Emission into that
 writer remains bounded best-effort, as described below. The closed server
 action set is:
 
-| Action | Completion boundary | Metadata |
-|---|---|---|
-| `signup_completed` | User transaction or legacy user insert committed | none |
-| `email_verified` | Verification token consumption and user update committed | none |
-| `org_created` | Business and owner membership transaction committed | none |
-| `integration_connected` | Encrypted integration row persisted | `platform`, `kind=integration` |
-| `post_published` | Platform returned success and the published Post record persisted | `platform`, `kind=post` |
-| `review_replied` | Platform returned success and the replied Review state persisted | `platform`, `kind=review_reply` |
+| Action                  | Completion boundary                                               | Metadata                        |
+| ----------------------- | ----------------------------------------------------------------- | ------------------------------- |
+| `signup_completed`      | User transaction or legacy user insert committed                  | none                            |
+| `email_verified`        | Verification token consumption and user update committed          | none                            |
+| `org_created`           | Business and owner membership transaction committed               | none                            |
+| `integration_connected` | Encrypted integration row persisted                               | `platform`, `kind=integration`  |
+| `post_published`        | Platform returned success and the published Post record persisted | `platform`, `kind=post`         |
+| `review_replied`        | Platform returned success and the replied Review state persisted  | `platform`, `kind=review_reply` |
 
 Frontend `page_view`, `button_click`, `chat_send`, `activation`, and integration
 click events remain intent signals. They do not stand in for these completion
