@@ -1,10 +1,15 @@
-// Pure builder for the guided-compose seed. The picker collects a post type
-// and a free-text topic, then this turns them into a single templated
-// instruction string that is handed to the existing chat send path
+// Pure builder for the guided-compose seed. The picker collects a post type,
+// free-text topic, and confirmed destinations, then this turns them into a
+// single templated instruction string handed to the existing chat send path
 // (sendMessage). No producer, no draft state — just a string the chat loop
 // already knows how to stream.
 
 export type ComposePostType = 'announcement' | 'promo' | 'newArrival';
+
+export interface ComposeDestination {
+  id: string;
+  label: string;
+}
 
 export const COMPOSE_POST_TYPES: readonly ComposePostType[] = Object.freeze([
   'announcement',
@@ -27,9 +32,18 @@ export function isComposePostType(value: string): value is ComposePostType {
 }
 
 // buildComposeInstruction returns the seeded instruction, or null when the
-// topic is blank so the caller can keep the submit affordance inert.
-export function buildComposeInstruction(type: ComposePostType, topic: string): string | null {
+// topic is blank. Passing destinations makes the operator's concrete choice
+// override the orchestrator's general broadcast-all directive.
+export function buildComposeInstruction(
+  type: ComposePostType,
+  topic: string,
+  destinations: readonly ComposeDestination[] = []
+): string | null {
   const trimmed = topic.trim();
   if (trimmed.length === 0) return null;
-  return TEMPLATES[type].replace('{topic}', trimmed);
+  const base = TEMPLATES[type].replace('{topic}', trimmed);
+  if (destinations.length === 0) return base;
+
+  const channels = destinations.map(({ id, label }) => `${label} (${id})`).join(', ');
+  return `${base} Опубликуй только в выбранных каналах: ${channels}. Не публикуй в других активных каналах. Подготовь отдельный адаптированный текст и один вызов инструмента публикации для каждого выбранного канала в одной группе подтверждения.`;
 }

@@ -21,6 +21,18 @@ describe('buildComposeInstruction', () => {
     expect(buildComposeInstruction('announcement', '')).toBeNull();
     expect(buildComposeInstruction('announcement', '   ')).toBeNull();
   });
+
+  it('makes concrete selected channels override the broadcast-all directive', () => {
+    const instruction = buildComposeInstruction('announcement', 'новое меню', [
+      { id: 'telegram', label: 'Telegram' },
+      { id: 'vk', label: 'VK' },
+    ]);
+
+    expect(instruction).toContain('только в выбранных каналах: Telegram (telegram), VK (vk)');
+    expect(instruction).toContain('Не публикуй в других активных каналах');
+    expect(instruction).toContain('одной группе подтверждения');
+    expect(instruction).not.toContain('yandex_business');
+  });
 });
 
 describe('isComposePostType', () => {

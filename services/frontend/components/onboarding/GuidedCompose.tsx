@@ -1,53 +1,170 @@
 'use client';
 
-// components/onboarding/GuidedCompose.tsx — the guided "compose a post" first
-// action. It removes the blank-prompt barrier by letting the operator pick a
-// post type and type a topic, then builds a single templated instruction and
-// hands it to the EXISTING chat send path via `onCompose`. The chat loop
-// drafts the post and the model's publish tool call surfaces the existing HITL
-// approval card — this component writes no producer and no approval flow.
-
-import { useCallback, useId, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useQuery } from '@tanstack/react-query';
 import { PenLine } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Controller, useForm } from 'react-hook-form';
+import { z } from 'zod';
+
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { Label } from '@/components/ui/label';
 import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
+import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { trackEvent } from '@/lib/telemetry';
+import { bizApi } from '@/lib/api/business-api';
 import {
   COMPOSE_POST_TYPES,
   buildComposeInstruction,
   isComposePostType,
-  type ComposePostType,
+  type ComposeDestination,
 } from '@/lib/compose-instruction';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { channelConnectionState } from '@/lib/constants/integrationStatus';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { usePlatforms, type EnrichedPlatform } from '@/lib/hooks/usePlatforms';
+import { useBusinessStore } from '@/lib/stores/business';
+import { trackEvent } from '@/lib/telemetry';
+
+interface ComposeIntegration {
+  platform: string;
+  status?: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+const composeSchema = z.object({
+  postType: z.enum(['announcement', 'promo', 'newArrival']),
+  topic: z.string().trim().min(1),
+  channels: z.array(z.string()).min(1),
+});
+
+type ComposeFormData = z.infer<typeof composeSchema>;
 
 export interface GuidedComposeProps {
-  /** Seeds the composed instruction into the existing chat loop (sendMessage). */
   onCompose: (instruction: string) => void;
-  /** Mirrors the composer-disabled contract so a compose can't race a stream. */
   disabled?: boolean;
   className?: string;
+}
+
+export function confirmedComposeDestinations(
+  platforms: readonly EnrichedPlatform[],
+  integrations: readonly ComposeIntegration[]
+): ComposeDestination[] {
+  return platforms
+    .filter((platform) => platform.status === 'active' && platform.id !== 'google_business')
+    .filter(
+      (platform) =>
+        channelConnectionState(
+          integrations.filter((integration) => integration.platform === platform.id)
+        ) === 'connected'
+    )
+    .map((platform) => ({ id: platform.id, label: platform.fullLabel }));
 }
 
 export function GuidedCompose({ onCompose, disabled = false, className }: GuidedComposeProps) {
   const t = useTranslations('gettingStarted.compose');
   const [open, setOpen] = useState(false);
-  const [postType, setPostType] = useState<ComposePostType>('announcement');
-  const [topic, setTopic] = useState('');
   const topicFieldId = useId();
+  const businessId = useBusinessStore((state) => state.activeBusinessId);
+  const registry = usePlatforms();
+  const integrations = useQuery<ComposeIntegration[]>({
+    queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(businessId),
+    queryFn: () =>
+      bizApi(businessId!)
+        .get<ComposeIntegration[]>(BIZ_API_PATHS.INTEGRATIONS.ROOT)
+        .then((response) => {
+          if (!Array.isArray(response.data)) throw new Error('Invalid integration list response');
+          return response.data;
+        }),
+    enabled: !!businessId,
+    retry: false,
+  });
+  const destinations = useMemo(
+    () =>
+      registry.isSuccess && integrations.isSuccess
+        ? confirmedComposeDestinations(registry.platforms, integrations.data)
+        : [],
+    [integrations.data, integrations.isSuccess, registry.isSuccess, registry.platforms]
+  );
+  const destinationIDs = useMemo(
+    () => new Set(destinations.map((destination) => destination.id)),
+    [destinations]
+  );
+  const initializedBusiness = useRef<string | null>(null);
+  const {
+    control,
+    register,
+    handleSubmit,
+    reset,
+    getValues,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<ComposeFormData>({
+    resolver: zodResolver(composeSchema),
+    defaultValues: { postType: 'announcement', topic: '', channels: [] },
+  });
+  const selectedChannels = watch('channels');
+  const topic = watch('topic');
 
-  const instruction = buildComposeInstruction(postType, topic);
-  const canSubmit = instruction !== null && !disabled;
+  useEffect(() => {
+    if (initializedBusiness.current !== businessId) {
+      initializedBusiness.current = null;
+      reset({ postType: 'announcement', topic: '', channels: [] });
+    }
+    if (!businessId || !registry.isSuccess || !integrations.isSuccess) return;
+    if (initializedBusiness.current === null && destinations.length > 0) {
+      initializedBusiness.current = businessId;
+      setValue(
+        'channels',
+        destinations.map((destination) => destination.id)
+      );
+      return;
+    }
+    const selected = getValues('channels');
+    const stillConnected = selected.filter((channel) => destinationIDs.has(channel));
+    if (stillConnected.length !== selected.length) {
+      setValue('channels', stillConnected, { shouldValidate: true });
+    }
+  }, [
+    businessId,
+    destinationIDs,
+    destinations,
+    getValues,
+    integrations.isSuccess,
+    registry.isSuccess,
+    reset,
+    setValue,
+  ]);
 
-  const submit = useCallback(() => {
-    const composed = buildComposeInstruction(postType, topic);
-    if (composed === null || disabled) return;
-    trackEvent('activation', 'guided_compose', { metadata: { postType } });
-    onCompose(composed);
-    setTopic('');
-    setOpen(false);
-  }, [postType, topic, disabled, onCompose]);
+  const submit = useCallback(
+    (values: ComposeFormData) => {
+      if (disabled || !businessId || initializedBusiness.current !== businessId) return;
+      const selected = destinations.filter((destination) =>
+        values.channels.includes(destination.id)
+      );
+      if (selected.length !== values.channels.length || selected.length === 0) return;
+      const composed = buildComposeInstruction(values.postType, values.topic, selected);
+      if (composed === null) return;
+      trackEvent('activation', 'guided_compose', {
+        metadata: { postType: values.postType, platforms: selected.map(({ id }) => id).join(',') },
+      });
+      onCompose(composed);
+      reset({ postType: values.postType, topic: '', channels: destinations.map(({ id }) => id) });
+      setOpen(false);
+    },
+    [businessId, destinations, disabled, onCompose, reset]
+  );
+
+  const loading = registry.isPending || integrations.isPending;
+  const loadError = registry.isError || integrations.isError;
+  const canSubmit =
+    !disabled &&
+    !!businessId &&
+    !loading &&
+    !loadError &&
+    topic.trim().length > 0 &&
+    selectedChannels.length > 0;
 
   if (!open) {
     return (
@@ -67,8 +184,9 @@ export function GuidedCompose({ onCompose, disabled = false, className }: Guided
   }
 
   return (
-    <section
+    <form
       aria-label={t('title')}
+      onSubmit={handleSubmit(submit)}
       className={
         'w-full max-w-md space-y-4 rounded-md border border-line bg-paper-raised p-4 text-left ' +
         (className ?? '')
@@ -81,22 +199,28 @@ export function GuidedCompose({ onCompose, disabled = false, className }: Guided
 
       <fieldset className="space-y-2">
         <legend className="mb-1 text-xs font-medium text-ink-soft">{t('typeLabel')}</legend>
-        <RadioGroup
-          value={postType}
-          onValueChange={(next) => {
-            if (isComposePostType(next)) setPostType(next);
-          }}
-        >
-          {COMPOSE_POST_TYPES.map((type) => (
-            <label
-              key={type}
-              className="flex cursor-pointer items-center gap-2 text-sm text-ink-mid"
+        <Controller
+          control={control}
+          name="postType"
+          render={({ field }) => (
+            <RadioGroup
+              value={field.value}
+              onValueChange={(next) => {
+                if (isComposePostType(next)) field.onChange(next);
+              }}
             >
-              <RadioGroupItem value={type} />
-              {t(`types.${type}`)}
-            </label>
-          ))}
-        </RadioGroup>
+              {COMPOSE_POST_TYPES.map((type) => (
+                <label
+                  key={type}
+                  className="flex cursor-pointer items-center gap-2 text-sm text-ink-mid"
+                >
+                  <RadioGroupItem value={type} />
+                  {t(`types.${type}`)}
+                </label>
+              ))}
+            </RadioGroup>
+          )}
+        />
       </fieldset>
 
       <div className="space-y-1.5">
@@ -105,22 +229,57 @@ export function GuidedCompose({ onCompose, disabled = false, className }: Guided
         </Label>
         <Textarea
           id={topicFieldId}
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
+          {...register('topic')}
           placeholder={t('topicPlaceholder')}
           rows={3}
           className="border-line bg-paper text-ink"
         />
       </div>
 
+      <fieldset className="space-y-2">
+        <legend className="text-xs font-medium text-ink-soft">{t('channelsLabel')}</legend>
+        {loading ? (
+          <p className="text-sm text-ink-soft">{t('channelsLoading')}</p>
+        ) : loadError ? (
+          <p role="alert" className="text-sm text-danger">
+            {t('channelsError')}
+          </p>
+        ) : destinations.length === 0 ? (
+          <p className="text-sm text-ink-soft">{t('channelsEmpty')}</p>
+        ) : (
+          <div className="space-y-2">
+            {destinations.map((destination) => (
+              <label
+                key={destination.id}
+                className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink-mid"
+              >
+                <input
+                  type="checkbox"
+                  value={destination.id}
+                  {...register('channels')}
+                  className="size-4 rounded border-control accent-brand"
+                />
+                {destination.label}
+              </label>
+            ))}
+          </div>
+        )}
+        {errors.channels && destinations.length > 0 ? (
+          <p role="alert" className="text-xs text-danger">
+            {t('channelsRequired')}
+          </p>
+        ) : null}
+        <p className="text-xs text-ink-soft">{t('approvalHint')}</p>
+      </fieldset>
+
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
           {t('cancel')}
         </Button>
-        <Button variant="primary" size="sm" onClick={submit} disabled={!canSubmit}>
+        <Button type="submit" variant="primary" size="sm" disabled={!canSubmit}>
           {t('submit')}
         </Button>
       </div>
-    </section>
+    </form>
   );
 }

@@ -8,7 +8,7 @@ import { hasLayoutBrowser, withLayoutPage } from '@/test-utils/browser-layout';
 import { ChatWindow } from '../ChatWindow';
 import { useConversationFlow } from '@/hooks/useConversationFlow';
 import { useBusinessStore } from '@/lib/stores/business';
-import { singleCallBatch } from '@/test-utils/pending-approval-fixtures';
+import { singleCallBatch, threeCallBatch } from '@/test-utils/pending-approval-fixtures';
 import type { PendingApproval } from '@/types/chat';
 
 vi.mock('sonner', () => ({
@@ -21,6 +21,15 @@ vi.mock('@/lib/telemetry', () => ({
 
 vi.mock('@/lib/hooks/usePermission', () => ({
   usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
+vi.mock('@/lib/hooks/usePlatforms', () => ({
+  usePlatforms: () => ({
+    isSuccess: true,
+    isPending: false,
+    isError: false,
+    platforms: [{ id: 'telegram', fullLabel: 'Telegram', status: 'active' }],
+  }),
 }));
 
 // Inject a spy sendMessage so the test asserts the exact composed string the
@@ -102,26 +111,30 @@ describe('ChatWindow — guided compose seeds the existing send path', () => {
     const trigger = await screen.findByRole('button', { name: 'Составить пост' });
     await user.click(trigger);
 
+    expect(await screen.findByLabelText('Telegram')).toBeChecked();
     await user.type(screen.getByLabelText('О чём пост'), 'открытие в субботу');
     await user.click(screen.getByRole('button', { name: 'Подготовить в чате' }));
 
     expect(sendMessage).toHaveBeenCalledTimes(1);
-    expect(sendMessage).toHaveBeenCalledWith(
+    const instruction = sendMessage.mock.calls[0]?.[0] as string;
+    expect(instruction).toContain(
       'Напиши анонс для организации на тему: открытие в субботу. Составь готовый пост.'
     );
+    expect(instruction).toContain('только в выбранных каналах: Telegram (telegram)');
+    expect(instruction).toContain('одной группе подтверждения');
   });
 
-  it('renders the existing ToolApprovalCard when a publish tool call is pending (HITL unchanged)', async () => {
-    pendingApproval = singleCallBatch;
+  it('reuses the existing editable multi-channel HITL batch', async () => {
+    pendingApproval = threeCallBatch;
     render(
       <Wrapper>
         <ChatWindow conversationId="conv-1" />
       </Wrapper>
     );
 
-    expect(
-      await screen.findByRole('region', { name: /Ожидает подтверждения/ })
-    ).toBeInTheDocument();
+    const approval = await screen.findByRole('region', { name: /Ожидает подтверждения/ });
+    expect(approval).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Изменить/ })).toHaveLength(3);
   });
 });
 
