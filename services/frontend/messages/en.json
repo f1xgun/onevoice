@@ -1294,6 +1294,19 @@
       "rateLimited": "Telegram is temporarily limiting requests. Wait before reconnecting.",
       "failed": "Could not connect the channel. Try again later.",
       "alreadyConnected": "This channel is already connected to another organization. Disconnect it from that organization or choose another channel."
+    },
+    "demand": {
+      "hint": "These channels are not available yet. Your request helps us choose what to connect next.",
+      "request": "Request",
+      "saved": "Requested",
+      "requestLabel": "Request {platform}",
+      "savedLabel": "{platform} requested",
+      "savedToast": "Channel request saved",
+      "saveError": "Could not save your request. Please try again.",
+      "loadError": "Could not load your channel requests.",
+      "retry": "Retry",
+      "wildberries": "Wildberries",
+      "ozon": "Ozon"
     }
   },
   "gettingStarted": {

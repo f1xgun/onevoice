@@ -27,6 +27,7 @@ import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarni
 import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
+import { ChannelDemandCards } from '@/components/integrations/ChannelDemandCards';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
 import type { PlatformId } from '@/lib/platforms';
@@ -74,7 +75,6 @@ export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
   const tCommon = useTranslations('common');
-  const tPlatforms = useTranslations('platforms');
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
@@ -341,15 +341,7 @@ export default function IntegrationsPage() {
         {comingSoonPlatforms.length > 0 && (
           <>
             <SectionLabel className="mt-12">{tIntegrations('page.comingSoon')}</SectionLabel>
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {comingSoonPlatforms.map((p) => (
-                <SoonCard
-                  key={p.id}
-                  label={p.fullLabel}
-                  when={p.comingSoonWhen ?? tPlatforms('comingSoonFallback')}
-                />
-              ))}
-            </div>
+            <ChannelDemandCards businessId={activeBusinessId} platforms={comingSoonPlatforms} />
           </>
         )}
 
@@ -387,24 +379,5 @@ function SectionLabel({ children, className }: { children: React.ReactNode; clas
       <MonoLabel>{children}</MonoLabel>
       <span aria-hidden className="h-px flex-1 bg-line-soft" />
     </h2>
-  );
-}
-
-function SoonCard({ label, when }: { label: string; when: string }) {
-  const tIntegrations = useTranslations('integrations');
-  return (
-    <div className="flex items-center gap-4 rounded-lg border border-dashed border-line bg-paper-raised p-5">
-      <span
-        aria-hidden
-        className="h-10 w-10 shrink-0 rounded-md border border-line-soft bg-paper-sunken"
-      />
-      <div className="min-w-0 flex-1">
-        <div className="text-[15px] font-medium text-ink">{label}</div>
-        <MonoLabel className="mt-0.5">{when}</MonoLabel>
-      </div>
-      <Button variant="ghost" size="sm" disabled>
-        {tIntegrations('page.subscribe')}
-      </Button>
-    </div>
   );
 }
