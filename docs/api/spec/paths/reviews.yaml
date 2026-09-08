@@ -82,10 +82,10 @@
     operationId: getReviewSLA
     summary: Aggregate-only response-SLA metrics for a business's reviews.
     description: >-
-      Returns counts, unanswered-age buckets, and response-time metrics
-      (median / average created_at → replied_at) plus the share answered within
-      a target window. Aggregate-only: no author, review text, or reply text is
-      read or returned.
+      Returns counts, unanswered-age buckets, oldest unanswered age, and
+      response-time metrics (median / average created_at → replied_at) plus
+      per-platform medians and the share answered within a target window.
+      Aggregate-only: no author, review text, or reply text is read or returned.
     tags:
     - reviews
     parameters:

@@ -358,7 +358,7 @@ func (r *reviewRepository) StampReplyDispatchApprovalID(ctx context.Context, bus
 	return nil
 }
 
-// slaProjection restricts the SLA read to the three fields the aggregate needs.
+// slaProjection restricts the SLA read to the four fields the aggregate needs.
 // author_name, text, reply_text and draft_* are never fetched, so no personal
 // data leaves the collection on this path — the query is aggregate-safe by
 // construction, mirroring the orchestrator's reviewstats statsProjection.
@@ -366,6 +366,7 @@ var slaProjection = bson.D{
 	{Key: "created_at", Value: 1},
 	{Key: "reply_status", Value: 1},
 	{Key: "replied_at", Value: 1},
+	{Key: "platform", Value: 1},
 	{Key: "_id", Value: 0},
 }
 

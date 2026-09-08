@@ -36,8 +36,17 @@ type UnansweredBuckets struct {
 	Gt72h   int `json:"gt72h"`
 }
 
-// SLAStats is the aggregate-only response-SLA projection. Every field is a
-// number: never review text, author names, or any personal data.
+// PlatformSLAStats is the measured response-time aggregate for one platform.
+// Platforms without a valid replied_at sample are absent from the result.
+type PlatformSLAStats struct {
+	Platform            string  `json:"platform"`
+	MedianResponseHours float64 `json:"medianResponseHours"`
+	MeasuredResponses   int     `json:"measuredResponses"`
+}
+
+// SLAStats is the aggregate-only response-SLA projection. It contains counts,
+// durations, and platform identifiers; never review text, author names, or
+// other personal data.
 type SLAStats struct {
 	Total       int               `json:"total"`
 	Unanswered  int               `json:"unanswered"`
@@ -63,6 +72,12 @@ type SLAStats struct {
 	// scoped to measured responses so an un-timestamped legacy reply neither
 	// helps nor hurts the rate.
 	PercentAnsweredWithinTarget float64 `json:"percentAnsweredWithinTarget"`
+
+	// OldestUnansweredHours is nil when there is no unanswered review. Platforms
+	// contains medians computed over the same full, measured response set as the
+	// top-level median, grouped by platform.
+	OldestUnansweredHours *float64           `json:"oldestUnansweredHours"`
+	Platforms             []PlatformSLAStats `json:"platforms"`
 }
 
 // computeSLA reduces reviews to the response-SLA metric set as of now, using a
@@ -80,10 +95,13 @@ func computeSLA(reviews []domain.Review, now time.Time, targetHours int) SLAStat
 	}
 	target := time.Duration(targetHours) * time.Hour
 
-	stats := SLAStats{TargetHours: targetHours}
+	stats := SLAStats{TargetHours: targetHours, Platforms: make([]PlatformSLAStats, 0)}
 	latencies := make([]time.Duration, 0, len(reviews))
+	latenciesByPlatform := make(map[string][]time.Duration)
 	var latencySum time.Duration
 	var withinTarget int
+	var oldestUnanswered time.Duration
+	var hasUnanswered bool
 
 	for i := range reviews {
 		r := reviews[i]
@@ -93,7 +111,15 @@ func computeSLA(reviews []domain.Review, now time.Time, targetHours int) SLAStat
 			stats.Answered++
 		} else {
 			stats.Unanswered++
-			bucketUnanswered(&stats.Buckets, now.Sub(r.CreatedAt))
+			age := now.Sub(r.CreatedAt)
+			bucketUnanswered(&stats.Buckets, age)
+			if age < 0 {
+				age = 0
+			}
+			if !hasUnanswered || age > oldestUnanswered {
+				oldestUnanswered = age
+				hasUnanswered = true
+			}
 		}
 
 		if r.RepliedAt == nil || r.RepliedAt.Before(r.CreatedAt) {
@@ -101,6 +127,7 @@ func computeSLA(reviews []domain.Review, now time.Time, targetHours int) SLAStat
 		}
 		latency := r.RepliedAt.Sub(r.CreatedAt)
 		latencies = append(latencies, latency)
+		latenciesByPlatform[r.Platform] = append(latenciesByPlatform[r.Platform], latency)
 		latencySum += latency
 		if latency <= target {
 			withinTarget++
@@ -112,6 +139,23 @@ func computeSLA(reviews []domain.Review, now time.Time, targetHours int) SLAStat
 		stats.MedianResponseHours = roundSLAHours(medianDuration(latencies))
 		stats.AverageResponseHours = roundSLAHours(latencySum / time.Duration(stats.MeasuredResponses))
 		stats.PercentAnsweredWithinTarget = round2SLA(float64(withinTarget) / float64(stats.MeasuredResponses))
+	}
+	if hasUnanswered {
+		oldest := roundSLAHours(oldestUnanswered)
+		stats.OldestUnansweredHours = &oldest
+	}
+	platforms := make([]string, 0, len(latenciesByPlatform))
+	for platform := range latenciesByPlatform {
+		platforms = append(platforms, platform)
+	}
+	sort.Strings(platforms)
+	for _, platform := range platforms {
+		platformLatencies := latenciesByPlatform[platform]
+		stats.Platforms = append(stats.Platforms, PlatformSLAStats{
+			Platform:            platform,
+			MedianResponseHours: roundSLAHours(medianDuration(platformLatencies)),
+			MeasuredResponses:   len(platformLatencies),
+		})
 	}
 	return stats
 }

@@ -798,6 +798,25 @@
       "avgHintOutOf": "out of 5",
       "avgEmpty": "—"
     },
+    "loadedSortLabel": "Loaded reviews: low ratings first (3 stars or fewer)",
+    "responseBoard": {
+      "title": "Response time",
+      "description": "All organization reviews, independent of the filters below. Target: reply within 24 hours.",
+      "bands": {
+        "lt24h": "Unanswered under 24h",
+        "h24to72": "Unanswered 24–72h",
+        "gt72h": "Unanswered 72h+"
+      },
+      "oldestLabel": "Oldest unanswered",
+      "medianLabel": "Median response time",
+      "platformsLabel": "Median by platform",
+      "hoursValue": "{hours}h",
+      "measuredHint": "Based on {count} timestamped responses",
+      "noMeasurements": "No timestamped responses yet",
+      "noUnanswered": "None",
+      "error": "Couldn't load response-time metrics.",
+      "retry": "Try again"
+    },
     "aiSample": {
       "label": "AI draft reply",
       "hint": "Send as-is or edit",

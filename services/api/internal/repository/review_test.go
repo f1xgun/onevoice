@@ -464,6 +464,7 @@ func TestReviewRepository_ListForSLA_TenantScopedAndPDnFree(t *testing.T) {
 		require.Empty(t, r.Text, "text must be projected out of the SLA read")
 		require.Empty(t, r.ReplyText, "reply_text must be projected out of the SLA read")
 		require.False(t, r.CreatedAt.IsZero(), "created_at must be projected in for age bucketing")
+		require.Equal(t, "telegram", r.Platform, "platform must be projected for full-set platform medians")
 		if r.RepliedAt != nil {
 			sawReplied = true
 		}

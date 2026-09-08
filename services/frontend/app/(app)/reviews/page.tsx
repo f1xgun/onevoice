@@ -52,6 +52,12 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import { cn } from '@/lib/utils';
 import type { Review } from '@/types/review';
+import {
+  parseReviewSLAResponse,
+  ReviewResponseBoard,
+  type ReviewSLAResponse,
+} from './_components/ReviewResponseBoard';
+import { platformHasRating, sortLoadedReviewsLowRatingFirst } from './_lib/reviewPriority';
 
 // ChannelMark `name` map (icon hint, EN-only — these are brand icon ids,
 // not user-facing copy). The user-facing display label is resolved
@@ -76,16 +82,6 @@ const PLATFORM_LABEL_KEYS: ReadonlySet<string> = new Set(Object.keys(PLATFORM_CH
 // Telegram channels and VK comments don't carry a 0–5 rating — the
 // platform simply has no concept of one. Showing zero stars is misleading
 // and pollutes the average. Only review-style platforms get a rating.
-const platformsWithRating = new Set([
-  'yandex_business',
-  'yandex',
-  'google',
-  'google_business',
-  '2gis',
-]);
-function platformHasRating(id: string): boolean {
-  return platformsWithRating.has(id);
-}
 
 // Reply status → tone-mapped badge config — see lib/constants/statuses.
 // The badge record itself is built per-render via useReviewStatusBadges()
@@ -159,6 +155,7 @@ export default function ReviewsPage() {
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const tReviews = useTranslations('reviews');
+  const tPlatformLabels = useTranslations('reviews.platformLabels');
   const tCommon = useTranslations('common');
   const [platform, setPlatform] = useState<string>('all');
   const [replyStatus, setReplyStatus] = useState<ReplyStatusFilter>('all');
@@ -192,6 +189,15 @@ export default function ReviewsPage() {
           return Array.isArray(reviews) ? reviews : [];
         });
     },
+    enabled: !!activeBusinessId,
+  });
+
+  const slaQuery = useQuery<ReviewSLAResponse>({
+    queryKey: QUERY_KEYS.BUSINESS_REVIEW_SLA(activeBusinessId),
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get<ReviewSLAResponse>(BIZ_API_PATHS.REVIEWS.SLA)
+        .then((response) => parseReviewSLAResponse(response.data)),
     enabled: !!activeBusinessId,
   });
 
@@ -243,6 +249,12 @@ export default function ReviewsPage() {
     return { total, pending, avg };
   }, [reviews]);
 
+  const sortedReviews = useMemo(() => sortLoadedReviewsLowRatingFirst(reviews), [reviews]);
+
+  function platformLabel(id: string): string {
+    return PLATFORM_LABEL_KEYS.has(id) ? tPlatformLabels(id) : id;
+  }
+
   function openReply(review: Review, prefill?: string) {
     setReplyDialog(review);
     setReplyText(prefill ?? review.draftReply ?? review.replyText ?? '');
@@ -259,6 +271,14 @@ export default function ReviewsPage() {
       <PageHeader title={tReviews('title')} sub={tReviews('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
+        <ReviewResponseBoard
+          data={slaQuery.data}
+          isLoading={slaQuery.isLoading}
+          isError={slaQuery.isError}
+          onRetry={() => void slaQuery.refetch()}
+          platformLabel={platformLabel}
+        />
+
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatCell
@@ -379,7 +399,8 @@ export default function ReviewsPage() {
 
         {!isError && !isLoading && reviews.length > 0 && (
           <div className="space-y-3 duration-300 animate-in fade-in">
-            {reviews.map((review) => (
+            <p className="text-xs text-ink-soft">{tReviews('loadedSortLabel')}</p>
+            {sortedReviews.map((review) => (
               <ReviewCard
                 key={review.id}
                 review={review}

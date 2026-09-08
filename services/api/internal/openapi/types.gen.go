@@ -1532,7 +1532,14 @@ type ReviewListResponse struct {
 	Total   int      `json:"total" validate:"required"`
 }
 
-// ReviewSLAResponse Aggregate-only response-SLA metrics. No author, review text, or reply text is carried — numbers only.
+// ReviewPlatformSLA defines model for ReviewPlatformSLA.
+type ReviewPlatformSLA struct {
+	MeasuredResponses   int     `json:"measuredResponses" validate:"required"`
+	MedianResponseHours float32 `json:"medianResponseHours" validate:"required"`
+	Platform            string  `json:"platform" validate:"required"`
+}
+
+// ReviewSLAResponse Aggregate-only response-SLA metrics. No author, review text, or reply text is carried; platform identifiers are the only non-numeric values.
 type ReviewSLAResponse struct {
 	// Answered Reviews whose reply_status is "replied".
 	Answered int `json:"answered" validate:"required"`
@@ -1549,8 +1556,14 @@ type ReviewSLAResponse struct {
 	// MedianResponseHours Median response latency in hours (created_at -> replied_at) over measured responses only.
 	MedianResponseHours float32 `json:"medianResponseHours" validate:"required"`
 
+	// OldestUnansweredHours Age in hours of the oldest unanswered review, or null when every review is answered.
+	OldestUnansweredHours *float32 `json:"oldestUnansweredHours"`
+
 	// PercentAnsweredWithinTarget Share of measured responses answered within targetHours, in [0,1].
 	PercentAnsweredWithinTarget float32 `json:"percentAnsweredWithinTarget" validate:"required"`
+
+	// Platforms Per-platform medians over the same full measured response set. Platforms without a valid replied_at sample are omitted.
+	Platforms []ReviewPlatformSLA `json:"platforms" validate:"required"`
 
 	// TargetHours Answered-within-target window in hours the rate was computed against.
 	TargetHours int `json:"targetHours" validate:"required"`
