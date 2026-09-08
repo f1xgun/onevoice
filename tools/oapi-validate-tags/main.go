@@ -21,6 +21,11 @@
 // zero-value case (matches the json:"...,omitempty" tag oapi-codegen
 // emits for non-required fields).
 //
+// Before annotation, local external path-item references are inlined into a
+// copy of the root document. References from those path files back to the
+// input document are rewritten as local #/components references so generators
+// resolve every schema against the canonical component root.
+//
 // The input spec is read from argv[1]; the rewritten spec is written to
 // argv[2]. The output is a derived artifact — it is regenerated each
 // codegen run and should NOT be committed.
@@ -29,10 +34,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+const derivedArtifactPerm = 0o600
 
 func main() {
 	if len(os.Args) != 3 {
@@ -41,28 +50,221 @@ func main() {
 	}
 	in, out := os.Args[1], os.Args[2]
 
-	data, err := os.ReadFile(in)
+	if err := preprocess(in, out); err != nil {
+		fail("%v", err)
+	}
+}
+
+func preprocess(in, out string) error {
+	root, err := readYAML(in)
 	if err != nil {
-		fail("read %s: %v", in, err)
+		return err
 	}
-
-	var root yaml.Node
-	if err := yaml.Unmarshal(data, &root); err != nil {
-		fail("parse %s: %v", in, err)
-	}
-
-	if root.Kind != yaml.DocumentNode || len(root.Content) != 1 {
-		fail("expected single-document YAML, got %d documents", len(root.Content))
+	if err := inlinePathItems(root.Content[0], in); err != nil {
+		return fmt.Errorf("inline path items: %w", err)
 	}
 	walk(root.Content[0])
 
-	buf, err := yaml.Marshal(&root)
+	buf, err := yaml.Marshal(root)
 	if err != nil {
-		fail("marshal: %v", err)
+		return fmt.Errorf("marshal: %w", err)
 	}
-	if err := os.WriteFile(out, buf, 0o644); err != nil {
-		fail("write %s: %v", out, err)
+	//nolint:gosec // Build tooling intentionally writes to the explicit output path supplied by its caller.
+	if err := os.WriteFile(out, buf, derivedArtifactPerm); err != nil {
+		return fmt.Errorf("write %s: %w", out, err)
 	}
+	return nil
+}
+
+// readYAML reads the caller-selected root spec or a file reached through one
+// of that spec's local path-item references.
+func readYAML(path string) (*yaml.Node, error) {
+	//nolint:gosec // Build-time local spec input is intentionally read from a resolved path.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if root.Kind != yaml.DocumentNode || len(root.Content) != 1 {
+		return nil, fmt.Errorf("expected single-document YAML in %s", path)
+	}
+	return &root, nil
+}
+
+// inlinePathItems replaces local external references immediately under paths
+// with copies of the referenced path items. Backreferences from those files to
+// the canonical input document become local references, keeping one component
+// root for oapi-codegen and kin-openapi.
+func inlinePathItems(root *yaml.Node, inputPath string) error {
+	paths := mapValue(root, "paths")
+	if paths == nil {
+		return nil
+	}
+	if paths.Kind != yaml.MappingNode {
+		return fmt.Errorf("paths must be a mapping")
+	}
+	canonicalInput, err := filepath.Abs(inputPath)
+	if err != nil {
+		return fmt.Errorf("resolve input path: %w", err)
+	}
+
+	for i := 0; i+1 < len(paths.Content); i += 2 {
+		pathName := paths.Content[i].Value
+		pathItem := paths.Content[i+1]
+		refNode := mapValue(pathItem, "$ref")
+		if refNode != nil && refNode.Kind != yaml.ScalarNode {
+			return fmt.Errorf("path %q: $ref must be a string", pathName)
+		}
+		ref := scalarNodeValue(refNode)
+		if refNode != nil && ref == "" {
+			return fmt.Errorf("path %q: $ref must not be empty", pathName)
+		}
+		if ref == "" || strings.HasPrefix(ref, "#") {
+			continue
+		}
+		refPath, fragment, err := splitExternalRef(ref)
+		if err != nil {
+			return fmt.Errorf("path %q: %w", pathName, err)
+		}
+		externalPath, err := filepath.Abs(filepath.Join(filepath.Dir(canonicalInput), filepath.FromSlash(refPath)))
+		if err != nil {
+			return fmt.Errorf("path %q: resolve %q: %w", pathName, refPath, err)
+		}
+		external, err := readYAML(externalPath)
+		if err != nil {
+			return fmt.Errorf("path %q: %w", pathName, err)
+		}
+		selected, err := resolveJSONPointer(external.Content[0], fragment)
+		if err != nil {
+			return fmt.Errorf("path %q ref %q: %w", pathName, ref, err)
+		}
+		inlined := cloneNode(selected)
+		if err := rewriteBackreferences(inlined, filepath.Dir(externalPath), canonicalInput, root); err != nil {
+			return fmt.Errorf("path %q ref %q: %w", pathName, ref, err)
+		}
+		paths.Content[i+1] = inlined
+	}
+	return nil
+}
+
+func scalarNodeValue(n *yaml.Node) string {
+	if n == nil || n.Kind != yaml.ScalarNode {
+		return ""
+	}
+	return n.Value
+}
+
+func splitExternalRef(ref string) (path, fragment string, err error) {
+	if strings.Contains(ref, "://") {
+		return "", "", fmt.Errorf("unsupported remote reference %q", ref)
+	}
+	path, fragment, ok := strings.Cut(ref, "#")
+	if !ok || path == "" || fragment == "" {
+		return "", "", fmt.Errorf("external reference must contain a file and JSON pointer: %q", ref)
+	}
+	return path, fragment, nil
+}
+
+func resolveJSONPointer(root *yaml.Node, fragment string) (*yaml.Node, error) {
+	if fragment == "" {
+		return root, nil
+	}
+	if !strings.HasPrefix(fragment, "/") {
+		return nil, fmt.Errorf("fragment %q is not a JSON pointer", fragment)
+	}
+	current := root
+	for _, raw := range strings.Split(fragment[1:], "/") {
+		token, err := unescapeJSONPointerToken(raw)
+		if err != nil {
+			return nil, err
+		}
+		switch current.Kind {
+		case yaml.MappingNode:
+			current = mapValue(current, token)
+			if current == nil {
+				return nil, fmt.Errorf("JSON pointer %q: key %q not found", fragment, token)
+			}
+		case yaml.SequenceNode:
+			index, err := strconv.Atoi(token)
+			if err != nil || index < 0 || index >= len(current.Content) {
+				return nil, fmt.Errorf("JSON pointer %q: invalid index %q", fragment, token)
+			}
+			current = current.Content[index]
+		default:
+			return nil, fmt.Errorf("JSON pointer %q traverses a scalar at %q", fragment, token)
+		}
+	}
+	return current, nil
+}
+
+func unescapeJSONPointerToken(token string) (string, error) {
+	var out strings.Builder
+	for i := 0; i < len(token); i++ {
+		if token[i] != '~' {
+			out.WriteByte(token[i])
+			continue
+		}
+		if i+1 >= len(token) || (token[i+1] != '0' && token[i+1] != '1') {
+			return "", fmt.Errorf("invalid JSON pointer escape in %q", token)
+		}
+		i++
+		if token[i] == '0' {
+			out.WriteByte('~')
+		} else {
+			out.WriteByte('/')
+		}
+	}
+	return out.String(), nil
+}
+
+func rewriteBackreferences(n *yaml.Node, sourceDir, canonicalInput string, root *yaml.Node) error {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == yaml.MappingNode {
+		if refNode := mapValue(n, "$ref"); refNode != nil {
+			if refNode.Kind != yaml.ScalarNode {
+				return fmt.Errorf("$ref must be a string")
+			}
+			refPath, fragment, err := splitExternalRef(refNode.Value)
+			if err != nil {
+				return err
+			}
+			resolved, err := filepath.Abs(filepath.Join(sourceDir, filepath.FromSlash(refPath)))
+			if err != nil {
+				return fmt.Errorf("resolve backreference %q: %w", refNode.Value, err)
+			}
+			if filepath.Clean(resolved) != filepath.Clean(canonicalInput) {
+				return fmt.Errorf("unsupported external reference %q inside path item", refNode.Value)
+			}
+			if _, err := resolveJSONPointer(root, fragment); err != nil {
+				return fmt.Errorf("backreference %q: %w", refNode.Value, err)
+			}
+			refNode.Value = "#" + fragment
+		}
+	}
+	for _, child := range n.Content {
+		if err := rewriteBackreferences(child, sourceDir, canonicalInput, root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cloneNode(n *yaml.Node) *yaml.Node {
+	if n == nil {
+		return nil
+	}
+	clone := *n
+	clone.Content = make([]*yaml.Node, len(n.Content))
+	for i, child := range n.Content {
+		clone.Content[i] = cloneNode(child)
+	}
+	clone.Alias = cloneNode(n.Alias)
+	return &clone
 }
 
 func fail(format string, args ...any) {

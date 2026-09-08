@@ -52,6 +52,9 @@ jobs:
               - 'services/agent-yandex-business/**'
               - 'services/agent-google-business/**'
               - 'tools/**'
+              - 'docs/api/spec/**'
+              - 'docs/api/oapi-codegen.yaml'
+              - 'scripts/test-oapi-check.sh'
               - 'go.work'
               - 'go.work.sum'
               - '.golangci.yml'
@@ -268,6 +271,8 @@ jobs:
       - name: OpenAPI types drift check
         run: |
           make oapi-install
+          go test ./tools/oapi-validate-tags
+          bash scripts/test-oapi-check.sh
           make oapi-check
 
   go-test:
