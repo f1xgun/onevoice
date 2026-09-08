@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import ru from '@/messages/ru.json';
 import { ConversationItem } from '../ConversationItem';
 import { ConversationPreview, conversationPreview } from '../ConversationPreview';
-import ru from '@/messages/ru.json';
 
 const get = vi.fn();
 let businessId = 'org-a';
