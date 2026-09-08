@@ -13,6 +13,9 @@ vi.mock('@/lib/hooks/useBusinessList', () => ({
   useBusinessList: () => ({ data: [{ id: 'org' }], isSuccess: true }),
 }));
 vi.mock('@/lib/hooks/usePermission', () => ({ usePermission: () => ({ allowed: false }) }));
+vi.mock('@/lib/hooks/usePlatforms', () => ({
+  usePlatforms: () => ({ isSuccess: false, platforms: [] }),
+}));
 vi.mock('@/lib/hooks/useMembers', () => ({ useMembers: () => ({ data: [] }) }));
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/lib/api/business-api', () => ({ bizApi: () => ({ get }) }));

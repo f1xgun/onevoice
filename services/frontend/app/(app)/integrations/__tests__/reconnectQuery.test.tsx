@@ -15,7 +15,7 @@ vi.mock('@/lib/hooks/usePermission', () => ({
 }));
 
 vi.mock('@/lib/hooks/usePlatforms', () => ({
-  usePlatforms: () => ({ platforms: [] }),
+  usePlatforms: () => ({ platforms: registryPlatforms, isSuccess: registryReady }),
 }));
 
 vi.mock('@/lib/api/business-api', () => ({
@@ -35,6 +35,8 @@ vi.mock('@/lib/telemetry', () => ({
 // Capture which modal opens. Each modal mock spies on its `open` prop
 // transitioning to true so the assertion below can verify the page
 // flipped exactly one state setter.
+let registryReady = true;
+let registryPlatforms: { id: string; status: string }[] = [];
 const openSpies = {
   telegram: vi.fn(),
   vk: vi.fn(),
@@ -102,6 +104,7 @@ describe('IntegrationsPage — ?reconnect query handler', () => {
     openSpies.yandex.mockReset();
     openSpies.google.mockReset();
     searchParamsValue = {};
+    registryPlatforms = [];
     replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
   });
 
@@ -191,4 +194,54 @@ describe('IntegrationsPage — ?reconnect query handler', () => {
     await waitFor(() => expect(openSpies.telegram).toHaveBeenCalled());
     expect(replaceStateSpy).toHaveBeenCalledWith({}, '', '/integrations');
   });
+});
+
+describe('first-connect deep links', () => {
+  beforeEach(() => {
+    Object.values(openSpies).forEach((spy) => spy.mockReset());
+    registryReady = true;
+  });
+  it.each(['telegram', 'vk', 'yandex_business'])('opens the existing %s flow', async (platform) => {
+    registryPlatforms = [{ id: platform, status: 'active' }];
+    searchParamsValue = { connect: platform };
+    render(
+      <Wrapper>
+        <IntegrationsPage />
+      </Wrapper>
+    );
+    const spy =
+      platform === 'yandex_business' ? openSpies.yandex : openSpies[platform as 'telegram' | 'vk'];
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+  });
+  it.each(['coming_soon', 'oauth_not_configured'])(
+    'does not open a platform with status %s',
+    async (status) => {
+      registryPlatforms = [{ id: 'vk', status }];
+      searchParamsValue = { connect: 'vk' };
+      render(
+        <Wrapper>
+          <IntegrationsPage />
+        </Wrapper>
+      );
+      expect(openSpies.vk).not.toHaveBeenCalled();
+    }
+  );
+});
+
+it('waits for server registry evidence before opening a first-connect modal', async () => {
+  Object.values(openSpies).forEach((spy) => spy.mockReset());
+  registryReady = false;
+  registryPlatforms = [{ id: 'telegram', status: 'active' }];
+  searchParamsValue = { connect: 'telegram' };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = () => (
+    <QueryClientProvider client={client}>
+      <IntegrationsPage />
+    </QueryClientProvider>
+  );
+  const { rerender } = render(view());
+  expect(openSpies.telegram).not.toHaveBeenCalled();
+  registryReady = true;
+  rerender(view());
+  await waitFor(() => expect(openSpies.telegram).toHaveBeenCalled());
 });

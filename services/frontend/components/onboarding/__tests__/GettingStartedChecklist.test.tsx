@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+vi.mock('@/lib/telemetry', () => ({ trackEvent: vi.fn() }));
 vi.mock('@/lib/stores/business', () => ({ useBusinessStore: vi.fn() }));
 vi.mock('@/hooks/useOnboardingProgress', () => ({ useOnboardingProgress: vi.fn() }));
 
+import { trackEvent } from '@/lib/telemetry';
 import { useBusinessStore } from '@/lib/stores/business';
 import {
   useOnboardingProgress,
@@ -135,4 +137,37 @@ it('separates optional team invitation from the four counted steps', () => {
   expect(screen.getByTestId('onboarding-step-inviteTeam').closest('ol')).toBeNull();
   expect(screen.getByTestId('onboarding-step-firstAction').closest('ol')?.children).toHaveLength(4);
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '4');
+});
+
+describe('platform rows', () => {
+  it('shows connection evidence and tracks the specific platform step', async () => {
+    vi.mocked(useOnboardingProgress).mockReturnValue(
+      makeProgress({
+        channels: [
+          {
+            platform: 'telegram',
+            label: 'Telegram',
+            state: 'connected',
+            href: '/integrations?connect=telegram',
+            canConnect: false,
+          },
+          {
+            platform: 'yandex_business',
+            label: 'Яндекс Бизнес',
+            state: 'disconnected',
+            href: '/integrations?connect=yandex_business',
+            canConnect: true,
+          },
+        ],
+      })
+    );
+    render(<GettingStartedChecklist />);
+    expect(screen.getByText('Подключён')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Подключить Яндекс Бизнес' });
+    expect(link).toHaveAttribute('href', '/integrations?connect=yandex_business');
+    await userEvent.setup().click(link);
+    expect(trackEvent).toHaveBeenCalledWith('activation', 'activation_step', {
+      metadata: { business_id: 'biz-1', platform: 'yandex_business', step: 'connectChannel' },
+    });
+  });
 });

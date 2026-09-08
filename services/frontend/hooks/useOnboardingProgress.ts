@@ -8,6 +8,11 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { usePlatforms } from '@/lib/hooks/usePlatforms';
+import {
+  channelConnectionState,
+  type ChannelConnectionState,
+} from '@/lib/constants/integrationStatus';
 import { useMembers } from '@/lib/hooks/useMembers';
 import type { Business } from '@/types/business';
 
@@ -27,7 +32,16 @@ export interface OnboardingStep {
   gating: boolean;
 }
 
+export interface OnboardingChannel {
+  platform: string;
+  label: string;
+  state: ChannelConnectionState | 'loading';
+  href: string;
+  canConnect: boolean;
+}
+
 export interface OnboardingProgress {
+  channels?: OnboardingChannel[];
   steps: OnboardingStep[];
   completedCount: number;
   total: number;
@@ -113,16 +127,22 @@ export function useOnboardingProgress(): OnboardingProgress {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const businessList = useBusinessList();
+  const registry = usePlatforms();
+  const canConnect = usePermission('integrations.connect').allowed;
 
-  const integrations = useQuery<{ status: string }[]>({
+  const integrations = useQuery<
+    { platform: string; status: string; metadata?: Record<string, unknown> }[]
+  >({
     queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
     queryFn: () =>
       bizApi(activeBusinessId!)
         .get(BIZ_API_PATHS.INTEGRATIONS.ROOT)
-        .then((r) => (Array.isArray(r.data) ? r.data : []) as { status: string }[]),
+        .then((r) => {
+          if (!Array.isArray(r.data)) throw new Error('Invalid integration list response');
+          return r.data;
+        }),
     enabled: !!activeBusinessId,
     retry: false,
-    placeholderData: [],
   });
 
   const profile = useQuery<Business>({
@@ -140,7 +160,7 @@ export function useOnboardingProgress(): OnboardingProgress {
 
   const description = profile.data?.description;
 
-  return deriveOnboarding({
+  const progress = deriveOnboarding({
     hasBusiness: businessList.isSuccess && (businessList.data?.length ?? 0) >= 1,
     businessSettled: businessList.isSuccess || businessList.isError,
     hasActiveIntegration:
@@ -154,4 +174,26 @@ export function useOnboardingProgress(): OnboardingProgress {
     showInvite: canInvite,
     hasTeammate: members.isSuccess && (members.data?.length ?? 0) > 1,
   });
+  const channels: OnboardingChannel[] = registry.isSuccess
+    ? registry.platforms
+        .filter((platform) => platform.status === 'active' && platform.id !== 'google_business')
+        .map((platform) => {
+          const state = integrations.isPending
+            ? 'loading'
+            : integrations.isSuccess
+              ? channelConnectionState(
+                  integrations.data.filter((row) => row.platform === platform.id)
+                )
+              : 'unknown';
+          return {
+            platform: platform.id,
+            label: platform.fullLabel,
+            state,
+            href: `${API_PATHS.INTEGRATIONS.ROOT}?${state === 'error' ? 'reconnect' : 'connect'}=${platform.id}`,
+            canConnect:
+              !!activeBusinessId && canConnect && (state === 'disconnected' || state === 'error'),
+          };
+        })
+    : [];
+  return { ...progress, channels };
 }
