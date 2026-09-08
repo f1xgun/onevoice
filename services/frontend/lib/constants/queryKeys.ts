@@ -33,6 +33,8 @@ export const QUERY_KEYS = {
   BUSINESS_VOICE_PROFILE: (bizId: string | null) => ['businesses', bizId, 'voice-profile'] as const,
   BUSINESS_REVIEWS: (bizId: string | null) => ['businesses', bizId, 'reviews'] as const,
   BUSINESS_REVIEW_SLA: (bizId: string | null) => ['businesses', bizId, 'reviews', 'sla'] as const,
+  BUSINESS_REVIEW_DELEGATION: (bizId: string | null) =>
+    ['businesses', bizId, 'reviews', 'delegation-metrics'] as const,
   BUSINESS_TASKS: (bizId: string | null) => ['businesses', bizId, 'tasks'] as const,
   // Per-business membership data. Plural-form keys keep them adjacent to
   // the other BUSINESS_* entries in the cache hierarchy so a single

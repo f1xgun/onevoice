@@ -150,6 +150,29 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/delegation-metrics:
+  get:
+    operationId: getReviewDelegationMetrics
+    summary: Recent weekly saved-reply edit feedback.
+    description: >-
+      Aggregate-only eight-week series. Timestamped rows without exact
+      saved-draft feedback remain unknown. Legacy rows missing replied_at cannot
+      be assigned to a week, are excluded from the totals, and cannot be
+      reconstructed historically.
+    tags: [reviews]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Delegation metrics.
+        content:
+          application/json:
+            schema: {$ref: ../openapi.yaml#/components/schemas/ReviewDelegationMetrics}
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}
 /businesses/{id}/reviews/{reviewID}/reply/retry:
   post:
     operationId: retryReviewReply

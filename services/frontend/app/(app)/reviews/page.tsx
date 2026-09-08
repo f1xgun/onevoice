@@ -58,6 +58,11 @@ import {
   type ReviewSLAResponse,
 } from './_components/ReviewResponseBoard';
 import { platformHasRating, sortLoadedReviewsLowRatingFirst } from './_lib/reviewPriority';
+import {
+  DelegationMetricsBoard,
+  parseDelegationMetrics,
+  type DelegationMetrics,
+} from './_components/DelegationMetricsBoard';
 
 // ChannelMark `name` map (icon hint, EN-only — these are brand icon ids,
 // not user-facing copy). The user-facing display label is resolved
@@ -214,6 +219,15 @@ export default function ReviewsPage() {
     enabled: !!activeBusinessId,
   });
 
+  const delegationQuery = useQuery<DelegationMetrics>({
+    queryKey: QUERY_KEYS.BUSINESS_REVIEW_DELEGATION(activeBusinessId),
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get(BIZ_API_PATHS.REVIEWS.DELEGATION_METRICS)
+        .then((response) => parseDelegationMetrics(response.data)),
+    enabled: !!activeBusinessId,
+  });
+
   const replyMutation = useMutation({
     mutationFn: ({ businessId, id, text }: { businessId: string; id: string; text: string }) => {
       return bizApi(businessId).put(BIZ_API_PATHS.REVIEWS.REPLY(id), { replyText: text });
@@ -308,6 +322,12 @@ export default function ReviewsPage() {
           isError={slaQuery.isError}
           onRetry={() => void slaQuery.refetch()}
           platformLabel={platformLabel}
+        />
+        <DelegationMetricsBoard
+          data={delegationQuery.data}
+          isLoading={delegationQuery.isLoading}
+          isError={delegationQuery.isError}
+          onRetry={() => void delegationQuery.refetch()}
         />
 
         {/* Stat strip — three quiet metrics. No celebratory tone. */}

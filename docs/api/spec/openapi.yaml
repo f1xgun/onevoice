@@ -270,6 +270,8 @@ paths:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews
   /businesses/{id}/reviews/sla:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1sla
+  /businesses/{id}/delegation-metrics:
+    $ref: paths/reviews.yaml#/~1businesses~1{id}~1delegation-metrics
   /businesses/{id}/presence-health:
     $ref: paths/presence_health.yaml#/~1businesses~1{id}~1presence-health
   /businesses/{id}/reviews/{reviewID}:
@@ -2799,6 +2801,35 @@ components:
             Platforms without a valid replied_at sample are omitted.
           items:
             $ref: '#/components/schemas/ReviewPlatformSLA'
+    ReviewDelegationWeek:
+      type: object
+      required: [weekStart, replied, acceptedUnedited, edited, unknown]
+      properties:
+        weekStart: {type: string, format: date-time}
+        replied: {type: integer}
+        acceptedUnedited: {type: integer}
+        edited: {type: integer}
+        unknown: {type: integer}
+    ReviewDelegationMetrics:
+      type: object
+      description: >-
+        Aggregate feedback on saved draft replies with replied_at in the recent
+        weekly interval. Unknown counts timestamped replies without an edit
+        signal. Legacy rows missing replied_at cannot be assigned to a week and
+        are excluded from all totals.
+      required: [from, to, replied, acceptedUnedited, edited, unknown, measurable, weeks]
+      properties:
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        replied: {type: integer}
+        acceptedUnedited: {type: integer}
+        edited: {type: integer}
+        unknown: {type: integer}
+        measurable: {type: integer, description: acceptedUnedited plus edited; the denominator for known-feedback shares.}
+        weeks:
+          type: array
+          maxItems: 8
+          items: {$ref: '#/components/schemas/ReviewDelegationWeek'}
     ReviewPlatformSLA:
       type: object
       required:

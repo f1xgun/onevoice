@@ -236,8 +236,8 @@ const reviewBusinessExternalIndexName = "reviews_business_platform_external"
 //     (filter business_id+reply_status, sort created_at desc). created_at is set
 //     at sync time and never mutated, so indexing it is safe.
 //   - {business_id, reply_status, draft_accepted_unedited, created_at} serves
-//     ListRepliedExamples, which sorts accepted-first then recent so the drafter
-//     prefers drafts the owner accepted as few-shot exemplars. The signal key
+//     ListRepliedExamples, which sorts confirmed edits first then recent so the
+//     drafter learns from the operator's actual corrections. The signal key
 //     leads the sort suffix, so without this index the sort would be an
 //     in-memory blocking sort of the whole replied set (risking the 32MB limit as
 //     a business accumulates replies). draft_accepted_unedited is written once at
@@ -262,10 +262,14 @@ func EnsureReviewIndexes(ctx context.Context, db *mongo.Database) error {
 			Options: options.Index().SetName("reviews_business_reply_status_created_desc"),
 		},
 		{
+			Keys:    bson.D{{Key: "business_id", Value: 1}, {Key: "reply_status", Value: 1}, {Key: "replied_at", Value: 1}},
+			Options: options.Index().SetName("reviews_business_reply_status_replied_at"),
+		},
+		{
 			Keys: bson.D{
 				{Key: "business_id", Value: 1},
 				{Key: "reply_status", Value: 1},
-				{Key: "draft_accepted_unedited", Value: -1},
+				{Key: "draft_accepted_unedited", Value: 1},
 				{Key: "created_at", Value: -1},
 			},
 			Options: options.Index().SetName("reviews_business_reply_status_accepted_created_desc"),
@@ -478,13 +482,6 @@ func (r *reviewRepository) ListRepliedExamples(ctx context.Context, businessID, 
 		f["platform"] = platform
 	}
 
-	// Fetch a candidate POOL (wider than limit) sorted accepted-first then recent,
-	// so the accepted bias stays index-backed. draft_accepted_unedited sorts
-	// true → false → missing (legacy rows) descending. selectFewShotExamples then
-	// blends recency and drops near-duplicate replies before returning `limit`
-	// rows: pure accepted-first amplifies whatever style already dominates (and
-	// would amplify a poisoned draft), so the final set interleaves recent replies
-	// and enforces diversity.
 	poolLimit := limit * fewShotPoolFactor
 	if poolLimit > fewShotPoolCap {
 		poolLimit = fewShotPoolCap
@@ -492,24 +489,76 @@ func (r *reviewRepository) ListRepliedExamples(ctx context.Context, businessID, 
 	if poolLimit < limit {
 		poolLimit = limit
 	}
-	opts := options.Find().
-		SetLimit(int64(poolLimit)).
-		SetSort(bson.D{
-			{Key: "draft_accepted_unedited", Value: -1},
-			{Key: "created_at", Value: -1},
-		})
-
-	cursor, err := r.collection.Find(ctx, f, opts)
+	editedFilter := bson.M{}
+	for key, value := range f {
+		editedFilter[key] = value
+	}
+	editedFilter["draft_accepted_unedited"] = false
+	editedLimit := fewShotEditedPoolLimit(poolLimit)
+	cursor, err := r.collection.Find(ctx, editedFilter, options.Find().SetLimit(int64(editedLimit)).SetSort(bson.D{{Key: "created_at", Value: -1}}))
 	if err != nil {
 		return nil, fmt.Errorf("find replied examples: %w", err)
 	}
-	defer func() { _ = cursor.Close(ctx) }()
-
 	pool := make([]domain.Review, 0, poolLimit)
 	if err := cursor.All(ctx, &pool); err != nil {
+		_ = cursor.Close(ctx)
 		return nil, fmt.Errorf("decode replied examples: %w", err)
 	}
+	_ = cursor.Close(ctx)
+	if len(pool) < poolLimit {
+		recentFilter := bson.M{}
+		for key, value := range f {
+			recentFilter[key] = value
+		}
+		recentFilter["draft_accepted_unedited"] = bson.M{"$ne": false}
+		cursor, err = r.collection.Find(ctx, recentFilter, options.Find().SetLimit(int64(poolLimit-len(pool))).SetSort(bson.D{{Key: "created_at", Value: -1}}))
+		if err != nil {
+			return nil, fmt.Errorf("find recent replied examples: %w", err)
+		}
+		var recent []domain.Review
+		if err := cursor.All(ctx, &recent); err != nil {
+			_ = cursor.Close(ctx)
+			return nil, fmt.Errorf("decode recent replied examples: %w", err)
+		}
+		_ = cursor.Close(ctx)
+		pool = append(pool, recent...)
+	}
 	return selectFewShotExamples(pool, limit), nil
+}
+
+func (r *reviewRepository) AggregateDelegationMetrics(ctx context.Context, businessID string, from, to time.Time) ([]domain.ReviewDelegationWeek, error) {
+	if businessID == "" || !from.Before(to) {
+		return nil, errors.New("delegation metrics: invalid scope")
+	}
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"business_id": businessID, "reply_status": domain.ReviewReplyStatusReplied, "replied_at": bson.M{"$gte": from, "$lt": to}}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":               bson.M{"$dateTrunc": bson.M{"date": "$replied_at", "unit": "week", "timezone": "UTC", "startOfWeek": "monday"}},
+			"replied":           bson.M{"$sum": 1},
+			"accepted_unedited": bson.M{"$sum": bson.M{"$cond": bson.A{bson.M{"$eq": bson.A{"$draft_accepted_unedited", true}}, 1, 0}}},
+			"edited":            bson.M{"$sum": bson.M{"$cond": bson.A{bson.M{"$eq": bson.A{"$draft_accepted_unedited", false}}, 1, 0}}},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "_id", Value: 1}}}},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate delegation metrics: %w", err)
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var rows []struct {
+		WeekStart time.Time `bson:"_id"`
+		Replied   int       `bson:"replied"`
+		Accepted  int       `bson:"accepted_unedited"`
+		Edited    int       `bson:"edited"`
+	}
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("decode delegation metrics: %w", err)
+	}
+	out := make([]domain.ReviewDelegationWeek, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.ReviewDelegationWeek{WeekStart: row.WeekStart, Replied: row.Replied, AcceptedUnedited: row.Accepted, Edited: row.Edited})
+	}
+	return out, nil
 }
 
 const (
@@ -526,24 +575,26 @@ const (
 	replyDedupeKeyRunes = 80
 )
 
-// selectFewShotExamples trims an accepted-first, recency-ordered candidate pool
+func fewShotEditedPoolLimit(poolLimit int) int { return (poolLimit + 1) / 2 }
+
+// selectFewShotExamples trims an edited-first, recency-ordered candidate pool
 // to at most `limit` few-shot exemplars, applying two defenses against the
-// accepted-first bias over-amplifying a single style (or a poisoned draft):
+// edit preference over-amplifying a single style (or a poisoned reply):
 //
 //   - diversity: near-duplicate replies (same normalized leading text) are
 //     dropped so one canned phrasing cannot fill the block;
-//   - recency blend: accepted and non-accepted (recency-ordered) rows are
+//   - recency blend: edited and other recent rows are
 //     interleaved, so the model always sees some recent replies even when a
 //     large accepted backlog exists.
 //
-// Accepted rows still lead (the interleave starts with them), preserving the
-// self-improving bias without letting it dominate.
+// Confirmed edits lead, while the interleave keeps recent accepted and legacy
+// replies represented.
 func selectFewShotExamples(pool []domain.Review, limit int) []domain.Review {
 	if limit <= 0 || len(pool) == 0 {
 		return pool
 	}
 	seen := make(map[string]bool, len(pool))
-	accepted := make([]domain.Review, 0, len(pool))
+	edited := make([]domain.Review, 0, len(pool))
 	recent := make([]domain.Review, 0, len(pool))
 	for i := range pool {
 		key := normalizeReplyKey(pool[i].ReplyText)
@@ -553,19 +604,19 @@ func selectFewShotExamples(pool []domain.Review, limit int) []domain.Review {
 			}
 			seen[key] = true
 		}
-		if pool[i].DraftAcceptedUnedited != nil && *pool[i].DraftAcceptedUnedited {
-			accepted = append(accepted, pool[i])
+		if pool[i].DraftAcceptedUnedited != nil && !*pool[i].DraftAcceptedUnedited {
+			edited = append(edited, pool[i])
 		} else {
 			recent = append(recent, pool[i])
 		}
 	}
 
 	out := make([]domain.Review, 0, limit)
-	ai, ri := 0, 0
-	for len(out) < limit && (ai < len(accepted) || ri < len(recent)) {
-		if ai < len(accepted) {
-			out = append(out, accepted[ai])
-			ai++
+	ei, ri := 0, 0
+	for len(out) < limit && (ei < len(edited) || ri < len(recent)) {
+		if ei < len(edited) {
+			out = append(out, edited[ei])
+			ei++
 			if len(out) == limit {
 				break
 			}

@@ -821,6 +821,19 @@
       "error": "Couldn't load response-time metrics.",
       "retry": "Try again"
     },
+    "delegationMetrics": {
+      "title": "Saved reply feedback",
+      "description": "Last eight calendar weeks. Counts reflect exact edits made when a saved draft was sent.",
+      "accepted": "Sent without edits",
+      "edited": "Edited before sending",
+      "unknown": "Unknown legacy replies",
+      "knownShare": "{percent}% sent without edits among {count} replies with known feedback.",
+      "noKnown": "No replies with known edit feedback yet.",
+      "weekly": "Weekly saved reply feedback",
+      "legend": "Each row shows: without edits / edited / unknown. Unknown means no saved edit feedback. Older replies without a reply timestamp cannot be placed in a week or reconstructed.",
+      "error": "Couldn't load saved reply feedback.",
+      "retry": "Try again"
+    },
     "aiSample": {
       "label": "AI draft reply",
       "hint": "Send as-is or edit",

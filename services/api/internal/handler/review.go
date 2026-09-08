@@ -59,6 +59,29 @@ type ReviewService interface {
 	BatchDraft(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	BulkApprove(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	SLA(ctx context.Context, businessID uuid.UUID, targetHours int) (service.SLAStats, error)
+	DelegationMetrics(ctx context.Context, businessID uuid.UUID) (service.DelegationMetrics, error)
+}
+
+func (h *ReviewHandler) GetDelegationMetrics(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "GetDelegationMetrics", authz.PermContentRead)
+	if !ok {
+		return
+	}
+	metrics, err := h.reviewService.DelegationMetrics(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to compute delegation metrics", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	weeks := make([]openapi.ReviewDelegationWeek, 0, len(metrics.Weeks))
+	for _, week := range metrics.Weeks {
+		weeks = append(weeks, openapi.ReviewDelegationWeek{WeekStart: week.WeekStart, Replied: week.Replied, AcceptedUnedited: week.AcceptedUnedited, Edited: week.Edited, Unknown: week.Unknown})
+	}
+	writeJSON(w, http.StatusOK, openapi.ReviewDelegationMetrics{From: metrics.From, To: metrics.To, Replied: metrics.Replied, AcceptedUnedited: metrics.AcceptedUnedited, Edited: metrics.Edited, Unknown: metrics.Unknown, Measurable: metrics.Measurable, Weeks: weeks})
 }
 
 // ReviewHandler handles review-related HTTP requests

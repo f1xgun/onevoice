@@ -1541,6 +1541,29 @@ type ReviewAutopilotResponse struct {
 	MinRating int `json:"minRating" validate:"required"`
 }
 
+// ReviewDelegationMetrics Aggregate feedback on saved draft replies. Legacy rows without an edit signal remain unknown.
+type ReviewDelegationMetrics struct {
+	AcceptedUnedited int       `json:"acceptedUnedited" validate:"required"`
+	Edited           int       `json:"edited" validate:"required"`
+	From             time.Time `json:"from" validate:"required"`
+
+	// Measurable acceptedUnedited plus edited; the denominator for known-feedback shares.
+	Measurable int                    `json:"measurable" validate:"required"`
+	Replied    int                    `json:"replied" validate:"required"`
+	To         time.Time              `json:"to" validate:"required"`
+	Unknown    int                    `json:"unknown" validate:"required"`
+	Weeks      []ReviewDelegationWeek `json:"weeks" validate:"required"`
+}
+
+// ReviewDelegationWeek defines model for ReviewDelegationWeek.
+type ReviewDelegationWeek struct {
+	AcceptedUnedited int       `json:"acceptedUnedited" validate:"required"`
+	Edited           int       `json:"edited" validate:"required"`
+	Replied          int       `json:"replied" validate:"required"`
+	Unknown          int       `json:"unknown" validate:"required"`
+	WeekStart        time.Time `json:"weekStart" validate:"required"`
+}
+
 // ReviewListResponse defines model for ReviewListResponse.
 type ReviewListResponse struct {
 	Reviews []Review `json:"reviews" validate:"required"`

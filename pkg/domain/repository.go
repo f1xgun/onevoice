@@ -476,6 +476,10 @@ type ReviewRepository interface {
 	// read-only GET /businesses/{id}/reviews/sla aggregate endpoint.
 	ListForSLA(ctx context.Context, businessID string) ([]Review, error)
 
+	// AggregateDelegationMetrics returns bounded weekly counts without loading
+	// review bodies. The interval is half-open [from, to).
+	AggregateDelegationMetrics(ctx context.Context, businessID string, from, to time.Time) ([]ReviewDelegationWeek, error)
+
 	// ListForRatingStats returns every review for businessID projected to the
 	// rating-aggregate fields only (rating, reply_status, created_at,
 	// replied_at). Like ListForSLA it NEVER reads author_name, text, or
@@ -506,6 +510,14 @@ type ReviewRepository interface {
 	// excluded from any one-tap bulk publish; it is ignored on the "failed"
 	// transition (no draft to hold back).
 	UpdateDraft(ctx context.Context, id, draft, status, errMsg string, needsReview bool) error
+}
+
+// ReviewDelegationWeek is the storage-level weekly aggregate for saved replies.
+type ReviewDelegationWeek struct {
+	WeekStart        time.Time
+	Replied          int
+	AcceptedUnedited int
+	Edited           int
 }
 
 // PostRepository persists platform posts.

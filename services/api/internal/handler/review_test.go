@@ -37,6 +37,14 @@ type mockReviewService struct {
 	batchDraftFn  func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	bulkApproveFn func(ctx context.Context, businessID uuid.UUID, reviewIDs []string) ([]service.BatchItemResult, error)
 	slaFn         func(ctx context.Context, businessID uuid.UUID, targetHours int) (service.SLAStats, error)
+	delegationFn  func(ctx context.Context, businessID uuid.UUID) (service.DelegationMetrics, error)
+}
+
+func (m *mockReviewService) DelegationMetrics(ctx context.Context, businessID uuid.UUID) (service.DelegationMetrics, error) {
+	if m.delegationFn == nil {
+		return service.DelegationMetrics{}, nil
+	}
+	return m.delegationFn(ctx, businessID)
 }
 
 func (m *mockReviewService) List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -251,6 +259,28 @@ func TestGetReviewSLA_Success(t *testing.T) {
 	assert.InDelta(t, 80.5, *resp.OldestUnansweredHours, 1e-6)
 	require.Len(t, resp.Platforms, 1)
 	assert.Equal(t, "google", resp.Platforms[0].Platform)
+}
+
+func TestGetDelegationMetrics_UsesAuthorizedBusiness(t *testing.T) {
+	businessID, userID := uuid.New(), uuid.New()
+	h, err := NewReviewHandler(&mockReviewService{delegationFn: func(_ context.Context, got uuid.UUID) (service.DelegationMetrics, error) {
+		require.Equal(t, businessID, got)
+		return service.DelegationMetrics{Weeks: []service.DelegationMetricWeek{}}, nil
+	}})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/businesses/ignored/delegation-metrics", http.NoBody).WithContext(reviewReadCtx(businessID, userID))
+	rr := httptest.NewRecorder()
+	h.GetDelegationMetrics(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestGetDelegationMetrics_RejectsTenantWithoutReadPermission(t *testing.T) {
+	h, err := NewReviewHandler(&mockReviewService{})
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{BusinessID: uuid.New(), UserID: uuid.New(), Permissions: nil})
+	h.GetDelegationMetrics(rr, httptest.NewRequest(http.MethodGet, "/delegation-metrics", http.NoBody).WithContext(ctx))
+	require.Equal(t, http.StatusForbidden, rr.Code)
 }
 
 func TestGetReviewSLA_DefaultsTargetOnMalformed(t *testing.T) {
