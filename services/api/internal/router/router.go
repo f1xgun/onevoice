@@ -310,10 +310,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 
 				r.Get("/projects", handlers.Project.List)
-				r.Post("/projects", handlers.Project.Create)
+				r.With(writeLimit).Post("/projects", handlers.Project.Create)
 				r.Get("/projects/{id}", handlers.Project.Get)
-				r.Put("/projects/{id}", handlers.Project.Update)
-				r.Delete("/projects/{id}", handlers.Project.Delete)
+				r.With(writeLimit).Put("/projects/{id}", handlers.Project.Update)
+				r.With(writeLimit).Delete("/projects/{id}", handlers.Project.Delete)
 				r.Get("/projects/{id}/conversation-count", handlers.Project.ConversationCount)
 
 				if handlers.Search != nil {
@@ -345,14 +345,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				if handlers.Members != nil {
 					r.Get("/members", handlers.Members.ListMembers)
-					r.Patch("/members/{userId}", handlers.Members.UpdateMemberRole)
-					r.Delete("/members/{userId}", handlers.Members.RemoveMember)
+					r.With(writeLimit).Patch("/members/{userId}", handlers.Members.UpdateMemberRole)
+					r.With(writeLimit).Delete("/members/{userId}", handlers.Members.RemoveMember)
 				}
 				if handlers.Roles != nil {
 					r.Get("/roles", handlers.Roles.List)
-					r.Post("/roles", handlers.Roles.Create)
-					r.Patch("/roles/{roleId}", handlers.Roles.Update)
-					r.Delete("/roles/{roleId}", handlers.Roles.Delete)
+					r.With(writeLimit).Post("/roles", handlers.Roles.Create)
+					r.With(writeLimit).Patch("/roles/{roleId}", handlers.Roles.Update)
+					r.With(writeLimit).Delete("/roles/{roleId}", handlers.Roles.Delete)
 					r.Get("/me/permissions", handlers.Roles.MyPermissions)
 				}
 

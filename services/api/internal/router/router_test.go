@@ -431,6 +431,195 @@ func replayRegenerateTitleChain(t *testing.T, src *chi.Mux, jwtSecret []byte) *c
 	return mux
 }
 
+func replayBusinessRouteChain(t *testing.T, src *chi.Mux, jwtSecret []byte, method, pattern string, calls *int) *chi.Mux {
+	t.Helper()
+	var chain []func(http.Handler) http.Handler
+	var found bool
+	err := chi.Walk(src, func(routeMethod, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
+		if routeMethod == method && route == pattern {
+			found = true
+			chain = mws
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, found, "route %s %s must be registered", method, pattern)
+
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		*calls++
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := chi.NewRouter()
+	mux.Use(apimiddleware.Auth(jwtSecret))
+	mux.Route("/api/v1/businesses/{id}", func(r chi.Router) {
+		r.With(chain...).Method(method, "/probe", terminal)
+	})
+	return mux
+}
+
+func serveBusinessProbe(t *testing.T, h http.Handler, method string, businessID uuid.UUID, token string) int {
+	t.Helper()
+	req := httptest.NewRequest(method, "/api/v1/businesses/"+businessID.String()+"/probe", http.NoBody)
+	req.RemoteAddr = "203.0.113.20:4321"
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func TestRouter_RBACAndProjectMutationsSharePerUserWriteLimit(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&permissiveLoader{roleID: uuid.New()}, time.Minute, time.Minute)
+	handlers := buildTestHandlers()
+	const writesLimit = 1
+	src := router.Setup(handlers, jwtSecret, redisClient, health.New(), []string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: writesLimit, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	routes := []struct {
+		name    string
+		method  string
+		pattern string
+	}{
+		{name: "update member", method: http.MethodPatch, pattern: "/api/v1/businesses/{id}/members/{userId}"},
+		{name: "remove member", method: http.MethodDelete, pattern: "/api/v1/businesses/{id}/members/{userId}"},
+		{name: "create role", method: http.MethodPost, pattern: "/api/v1/businesses/{id}/roles"},
+		{name: "update role", method: http.MethodPatch, pattern: "/api/v1/businesses/{id}/roles/{roleId}"},
+		{name: "delete role", method: http.MethodDelete, pattern: "/api/v1/businesses/{id}/roles/{roleId}"},
+		{name: "create project", method: http.MethodPost, pattern: "/api/v1/businesses/{id}/projects"},
+		{name: "update project", method: http.MethodPut, pattern: "/api/v1/businesses/{id}/projects/{id}"},
+		{name: "delete project", method: http.MethodDelete, pattern: "/api/v1/businesses/{id}/projects/{id}"},
+	}
+
+	for _, tc := range routes {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := uuid.New()
+			token := mintAccessToken(t, jwtSecret, userID)
+			businessID := uuid.New()
+			calls := 0
+			h := replayBusinessRouteChain(t, src, jwtSecret, tc.method, tc.pattern, &calls)
+
+			require.Equal(t, http.StatusOK, serveBusinessProbe(t, h, tc.method, businessID, token))
+			assert.Equal(t, http.StatusTooManyRequests, serveBusinessProbe(t, h, tc.method, businessID, token))
+			assert.Equal(t, 1, calls)
+		})
+	}
+}
+
+func TestRouter_RBACAndProjectWritesShareBucketAndIsolateUsers(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&permissiveLoader{roleID: uuid.New()}, time.Minute, time.Minute)
+	src := router.Setup(buildTestHandlers(), jwtSecret, redisClient, health.New(), []string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: 1, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	memberCalls := 0
+	projectCalls := 0
+	member := replayBusinessRouteChain(t, src, jwtSecret, http.MethodPatch, "/api/v1/businesses/{id}/members/{userId}", &memberCalls)
+	project := replayBusinessRouteChain(t, src, jwtSecret, http.MethodPost, "/api/v1/businesses/{id}/projects", &projectCalls)
+	businessID := uuid.New()
+	firstToken := mintAccessToken(t, jwtSecret, uuid.New())
+	secondToken := mintAccessToken(t, jwtSecret, uuid.New())
+
+	require.Equal(t, http.StatusOK, serveBusinessProbe(t, member, http.MethodPatch, businessID, firstToken))
+	assert.Equal(t, http.StatusTooManyRequests, serveBusinessProbe(t, project, http.MethodPost, businessID, firstToken))
+	assert.Equal(t, http.StatusOK, serveBusinessProbe(t, project, http.MethodPost, businessID, secondToken))
+	assert.Equal(t, 1, memberCalls)
+	assert.Equal(t, 1, projectCalls)
+}
+
+func TestRouter_RBACAndProjectReadsRemainUnthrottled(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&permissiveLoader{roleID: uuid.New()}, time.Minute, time.Minute)
+	src := router.Setup(buildTestHandlers(), jwtSecret, redisClient, health.New(), []string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: 1, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	routes := []string{
+		"/api/v1/businesses/{id}/members",
+		"/api/v1/businesses/{id}/roles",
+		"/api/v1/businesses/{id}/me/permissions",
+		"/api/v1/businesses/{id}/projects",
+		"/api/v1/businesses/{id}/projects/{id}",
+		"/api/v1/businesses/{id}/projects/{id}/conversation-count",
+	}
+	token := mintAccessToken(t, jwtSecret, uuid.New())
+	businessID := uuid.New()
+	for _, pattern := range routes {
+		calls := 0
+		h := replayBusinessRouteChain(t, src, jwtSecret, http.MethodGet, pattern, &calls)
+		for range 3 {
+			require.Equal(t, http.StatusOK, serveBusinessProbe(t, h, http.MethodGet, businessID, token))
+		}
+		assert.Equal(t, 3, calls)
+	}
+}
+
+func TestRouter_BusinessAuthorizationPrecedesWriteLimit(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&fakeLoader{}, time.Minute, time.Minute)
+	src := router.Setup(buildTestHandlers(), jwtSecret, redisClient, health.New(), []string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: 1, Invitations: 1000},
+		cache, nil, nil, nil)
+
+	userID := uuid.New()
+	calls := 0
+	h := replayBusinessRouteChain(t, src, jwtSecret, http.MethodPost, "/api/v1/businesses/{id}/roles", &calls)
+	status := serveBusinessProbe(t, h, http.MethodPost, uuid.New(), mintAccessToken(t, jwtSecret, userID))
+
+	assert.Equal(t, http.StatusNotFound, status)
+	assert.Equal(t, 0, calls)
+	assert.Equal(t, int64(0), redisClient.Exists(context.Background(), "ratelimit:user:"+userID.String()+":writes").Val())
+}
+
+func TestRouter_InvitationCreateDoesNotDebitWriteBucket(t *testing.T) {
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	redisClient, _ := setupRouterTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	jwtSecret := []byte("test-jwt-secret-32-bytes-padding-zz")
+	cache := authz.NewCacheForTest(&permissiveLoader{roleID: uuid.New()}, time.Minute, time.Minute)
+	handlers := buildTestHandlers()
+	handlers.Invitations = &handler.InvitationsHandler{}
+	src := router.Setup(handlers, jwtSecret, redisClient, health.New(), []string{"http://localhost:3000"},
+		router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10, Writes: 1, Invitations: 1},
+		cache, nil, nil, nil)
+
+	userID := uuid.New()
+	writesKey := "ratelimit:user:" + userID.String() + ":writes"
+	require.NoError(t, redisClient.Set(context.Background(), writesKey, 1, time.Minute).Err())
+	calls := 0
+	h := replayBusinessRouteChain(t, src, jwtSecret, http.MethodPost, "/api/v1/businesses/{id}/invitations", &calls)
+	status := serveBusinessProbe(t, h, http.MethodPost, uuid.New(), mintAccessToken(t, jwtSecret, userID))
+
+	assert.Equal(t, http.StatusOK, status)
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, "1", redisClient.Get(context.Background(), writesKey).Val())
+	assert.Equal(t, "1", redisClient.Get(context.Background(), "ratelimit:user:"+userID.String()+":invitations").Val())
+}
+
 // TestRouter_RegenerateTitleRateLimited is the fail-on-revert guard for the
 // auto-title write rate-limit: POST /conversations/{id}/regenerate-title spends
 // a best-effort LLM call on the ungated "background" tier (which the per-business
