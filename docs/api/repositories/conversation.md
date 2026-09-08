@@ -41,7 +41,7 @@ and subsequent list-cache invalidation observes the latest persisted message.
 The repo distinguishes three kinds of writes:
 
 1. **Unconditional updates** (`Update`, `Delete`, `UpdateProjectAssignment`) — set the row, return `ErrConversationNotFound` on zero matches.
-2. **Atomic conditional writes** (`UpdateTitleIfPending`, `TransitionToAutoPending`, `Pin`, `Unpin`) — the filter encodes a precondition (status, scope tuple). Zero matches is the *intended* signal to the caller; the caller treats it as "the precondition failed" and adjusts.
+2. **Atomic conditional writes** (`UpdateTitleIfPending`, `TransitionToAutoPending`, `Pin`, `Unpin`) — the filter encodes a precondition (status, scope tuple). Zero matches is the _intended_ signal to the caller; the caller treats it as "the precondition failed" and adjusts.
 3. **Bulk hard-delete sweepers** (`MongoConversationsCleanup`) — multi-row updates that run after a Postgres tx commits and cannot themselves be transactional with Postgres.
 
 `Create` is the only write that touches `created_at`. `Update` deliberately omits `created_at` so callers cannot accidentally clobber the creation timestamp during a rename.
@@ -53,7 +53,7 @@ The repo distinguishes three kinds of writes:
 `UpdateTitleIfPending` and `TransitionToAutoPending` are the two atomic conditional writes that defend the auto-titler race:
 
 - `UpdateTitleIfPending` filters `{_id, title_status: {$in: [auto_pending, null]}}`. A manual rename has flipped status to `"manual"`, so the titler's eventual write matches zero documents and surfaces as `ErrConversationNotFound`. The handler maps that to a silent no-op — the manual rename wins.
-- `TransitionToAutoPending` (POST `/regenerate-title`) filters `{_id, title_status: {$in: [auto, auto_pending, null]}}`. `manual` is excluded (sovereign). `auto_pending` is *included* in the filter so the recovery path for a stuck-pending row (older than the handler's 30s grace window) is a deterministic no-op-then-bump rather than a confusing not-found-shaped 409.
+- `TransitionToAutoPending` (POST `/regenerate-title`) filters `{_id, title_status: {$in: [auto, auto_pending, null]}}`. `manual` is excluded (sovereign). `auto_pending` is _included_ in the filter so the recovery path for a stuck-pending row (older than the handler's 30s grace window) is a deterministic no-op-then-bump rather than a confusing not-found-shaped 409.
 
 Both methods bump `updated_at` so the handler's grace window can detect "this row was touched recently" without joining against an external clock.
 
