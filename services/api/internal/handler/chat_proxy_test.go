@@ -1371,7 +1371,8 @@ func TestChatProxy_OrphanActive_NoBatch_SelfHealsInsteadOfDeadEnd(t *testing.T) 
 	// The stranded message was finalized so the conversation is usable again.
 	require.NotNil(t, healed, "stranded message must be finalized")
 	assert.Equal(t, domain.MessageStatusComplete, healed.Status)
-	assert.Equal(t, domain.ToolCallStatusApproved, healed.ToolCalls[0].Status)
+	assert.Equal(t, domain.ToolCallStatusPending, healed.ToolCalls[0].Status, "a missing batch cannot prove approval")
+	assert.Empty(t, healed.ToolResults, "recovery cannot invent an execution result")
 }
 
 // TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails covers the
