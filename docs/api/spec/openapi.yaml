@@ -2731,7 +2731,7 @@ components:
       type: object
       description: >-
         Aggregate-only response-SLA metrics. No author, review text, or reply
-        text is carried — numbers only.
+        text is carried; platform identifiers are the only non-numeric values.
       required:
       - total
       - unanswered
@@ -2742,6 +2742,8 @@ components:
       - averageResponseHours
       - measuredResponses
       - percentAnsweredWithinTarget
+      - oldestUnansweredHours
+      - platforms
       properties:
         total:
           type: integer
@@ -2776,6 +2778,32 @@ components:
           type: number
           description: >-
             Share of measured responses answered within targetHours, in [0,1].
+        oldestUnansweredHours:
+          type: number
+          nullable: true
+          description: >-
+            Age in hours of the oldest unanswered review, or null when every
+            review is answered.
+        platforms:
+          type: array
+          description: >-
+            Per-platform medians over the same full measured response set.
+            Platforms without a valid replied_at sample are omitted.
+          items:
+            $ref: '#/components/schemas/ReviewPlatformSLA'
+    ReviewPlatformSLA:
+      type: object
+      required:
+      - platform
+      - medianResponseHours
+      - measuredResponses
+      properties:
+        platform:
+          type: string
+        medianResponseHours:
+          type: number
+        measuredResponses:
+          type: integer
     PresenceSubScores:
       type: object
       description: >-

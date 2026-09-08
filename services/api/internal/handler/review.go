@@ -258,7 +258,29 @@ func slaStatsToOpenAPI(s service.SLAStats) openapi.ReviewSLAResponse {
 		AverageResponseHours:        float32(s.AverageResponseHours),
 		MeasuredResponses:           s.MeasuredResponses,
 		PercentAnsweredWithinTarget: float32(s.PercentAnsweredWithinTarget),
+		OldestUnansweredHours:       float64ToFloat32(s.OldestUnansweredHours),
+		Platforms:                   platformSLAStatsToOpenAPI(s.Platforms),
 	}
+}
+
+func float64ToFloat32(value *float64) *float32 {
+	if value == nil {
+		return nil
+	}
+	converted := float32(*value)
+	return &converted
+}
+
+func platformSLAStatsToOpenAPI(stats []service.PlatformSLAStats) []openapi.ReviewPlatformSLA {
+	out := make([]openapi.ReviewPlatformSLA, 0, len(stats))
+	for _, stat := range stats {
+		out = append(out, openapi.ReviewPlatformSLA{
+			Platform:            stat.Platform,
+			MedianResponseHours: float32(stat.MedianResponseHours),
+			MeasuredResponses:   stat.MeasuredResponses,
+		})
+	}
+	return out
 }
 
 // ReplyToReview handles PUT /api/v1/reviews/{id}/reply

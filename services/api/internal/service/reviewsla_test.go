@@ -30,6 +30,12 @@ func slaReview(status string, createdAt time.Time, repliedAt *time.Time) domain.
 	}
 }
 
+func slaPlatformReview(platform, status string, createdAt time.Time, repliedAt *time.Time) domain.Review {
+	r := slaReview(status, createdAt, repliedAt)
+	r.Platform = platform
+	return r
+}
+
 // TestComputeSLA_EmptyState proves a business with zero reviews returns honest
 // zeros: no division-by-zero, no panic, all buckets zero, default target.
 func TestComputeSLA_EmptyState(t *testing.T) {
@@ -66,6 +72,51 @@ func TestComputeSLA_Buckets(t *testing.T) {
 	assert.Equal(t, 1, got.Buckets.Lt24h)
 	assert.Equal(t, 1, got.Buckets.H24to72)
 	assert.Equal(t, 2, got.Buckets.Gt72h, "an answered review never enters a bucket, even a very old one")
+}
+
+func TestComputeSLA_BucketBoundariesAndOldestUnanswered(t *testing.T) {
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	got := computeSLA([]domain.Review{
+		slaReview(domain.ReviewReplyStatusPending, now.Add(-24*time.Hour), nil),
+		slaReview(domain.ReviewReplyStatusPending, now.Add(-72*time.Hour), nil),
+		slaReview(domain.ReviewReplyStatusPending, now.Add(-90*time.Hour-30*time.Minute), nil),
+		slaReview(domain.ReviewReplyStatusPending, now.Add(time.Hour), nil),
+	}, now, 24)
+
+	assert.Equal(t, 1, got.Buckets.Lt24h, "future clock skew remains in the youngest bucket")
+	assert.Equal(t, 1, got.Buckets.H24to72, "exactly 24h enters the middle bucket")
+	assert.Equal(t, 2, got.Buckets.Gt72h, "exactly 72h enters the oldest bucket")
+	require.NotNil(t, got.OldestUnansweredHours)
+	assert.InDelta(t, 90.5, *got.OldestUnansweredHours, 1e-9)
+}
+
+func TestComputeSLA_PerPlatformMediansExcludeMissingAndInvalidRepliedAt(t *testing.T) {
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	base := now.Add(-100 * time.Hour)
+	got := computeSLA([]domain.Review{
+		slaPlatformReview("google", domain.ReviewReplyStatusReplied, base, ptrTime(base.Add(2*time.Hour))),
+		slaPlatformReview("google", domain.ReviewReplyStatusReplied, base, ptrTime(base.Add(8*time.Hour))),
+		slaPlatformReview("google", domain.ReviewReplyStatusReplied, base, nil),
+		slaPlatformReview("yandex_business", domain.ReviewReplyStatusReplied, base, ptrTime(base.Add(3*time.Hour))),
+		slaPlatformReview("yandex_business", domain.ReviewReplyStatusReplied, base, ptrTime(base.Add(-time.Hour))),
+		slaPlatformReview("telegram", domain.ReviewReplyStatusPending, base, ptrTime(base.Add(time.Hour))),
+		slaPlatformReview("vk", domain.ReviewReplyStatusError, base, ptrTime(base.Add(time.Hour))),
+	}, now, 24)
+
+	require.Equal(t, []PlatformSLAStats{
+		{Platform: "google", MedianResponseHours: 5, MeasuredResponses: 2},
+		{Platform: "yandex_business", MedianResponseHours: 3, MeasuredResponses: 1},
+	}, got.Platforms)
+	assert.Equal(t, 3, got.MeasuredResponses, "only rows whose status is replied enter response-time samples")
+}
+
+func TestComputeSLA_NoUnansweredOrMeasurementsUsesHonestEmptyAggregates(t *testing.T) {
+	got := computeSLA([]domain.Review{
+		slaPlatformReview("telegram", domain.ReviewReplyStatusReplied, time.Now(), nil),
+	}, time.Now(), 24)
+	assert.Nil(t, got.OldestUnansweredHours)
+	assert.Empty(t, got.Platforms)
+	assert.Zero(t, got.MeasuredResponses)
 }
 
 // TestComputeSLA_MedianAndAverage_MixedNilExcluded is the behavioral guard for

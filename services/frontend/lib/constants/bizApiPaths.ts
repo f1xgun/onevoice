@@ -117,6 +117,7 @@ export const BIZ_API_PATHS = {
   },
   REVIEWS: {
     ROOT: '/reviews',
+    SLA: '/reviews/sla',
     REFRESH: '/reviews/refresh',
     BATCH_DRAFT: '/reviews/batch-draft',
     BULK_APPROVE: '/reviews/bulk-approve',

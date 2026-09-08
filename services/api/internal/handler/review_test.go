@@ -25,6 +25,8 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
+func float64Ptr(v float64) *float64 { return &v }
+
 // mockReviewService implements ReviewService for tests.
 type mockReviewService struct {
 	listFn        func(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
@@ -217,6 +219,10 @@ func TestGetReviewSLA_Success(t *testing.T) {
 				AverageResponseHours:        8.25,
 				MeasuredResponses:           7,
 				PercentAnsweredWithinTarget: 0.75,
+				OldestUnansweredHours:       float64Ptr(80.5),
+				Platforms: []service.PlatformSLAStats{
+					{Platform: "google", MedianResponseHours: 4.5, MeasuredResponses: 2},
+				},
 			}, nil
 		},
 	}
@@ -241,6 +247,10 @@ func TestGetReviewSLA_Success(t *testing.T) {
 	assert.InDelta(t, 8.25, resp.AverageResponseHours, 1e-6)
 	assert.Equal(t, 7, resp.MeasuredResponses)
 	assert.InDelta(t, 0.75, resp.PercentAnsweredWithinTarget, 1e-6)
+	require.NotNil(t, resp.OldestUnansweredHours)
+	assert.InDelta(t, 80.5, *resp.OldestUnansweredHours, 1e-6)
+	require.Len(t, resp.Platforms, 1)
+	assert.Equal(t, "google", resp.Platforms[0].Platform)
 }
 
 func TestGetReviewSLA_DefaultsTargetOnMalformed(t *testing.T) {
