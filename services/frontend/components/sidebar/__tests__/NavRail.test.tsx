@@ -3,9 +3,13 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { NavRail } from '../NavRail';
 import { api } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
+import responses from '@/test/fixtures/channel-responses.json';
+
+import { NavRail } from '../NavRail';
 
 // Mock next/navigation
 const pushMock = vi.fn();
@@ -194,4 +198,28 @@ it('names the home link and every footer control before activation', () => {
   }
   expect(screen.getByRole('button', { name: 'Выйти' })).toHaveTextContent('Выйти');
   expect(screen.getByRole('button', { name: 'Language' })).toBeVisible();
+});
+
+it('shows a confirmed channel failure even when another channel on the platform is active', () => {
+  const client = makeClient();
+  client.setQueryDefaults(QUERY_KEYS.BUSINESS_INTEGRATIONS('org'), { staleTime: Infinity });
+  client.setQueryData(QUERY_KEYS.BUSINESS_INTEGRATIONS('org'), [
+    ...responses.active.body,
+    ...responses.tokenExpired.body,
+  ]);
+  useBusinessStore.getState().setActive('org');
+  const { unmount } = render(
+    <QueryClientProvider client={client}>
+      <NavRail />
+    </QueryClientProvider>
+  );
+  try {
+    expect(screen.getByTestId('integration-status')).toHaveTextContent(
+      'Telegram: Ошибка подключения — откройте «Интеграции»'
+    );
+  } finally {
+    unmount();
+    useBusinessStore.getState().clear();
+    client.clear();
+  }
 });

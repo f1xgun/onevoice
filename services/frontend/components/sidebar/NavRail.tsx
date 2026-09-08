@@ -15,8 +15,6 @@ import {
   Compass,
   MessageSquarePlus,
   LogOut,
-  Check,
-  Minus,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
@@ -34,12 +32,12 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { usePlatformFullLabels } from '@/lib/platforms';
 import { useLogout } from '@/lib/hooks/useLogout';
 
-import { connectionStatus } from './connectionStatus';
+import { PlatformStatus } from './PlatformStatus';
 
 interface Integration {
   platform: string;
   status: string;
-  last_sync_at?: string;
+  metadata?: Record<string, unknown>;
 }
 
 type NavItem = { href: string; labelKey: string; icon: typeof MessageCircle };
@@ -64,7 +62,7 @@ export interface NavRailProps {
   expanded?: boolean;
 }
 
-/** Renders navigation and labeled integration statuses with check or minus icons. */
+/** Renders navigation and labeled integration states with distinct status icons. */
 export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
@@ -154,56 +152,24 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
             );
           })}
         </nav>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div
-              role="group"
-              aria-label={tNav('platformsGroup')}
-              className="my-2 flex flex-col gap-1.5"
-              data-testid="integration-status"
-            >
-              {['telegram', 'vk', 'yandex_business'].map((platform) => {
-                const integration = integrations?.find((i) => i.platform === platform);
-                const connected = !isError && !isPending && integration?.status === 'active';
-                return (
-                  <span key={platform} className="flex items-center gap-2 text-meta text-ink-soft">
-                    {connected ? <Check size={18} aria-hidden /> : <Minus size={18} aria-hidden />}
-                    <span>
-                      {platformFullLabels[platform]}:{' '}
-                      {tNav(
-                        connectionStatus({
-                          businessId: activeBusinessId,
-                          pending: isPending,
-                          error: isError,
-                          status: integration?.status,
-                        })
-                      )}
-                    </span>
-                  </span>
-                );
-              })}
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <ul className="space-y-1">
-              {['telegram', 'vk', 'yandex_business'].map((platform) => {
-                const integration = integrations?.find((i) => i.platform === platform);
-                const connected = !isError && !isPending && integration?.status === 'active';
-                return (
-                  <li key={platform} className="flex items-center gap-2 text-xs">
-                    <span
-                      className={cn(
-                        'h-2 w-2 rounded-full',
-                        connected ? 'bg-success' : 'bg-ink-faint'
-                      )}
-                    />
-                    {platformFullLabels[platform]}
-                  </li>
-                );
-              })}
-            </ul>
-          </TooltipContent>
-        </Tooltip>
+        <div
+          role="group"
+          aria-label={tNav('platformsGroup')}
+          aria-live="polite"
+          className="my-2 flex flex-col gap-1.5"
+          data-testid="integration-status"
+        >
+          {['telegram', 'vk', 'yandex_business'].map((platform) => (
+            <PlatformStatus
+              key={platform}
+              label={platformFullLabels[platform]}
+              businessId={activeBusinessId}
+              pending={isPending}
+              error={isError}
+              integrations={integrations?.filter((i) => i.platform === platform)}
+            />
+          ))}
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <button

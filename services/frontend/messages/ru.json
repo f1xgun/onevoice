@@ -1051,6 +1051,9 @@
     "telegramBot": "@OneVoiceBot",
     "telegramExampleChannel": "@mychannel",
     "page": {
+      "chooseOrganization": "Выберите организацию, чтобы увидеть каналы",
+      "statusUnknown": "Статус каналов пока неизвестен",
+      "listUnavailable": "Не удалось загрузить список каналов. Попробуйте ещё раз.",
       "connected": "Подключённые",
       "comingSoon": "Скоро",
       "missingPlatform": "Не нашли свой канал?",
@@ -1064,6 +1067,10 @@
       "viewerNoChannels": "Каналы ещё не подключены. Попросите администратора организации подключить каналы."
     },
     "platformCard": {
+      "connection": {
+        "unknown": "Статус пока неизвестен",
+        "error": "Ошибка подключения"
+      },
       "connected": "Подключено",
       "notConnected": "Не подключено",
       "previewBadge": "Предпросмотр",
@@ -1406,9 +1413,9 @@
     "skipToContent": "Перейти к содержимому",
     "connected": "Подключено",
     "notConnected": "Не подключён — настройте в «Интеграциях»",
-    "connectionUnknown": "Статус недоступен — проверьте «Интеграции»",
+    "connectionUnknown": "Статус пока неизвестен",
     "connectionLoading": "Проверяем подключение",
-    "connectionAttention": "Требует внимания — откройте «Интеграции»",
+    "connectionAttention": "Ошибка подключения — откройте «Интеграции»",
     "chooseOrganization": "Выберите организацию",
     "homeLabel": "OneVoice — перейти к чатам",
     "language": "Язык"

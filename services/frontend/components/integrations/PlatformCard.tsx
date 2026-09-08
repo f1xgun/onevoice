@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
+
 import { getIntegrationDisplay } from '@/lib/integrations';
 import {
   PLATFORM_DISPLAY_FIELD,
@@ -31,6 +32,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import {
+  channelConnectionState,
   CONNECTION_HEALTH_TONES,
   STATUS_LABEL_KEYS,
   STATUS_TONES,
@@ -122,7 +124,7 @@ export function PlatformCard({
     }
   }
 
-  const hasActive = integrations.some((i) => i.status === 'active');
+  const connection = channelConnectionState(integrations);
   const initials = platformInitials(platform, label);
 
   return (
@@ -143,12 +145,14 @@ export function PlatformCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-[15px] font-semibold text-ink">{label}</span>
-            {hasActive ? (
+            {connection === 'connected' ? (
               <Badge tone="success" dot>
                 {tCard('connected')}
               </Badge>
             ) : (
-              <Badge tone="neutral">{tCard('notConnected')}</Badge>
+              <Badge tone={connection === 'error' ? 'danger' : 'neutral'}>
+                {tCard(connection === 'disconnected' ? 'notConnected' : `connection.${connection}`)}
+              </Badge>
             )}
             {isPreview && (
               <Badge
@@ -282,10 +286,11 @@ function ChannelList({
     <div className="flex flex-col gap-2">
       {integrations.map((i) => {
         const status = i.status as IntegrationStatus;
-        const tone = STATUS_TONES[status] ?? 'neutral';
+        const connection = channelConnectionState([i]);
+        const tone = connection === 'error' ? 'danger' : (STATUS_TONES[status] ?? 'neutral');
         const statusLabel = (STATUS_LABEL_KEYS as readonly string[]).includes(i.status)
           ? tCard(`status.${i.status}`)
-          : i.status;
+          : tCard('connection.unknown');
         const display = getIntegrationDisplay(i, platformLabel);
         const showLinkedGroupWarn =
           platform === 'telegram' &&
@@ -311,9 +316,9 @@ function ChannelList({
               aria-hidden
               className={cn(
                 'h-2 w-2 shrink-0 rounded-full',
-                i.status === 'active' && 'bg-success',
-                i.status === 'token_expired' && 'bg-[var(--ov-danger)]',
-                i.status !== 'active' && i.status !== 'token_expired' && 'bg-ink-faint'
+                connection === 'connected' && 'bg-success',
+                connection === 'error' && 'bg-[var(--ov-danger)]',
+                connection === 'unknown' && 'bg-ink-faint'
               )}
             />
             <div className="min-w-0 flex-1">
@@ -371,7 +376,9 @@ function ChannelList({
                 </AlertDialog>
               )}
 
-              <Badge tone={tone}>{statusLabel}</Badge>
+              {!(alarmingHealth === 'broken' && i.status === 'active') && (
+                <Badge tone={tone}>{statusLabel}</Badge>
+              )}
 
               {alarmingHealth && healthTone && (
                 <Badge

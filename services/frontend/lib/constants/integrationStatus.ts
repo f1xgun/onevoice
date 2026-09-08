@@ -54,3 +54,28 @@ export function readConnectionHealth(
   if (!raw || typeof raw !== 'object') return undefined;
   return raw as ConnectionHealth;
 }
+
+export interface ConnectionIntegration {
+  status?: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export type ChannelConnectionState = 'disconnected' | 'connected' | 'error' | 'unknown';
+
+/** Summarizes every channel on a platform using only explicit API evidence. */
+export function channelConnectionState(
+  integrations: readonly ConnectionIntegration[] | undefined
+): ChannelConnectionState {
+  if (!integrations) return 'unknown';
+  if (integrations.length === 0) return 'disconnected';
+  if (
+    integrations.some(
+      (i) =>
+        i.status === 'token_expired' ||
+        readConnectionHealth(i.metadata ?? undefined)?.status === 'broken'
+    )
+  )
+    return 'error';
+  if (integrations.some((i) => i.status !== 'active')) return 'unknown';
+  return 'connected';
+}

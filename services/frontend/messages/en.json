@@ -1051,6 +1051,9 @@
     "telegramBot": "@OneVoiceBot",
     "telegramExampleChannel": "@mychannel",
     "page": {
+      "chooseOrganization": "Choose an organization to see its channels",
+      "statusUnknown": "Channel status is not yet known",
+      "listUnavailable": "Could not load the channel list. Please try again.",
       "connected": "Connected",
       "comingSoon": "Coming soon",
       "missingPlatform": "Can't find your channel?",
@@ -1064,6 +1067,10 @@
       "viewerNoChannels": "No channels connected yet. Ask an organization admin to connect channels."
     },
     "platformCard": {
+      "connection": {
+        "unknown": "Status not yet known",
+        "error": "Connection error"
+      },
       "connected": "Connected",
       "notConnected": "Not connected",
       "previewBadge": "Preview",
@@ -1406,9 +1413,9 @@
     "skipToContent": "Skip to content",
     "connected": "Connected",
     "notConnected": "Not connected — set up in Integrations",
-    "connectionUnknown": "Status unavailable — check Integrations",
+    "connectionUnknown": "Status not yet known",
     "connectionLoading": "Checking connection",
-    "connectionAttention": "Needs attention — open Integrations",
+    "connectionAttention": "Connection error — open Integrations",
     "chooseOrganization": "Choose an organization",
     "homeLabel": "OneVoice — go to chats",
     "language": "Language"
