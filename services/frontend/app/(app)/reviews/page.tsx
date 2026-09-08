@@ -8,7 +8,7 @@
 // No mock for this page — extrapolated from mock-states.jsx (empty state)
 // and the patterns established in mock-posts.jsx (filter bar, stat strip).
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
 import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
@@ -161,9 +161,20 @@ export default function ReviewsPage() {
   const tCommon = useTranslations('common');
   const [platform, setPlatform] = useState<string>('all');
   const [replyStatus, setReplyStatus] = useState<ReplyStatusFilter>('all');
-  const [replyDialog, setReplyDialog] = useState<Review | null>(null);
+  const [replyDialog, setReplyDialog] = useState<{
+    businessId: string;
+    review: Review;
+  } | null>(null);
   const [replyText, setReplyText] = useState('');
   const canReply = usePermission('content.update').allowed;
+  const dialogReview = replyDialog?.businessId === activeBusinessId ? replyDialog.review : null;
+
+  useEffect(() => {
+    if (replyDialog && replyDialog.businessId !== activeBusinessId) {
+      setReplyDialog(null);
+      setReplyText('');
+    }
+  }, [activeBusinessId, replyDialog]);
 
   const replyStatusRadio = useRadiogroupKeyboard<ReplyStatusFilter>({
     options: REVIEWS_REPLY_STATUS_OPTIONS,
@@ -274,7 +285,8 @@ export default function ReviewsPage() {
   }
 
   function openReply(review: Review, prefill?: string) {
-    setReplyDialog(review);
+    if (!activeBusinessId) return;
+    setReplyDialog({ businessId: activeBusinessId, review });
     setReplyText(prefill ?? review.draftReply ?? review.replyText ?? '');
   }
 
@@ -441,25 +453,25 @@ export default function ReviewsPage() {
         )}
       </div>
 
-      <Dialog open={!!replyDialog} onOpenChange={(open) => !open && setReplyDialog(null)}>
+      <Dialog open={!!dialogReview} onOpenChange={(open) => !open && setReplyDialog(null)}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle className="text-ink">{tReviews('dialog.title')}</DialogTitle>
           </DialogHeader>
-          {replyDialog && (
+          {dialogReview && (
             <div className="space-y-4">
               <div className="rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
                   <ChannelMark
-                    name={PLATFORM_CHANNEL_MARK[replyDialog.platform] ?? replyDialog.platform}
+                    name={PLATFORM_CHANNEL_MARK[dialogReview.platform] ?? dialogReview.platform}
                     size={20}
                   />
-                  <span className="text-sm font-medium text-ink">{replyDialog.authorName}</span>
-                  {platformHasRating(replyDialog.platform) && (
-                    <StarRating rating={replyDialog.rating} size={14} />
+                  <span className="text-sm font-medium text-ink">{dialogReview.authorName}</span>
+                  {platformHasRating(dialogReview.platform) && (
+                    <StarRating rating={dialogReview.rating} size={14} />
                   )}
                 </div>
-                <p className="text-sm leading-relaxed text-ink-mid">{replyDialog.text}</p>
+                <p className="text-sm leading-relaxed text-ink-mid">{dialogReview.text}</p>
               </div>
               <div className="space-y-1.5">
                 <MonoLabel>{tReviews('dialog.yourReply')}</MonoLabel>
@@ -481,10 +493,10 @@ export default function ReviewsPage() {
               variant="primary"
               onClick={() =>
                 replyDialog &&
-                activeBusinessId &&
+                replyDialog.businessId === activeBusinessId &&
                 replyMutation.mutate({
-                  businessId: activeBusinessId,
-                  id: replyDialog.id,
+                  businessId: replyDialog.businessId,
+                  id: replyDialog.review.id,
                   text: replyText,
                 })
               }

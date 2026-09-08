@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MonoLabel } from '@/components/ui/mono-label';
+import { cn } from '@/lib/utils';
 
 const countSchema = z.number().int().nonnegative();
 const hoursSchema = z.number().nonnegative();
@@ -87,9 +88,21 @@ export function ReviewResponseBoard({
       ) : data ? (
         <div className="space-y-4" data-testid="response-board-content">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label={t('bands.lt24h')} value={data.buckets.lt24h} />
-            <Metric label={t('bands.h24to72')} value={data.buckets.h24to72} />
-            <Metric label={t('bands.gt72h')} value={data.buckets.gt72h} />
+            <Metric
+              label={t('bands.lt24h')}
+              value={data.buckets.lt24h}
+              tone={data.buckets.lt24h > 0 ? 'success' : undefined}
+            />
+            <Metric
+              label={t('bands.h24to72')}
+              value={data.buckets.h24to72}
+              tone={data.buckets.h24to72 > 0 ? 'warning' : undefined}
+            />
+            <Metric
+              label={t('bands.gt72h')}
+              value={data.buckets.gt72h}
+              tone={data.buckets.gt72h > 0 ? 'danger' : undefined}
+            />
             <Metric
               label={t('oldestLabel')}
               value={
@@ -145,13 +158,27 @@ export function ReviewResponseBoard({
 interface MetricProps {
   label: string;
   value: string | number;
+  tone?: 'success' | 'warning' | 'danger';
 }
 
-function Metric({ label, value }: MetricProps) {
+const metricToneClass: Record<NonNullable<MetricProps['tone']>, string> = {
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-danger',
+};
+
+function Metric({ label, value, tone }: MetricProps) {
   return (
     <div className="rounded-md border border-line bg-paper-raised px-5 py-4">
       <MonoLabel>{label}</MonoLabel>
-      <div className="mt-1.5 text-[26px] font-medium leading-none text-ink">{value}</div>
+      <div
+        className={cn(
+          'mt-1.5 text-[26px] font-medium leading-none',
+          tone ? metricToneClass[tone] : 'text-ink'
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }

@@ -89,7 +89,7 @@ it('keeps a new-business dialog open when an old-business reply completes late',
   await waitFor(() => expect(finishBusinessA).toBeDefined());
 
   await act(async () => useBusinessStore.setState({ activeBusinessId: 'business-b' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   await screen.findByText('Review business-b');
   fireEvent.click(screen.getByRole('button', { name: 'Написать ответ' }));
   expect(screen.getByRole('dialog')).toHaveTextContent('Author business-b');
@@ -106,4 +106,44 @@ it('keeps a new-business dialog open when an old-business reply completes late',
   });
   expect(screen.getByRole('dialog')).toHaveTextContent('Author business-b');
   expect(toastSuccess).not.toHaveBeenCalled();
+});
+
+it('closes an old-business editor before submit and never sends its content to the new business', async () => {
+  const puts: Array<{ url: string | undefined; data: unknown }> = [];
+  api.defaults.adapter = async (config) => {
+    if (config.method === 'put') puts.push({ url: config.url, data: config.data });
+    const businessId = config.url?.includes('/businesses/business-b/')
+      ? 'business-b'
+      : 'business-a';
+    return {
+      data: config.url?.endsWith('/reviews/sla')
+        ? sla
+        : config.method === 'get'
+          ? [review(businessId)]
+          : {},
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    };
+  };
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ReviewsPage />
+    </QueryClientProvider>
+  );
+
+  await screen.findByText('Review business-a');
+  fireEvent.click(screen.getByRole('button', { name: 'Написать ответ' }));
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Private reply from A' } });
+
+  await act(async () => useBusinessStore.setState({ activeBusinessId: 'business-b' }));
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await screen.findByText('Review business-b');
+  expect(screen.queryByText('Author business-a')).not.toBeInTheDocument();
+  expect(screen.queryByDisplayValue('Private reply from A')).not.toBeInTheDocument();
+  expect(puts).toEqual([]);
 });

@@ -61,9 +61,15 @@ describe('ReviewResponseBoard', () => {
 
   it('renders full-business age bands, honest median, oldest age and platform medians', () => {
     renderBoard();
-    expect(screen.getByText('Без ответа менее 24 ч').nextSibling).toHaveTextContent('1');
-    expect(screen.getByText('Без ответа 24–72 ч').nextSibling).toHaveTextContent('2');
-    expect(screen.getByText('Без ответа 72 ч и более').nextSibling).toHaveTextContent('1');
+    const greenValue = screen.getByText('Без ответа менее 24 ч').nextSibling;
+    const amberValue = screen.getByText('Без ответа 24–72 ч').nextSibling;
+    const redValue = screen.getByText('Без ответа 72 ч и более').nextSibling;
+    expect(greenValue).toHaveTextContent('1');
+    expect(greenValue).toHaveClass('text-success');
+    expect(amberValue).toHaveTextContent('2');
+    expect(amberValue).toHaveClass('text-warning');
+    expect(redValue).toHaveTextContent('1');
+    expect(redValue).toHaveClass('text-danger');
     expect(screen.getByText('90.5 ч')).toBeInTheDocument();
     expect(screen.getByText('5.5 ч')).toBeInTheDocument();
     expect(screen.getByText('Google')).toBeInTheDocument();
@@ -85,6 +91,9 @@ describe('ReviewResponseBoard', () => {
     expect(screen.getByText('Ответов с точным временем пока нет')).toBeInTheDocument();
     expect(screen.getByText('Нет')).toBeInTheDocument();
     expect(screen.queryByText('0 ч')).not.toBeInTheDocument();
+    expect(screen.getByText('Без ответа менее 24 ч').nextSibling).toHaveClass('text-ink');
+    expect(screen.getByText('Без ответа 24–72 ч').nextSibling).toHaveClass('text-ink');
+    expect(screen.getByText('Без ответа 72 ч и более').nextSibling).toHaveClass('text-ink');
   });
 
   it('renders loading without stale data', () => {
