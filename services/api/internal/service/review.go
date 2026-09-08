@@ -57,6 +57,7 @@ type ReviewService interface {
 	// SLA returns aggregate-only response-SLA metrics for the business. See
 	// reviewsla.go. targetHours <= 0 falls back to SLADefaultTargetHours.
 	SLA(ctx context.Context, businessID uuid.UUID, targetHours int) (SLAStats, error)
+	DelegationMetrics(ctx context.Context, businessID uuid.UUID) (DelegationMetrics, error)
 }
 
 // ReviewRefresher is the slice of ReviewSyncer that ReviewService needs

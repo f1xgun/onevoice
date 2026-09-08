@@ -9,3 +9,12 @@ describe('review SLA query key', () => {
     expect(businessA.slice(0, 3)).toEqual(QUERY_KEYS.BUSINESS_REVIEWS('business-a'));
   });
 });
+
+describe('review delegation query key', () => {
+  it('switches with the organization and stays under review invalidation', () => {
+    const a = QUERY_KEYS.BUSINESS_REVIEW_DELEGATION('business-a');
+    const b = QUERY_KEYS.BUSINESS_REVIEW_DELEGATION('business-b');
+    expect(a).not.toEqual(b);
+    expect(a.slice(0, 3)).toEqual(QUERY_KEYS.BUSINESS_REVIEWS('business-a'));
+  });
+});

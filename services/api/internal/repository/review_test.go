@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -567,9 +568,114 @@ func TestEnsureReviewIndexes_Idempotent(t *testing.T) {
 	require.False(t, sort.Unique != nil && *sort.Unique,
 		"the reply-status sort index must NOT be unique")
 
-	accepted := byName["reviews_business_reply_status_accepted_created_desc"]
-	require.NotNil(t, accepted,
-		"the accepted-first examples index must exist so ListRepliedExamples' draft_accepted_unedited sort is index-backed, not an in-memory sort")
+	edited := byName["reviews_business_reply_status_accepted_created_desc"]
+	require.NotNil(t, edited,
+		"the edit-signal examples index must exist so ListRepliedExamples' sort is index-backed")
+}
+
+func TestEnsureReviewIndexes_UpgradesWithLegacyExampleIndex(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	_, err := db.Collection("reviews").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "business_id", Value: 1},
+			{Key: "reply_status", Value: 1},
+			{Key: "draft_accepted_unedited", Value: -1},
+			{Key: "created_at", Value: -1},
+		},
+		Options: options.Index().SetName("reviews_business_reply_status_accepted_created_desc"),
+	})
+	require.NoError(t, err)
+	require.NoError(t, EnsureReviewIndexes(ctx, db))
+
+	specs, err := db.Collection("reviews").Indexes().ListSpecifications(ctx)
+	require.NoError(t, err)
+	foundRepliedAt := false
+	for _, spec := range specs {
+		if spec.Name == "reviews_business_reply_status_replied_at" {
+			foundRepliedAt = true
+		}
+	}
+	require.True(t, foundRepliedAt, "upgrade must retain the legacy named index and add the metrics range index")
+}
+
+func TestSelectFewShotExamples_PrefersConfirmedOperatorEdits(t *testing.T) {
+	yes, no := true, false
+	pool := []domain.Review{
+		{ID: "edited", ReplyText: "A specific corrected reply", DraftAcceptedUnedited: &no},
+		{ID: "accepted", ReplyText: "A sent as drafted reply", DraftAcceptedUnedited: &yes},
+		{ID: "legacy", ReplyText: "An older reply"},
+	}
+	got := selectFewShotExamples(pool, 2)
+	require.Equal(t, []string{"edited", "accepted"}, []string{got[0].ID, got[1].ID})
+}
+
+func TestSelectFewShotExamples_ManyEditsStillRepresentRecentOtherReplies(t *testing.T) {
+	yes, no := true, false
+	pool := make([]domain.Review, 0, 12)
+	for i := 0; i < 10; i++ {
+		pool = append(pool, domain.Review{ID: fmt.Sprintf("edited-%d", i), ReplyText: fmt.Sprintf("corrected reply %d", i), DraftAcceptedUnedited: &no})
+	}
+	pool = append(pool,
+		domain.Review{ID: "fresh-accepted", ReplyText: "fresh accepted reply", DraftAcceptedUnedited: &yes},
+		domain.Review{ID: "fresh-legacy", ReplyText: "fresh legacy reply"},
+	)
+	got := selectFewShotExamples(pool, 4)
+	require.Equal(t, 20, fewShotEditedPoolLimit(40), "half the bounded candidate pool must remain available for recent accepted/legacy replies")
+	require.Equal(t, []string{"edited-0", "fresh-accepted", "edited-1", "fresh-legacy"}, []string{got[0].ID, got[1].ID, got[2].ID, got[3].ID})
+}
+
+func TestReviewRepository_ListRepliedExamples_ManyEditsPreserveRecentBlend(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	businessID := uuid.NewString()
+	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	docs := make([]interface{}, 0, fewShotPoolCap+3)
+	for i := 0; i < fewShotPoolCap+1; i++ {
+		docs = append(docs, bson.M{
+			"_id": uuid.NewString(), "business_id": businessID, "platform": "telegram",
+			"reply_status": domain.ReviewReplyStatusReplied, "reply_text": fmt.Sprintf("distinct corrected reply %d", i),
+			"draft_accepted_unedited": false, "created_at": old.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	docs = append(docs,
+		bson.M{"_id": "fresh-accepted", "business_id": businessID, "platform": "telegram", "reply_status": domain.ReviewReplyStatusReplied, "reply_text": "fresh accepted reply", "draft_accepted_unedited": true, "created_at": old.AddDate(1, 0, 0)},
+		bson.M{"_id": "fresh-legacy", "business_id": businessID, "platform": "telegram", "reply_status": domain.ReviewReplyStatusReplied, "reply_text": "fresh legacy reply", "created_at": old.AddDate(0, 11, 0)},
+	)
+	_, err := db.Collection("reviews").InsertMany(ctx, docs)
+	require.NoError(t, err)
+
+	got, err := repo.ListRepliedExamples(ctx, businessID, "telegram", 4)
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	require.False(t, *got[0].DraftAcceptedUnedited)
+	require.Equal(t, "fresh-accepted", got[1].ID)
+	require.False(t, *got[2].DraftAcceptedUnedited)
+	require.Equal(t, "fresh-legacy", got[3].ID)
+}
+
+func TestReviewRepository_AggregateDelegationMetrics_BoundsTenantAndUnknown(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	from := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 0, 7)
+	businessID := uuid.NewString()
+	yes, no := true, false
+	docs := []interface{}{
+		bson.M{"_id": uuid.NewString(), "business_id": businessID, "reply_status": domain.ReviewReplyStatusReplied, "replied_at": from, "draft_accepted_unedited": yes},
+		bson.M{"_id": uuid.NewString(), "business_id": businessID, "reply_status": domain.ReviewReplyStatusReplied, "replied_at": to.Add(-time.Nanosecond), "draft_accepted_unedited": no},
+		bson.M{"_id": uuid.NewString(), "business_id": businessID, "reply_status": domain.ReviewReplyStatusReplied, "replied_at": from.Add(time.Hour)},
+		bson.M{"_id": uuid.NewString(), "business_id": businessID, "reply_status": domain.ReviewReplyStatusReplied, "replied_at": to, "draft_accepted_unedited": yes},
+		bson.M{"_id": uuid.NewString(), "business_id": businessID, "reply_status": domain.ReviewReplyStatusReplied, "draft_accepted_unedited": no},
+		bson.M{"_id": uuid.NewString(), "business_id": uuid.NewString(), "reply_status": domain.ReviewReplyStatusReplied, "replied_at": from, "draft_accepted_unedited": yes},
+	}
+	_, err := db.Collection("reviews").InsertMany(ctx, docs)
+	require.NoError(t, err)
+	rows, err := repo.AggregateDelegationMetrics(ctx, businessID, from, to)
+	require.NoError(t, err)
+	require.Equal(t, []domain.ReviewDelegationWeek{{WeekStart: from, Replied: 3, AcceptedUnedited: 1, Edited: 1}}, rows)
 }
 
 // Two overlapping sync passes (the periodic ticker and a manual

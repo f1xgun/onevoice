@@ -223,9 +223,9 @@ type Review struct {
 	// DraftAcceptedUnedited / DraftEditDistance record how the owner treated the
 	// AI draft that produced this reply (see ReviewDraftFeedback). They are
 	// stamped on the transition to "replied" and, unlike the transient draft_*
-	// fields, are NOT cleared — so the drafter can prefer drafts the owner
-	// accepted with little editing as few-shot exemplars. Nil for legacy rows and
-	// for replies that had no prior AI draft (no signal to record).
+	// fields, are NOT cleared — so the drafter can prefer replies carrying the
+	// owner's actual edits as few-shot exemplars. Nil for legacy rows and for
+	// replies that had no prior AI draft (no signal to record).
 	DraftAcceptedUnedited *bool `json:"draftAcceptedUnedited,omitempty" bson:"draft_accepted_unedited,omitempty"`
 	DraftEditDistance     *int  `json:"draftEditDistance,omitempty" bson:"draft_edit_distance,omitempty"`
 }
@@ -233,7 +233,7 @@ type Review struct {
 // ReviewDraftFeedback is the signal captured at reply time about how the owner
 // treated the AI draft: whether they sent it essentially unedited, and the rune
 // edit distance from the draft to the final reply. It feeds the self-improving
-// loop — the drafter biases future few-shot toward drafts the owner accepts.
+// loop — the drafter biases future few-shot toward the owner's corrections.
 type ReviewDraftFeedback struct {
 	AcceptedUnedited bool
 	EditDistance     int

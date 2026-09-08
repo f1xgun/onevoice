@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -67,6 +68,9 @@ func (f *fakeReviewRepo) BulkUpsert(context.Context, []*domain.Review) error {
 }
 
 func (f *fakeReviewRepo) ListForSLA(context.Context, string) ([]domain.Review, error) {
+	panic("unused")
+}
+func (f *fakeReviewRepo) AggregateDelegationMetrics(context.Context, string, time.Time, time.Time) ([]domain.ReviewDelegationWeek, error) {
 	panic("unused")
 }
 

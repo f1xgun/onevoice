@@ -328,6 +328,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(writeLimit).Post("/reviews/batch-draft", handlers.Review.BatchDraftReviews)
 				r.With(writeLimit).Post("/reviews/bulk-approve", handlers.Review.BulkApproveReviews)
 				r.Get("/reviews/sla", handlers.Review.GetReviewSLA)
+				r.Get("/delegation-metrics", handlers.Review.GetDelegationMetrics)
 				r.Get("/presence-health", handlers.PresenceHealth.GetPresenceHealth)
 				r.Get("/reviews/{id}", handlers.Review.GetReview)
 				r.With(writeLimit).Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)

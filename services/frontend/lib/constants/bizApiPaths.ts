@@ -118,6 +118,7 @@ export const BIZ_API_PATHS = {
   REVIEWS: {
     ROOT: '/reviews',
     SLA: '/reviews/sla',
+    DELEGATION_METRICS: '/delegation-metrics',
     REFRESH: '/reviews/refresh',
     BATCH_DRAFT: '/reviews/batch-draft',
     BULK_APPROVE: '/reviews/bulk-approve',
