@@ -30,59 +30,59 @@ info:
     values to per-event JSON schemas. Generators that ignore the extension
     can still consume `SSEEvent` (oneOf union under components.schemas).
 servers:
-  - url: /api/v1
-    description: Public api service (services/api, port 8080).
+- url: /api/v1
+  description: Public api service (services/api, port 8080).
 security:
-  - cookieAuth: []
+- cookieAuth: []
 tags:
-  - name: auth
-    description: Authentication, password reset, email verification, locale.
-  - name: business
-    description: Business CRUD + schedule + voice-tone + logo + tool-approvals + description-template.
-  - name: integrations
-    description: Per-business integration list + connect helpers (Telegram, VK).
-  - name: oauth
-    description: OAuth helpers and callbacks (VK, Yandex.Business, Google).
-  - name: consents
-    description: Policy reconsent + ledger + PDN withdrawal.
-  - name: user-deletion
-    description: 30-day soft-delete grace flow.
-  - name: members
-    description: Business membership rows.
-  - name: roles
-    description: System + custom RBAC roles.
-  - name: invitations
-    description: Single-use invitation tokens.
-  - name: permissions
-    description: RBAC permission registry.
-  - name: audit
-    description: Business audit log with cursor pagination.
-  - name: telemetry
-    description: Frontend telemetry ingest.
-  - name: chat
-    description: Chat-proxy SSE + HITL resume + tools registry.
-  - name: hitl
-    description: Human-in-the-loop tool approval surface.
-  - name: hitl-resume
-    description: Post-approval continuation of a paused chat turn.
-  - name: conversations
-    description: Conversation CRUD + move/pin/unpin/messages.
-  - name: posts
-    description: Posts read surface.
-  - name: reviews
-    description: Reviews list/get/reply + cross-business refresh.
-  - name: projects
-    description: Project CRUD + cascade delete.
-  - name: tasks
-    description: Agent-task list + SSE lifecycle stream.
-  - name: search
-    description: Full-text conversation/message search.
-  - name: titler
-    description: Auto-titler regenerate trigger.
-  - name: internal
-    description: Cluster-only endpoints (mTLS). Not exposed publicly.
-  - name: landing
-    description: Public marketing-landing capture — closed-beta waitlist + fake-door channel votes.
+- name: auth
+  description: Authentication, password reset, email verification, locale.
+- name: business
+  description: Business CRUD + schedule + voice-tone + logo + tool-approvals + description-template.
+- name: integrations
+  description: Per-business integration list + connect helpers (Telegram, VK).
+- name: oauth
+  description: OAuth helpers and callbacks (VK, Yandex.Business, Google).
+- name: consents
+  description: Policy reconsent + ledger + PDN withdrawal.
+- name: user-deletion
+  description: 30-day soft-delete grace flow.
+- name: members
+  description: Business membership rows.
+- name: roles
+  description: System + custom RBAC roles.
+- name: invitations
+  description: Single-use invitation tokens.
+- name: permissions
+  description: RBAC permission registry.
+- name: audit
+  description: Business audit log with cursor pagination.
+- name: telemetry
+  description: Frontend telemetry ingest.
+- name: chat
+  description: Chat-proxy SSE + HITL resume + tools registry.
+- name: hitl
+  description: Human-in-the-loop tool approval surface.
+- name: hitl-resume
+  description: Post-approval continuation of a paused chat turn.
+- name: conversations
+  description: Conversation CRUD + move/pin/unpin/messages.
+- name: posts
+  description: Posts read surface.
+- name: reviews
+  description: Reviews list/get/reply + cross-business refresh.
+- name: projects
+  description: Project CRUD + cascade delete.
+- name: tasks
+  description: Agent-task list + SSE lifecycle stream.
+- name: search
+  description: Full-text conversation/message search.
+- name: titler
+  description: Auto-titler regenerate trigger.
+- name: internal
+  description: Cluster-only endpoints (mTLS). Not exposed publicly.
+- name: landing
+  description: Public marketing-landing capture — closed-beta waitlist + fake-door channel votes.
 paths:
   /auth/login:
     $ref: paths/auth.yaml#/~1auth~1login
@@ -358,25 +358,25 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
     BusinessNotFound:
       description: Business not found or caller is not a member (masked).
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
     InternalError:
       description: Internal failure (`internal_server_error`).
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/CodeErrorResponse"
+            $ref: '#/components/schemas/CodeErrorResponse'
   schemas:
     ErrorResponse:
       description: Plain-text error envelope; emitted by writeJSONError.
       type: object
       required:
-        - error
+      - error
       properties:
         error:
           type: string
@@ -386,7 +386,7 @@ components:
         Frontend resolves `code` to a localized message via i18n catalog.
       type: object
       required:
-        - code
+      - code
       properties:
         code:
           type: string
@@ -396,7 +396,7 @@ components:
         values map to pkg/billingclient sentinels.
       type: object
       required:
-        - error
+      - error
       properties:
         error:
           type: string
@@ -409,8 +409,8 @@ components:
         localized per-field message keyed by validator/v10 tag.
       type: object
       required:
-        - error
-        - fields
+      - error
+      - fields
       properties:
         error:
           type: string
@@ -426,8 +426,8 @@ components:
         frontend renders as-is when no i18n catalog entry matches.
       type: object
       required:
-        - code
-        - message
+      - code
+      - message
       properties:
         code:
           type: string
@@ -443,7 +443,7 @@ components:
         existence enumeration.
       type: object
       required:
-        - error
+      - error
       properties:
         error:
           type: string
@@ -452,8 +452,8 @@ components:
     LoginRequest:
       type: object
       required:
-        - email
-        - password
+      - email
+      - password
       properties:
         email:
           type: string
@@ -464,21 +464,21 @@ components:
     LoginResponse:
       type: object
       required:
-        - user
-        - accessToken
+      - user
+      - accessToken
       properties:
         user:
-          $ref: "#/components/schemas/User"
+          $ref: '#/components/schemas/User'
         accessToken:
           type: string
     RefreshTokenResponse:
       type: object
       required:
-        - user
-        - accessToken
+      - user
+      - accessToken
       properties:
         user:
-          $ref: "#/components/schemas/User"
+          $ref: '#/components/schemas/User'
         accessToken:
           type: string
     MeResponse:
@@ -486,26 +486,26 @@ components:
         Flattened user payload plus verification banner, deletion grace,
         and reconsent fields.
       allOf:
-        - $ref: "#/components/schemas/User"
-        - type: object
-          required:
-            - emailVerified
-          properties:
-            emailVerified:
-              type: boolean
-            emailVerificationDeadline:
-              type: string
-              format: date-time
-            accountDeletion:
-              $ref: "#/components/schemas/AccountDeletionInfo"
-            requiresReconsent:
-              $ref: "#/components/schemas/RequiresReconsentInfo"
+      - $ref: '#/components/schemas/User'
+      - type: object
+        required:
+        - emailVerified
+        properties:
+          emailVerified:
+            type: boolean
+          emailVerificationDeadline:
+            type: string
+            format: date-time
+          accountDeletion:
+            $ref: '#/components/schemas/AccountDeletionInfo'
+          requiresReconsent:
+            $ref: '#/components/schemas/RequiresReconsentInfo'
     AccountDeletionInfo:
       type: object
       required:
-        - requestedAt
-        - scheduledDeletionAt
-        - canRestoreUntil
+      - requestedAt
+      - scheduledDeletionAt
+      - canRestoreUntil
       properties:
         requestedAt:
           type: string
@@ -519,17 +519,17 @@ components:
     RequiresReconsentInfo:
       type: object
       required:
-        - policies
+      - policies
       properties:
         policies:
           type: array
           items:
             type: object
             required:
-              - slug
-              - oldVersion
-              - newVersion
-              - sha256
+            - slug
+            - oldVersion
+            - newVersion
+            - sha256
             properties:
               slug:
                 type: string
@@ -542,12 +542,12 @@ components:
     User:
       type: object
       required:
-        - id
-        - email
-        - name
-        - preferred_locale
-        - createdAt
-        - updatedAt
+      - id
+      - email
+      - name
+      - preferred_locale
+      - createdAt
+      - updatedAt
       properties:
         id:
           type: string
@@ -560,8 +560,8 @@ components:
         preferred_locale:
           type: string
           enum:
-            - ru
-            - en
+          - ru
+          - en
         createdAt:
           type: string
           format: date-time
@@ -571,10 +571,10 @@ components:
     RegisterRequest:
       type: object
       required:
-        - email
-        - password
-        - name
-        - consents
+      - email
+      - password
+      - name
+      - consents
       properties:
         email:
           type: string
@@ -587,7 +587,7 @@ components:
           minLength: 2
           maxLength: 100
         consents:
-          $ref: "#/components/schemas/RegisterConsents"
+          $ref: '#/components/schemas/RegisterConsents'
     RegisterConsents:
       type: object
       description: |
@@ -606,7 +606,7 @@ components:
     RequestPasswordResetRequest:
       type: object
       required:
-        - email
+      - email
       properties:
         email:
           type: string
@@ -614,8 +614,8 @@ components:
     ConfirmPasswordResetRequest:
       type: object
       required:
-        - token
-        - newPassword
+      - token
+      - newPassword
       properties:
         token:
           type: string
@@ -626,7 +626,7 @@ components:
     VerifyConfirmRequest:
       type: object
       required:
-        - token
+      - token
       properties:
         token:
           type: string
@@ -634,7 +634,7 @@ components:
     EmailBeforeVerifyRequest:
       type: object
       required:
-        - newEmail
+      - newEmail
       properties:
         newEmail:
           type: string
@@ -642,8 +642,8 @@ components:
     ChangePasswordRequest:
       type: object
       required:
-        - currentPassword
-        - newPassword
+      - currentPassword
+      - newPassword
       properties:
         currentPassword:
           type: string
@@ -653,17 +653,17 @@ components:
     UpdatePreferredLocaleRequest:
       type: object
       required:
-        - locale
+      - locale
       properties:
         locale:
           type: string
           enum:
-            - ru
-            - en
+          - ru
+          - en
     UpdateProfileRequest:
       type: object
       required:
-        - name
+      - name
       properties:
         name:
           type: string
@@ -676,7 +676,7 @@ components:
         review-refresh handlers.
       type: object
       required:
-        - status
+      - status
       properties:
         status:
           type: string
@@ -686,22 +686,22 @@ components:
         Enum-pinned variant of `StatusOKResponse`.
       type: object
       required:
-        - status
+      - status
       properties:
         status:
           type: string
           enum:
-            - ok
+          - ok
     ConsentRequiredResponse:
       type: object
       required:
-        - code
-        - missing
+      - code
+      - missing
       properties:
         code:
           type: string
           enum:
-            - consent_required
+          - consent_required
         missing:
           type: array
           items:
@@ -709,17 +709,17 @@ components:
     ReconsentRequest:
       type: object
       required:
-        - policies
+      - policies
       properties:
         policies:
           type: array
           items:
-            $ref: "#/components/schemas/ReconsentPolicy"
+            $ref: '#/components/schemas/ReconsentPolicy'
     ReconsentPolicy:
       type: object
       required:
-        - slug
-        - version
+      - slug
+      - version
       properties:
         slug:
           type: string
@@ -730,24 +730,24 @@ components:
     VersionMismatchResponse:
       type: object
       required:
-        - code
-        - currentVersion
+      - code
+      - currentVersion
       properties:
         code:
           type: string
           enum:
-            - version_mismatch
+          - version_mismatch
         currentVersion:
           type: string
     ListConsentsResponse:
       type: object
       required:
-        - consents
+      - consents
       properties:
         consents:
           type: array
           items:
-            $ref: "#/components/schemas/ConsentRecord"
+            $ref: '#/components/schemas/ConsentRecord'
     ConsentRecord:
       description: |
         Per-policy consent ledger row returned by GET /users/me/consents.
@@ -757,9 +757,9 @@ components:
         (early ledger rows may not carry the policy hash).
       type: object
       required:
-        - slug
-        - version
-        - acceptedAt
+      - slug
+      - version
+      - acceptedAt
       properties:
         slug:
           type: string
@@ -776,7 +776,7 @@ components:
     DeleteAccountRequest:
       type: object
       required:
-        - password
+      - password
       properties:
         password:
           type: string
@@ -784,22 +784,22 @@ components:
     SoleOwnerResponse:
       type: object
       required:
-        - code
-        - businesses
+      - code
+      - businesses
       properties:
         code:
           type: string
           enum:
-            - sole_owner_of_businesses
+          - sole_owner_of_businesses
         businesses:
           type: array
           items:
-            $ref: "#/components/schemas/SoleOwnerBusinessEntry"
+            $ref: '#/components/schemas/SoleOwnerBusinessEntry'
     SoleOwnerBusinessEntry:
       type: object
       required:
-        - id
-        - name
+      - id
+      - name
       properties:
         id:
           type: string
@@ -809,15 +809,15 @@ components:
     PendingDeletionResponse:
       type: object
       required:
-        - code
-        - deletionDate
-        - restoreUrl
+      - code
+      - deletionDate
+      - restoreUrl
       properties:
         code:
           type: string
           enum:
-            - account_pending_deletion
-            - business_pending_deletion
+          - account_pending_deletion
+          - business_pending_deletion
         deletionDate:
           type: string
         restoreUrl:
@@ -825,27 +825,27 @@ components:
     Platform:
       type: object
       required:
-        - id
-        - status
+      - id
+      - status
       properties:
         id:
           type: string
         status:
-          $ref: "#/components/schemas/PlatformStatus"
+          $ref: '#/components/schemas/PlatformStatus'
     PlatformStatus:
       type: string
       enum:
-        - active
-        - coming_soon
-        - oauth_not_configured
+      - active
+      - coming_soon
+      - oauth_not_configured
     Business:
       type: object
       required:
-        - id
-        - name
-        - settings
-        - createdAt
-        - updatedAt
+      - id
+      - name
+      - settings
+      - createdAt
+      - updatedAt
       properties:
         hasFirstSuccessfulAction:
           type: boolean
@@ -881,11 +881,11 @@ components:
     BusinessMembershipSummary:
       type: object
       required:
-        - id
-        - name
-        - role
-        - status
-        - joined_at
+      - id
+      - name
+      - role
+      - status
+      - joined_at
       properties:
         id:
           type: string
@@ -893,7 +893,7 @@ components:
         name:
           type: string
         role:
-          $ref: "#/components/schemas/BusinessMembershipRoleRef"
+          $ref: '#/components/schemas/BusinessMembershipRoleRef'
         status:
           type: string
         deletion_pending_until:
@@ -906,8 +906,8 @@ components:
     BusinessMembershipRoleRef:
       type: object
       required:
-        - id
-        - name
+      - id
+      - name
       properties:
         id:
           type: string
@@ -917,7 +917,7 @@ components:
     CreateBusinessRequest:
       type: object
       required:
-        - name
+      - name
       properties:
         name:
           type: string
@@ -941,7 +941,7 @@ components:
     UpdateBusinessRequest:
       type: object
       required:
-        - name
+      - name
       properties:
         name:
           type: string
@@ -990,8 +990,8 @@ components:
     DescriptionTemplateResponse:
       type: object
       required:
-        - descriptionTemplate
-        - placeholders
+      - descriptionTemplate
+      - placeholders
       properties:
         descriptionTemplate:
           type: string
@@ -1015,7 +1015,7 @@ components:
     VoiceProfileResponse:
       type: object
       required:
-        - voiceProfile
+      - voiceProfile
       properties:
         voiceProfile:
           type: string
@@ -1023,7 +1023,7 @@ components:
     UpdateReviewAutopilotRequest:
       type: object
       required:
-        - minRating
+      - minRating
       properties:
         enabled:
           type: boolean
@@ -1043,8 +1043,8 @@ components:
     ReviewAutopilotResponse:
       type: object
       required:
-        - enabled
-        - minRating
+      - enabled
+      - minRating
       properties:
         enabled:
           type: boolean
@@ -1057,9 +1057,9 @@ components:
     OwnerBriefResponse:
       type: object
       required:
-        - enabled
-        - weekday
-        - hour
+      - enabled
+      - weekday
+      - hour
       properties:
         enabled:
           type: boolean
@@ -1102,7 +1102,7 @@ components:
     UploadLogoRequest:
       type: object
       required:
-        - logo
+      - logo
       properties:
         logo:
           type: string
@@ -1110,27 +1110,27 @@ components:
     ToolApprovalsResponse:
       type: object
       required:
-        - toolApprovals
+      - toolApprovals
       properties:
         toolApprovals:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/ToolFloor"
+            $ref: '#/components/schemas/ToolFloor'
     UpdateToolApprovalsRequest:
       type: object
       required:
-        - toolApprovals
+      - toolApprovals
       properties:
         toolApprovals:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/ToolFloor"
+            $ref: '#/components/schemas/ToolFloor'
     ToolFloor:
       type: string
       enum:
-        - auto
-        - manual
-        - forbidden
+      - auto
+      - manual
+      - forbidden
       description: |
         Per-tool HITL floor (strictness: auto < manual < forbidden).
         Business-level approvals only persist `auto` / `manual`;
@@ -1138,14 +1138,14 @@ components:
     Integration:
       type: object
       required:
-        - id
-        - businessId
-        - platform
-        - status
-        - externalId
-        - metadata
-        - createdAt
-        - updatedAt
+      - id
+      - businessId
+      - platform
+      - status
+      - externalId
+      - metadata
+      - createdAt
+      - updatedAt
       properties:
         id:
           type: string
@@ -1175,16 +1175,16 @@ components:
     AuthURLResponse:
       type: object
       required:
-        - url
+      - url
       properties:
         url:
           type: string
     VKCommunity:
       type: object
       required:
-        - id
-        - name
-        - screen_name
+      - id
+      - name
+      - screen_name
       properties:
         id:
           type: integer
@@ -1200,18 +1200,18 @@ components:
     GoogleLocationsResponse:
       type: object
       required:
-        - locations
+      - locations
       properties:
         locations:
           type: array
           items:
-            $ref: "#/components/schemas/GoogleLocationRef"
+            $ref: '#/components/schemas/GoogleLocationRef'
     GoogleLocationRef:
       type: object
       required:
-        - account_name
-        - location_name
-        - title
+      - account_name
+      - location_name
+      - title
       properties:
         account_name:
           type: string
@@ -1222,8 +1222,8 @@ components:
     GoogleSelectLocationRequest:
       type: object
       required:
-        - account_id
-        - location_id
+      - account_id
+      - location_id
       properties:
         account_id:
           type: string
@@ -1232,14 +1232,14 @@ components:
     YandexCookiesRequest:
       type: object
       required:
-        - cookies
+      - cookies
       properties:
         cookies:
           type: string
     YandexProbeResponse:
       type: object
       required:
-        - ok
+      - ok
       properties:
         ok:
           type: boolean
@@ -1258,17 +1258,17 @@ components:
     YandexCompaniesResponse:
       type: object
       required:
-        - companies
+      - companies
       properties:
         companies:
           type: array
           items:
-            $ref: "#/components/schemas/YandexCompanyEntry"
+            $ref: '#/components/schemas/YandexCompanyEntry'
     YandexCompanyEntry:
       type: object
       required:
-        - permalink
-        - name
+      - permalink
+      - name
       properties:
         permalink:
           type: string
@@ -1277,7 +1277,7 @@ components:
     ConnectYandexRequest:
       type: object
       required:
-        - cookies
+      - cookies
       properties:
         cookies:
           type: string
@@ -1304,7 +1304,7 @@ components:
     VerifyYandexAccessRequest:
       type: object
       required:
-        - permalink
+      - permalink
       properties:
         permalink:
           type: string
@@ -1312,7 +1312,7 @@ components:
     VerifyYandexAccessResponse:
       type: object
       required:
-        - access_verified
+      - access_verified
       properties:
         access_verified:
           type: boolean
@@ -1320,8 +1320,8 @@ components:
     YandexDelegatedConfigResponse:
       type: object
       required:
-        - available
-        - rep_login
+      - available
+      - rep_login
       properties:
         available:
           type: boolean
@@ -1338,16 +1338,16 @@ components:
     RefreshStartedResponse:
       type: object
       required:
-        - status
+      - status
       properties:
         status:
           type: string
           enum:
-            - refresh_started
+          - refresh_started
     ConnectVKRequest:
       type: object
       required:
-        - access_token
+      - access_token
       properties:
         access_token:
           type: string
@@ -1356,7 +1356,7 @@ components:
     ConnectTelegramRequest:
       type: object
       required:
-        - channel_id
+      - channel_id
       properties:
         channel_id:
           type: string
@@ -1365,15 +1365,15 @@ components:
     RefreshTelegramRequest:
       type: object
       required:
-        - channel_id
+      - channel_id
       properties:
         channel_id:
           type: string
     TelegramOwnerLinkResponse:
       type: object
       required:
-        - start_url
-        - expires_in_seconds
+      - start_url
+      - expires_in_seconds
       properties:
         start_url:
           type: string
@@ -1387,9 +1387,9 @@ components:
     RefreshTelegramResponse:
       type: object
       required:
-        - linked_chat_id
-        - linked_group_status
-        - channel_title
+      - linked_chat_id
+      - linked_group_status
+      - channel_title
       properties:
         linked_chat_id:
           type: integer
@@ -1397,9 +1397,9 @@ components:
         linked_group_status:
           type: string
           enum:
-            - ok
-            - bot_not_member
-            - no_linked_group
+          - ok
+          - bot_not_member
+          - no_linked_group
         channel_title:
           type: string
     IntegrationHealth:
@@ -1408,11 +1408,11 @@ components:
         Per-integration connection-liveness verdict computed synchronously by the
         verify endpoint. Distinct from the composite presence-health score.
       required:
-        - platform
-        - externalId
-        - status
-        - reasonCode
-        - checkedAt
+      - platform
+      - externalId
+      - status
+      - reasonCode
+      - checkedAt
       properties:
         platform:
           type: string
@@ -1421,10 +1421,10 @@ components:
         status:
           type: string
           enum:
-            - active
-            - degraded
-            - broken
-            - unknown
+          - active
+          - degraded
+          - broken
+          - unknown
         reasonCode:
           type: string
           description: >-
@@ -1440,8 +1440,8 @@ components:
         Result of a manual verify/repair pass: the async profile re-push has been
         started, and the synchronously-computed per-integration health array.
       required:
-        - started
-        - health
+      - started
+      - health
       properties:
         started:
           type: boolean
@@ -1449,20 +1449,20 @@ components:
         health:
           type: array
           items:
-            $ref: "#/components/schemas/IntegrationHealth"
+            $ref: '#/components/schemas/IntegrationHealth'
     TelegramLoginRequest:
       type: object
       additionalProperties: true
       required:
-        - hash
-        - auth_date
+      - hash
+      - auth_date
       properties:
         hash:
           type: string
         auth_date:
           oneOf:
-            - type: string
-            - type: integer
+          - type: string
+          - type: integer
         id:
           type: integer
           format: int64
@@ -1477,8 +1477,8 @@ components:
     TelegramLoginVerifiedResponse:
       type: object
       required:
-        - verified
-        - user
+      - verified
+      - user
       properties:
         verified:
           type: boolean
@@ -1488,8 +1488,8 @@ components:
     Permission:
       type: object
       required:
-        - name
-        - description
+      - name
+      - description
       properties:
         name:
           type: string
@@ -1498,28 +1498,28 @@ components:
     PermissionGroup:
       type: object
       required:
-        - resource
-        - permissions
+      - resource
+      - permissions
       properties:
         resource:
           type: string
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/Permission"
+            $ref: '#/components/schemas/Permission'
     PermissionRegistryResponse:
       type: object
       required:
-        - groups
+      - groups
       properties:
         groups:
           type: array
           items:
-            $ref: "#/components/schemas/PermissionGroup"
+            $ref: '#/components/schemas/PermissionGroup'
     MyPermissionsResponse:
       type: object
       required:
-        - permissions
+      - permissions
       properties:
         permissions:
           type: array
@@ -1528,18 +1528,18 @@ components:
     Member:
       type: object
       required:
-        - user
-        - role
-        - status
-        - joined_at
-        - invited_by
-        - invited_at
+      - user
+      - role
+      - status
+      - joined_at
+      - invited_by
+      - invited_at
       properties:
         user:
           type: object
           required:
-            - id
-            - email
+          - id
+          - email
           properties:
             id:
               type: string
@@ -1552,9 +1552,9 @@ components:
         role:
           type: object
           required:
-            - id
-            - name
-            - permissions
+          - id
+          - name
+          - permissions
           properties:
             id:
               type: string
@@ -1581,7 +1581,7 @@ components:
     UpdateMemberRoleRequest:
       type: object
       required:
-        - role_id
+      - role_id
       properties:
         role_id:
           type: string
@@ -1589,10 +1589,10 @@ components:
     UpdateMemberRoleResponse:
       type: object
       required:
-        - business_id
-        - user_id
-        - role_id
-        - status
+      - business_id
+      - user_id
+      - role_id
+      - status
       properties:
         business_id:
           type: string
@@ -1616,12 +1616,12 @@ components:
     Role:
       type: object
       required:
-        - id
-        - business_id
-        - name
-        - description
-        - permissions
-        - is_system
+      - id
+      - business_id
+      - name
+      - description
+      - permissions
+      - is_system
       properties:
         id:
           type: string
@@ -1645,8 +1645,8 @@ components:
     CreateRoleRequest:
       type: object
       required:
-        - name
-        - permissions
+      - name
+      - permissions
       properties:
         name:
           type: string
@@ -1660,11 +1660,11 @@ components:
             type: string
     UpdateRoleRequest:
       allOf:
-        - $ref: "#/components/schemas/CreateRoleRequest"
+      - $ref: '#/components/schemas/CreateRoleRequest'
     CreateInvitationRequest:
       type: object
       required:
-        - role_id
+      - role_id
       properties:
         role_id:
           type: string
@@ -1676,11 +1676,11 @@ components:
     CreateInvitationResponse:
       type: object
       required:
-        - id
-        - token
-        - role_id
-        - expires_at
-        - created_at
+      - id
+      - token
+      - role_id
+      - expires_at
+      - created_at
       properties:
         id:
           type: string
@@ -1699,12 +1699,12 @@ components:
     PendingInvitation:
       type: object
       required:
-        - id
-        - role_id
-        - role_name
-        - expires_at
-        - created_at
-        - created_by
+      - id
+      - role_id
+      - role_name
+      - expires_at
+      - created_at
+      - created_by
       properties:
         id:
           type: string
@@ -1723,8 +1723,8 @@ components:
         created_by:
           type: object
           required:
-            - id
-            - email
+          - id
+          - email
           properties:
             id:
               type: string
@@ -1735,11 +1735,11 @@ components:
     InvitationPreview:
       type: object
       required:
-        - business_id
-        - business_name
-        - role_id
-        - role_name
-        - expires_at
+      - business_id
+      - business_name
+      - role_id
+      - role_name
+      - expires_at
       properties:
         business_id:
           type: string
@@ -1757,8 +1757,8 @@ components:
     AcceptInvitationResponse:
       type: object
       required:
-        - business_id
-        - role_id
+      - business_id
+      - role_id
       properties:
         business_id:
           type: string
@@ -1769,64 +1769,64 @@ components:
     AuditAction:
       type: string
       enum:
-        - rbac.role_granted
-        - rbac.member_removed
-        - rbac.role_created
-        - rbac.role_updated
-        - rbac.role_deleted
-        - rbac.invitation_created
-        - rbac.invitation_revoked
-        - rbac.invitation_accepted
-        - auth.login_success
-        - auth.login_failed
-        - auth.logout
-        - auth.password_changed
-        - auth.user_registered
-        - integration.connected
-        - integration.disconnected
-        - integration.token_rotated
-        - integration.metadata_updated
-        - integration.external_id_updated
-        - integration.token_expired
-        - business.created
-        - business.updated
-        - project.created
-        - project.updated
-        - project.deleted
-        - platform.post_published
-        - platform.dm_sent
-        - platform.review_replied
-        - review.auto_replied
-        - hitl.approval_resolved
+      - rbac.role_granted
+      - rbac.member_removed
+      - rbac.role_created
+      - rbac.role_updated
+      - rbac.role_deleted
+      - rbac.invitation_created
+      - rbac.invitation_revoked
+      - rbac.invitation_accepted
+      - auth.login_success
+      - auth.login_failed
+      - auth.logout
+      - auth.password_changed
+      - auth.user_registered
+      - integration.connected
+      - integration.disconnected
+      - integration.token_rotated
+      - integration.metadata_updated
+      - integration.external_id_updated
+      - integration.token_expired
+      - business.created
+      - business.updated
+      - project.created
+      - project.updated
+      - project.deleted
+      - platform.post_published
+      - platform.dm_sent
+      - platform.review_replied
+      - review.auto_replied
+      - hitl.approval_resolved
     AuditEvent:
       type: object
       required:
-        - id
-        - action
-        - action_category
-        - resource
-        - business_id
-        - actor_id
-        - actor_email
-        - actor_display_name
-        - details
-        - created_at
+      - id
+      - action
+      - action_category
+      - resource
+      - business_id
+      - actor_id
+      - actor_email
+      - actor_display_name
+      - details
+      - created_at
       properties:
         id:
           type: string
           format: uuid
         action:
-          $ref: "#/components/schemas/AuditAction"
+          $ref: '#/components/schemas/AuditAction'
         action_category:
           type: string
           enum:
-            - rbac
-            - auth
-            - integration
-            - business
-            - project
-            - review
-            - other
+          - rbac
+          - auth
+          - integration
+          - business
+          - project
+          - review
+          - other
         resource:
           type: string
         business_id:
@@ -1853,33 +1853,33 @@ components:
     AuditLogListResponse:
       type: object
       required:
-        - items
-        - next_cursor
+      - items
+      - next_cursor
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/AuditEvent"
+            $ref: '#/components/schemas/AuditEvent'
         next_cursor:
           type: string
           nullable: true
     TelemetryEvent:
       type: object
       required:
-        - eventType
-        - page
-        - action
-        - timestamp
+      - eventType
+      - page
+      - action
+      - timestamp
       properties:
         eventType:
           type: string
           enum:
-            - page_view
-            - api_error
-            - chat_send
-            - button_click
-            - activation
-            - approval
+          - page_view
+          - api_error
+          - chat_send
+          - button_click
+          - activation
+          - approval
         page:
           type: string
         action:
@@ -1895,10 +1895,10 @@ components:
     InternalTokenResponse:
       type: object
       required:
-        - integration_id
-        - platform
-        - external_id
-        - access_token
+      - integration_id
+      - platform
+      - external_id
+      - access_token
       properties:
         integration_id:
           type: string
@@ -1925,16 +1925,16 @@ components:
     UsageLog:
       type: object
       required:
-        - business_id
-        - user_id
-        - model
-        - provider
-        - input_tokens
-        - output_tokens
-        - provider_cost_usd
-        - commission_usd
-        - user_cost_usd
-        - user_tier
+      - business_id
+      - user_id
+      - model
+      - provider
+      - input_tokens
+      - output_tokens
+      - provider_cost_usd
+      - commission_usd
+      - user_cost_usd
+      - user_tier
       properties:
         id:
           type: string
@@ -1982,7 +1982,7 @@ components:
     DailySpendResponse:
       type: object
       required:
-        - daily_spend_usd
+      - daily_spend_usd
       properties:
         daily_spend_usd:
           type: number
@@ -2003,38 +2003,38 @@ components:
     SSEConcurrencyError:
       type: object
       required:
-        - code
-        - retry_after_s
+      - code
+      - retry_after_s
       properties:
         code:
           type: string
           enum:
-            - sse_concurrency_exceeded
+          - sse_concurrency_exceeded
         retry_after_s:
           type: integer
     HITLResolveRequest:
       type: object
       required:
-        - decisions
+      - decisions
       properties:
         decisions:
           type: array
           items:
-            $ref: "#/components/schemas/HITLDecisionInput"
+            $ref: '#/components/schemas/HITLDecisionInput'
     HITLDecisionInput:
       type: object
       required:
-        - id
-        - action
+      - id
+      - action
       properties:
         id:
           type: string
         action:
           type: string
           enum:
-            - approve
-            - edit
-            - reject
+          - approve
+          - edit
+          - reject
         edited_args:
           type: object
           additionalProperties: true
@@ -2043,9 +2043,9 @@ components:
     HITLResolveResponse:
       type: object
       required:
-        - batch_id
-        - resolved_at
-        - decisions
+      - batch_id
+      - resolved_at
+      - decisions
       properties:
         batch_id:
           type: string
@@ -2055,33 +2055,33 @@ components:
         decisions:
           type: array
           items:
-            $ref: "#/components/schemas/HITLResolvedCall"
+            $ref: '#/components/schemas/HITLResolvedCall'
     HITLResolvedCall:
       type: object
       required:
-        - id
-        - action
+      - id
+      - action
       properties:
         id:
           type: string
         action:
           type: string
           enum:
-            - approve
-            - edit
-            - reject
+          - approve
+          - edit
+          - reject
         reason:
           type: string
     HITLShapeMismatchError:
       type: object
       required:
-        - error
-        - missing
+      - error
+      - missing
       properties:
         error:
           type: string
           enum:
-            - shape mismatch
+          - shape mismatch
         missing:
           type: array
           items:
@@ -2089,8 +2089,8 @@ components:
     HITLFieldNotEditableError:
       type: object
       required:
-        - error
-        - editable
+      - error
+      - editable
       properties:
         error:
           type: string
@@ -2101,8 +2101,8 @@ components:
     HITLNonScalarFieldError:
       type: object
       required:
-        - error
-        - tool
+      - error
+      - tool
       properties:
         error:
           type: string
@@ -2111,55 +2111,55 @@ components:
     HITLRejectReasonTooLongError:
       type: object
       required:
-        - error
-        - max
+      - error
+      - max
       properties:
         error:
           type: string
           enum:
-            - reject_reason too long
+          - reject_reason too long
         max:
           type: integer
     HITLBatchResolvingError:
       type: object
       required:
-        - error
-        - retry_after_ms
-        - reason
+      - error
+      - retry_after_ms
+      - reason
       properties:
         error:
           type: string
           enum:
-            - batch resolving
+          - batch resolving
         retry_after_ms:
           type: integer
         reason:
           type: string
           enum:
-            - concurrent resolve in progress
+          - concurrent resolve in progress
     HITLExpiredError:
       type: object
       required:
-        - error
+      - error
       properties:
         error:
           type: string
           enum:
-            - approval_expired
+          - approval_expired
     HITLAlreadyResolvedError:
       type: object
       required:
-        - error
-        - reason
+      - error
+      - reason
       properties:
         error:
           type: string
           enum:
-            - batch already resolved
+          - batch already resolved
         reason:
           type: string
           enum:
-            - already_resolved
+          - already_resolved
     ToolEntry:
       description: |
         Locale-resolved tool registry projection returned by the api
@@ -2169,13 +2169,13 @@ components:
         projection that may carry `forbidden`.
       type: object
       required:
-        - name
-        - displayName
-        - platform
-        - floor
-        - editableFields
-        - description
-        - userDescription
+      - name
+      - displayName
+      - platform
+      - floor
+      - editableFields
+      - description
+      - userDescription
       properties:
         name:
           type: string
@@ -2188,8 +2188,8 @@ components:
         floor:
           type: string
           enum:
-            - auto
-            - manual
+          - auto
+          - manual
         editableFields:
           type: array
           items:
@@ -2201,13 +2201,13 @@ components:
     Conversation:
       type: object
       required:
-        - id
-        - userId
-        - businessId
-        - title
-        - titleStatus
-        - createdAt
-        - updatedAt
+      - id
+      - userId
+      - businessId
+      - title
+      - titleStatus
+      - createdAt
+      - updatedAt
       properties:
         id:
           type: string
@@ -2231,9 +2231,9 @@ components:
         titleStatus:
           type: string
           enum:
-            - auto_pending
-            - auto
-            - manual
+          - auto_pending
+          - auto
+          - manual
         pinnedAt:
           type: string
           format: date-time
@@ -2251,7 +2251,7 @@ components:
     CreateConversationRequest:
       type: object
       required:
-        - title
+      - title
       properties:
         title:
           type: string
@@ -2262,7 +2262,7 @@ components:
     UpdateConversationRequest:
       type: object
       required:
-        - title
+      - title
       properties:
         title:
           type: string
@@ -2276,11 +2276,11 @@ components:
     Message:
       type: object
       required:
-        - id
-        - conversationId
-        - role
-        - content
-        - createdAt
+      - id
+      - conversationId
+      - role
+      - content
+      - createdAt
       properties:
         id:
           type: string
@@ -2289,23 +2289,23 @@ components:
         role:
           type: string
           enum:
-            - user
-            - assistant
-            - system
+          - user
+          - assistant
+          - system
         content:
           type: string
         attachments:
           type: array
           items:
-            $ref: "#/components/schemas/MessageAttachment"
+            $ref: '#/components/schemas/MessageAttachment'
         toolCalls:
           type: array
           items:
-            $ref: "#/components/schemas/MessageToolCall"
+            $ref: '#/components/schemas/MessageToolCall'
         toolResults:
           type: array
           items:
-            $ref: "#/components/schemas/MessageToolResult"
+            $ref: '#/components/schemas/MessageToolResult'
         metadata:
           type: object
           additionalProperties: true
@@ -2321,10 +2321,10 @@ components:
     MessageAttachment:
       type: object
       required:
-        - type
-        - url
-        - mimeType
-        - name
+      - type
+      - url
+      - mimeType
+      - name
       properties:
         type:
           type: string
@@ -2337,9 +2337,9 @@ components:
     MessageToolCall:
       type: object
       required:
-        - id
-        - name
-        - arguments
+      - id
+      - name
+      - arguments
       properties:
         id:
           type: string
@@ -2355,9 +2355,9 @@ components:
     MessageToolResult:
       type: object
       required:
-        - toolCallId
-        - content
-        - isError
+      - toolCallId
+      - content
+      - isError
       properties:
         toolCallId:
           type: string
@@ -2371,26 +2371,26 @@ components:
     ChatView:
       type: object
       required:
-        - messages
-        - pendingApprovals
+      - messages
+      - pendingApprovals
       properties:
         messages:
           type: array
           items:
-            $ref: "#/components/schemas/Message"
+            $ref: '#/components/schemas/Message'
         pendingApprovals:
           type: array
           items:
-            $ref: "#/components/schemas/PendingApproval"
+            $ref: '#/components/schemas/PendingApproval'
     PendingApproval:
       type: object
       required:
-        - batchId
-        - messageId
-        - calls
-        - status
-        - createdAt
-        - expiresAt
+      - batchId
+      - messageId
+      - calls
+      - status
+      - createdAt
+      - expiresAt
       properties:
         batchId:
           type: string
@@ -2399,7 +2399,7 @@ components:
         calls:
           type: array
           items:
-            $ref: "#/components/schemas/PendingApprovalCall"
+            $ref: '#/components/schemas/PendingApprovalCall'
         status:
           type: string
         createdAt:
@@ -2411,10 +2411,10 @@ components:
     PendingApprovalCall:
       type: object
       required:
-        - callId
-        - toolName
-        - args
-        - editableFields
+      - callId
+      - toolName
+      - args
+      - editableFields
       properties:
         callId:
           type: string
@@ -2430,40 +2430,40 @@ components:
     TitlerConflictError:
       type: object
       required:
-        - error
-        - message
+      - error
+      - message
       properties:
         error:
           type: string
           enum:
-            - title_is_manual
-            - title_in_flight
-            - title_state_changed
+          - title_is_manual
+          - title_in_flight
+          - title_state_changed
         message:
           type: string
     TitlerDisabledError:
       type: object
       required:
-        - error
-        - message
+      - error
+      - message
       properties:
         error:
           type: string
           enum:
-            - titler_disabled
+          - titler_disabled
         message:
           type: string
     Project:
       type: object
       required:
-        - id
-        - businessId
-        - name
-        - whitelistMode
-        - allowedTools
-        - quickActions
-        - createdAt
-        - updatedAt
+      - id
+      - businessId
+      - name
+      - whitelistMode
+      - allowedTools
+      - quickActions
+      - createdAt
+      - updatedAt
       properties:
         id:
           type: string
@@ -2481,10 +2481,10 @@ components:
         whitelistMode:
           type: string
           enum:
-            - inherit
-            - all
-            - explicit
-            - none
+          - inherit
+          - all
+          - explicit
+          - none
         allowedTools:
           type: array
           items:
@@ -2494,8 +2494,8 @@ components:
           additionalProperties:
             type: string
             enum:
-              - auto
-              - manual
+            - auto
+            - manual
         quickActions:
           type: array
           items:
@@ -2509,7 +2509,7 @@ components:
     ProjectRequest:
       type: object
       required:
-        - name
+      - name
       properties:
         name:
           type: string
@@ -2521,10 +2521,10 @@ components:
         whitelistMode:
           type: string
           enum:
-            - inherit
-            - all
-            - explicit
-            - none
+          - inherit
+          - all
+          - explicit
+          - none
         allowedTools:
           type: array
           items:
@@ -2534,9 +2534,9 @@ components:
           additionalProperties:
             type: string
             enum:
-              - auto
-              - manual
-              - inherit
+            - auto
+            - manual
+            - inherit
         quickActions:
           type: array
           items:
@@ -2544,8 +2544,8 @@ components:
     ProjectDeleteResponse:
       type: object
       required:
-        - deletedConversations
-        - deletedMessages
+      - deletedConversations
+      - deletedMessages
       properties:
         deletedConversations:
           type: integer
@@ -2554,18 +2554,18 @@ components:
     ProjectConversationCountResponse:
       type: object
       required:
-        - count
+      - count
       properties:
         count:
           type: integer
     Post:
       type: object
       required:
-        - id
-        - businessId
-        - content
-        - status
-        - createdAt
+      - id
+      - businessId
+      - content
+      - status
+      - createdAt
       properties:
         id:
           type: string
@@ -2581,7 +2581,7 @@ components:
         platformResults:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/PostPlatformResult"
+            $ref: '#/components/schemas/PostPlatformResult'
         status:
           type: string
         scheduledAt:
@@ -2604,9 +2604,9 @@ components:
     PostPlatformResult:
       type: object
       required:
-        - postId
-        - url
-        - status
+      - postId
+      - url
+      - status
       properties:
         postId:
           type: string
@@ -2619,27 +2619,27 @@ components:
     PostListResponse:
       type: object
       required:
-        - posts
-        - total
+      - posts
+      - total
       properties:
         posts:
           type: array
           items:
-            $ref: "#/components/schemas/Post"
+            $ref: '#/components/schemas/Post'
         total:
           type: integer
     Review:
       type: object
       required:
-        - id
-        - businessId
-        - platform
-        - externalId
-        - authorName
-        - rating
-        - text
-        - replyStatus
-        - createdAt
+      - id
+      - businessId
+      - platform
+      - externalId
+      - authorName
+      - rating
+      - text
+      - replyStatus
+      - createdAt
       properties:
         id:
           type: string
@@ -2661,9 +2661,9 @@ components:
         replyStatus:
           type: string
           enum:
-            - pending
-            - replied
-            - error
+          - pending
+          - replied
+          - error
         platformMeta:
           type: object
           additionalProperties: true
@@ -2675,9 +2675,9 @@ components:
         draftStatus:
           type: string
           enum:
-            - generating
-            - ready
-            - failed
+          - generating
+          - ready
+          - failed
         draftGeneratedAt:
           type: string
           format: date-time
@@ -2686,22 +2686,22 @@ components:
     ReviewListResponse:
       type: object
       required:
-        - reviews
-        - total
+      - reviews
+      - total
       properties:
         reviews:
           type: array
           items:
-            $ref: "#/components/schemas/Review"
+            $ref: '#/components/schemas/Review'
         total:
           type: integer
     ReviewUnansweredBuckets:
       type: object
       description: Unanswered reviews partitioned by age (created_at -> now).
       required:
-        - lt24h
-        - h24to72
-        - gt72h
+      - lt24h
+      - h24to72
+      - gt72h
       properties:
         lt24h:
           type: integer
@@ -2718,15 +2718,15 @@ components:
         Aggregate-only response-SLA metrics. No author, review text, or reply
         text is carried — numbers only.
       required:
-        - total
-        - unanswered
-        - answered
-        - buckets
-        - targetHours
-        - medianResponseHours
-        - averageResponseHours
-        - measuredResponses
-        - percentAnsweredWithinTarget
+      - total
+      - unanswered
+      - answered
+      - buckets
+      - targetHours
+      - medianResponseHours
+      - averageResponseHours
+      - measuredResponses
+      - percentAnsweredWithinTarget
       properties:
         total:
           type: integer
@@ -2738,7 +2738,7 @@ components:
           type: integer
           description: Reviews whose reply_status is "replied".
         buckets:
-          $ref: "#/components/schemas/ReviewUnansweredBuckets"
+          $ref: '#/components/schemas/ReviewUnansweredBuckets'
         targetHours:
           type: integer
           description: Answered-within-target window in hours the rate was computed against.
@@ -2769,10 +2769,10 @@ components:
         business has no connected-channel sync signal (the sync dimension is
         dropped and the other weights renormalize).
       required:
-        - ratingScore
-        - slaScore
-        - coverageScore
-        - syncScore
+      - ratingScore
+      - slaScore
+      - coverageScore
+      - syncScore
       properties:
         ratingScore:
           type: integer
@@ -2797,10 +2797,10 @@ components:
         is dropped the other three renormalize over 0.90, so these fractions
         reflect the mix actually used rather than the nominal weights.
       required:
-        - rating
-        - sla
-        - coverage
-        - sync
+      - rating
+      - sla
+      - coverage
+      - sync
       properties:
         rating:
           type: number
@@ -2821,9 +2821,9 @@ components:
         localized message key the client resolves, and the composite points
         recovering that area to 100 would add.
       required:
-        - area
-        - message
-        - potentialGain
+      - area
+      - message
+      - potentialGain
       properties:
         area:
           type: string
@@ -2844,12 +2844,12 @@ components:
         review text, or reply text is carried — numbers only. composite and
         trendDelta are null when there is not yet enough data.
       required:
-        - composite
-        - trendDelta
-        - subScores
-        - weights
-        - topRecommendation
-        - computedAt
+      - composite
+      - trendDelta
+      - subScores
+      - weights
+      - topRecommendation
+      - computedAt
       properties:
         composite:
           type: integer
@@ -2862,13 +2862,13 @@ components:
             composite minus the most-recent prior-week snapshot's composite.
             Null when no prior-week snapshot exists.
         subScores:
-          $ref: "#/components/schemas/PresenceSubScores"
+          $ref: '#/components/schemas/PresenceSubScores'
         weights:
-          $ref: "#/components/schemas/PresenceWeights"
+          $ref: '#/components/schemas/PresenceWeights'
         topRecommendation:
           nullable: true
           allOf:
-            - $ref: "#/components/schemas/PresenceRecommendation"
+          - $ref: '#/components/schemas/PresenceRecommendation'
           description: The single next-action nudge. Null in the empty state.
         computedAt:
           type: string
@@ -2877,19 +2877,19 @@ components:
     ReplyToReviewRequest:
       type: object
       required:
-        - replyText
+      - replyText
       properties:
         replyText:
           type: string
     AgentTask:
       type: object
       required:
-        - id
-        - businessId
-        - type
-        - status
-        - platform
-        - createdAt
+      - id
+      - businessId
+      - type
+      - status
+      - platform
+      - createdAt
       properties:
         id:
           type: string
@@ -2928,27 +2928,26 @@ components:
     AgentTaskListResponse:
       type: object
       required:
-        - tasks
-        - total
+      - tasks
+      - total
       properties:
         tasks:
           type: array
           items:
-            $ref: "#/components/schemas/AgentTask"
+            $ref: '#/components/schemas/AgentTask'
         total:
           type: integer
     SearchResult:
       type: object
       required:
-        - conversationId
-        - matchCount
-        - score
+      - conversationId
+      - matchCount
+      - score
       properties:
         titleStatus:
           type: string
           enum: [auto_pending, auto, manual]
-          x-enum-varnames:
-            [SearchTitleAutoPending, SearchTitleAuto, SearchTitleManual]
+          x-enum-varnames: [SearchTitleAutoPending, SearchTitleAuto, SearchTitleManual]
           description: Present for title hits; manual titles must always be displayed verbatim.
         createdAt:
           type: string
@@ -2985,7 +2984,7 @@ components:
     ChatRequest:
       type: object
       required:
-        - message
+      - message
       properties:
         model:
           type: string
@@ -3017,7 +3016,7 @@ components:
         history:
           type: array
           items:
-            $ref: "#/components/schemas/ChatHistoryEntry"
+            $ref: '#/components/schemas/ChatHistoryEntry'
         project_id:
           type: string
         project_name:
@@ -3027,11 +3026,11 @@ components:
         project_whitelist_mode:
           type: string
           enum:
-            - inherit
-            - all
-            - explicit
-            - none
-            - ""
+          - inherit
+          - all
+          - explicit
+          - none
+          - ''
         project_allowed_tools:
           type: array
           items:
@@ -3045,26 +3044,26 @@ components:
         business_approvals:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/ToolFloor"
+            $ref: '#/components/schemas/ToolFloor'
         project_approval_overrides:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/ToolFloor"
+            $ref: '#/components/schemas/ToolFloor'
         locale:
           type: string
     ChatHistoryEntry:
       type: object
       required:
-        - role
-        - content
+      - role
+      - content
       properties:
         role:
           type: string
           enum:
-            - system
-            - user
-            - assistant
-            - tool
+          - system
+          - user
+          - assistant
+          - tool
         content:
           type: string
     ResumeRequest:
@@ -3073,11 +3072,11 @@ components:
         business_approvals:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/ToolFloor"
+            $ref: '#/components/schemas/ToolFloor'
         project_approval_overrides:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/ToolFloor"
+            $ref: '#/components/schemas/ToolFloor'
         active_integrations:
           type: array
           items:
@@ -3085,11 +3084,11 @@ components:
         whitelist_mode:
           type: string
           enum:
-            - inherit
-            - all
-            - explicit
-            - none
-            - ""
+          - inherit
+          - all
+          - explicit
+          - none
+          - ''
         allowed_tools:
           type: array
           items:
@@ -3101,10 +3100,10 @@ components:
     DraftReplyRequest:
       type: object
       required:
-        - reviewText
-        - businessId
-        - platform
-        - rating
+      - reviewText
+      - businessId
+      - platform
+      - rating
       properties:
         businessId:
           type: string
@@ -3127,12 +3126,12 @@ components:
         examples:
           type: array
           items:
-            $ref: "#/components/schemas/DraftReplyExample"
+            $ref: '#/components/schemas/DraftReplyExample'
     DraftReplyExample:
       type: object
       required:
-        - reviewText
-        - replyText
+      - reviewText
+      - replyText
       properties:
         reviewText:
           type: string
@@ -3145,7 +3144,7 @@ components:
     DraftReplyResponse:
       type: object
       required:
-        - draftReply
+      - draftReply
       properties:
         draftReply:
           type: string
@@ -3156,7 +3155,7 @@ components:
     ToolNamesResponse:
       type: object
       required:
-        - names
+      - names
       properties:
         names:
           type: array
@@ -3169,13 +3168,13 @@ components:
         uses `ToolEntry` (auto/manual only).
       type: object
       required:
-        - name
-        - displayName
-        - platform
-        - floor
-        - editableFields
-        - description
-        - userDescription
+      - name
+      - displayName
+      - platform
+      - floor
+      - editableFields
+      - description
+      - userDescription
       properties:
         name:
           type: string
@@ -3186,7 +3185,7 @@ components:
         platform:
           type: string
         floor:
-          $ref: "#/components/schemas/ToolFloor"
+          $ref: '#/components/schemas/ToolFloor'
         editableFields:
           type: array
           items:
@@ -3200,43 +3199,43 @@ components:
         Discriminated union over the per-type SSE event schemas. `type`
         is the discriminator. Wire envelope is `data: <json>\n\n`.
       oneOf:
-        - $ref: "#/components/schemas/SSEEventText"
-        - $ref: "#/components/schemas/SSEEventToolCall"
-        - $ref: "#/components/schemas/SSEEventToolResult"
-        - $ref: "#/components/schemas/SSEEventToolRejected"
-        - $ref: "#/components/schemas/SSEEventApprovalRequired"
-        - $ref: "#/components/schemas/SSEEventDone"
-        - $ref: "#/components/schemas/SSEEventError"
+      - $ref: '#/components/schemas/SSEEventText'
+      - $ref: '#/components/schemas/SSEEventToolCall'
+      - $ref: '#/components/schemas/SSEEventToolResult'
+      - $ref: '#/components/schemas/SSEEventToolRejected'
+      - $ref: '#/components/schemas/SSEEventApprovalRequired'
+      - $ref: '#/components/schemas/SSEEventDone'
+      - $ref: '#/components/schemas/SSEEventError'
       discriminator:
         propertyName: type
         mapping:
-          text: "#/components/schemas/SSEEventText"
-          tool_call: "#/components/schemas/SSEEventToolCall"
-          tool_result: "#/components/schemas/SSEEventToolResult"
-          tool_rejected: "#/components/schemas/SSEEventToolRejected"
-          tool_approval_required: "#/components/schemas/SSEEventApprovalRequired"
-          done: "#/components/schemas/SSEEventDone"
-          error: "#/components/schemas/SSEEventError"
+          text: '#/components/schemas/SSEEventText'
+          tool_call: '#/components/schemas/SSEEventToolCall'
+          tool_result: '#/components/schemas/SSEEventToolResult'
+          tool_rejected: '#/components/schemas/SSEEventToolRejected'
+          tool_approval_required: '#/components/schemas/SSEEventApprovalRequired'
+          done: '#/components/schemas/SSEEventDone'
+          error: '#/components/schemas/SSEEventError'
     SSEEventText:
       type: object
       required:
-        - type
+      - type
       properties:
         type:
           type: string
           enum:
-            - text
+          - text
         content:
           type: string
     SSEEventToolCall:
       type: object
       required:
-        - type
+      - type
       properties:
         type:
           type: string
           enum:
-            - tool_call
+          - tool_call
         tool_call_id:
           type: string
         tool_name:
@@ -3251,12 +3250,12 @@ components:
     SSEEventToolResult:
       type: object
       required:
-        - type
+      - type
       properties:
         type:
           type: string
           enum:
-            - tool_result
+          - tool_result
         tool_call_id:
           type: string
         tool_name:
@@ -3273,12 +3272,12 @@ components:
     SSEEventToolRejected:
       type: object
       required:
-        - type
+      - type
       properties:
         type:
           type: string
           enum:
-            - tool_rejected
+          - tool_rejected
         tool_call_id:
           type: string
         tool_name:
@@ -3292,40 +3291,40 @@ components:
     SSEEventApprovalRequired:
       type: object
       required:
-        - type
-        - batch_id
-        - calls
+      - type
+      - batch_id
+      - calls
       properties:
         type:
           type: string
           enum:
-            - tool_approval_required
+          - tool_approval_required
         batch_id:
           type: string
         calls:
           type: array
           items:
-            $ref: "#/components/schemas/ApprovalCall"
+            $ref: '#/components/schemas/ApprovalCall'
     SSEEventDone:
       type: object
       required:
-        - type
+      - type
       properties:
         type:
           type: string
           enum:
-            - done
+          - done
         content:
           type: string
     SSEEventError:
       type: object
       required:
-        - type
+      - type
       properties:
         type:
           type: string
           enum:
-            - error
+          - error
         code:
           type: string
         content:
@@ -3333,11 +3332,11 @@ components:
     ApprovalCall:
       type: object
       required:
-        - call_id
-        - tool_name
-        - args
-        - editable_fields
-        - floor
+      - call_id
+      - tool_name
+      - args
+      - editable_fields
+      - floor
       properties:
         call_id:
           type: string
@@ -3351,7 +3350,7 @@ components:
           items:
             type: string
         floor:
-          $ref: "#/components/schemas/ToolFloor"
+          $ref: '#/components/schemas/ToolFloor'
     ChannelRequestChannel:
       type: string
       description: |
@@ -3359,64 +3358,55 @@ components:
         Backs a fake-door affordance so pull is measured before the channel
         is built.
       enum:
-        - avito
-        - wildberries
-        - ozon
-        - 2gis
-        - other
+      - avito
+      - wildberries
+      - ozon
+      - 2gis
+      - other
     CreateChannelRequestRequest:
       type: object
       required:
-        - channel
+      - channel
       properties:
         channel:
           type: string
           description: |
             A not-yet-supported channel a business is expressing demand for.
           enum:
-            - avito
-            - wildberries
-            - ozon
-            - 2gis
-            - other
+          - avito
+          - wildberries
+          - ozon
+          - 2gis
+          - other
         note:
           type: string
           maxLength: 280
     ChannelDemandCount:
       type: object
       required:
-        - channel
-        - count
+      - channel
+      - count
       properties:
         channel:
-          $ref: "#/components/schemas/ChannelRequestChannel"
+          $ref: '#/components/schemas/ChannelRequestChannel'
         count:
           type: integer
     ChannelDemandSummary:
       type: object
       required:
-        - channels
+      - channels
       properties:
         channels:
           type: array
           items:
-            $ref: "#/components/schemas/ChannelDemandCount"
+            $ref: '#/components/schemas/ChannelDemandCount'
     LandingEventRequest:
       type: object
       required: [cta, path]
       properties:
         cta:
           type: string
-          enum:
-            [
-              hero-waitlist,
-              hero-register,
-              nav-register,
-              nav-login,
-              pricing-free-register,
-              pricing-pro-waitlist,
-              waitlist-success-register,
-            ]
+          enum: [hero-waitlist, hero-register, nav-register, nav-login, pricing-free-register, pricing-pro-waitlist, waitlist-success-register]
         path:
           type: string
           minLength: 1
@@ -3439,8 +3429,8 @@ components:
         segmentation fields are optional. Enums are inlined (not $ref) so the
         generated struct carries validate:oneof tags.
       required:
-        - email
-        - consent
+      - email
+      - consent
       properties:
         email:
           type: string
@@ -3450,18 +3440,18 @@ components:
           type: string
           description: Optional organization-sphere segment.
           enum:
-            - cafe
-            - beauty
-            - services
-            - retail
-            - other
+          - cafe
+          - beauty
+          - services
+          - retail
+          - other
         pain:
           type: string
           description: Optional strongest-pain segment.
           enum:
-            - reviews
-            - posts
-            - card
+          - reviews
+          - posts
+          - card
         source:
           type: string
           enum: [landing, billing, business-limit]
@@ -3483,15 +3473,15 @@ components:
         top-of-funnel demand; distinct from the business-scoped
         CreateChannelRequestRequest.
       required:
-        - channel
+      - channel
       properties:
         channel:
           type: string
           enum:
-            - whatsapp
-            - avito
-            - 2gis
-            - other
+          - whatsapp
+          - avito
+          - 2gis
+          - other
         note:
           type: string
           maxLength: 280
