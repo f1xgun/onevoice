@@ -62,12 +62,9 @@ describe('ExpiredApprovalBanner', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(message);
   });
 
-  it('QQ: root element carries the amber palette utility classes', () => {
+  it('uses warning tokens that adapt to the current theme', () => {
     render(<ExpiredApprovalBanner />);
     const alert = screen.getByRole('alert');
-    const classes = alert.className.split(/\s+/);
-    const amberTokens = ['bg-amber-50', 'border-amber-200', 'text-amber-900'];
-    const hit = amberTokens.some((token) => classes.includes(token));
-    expect(hit).toBe(true);
+    expect(alert).toHaveClass('bg-warning-soft', 'border-warning', 'text-warning-ink');
   });
 });

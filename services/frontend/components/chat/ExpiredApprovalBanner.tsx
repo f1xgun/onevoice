@@ -37,8 +37,8 @@ export function ExpiredApprovalBanner({
       className={cn(
         'flex items-start gap-3 border-b px-4 py-3 text-sm',
         'bg-warning-soft',
-        'border-amber-200',
-        'text-amber-900'
+        'border-warning',
+        'text-warning-ink'
       )}
     >
       <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -50,7 +50,7 @@ export function ExpiredApprovalBanner({
           setVisible(false);
           onDismiss?.();
         }}
-        className="shrink-0 rounded p-1 hover:bg-warning-soft"
+        className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded hover:bg-paper-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X size={14} aria-hidden="true" />
       </button>
