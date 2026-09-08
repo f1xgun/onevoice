@@ -1873,6 +1873,13 @@ components:
       properties:
         eventType:
           type: string
+          enum:
+          - page_view
+          - api_error
+          - chat_send
+          - button_click
+          - activation
+          - approval
         page:
           type: string
         action:

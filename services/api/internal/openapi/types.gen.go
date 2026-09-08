@@ -340,6 +340,16 @@ const (
 	StatusOkResponseStatusOk StatusOkResponseStatus = "ok"
 )
 
+// Defines values for TelemetryEventEventType.
+const (
+	Activation  TelemetryEventEventType = "activation"
+	ApiError    TelemetryEventEventType = "api_error"
+	Approval    TelemetryEventEventType = "approval"
+	ButtonClick TelemetryEventEventType = "button_click"
+	ChatSend    TelemetryEventEventType = "chat_send"
+	PageView    TelemetryEventEventType = "page_view"
+)
+
 // Defines values for TitlerConflictErrorError.
 const (
 	TitleInFlight     TitlerConflictErrorError = "title_in_flight"
@@ -1752,13 +1762,16 @@ type TelegramOwnerLinkResponse struct {
 
 // TelemetryEvent defines model for TelemetryEvent.
 type TelemetryEvent struct {
-	Action        string             `json:"action" validate:"required"`
-	CorrelationId *string            `json:"correlationId,omitempty"`
-	EventType     string             `json:"eventType" validate:"required"`
-	Metadata      *map[string]string `json:"metadata,omitempty"`
-	Page          string             `json:"page" validate:"required"`
-	Timestamp     string             `json:"timestamp" validate:"required"`
+	Action        string                  `json:"action" validate:"required"`
+	CorrelationId *string                 `json:"correlationId,omitempty"`
+	EventType     TelemetryEventEventType `json:"eventType" validate:"required,oneof=page_view api_error chat_send button_click activation approval"`
+	Metadata      *map[string]string      `json:"metadata,omitempty"`
+	Page          string                  `json:"page" validate:"required"`
+	Timestamp     string                  `json:"timestamp" validate:"required"`
 }
+
+// TelemetryEventEventType defines model for TelemetryEvent.EventType.
+type TelemetryEventEventType string
 
 // TitlerConflictError defines model for TitlerConflictError.
 type TitlerConflictError struct {

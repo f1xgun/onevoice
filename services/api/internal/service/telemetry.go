@@ -42,6 +42,19 @@ func NewTelemetryService(repo telemetryRepo) *TelemetryService {
 	return &TelemetryService{repo: repo, approvalWrites: make(chan struct{}, 8)}
 }
 
+// validClientTelemetryEventType is the closed client-ingress taxonomy. Actions
+// intentionally remain open: page_view uses the current pathname, api_error
+// includes request coordinates, and button/activation actions evolve with the
+// UI. Server-only event types must use their dedicated service emitters.
+func validClientTelemetryEventType(eventType string) bool {
+	switch eventType {
+	case "page_view", "api_error", "chat_send", "button_click", "activation", "approval":
+		return true
+	default:
+		return false
+	}
+}
+
 // Ingest persists a batch of telemetry events, stamping the authenticated
 // user_id on every row server-side (never trusting a client-supplied id).
 // business_id is left NULL — the telemetry route carries no BusinessContext;
@@ -57,7 +70,7 @@ func (s *TelemetryService) Ingest(ctx context.Context, userID uuid.UUID, events 
 	}
 	rows := make([]repository.TelemetryEventRow, 0, len(events))
 	for _, e := range events {
-		if e.EventType == "approval_server" {
+		if !validClientTelemetryEventType(e.EventType) {
 			continue
 		}
 		if e.EventType == "approval" {
@@ -94,6 +107,9 @@ func (s *TelemetryService) Ingest(ctx context.Context, userID uuid.UUID, events 
 			row.ClientTS = &ts
 		}
 		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		return nil
 	}
 	if err := s.repo.InsertBatch(ctx, rows); err != nil {
 		return fmt.Errorf("telemetry ingest: %w", err)

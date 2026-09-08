@@ -34,7 +34,7 @@ func TestTelemetryService_Ingest_StampsUserAndMaps(t *testing.T) {
 
 	err := svc.Ingest(context.Background(), uid, []TelemetryEvent{
 		{EventType: "page_view", Action: "load", Page: "/x", CorrelationID: "c1", ClientTS: "2026-01-01T00:00:00Z"},
-		{EventType: "click", Action: "save", Page: "/y", Metadata: map[string]string{"k": "v"}},
+		{EventType: "button_click", Action: "save", Page: "/y", Metadata: map[string]string{"k": "v"}},
 	})
 	require.NoError(t, err)
 	require.Len(t, repo.rows, 2)
@@ -54,7 +54,7 @@ func TestTelemetryService_Ingest_NilUserStoredAsNull(t *testing.T) {
 	repo := &fakeTelemetryRepo{}
 	svc := NewTelemetryService(repo)
 
-	require.NoError(t, svc.Ingest(context.Background(), uuid.Nil, []TelemetryEvent{{EventType: "x", Action: "y"}}))
+	require.NoError(t, svc.Ingest(context.Background(), uuid.Nil, []TelemetryEvent{{EventType: "page_view", Action: "/chat"}}))
 	require.Len(t, repo.rows, 1)
 	assert.Nil(t, repo.rows[0].UserID)
 }
@@ -71,8 +71,66 @@ func TestTelemetryService_Ingest_RepoError(t *testing.T) {
 	repo := &fakeTelemetryRepo{err: errors.New("boom")}
 	svc := NewTelemetryService(repo)
 
-	err := svc.Ingest(context.Background(), uuid.New(), []TelemetryEvent{{EventType: "x", Action: "y"}})
+	err := svc.Ingest(context.Background(), uuid.New(), []TelemetryEvent{{EventType: "api_error", Action: "500 GET /api/v1/businesses"}})
 	require.Error(t, err)
+}
+
+func TestTelemetryService_Ingest_AllowsCurrentClientEventTypes(t *testing.T) {
+	repo := &fakeTelemetryRepo{}
+	svc := NewTelemetryService(repo)
+	known := []TelemetryEvent{
+		{EventType: "page_view", Action: "/chat"},
+		{EventType: "api_error", Action: "500 GET /api/v1/businesses"},
+		{EventType: "chat_send", Action: "send_message"},
+		{EventType: "button_click", Action: "connect_integration"},
+		{EventType: "activation", Action: "open_wizard"},
+		{EventType: "approval", Action: "draft_shown", Metadata: map[string]string{
+			"draft_id": strings.Repeat("a", 64), "kind": "post", "source": "chat",
+		}},
+	}
+
+	require.NoError(t, svc.Ingest(context.Background(), uuid.New(), known))
+	require.Len(t, repo.rows, len(known))
+	for i, event := range known {
+		assert.Equal(t, event.EventType, repo.rows[i].EventType)
+	}
+}
+
+func TestTelemetryService_Ingest_DropsUnknownAndReservedTypesFromMixedBatch(t *testing.T) {
+	repo := &fakeTelemetryRepo{}
+	svc := NewTelemetryService(repo)
+	uid := uuid.New()
+
+	require.NoError(t, svc.Ingest(context.Background(), uid, []TelemetryEvent{
+		{EventType: "unknown_from_extension", Action: "private"},
+		{EventType: "approval_server", Action: "decision_recorded"},
+		{EventType: "owner_brief", Action: "generated"},
+		{EventType: "page_view", Action: "/businesses/dynamic-path"},
+		{EventType: "button_click", Action: "future_dynamic_action"},
+	}))
+	require.Equal(t, 1, repo.calls)
+	require.Len(t, repo.rows, 2)
+	assert.Equal(t, "/businesses/dynamic-path", repo.rows[0].Action)
+	assert.Equal(t, "future_dynamic_action", repo.rows[1].Action)
+	for _, row := range repo.rows {
+		require.NotNil(t, row.UserID)
+		assert.Equal(t, uid, *row.UserID)
+	}
+}
+
+func TestTelemetryService_Ingest_AllInvalidDoesNotInsert(t *testing.T) {
+	repo := &fakeTelemetryRepo{}
+	svc := NewTelemetryService(repo)
+
+	require.NoError(t, svc.Ingest(context.Background(), uuid.New(), []TelemetryEvent{
+		{EventType: "", Action: "missing_type"},
+		{EventType: "unknown", Action: "anything"},
+		{EventType: "approval_server", Action: "send_result"},
+		{EventType: "owner_brief", Action: "generated"},
+		{EventType: "approval", Action: "send_result"},
+	}))
+	assert.Zero(t, repo.calls)
+	assert.Empty(t, repo.rows)
 }
 
 func TestTelemetryService_ApprovalPrivacy(t *testing.T) {
