@@ -99,12 +99,15 @@ func TestComputeSLA_PerPlatformMediansExcludeMissingAndInvalidRepliedAt(t *testi
 		slaPlatformReview("google", domain.ReviewReplyStatusReplied, base, nil),
 		slaPlatformReview("yandex_business", domain.ReviewReplyStatusReplied, base, ptrTime(base.Add(3*time.Hour))),
 		slaPlatformReview("yandex_business", domain.ReviewReplyStatusReplied, base, ptrTime(base.Add(-time.Hour))),
+		slaPlatformReview("telegram", domain.ReviewReplyStatusPending, base, ptrTime(base.Add(time.Hour))),
+		slaPlatformReview("vk", domain.ReviewReplyStatusError, base, ptrTime(base.Add(time.Hour))),
 	}, now, 24)
 
 	require.Equal(t, []PlatformSLAStats{
 		{Platform: "google", MedianResponseHours: 5, MeasuredResponses: 2},
 		{Platform: "yandex_business", MedianResponseHours: 3, MeasuredResponses: 1},
 	}, got.Platforms)
+	assert.Equal(t, 3, got.MeasuredResponses, "only rows whose status is replied enter response-time samples")
 }
 
 func TestComputeSLA_NoUnansweredOrMeasurementsUsesHonestEmptyAggregates(t *testing.T) {

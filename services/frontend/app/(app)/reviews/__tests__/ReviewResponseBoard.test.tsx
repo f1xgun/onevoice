@@ -40,7 +40,23 @@ function renderBoard(overrides: Partial<React.ComponentProps<typeof ReviewRespon
 
 describe('ReviewResponseBoard', () => {
   it('rejects a review-list payload returned for the SLA endpoint', () => {
-    expect(() => parseReviewSLAResponse([])).toThrow('Invalid review SLA response');
+    expect(() => parseReviewSLAResponse([])).toThrow();
+  });
+
+  it.each([
+    ['missing top-level metric', { ...populated, measuredResponses: undefined }],
+    ['non-finite duration', { ...populated, medianResponseHours: Number.NaN }],
+    ['negative count', { ...populated, unanswered: -1 }],
+    ['fractional count', { ...populated, buckets: { ...populated.buckets, lt24h: 0.5 } }],
+    [
+      'invalid platform metric',
+      {
+        ...populated,
+        platforms: [{ platform: 'google', medianResponseHours: -1, measuredResponses: 1 }],
+      },
+    ],
+  ])('rejects %s', (_case, payload) => {
+    expect(() => parseReviewSLAResponse(payload)).toThrow();
   });
 
   it('renders full-business age bands, honest median, oldest age and platform medians', () => {

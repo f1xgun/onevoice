@@ -55,7 +55,7 @@ type SLAStats struct {
 	TargetHours int               `json:"targetHours"`
 
 	// MedianResponseHours / AverageResponseHours are computed created_at →
-	// replied_at over reviews that carry a replied_at only. Reviews answered
+	// replied_at over replied reviews that carry a replied_at only. Reviews answered
 	// before the field existed (replied_at nil) and unanswered reviews are
 	// excluded from the math rather than treated as instant, so the numbers
 	// describe the reviews we can actually measure.
@@ -88,7 +88,8 @@ type SLAStats struct {
 // answered is ReplyStatus == "replied"; every other status counts as
 // unanswered and is bucketed by created_at → now age. Response-time metrics
 // (median, average, percent-within-target) consider only reviews that carry a
-// replied_at and whose replied_at is not before created_at (a clock-skew guard).
+// ReplyStatus == "replied", carry a replied_at, and whose replied_at is not
+// before created_at (a clock-skew guard).
 func computeSLA(reviews []domain.Review, now time.Time, targetHours int) SLAStats {
 	if targetHours <= 0 {
 		targetHours = SLADefaultTargetHours
@@ -122,7 +123,7 @@ func computeSLA(reviews []domain.Review, now time.Time, targetHours int) SLAStat
 			}
 		}
 
-		if r.RepliedAt == nil || r.RepliedAt.Before(r.CreatedAt) {
+		if r.ReplyStatus != domain.ReviewReplyStatusReplied || r.RepliedAt == nil || r.RepliedAt.Before(r.CreatedAt) {
 			continue
 		}
 		latency := r.RepliedAt.Sub(r.CreatedAt)
@@ -205,6 +206,9 @@ func round2SLA(v float64) float64 {
 // the RequireBusinessAccess middleware, never a client body — so one business
 // can never read another's SLA.
 func (s *reviewService) SLA(ctx context.Context, businessID uuid.UUID, targetHours int) (SLAStats, error) {
+	// ListForSLA intentionally materializes the full projected review set so these
+	// aggregates remain exact. Move this reduction into the database before using
+	// the endpoint for businesses whose review history can grow without bound.
 	reviews, err := s.repo.ListForSLA(ctx, businessID.String())
 	if err != nil {
 		return SLAStats{}, fmt.Errorf("list reviews for sla: %w", err)

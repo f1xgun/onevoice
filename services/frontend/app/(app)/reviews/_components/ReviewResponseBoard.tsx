@@ -1,49 +1,41 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { z } from 'zod';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MonoLabel } from '@/components/ui/mono-label';
 
-export interface ReviewPlatformSLA {
-  platform: string;
-  medianResponseHours: number;
-  measuredResponses: number;
-}
+const countSchema = z.number().int().nonnegative();
+const hoursSchema = z.number().nonnegative();
+const reviewSLASchema = z.object({
+  total: countSchema,
+  unanswered: countSchema,
+  answered: countSchema,
+  buckets: z.object({
+    lt24h: countSchema,
+    h24to72: countSchema,
+    gt72h: countSchema,
+  }),
+  targetHours: z.number().int().positive(),
+  medianResponseHours: hoursSchema,
+  averageResponseHours: hoursSchema,
+  measuredResponses: countSchema,
+  percentAnsweredWithinTarget: z.number().min(0).max(1),
+  oldestUnansweredHours: hoursSchema.nullable(),
+  platforms: z.array(
+    z.object({
+      platform: z.string().min(1),
+      medianResponseHours: hoursSchema,
+      measuredResponses: countSchema,
+    })
+  ),
+});
 
-export interface ReviewSLAResponse {
-  total: number;
-  unanswered: number;
-  answered: number;
-  buckets: {
-    lt24h: number;
-    h24to72: number;
-    gt72h: number;
-  };
-  targetHours: number;
-  medianResponseHours: number;
-  averageResponseHours: number;
-  measuredResponses: number;
-  percentAnsweredWithinTarget: number;
-  oldestUnansweredHours: number | null;
-  platforms: ReviewPlatformSLA[];
-}
+export type ReviewSLAResponse = z.infer<typeof reviewSLASchema>;
 
 export function parseReviewSLAResponse(data: unknown): ReviewSLAResponse {
-  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-    throw new Error('Invalid review SLA response');
-  }
-
-  const response = data as Partial<ReviewSLAResponse>;
-  if (
-    response.buckets === null ||
-    typeof response.buckets !== 'object' ||
-    !Array.isArray(response.platforms)
-  ) {
-    throw new Error('Invalid review SLA response');
-  }
-
-  return response as ReviewSLAResponse;
+  return reviewSLASchema.parse(data);
 }
 
 interface ReviewResponseBoardProps {

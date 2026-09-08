@@ -8,7 +8,7 @@
 // No mock for this page — extrapolated from mock-states.jsx (empty state)
 // and the patterns established in mock-posts.jsx (filter bar, stat strip).
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
 import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
@@ -154,6 +154,8 @@ function formatReviewDate(iso: string, locale: Locale): string {
 export default function ReviewsPage() {
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const activeBusinessIdRef = useRef(activeBusinessId);
+  activeBusinessIdRef.current = activeBusinessId;
   const tReviews = useTranslations('reviews');
   const tPlatformLabels = useTranslations('reviews.platformLabels');
   const tCommon = useTranslations('common');
@@ -202,41 +204,57 @@ export default function ReviewsPage() {
   });
 
   const replyMutation = useMutation({
-    mutationFn: ({ id, text }: { id: string; text: string }) => {
-      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
-      return bizApi(activeBusinessId).put(BIZ_API_PATHS.REVIEWS.REPLY(id), { replyText: text });
+    mutationFn: ({ businessId, id, text }: { businessId: string; id: string; text: string }) => {
+      return bizApi(businessId).put(BIZ_API_PATHS.REVIEWS.REPLY(id), { replyText: text });
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(variables.businessId) });
+      if (activeBusinessIdRef.current !== variables.businessId) return;
       toast.success(tReviews('replyToast'));
       setReplyDialog(null);
       setReplyText('');
     },
-    onError: () => toast.error(tReviews('sendReplyError')),
+    onError: (_error, variables) => {
+      if (activeBusinessIdRef.current === variables.businessId) {
+        toast.error(tReviews('sendReplyError'));
+      }
+    },
   });
 
   const retryMutation = useMutation({
-    mutationFn: (id: string) => {
-      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
-      return bizApi(activeBusinessId).post(BIZ_API_PATHS.REVIEWS.REPLY_RETRY(id), undefined);
+    mutationFn: ({ businessId, id }: { businessId: string; id: string }) =>
+      bizApi(businessId).post(BIZ_API_PATHS.REVIEWS.REPLY_RETRY(id), undefined),
+    onSuccess: (_data, variables) => {
+      if (activeBusinessIdRef.current === variables.businessId) {
+        toast.success(tReviews('failedReply.retrySuccess'));
+      }
     },
-    onSuccess: () => toast.success(tReviews('failedReply.retrySuccess')),
-    onError: () => toast.error(tReviews('failedReply.retryError')),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
+    onError: (_error, variables) => {
+      if (activeBusinessIdRef.current === variables.businessId) {
+        toast.error(tReviews('failedReply.retryError'));
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(variables.businessId) });
     },
   });
 
   const refreshMutation = useMutation({
-    mutationFn: () =>
-      bizApi(activeBusinessId!).post(BIZ_API_PATHS.REVIEWS.REFRESH, undefined, {
+    mutationFn: (businessId: string) =>
+      bizApi(businessId).post(BIZ_API_PATHS.REVIEWS.REFRESH, undefined, {
         timeout: REVIEWS_REFRESH_TIMEOUT_MS,
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
-      toast.success(tReviews('refreshSuccess'));
+    onSuccess: (_data, businessId) => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(businessId) });
+      if (activeBusinessIdRef.current === businessId) {
+        toast.success(tReviews('refreshSuccess'));
+      }
     },
-    onError: () => toast.error(tReviews('refreshError')),
+    onError: (_error, businessId) => {
+      if (activeBusinessIdRef.current === businessId) {
+        toast.error(tReviews('refreshError'));
+      }
+    },
   });
 
   const stats = useMemo(() => {
@@ -263,7 +281,8 @@ export default function ReviewsPage() {
   function sendDraftAsIs(review: Review) {
     const draft = review.draftReply?.trim();
     if (!draft) return;
-    replyMutation.mutate({ id: review.id, text: draft });
+    if (!activeBusinessId) return;
+    replyMutation.mutate({ businessId: activeBusinessId, id: review.id, text: draft });
   }
 
   return (
@@ -370,7 +389,7 @@ export default function ReviewsPage() {
             variant="ghost"
             size="sm"
             className="ml-auto gap-1.5"
-            onClick={() => refreshMutation.mutate()}
+            onClick={() => activeBusinessId && refreshMutation.mutate(activeBusinessId)}
             disabled={refreshMutation.isPending}
             title={tReviews('refreshTitle')}
           >
@@ -409,9 +428,12 @@ export default function ReviewsPage() {
                 onWriteOwn={() =>
                   openReply(review, review.replyStatus === 'error' ? (review.replyText ?? '') : '')
                 }
-                onRetry={() => retryMutation.mutate(review.id)}
+                onRetry={() =>
+                  activeBusinessId &&
+                  retryMutation.mutate({ businessId: activeBusinessId, id: review.id })
+                }
                 isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
-                isRetrying={retryMutation.isPending && retryMutation.variables === review.id}
+                isRetrying={retryMutation.isPending && retryMutation.variables?.id === review.id}
                 canReply={canReply}
               />
             ))}
@@ -458,7 +480,13 @@ export default function ReviewsPage() {
             <Button
               variant="primary"
               onClick={() =>
-                replyDialog && replyMutation.mutate({ id: replyDialog.id, text: replyText })
+                replyDialog &&
+                activeBusinessId &&
+                replyMutation.mutate({
+                  businessId: activeBusinessId,
+                  id: replyDialog.id,
+                  text: replyText,
+                })
               }
               disabled={!replyText.trim() || replyMutation.isPending}
             >
