@@ -266,7 +266,7 @@ describe('working surface browser matrix', () => {
 });
 
 it.each(['error', 'malformed'])(
-  'renders a recoverable integration list error for %s responses without disconnected accounts',
+  'renders an unknown channel status for %s responses without disconnected accounts',
   async (state) => {
     fixture.state = state;
     render(
@@ -274,7 +274,8 @@ it.each(['error', 'malformed'])(
         <IntegrationsPage />
       </Wrapper>
     );
-    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось');
+    expect(await screen.findByText('Статус каналов пока неизвестен')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByText('Не подключено')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeVisible();
   }

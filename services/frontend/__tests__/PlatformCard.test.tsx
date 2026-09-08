@@ -27,6 +27,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { PlatformCard } from '@/components/integrations/PlatformCard';
+import responses from '@/test/fixtures/channel-responses.json';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -180,4 +181,68 @@ describe('<PlatformCard /> token_expired status', () => {
     const reconnect = screen.getByText('Переподключить');
     expect(reconnect.closest('a')).toHaveAttribute('href', '/integrations?reconnect=telegram');
   });
+});
+
+it('does not label a confirmed broken connection as connected or disconnected', () => {
+  render(
+    <Wrapper>
+      <PlatformCard {...baseProps} platform="telegram" integrations={responses.broken.body} />
+    </Wrapper>
+  );
+  expect(screen.queryByText('Подключено')).not.toBeInTheDocument();
+  expect(screen.queryByText('Не подключено')).not.toBeInTheDocument();
+  expect(screen.getByText('Ошибка подключения')).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Переподключить' })).toBeVisible();
+});
+
+it.each(['future-state', '', 'error', 'inactive'])(
+  'keeps unsupported status %j neutral and localized',
+  (status) => {
+    render(
+      <Wrapper>
+        <PlatformCard
+          {...baseProps}
+          platform="telegram"
+          integrations={responses.active.body.map((i) => ({ ...i, status }))}
+        />
+      </Wrapper>
+    );
+    expect(screen.getAllByText('Статус пока неизвестен')).toHaveLength(2);
+    expect(screen.queryByText('Ошибка подключения')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Переподключить' })).not.toBeInTheDocument();
+  }
+);
+
+it.each([
+  ['ru', 'Подключено'],
+  ['en', 'Connected'],
+] as const)(
+  'keeps an active channel connected after an inconclusive probe in %s',
+  (locale, label) => {
+    globalThis.__setTestLocale(locale);
+    render(
+      <Wrapper>
+        <PlatformCard
+          {...baseProps}
+          platform="telegram"
+          integrations={responses.inconclusive.body}
+        />
+      </Wrapper>
+    );
+    expect(screen.getAllByText(label)).toHaveLength(2);
+    expect(
+      screen.queryByRole('link', { name: /Переподключить|Reconnect/ })
+    ).not.toBeInTheDocument();
+  }
+);
+
+it('shows a partial capability limitation without calling the channel broken', () => {
+  render(
+    <Wrapper>
+      <PlatformCard {...baseProps} platform="telegram" integrations={responses.degraded.body} />
+    </Wrapper>
+  );
+  expect(screen.getAllByText('Подключено')).toHaveLength(2);
+  expect(screen.getByText('Ограничено')).toBeVisible();
+  expect(screen.queryByText('Ошибка подключения')).not.toBeInTheDocument();
 });

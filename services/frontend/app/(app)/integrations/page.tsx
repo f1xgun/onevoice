@@ -5,11 +5,11 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+
 import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS, INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
-import type { IntegrationStatus } from '@/lib/constants/integrationStatus';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
@@ -17,7 +17,6 @@ import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyChannels, SkeletonChannels } from '@/components/states';
 import { InlineEmpty } from '@/components/states/InlineEmpty';
-import { ListLoadError } from '@/components/lists/ListLoadError';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
@@ -59,7 +58,7 @@ const MODAL_INVALIDATES_ON_CLOSE: Record<ModalPlatform, boolean> = {
 interface Integration {
   id: string;
   platform: string;
-  status: IntegrationStatus;
+  status: string;
   externalId: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
@@ -74,6 +73,7 @@ interface LastRegistered {
 export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
+  const tCommon = useTranslations('common');
   const tPlatforms = useTranslations('platforms');
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
@@ -275,9 +275,20 @@ export default function IntegrationsPage() {
         )}
 
         <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
-        {integrationsError ? (
-          <div className="mb-8">
-            <ListLoadError onRetry={refetchIntegrations} />
+        {!activeBusinessId ? (
+          <InlineEmpty className="mb-8 rounded-lg border border-line bg-paper-raised">
+            {tIntegrations('page.chooseOrganization')}
+          </InlineEmpty>
+        ) : integrationsError ? (
+          <div
+            role="status"
+            className="mb-8 flex flex-col items-start gap-3 rounded-lg border border-line bg-paper-raised p-4 text-meta text-ink-soft"
+          >
+            <p>{tIntegrations('page.statusUnknown')}</p>
+            <p>{tIntegrations('page.listUnavailable')}</p>
+            <Button variant="secondary" size="sm" onClick={() => refetchIntegrations()}>
+              {tCommon('retry')}
+            </Button>
           </div>
         ) : integrationsLoading ? (
           <div className="mb-8">
@@ -301,7 +312,7 @@ export default function IntegrationsPage() {
             </InlineEmpty>
           </div>
         ) : null}
-        {!integrationsError && !integrationsLoading && (
+        {activeBusinessId && !integrationsError && !integrationsLoading && (
           <div id="integrations-platform-grid" className="grid grid-cols-1 items-start gap-4">
             {activePlatforms.map((p) => {
               const platformIntegrations = getIntegrationsForPlatform(p.id);
