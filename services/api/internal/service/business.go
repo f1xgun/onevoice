@@ -12,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 // MembershipSummary is the read-model returned by ListMembershipsByUser. See docs/services/business.md.
@@ -69,6 +70,15 @@ type businessService struct {
 	roleRepo       domain.RoleRepository
 	pool           PgxBeginner
 	audit          audit.Logger
+	valueTelemetry valuetelemetry.Sink
+}
+
+// WithBusinessValueTelemetry attaches the server-owned completion sink.
+func WithBusinessValueTelemetry(svc BusinessService, sink valuetelemetry.Sink) BusinessService {
+	if s, ok := svc.(*businessService); ok {
+		s.valueTelemetry = sink
+	}
+	return svc
 }
 
 // Compile-time check that businessService implements BusinessService
@@ -167,6 +177,9 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 	}
 
 	audit.LogBusinessCreated(ctx, s.audit, business.ID, ownerUserID, business.Name)
+	if s.valueTelemetry != nil {
+		s.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{Action: valuetelemetry.OrgCreated, SourceID: business.ID.String(), UserID: ownerUserID, BusinessID: business.ID})
+	}
 
 	return business, nil
 }

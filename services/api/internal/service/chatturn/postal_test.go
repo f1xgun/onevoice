@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 // counterValue reads the current value of a {name, labels} counter series from
@@ -367,6 +368,31 @@ func TestOnToolCall_InternalToolSkipped(t *testing.T) {
 type fakePostRepo struct {
 	domain.PostRepository
 	created []domain.Post
+}
+
+type valueSink struct{ events []valuetelemetry.Event }
+
+func (s *valueSink) RecordValue(_ context.Context, event valuetelemetry.Event) {
+	s.events = append(s.events, event)
+}
+
+func TestRecordPosts_EmitsValueOnlyAfterSuccessfulPublishedPersistence(t *testing.T) {
+	businessID := uuid.New()
+	sink := &valueSink{}
+	repo := &fakePostRepo{}
+	turn := &Turn{valueTelemetry: sink, deps: Deps{Posts: repo}}
+	calls := []domain.ToolCall{
+		{ID: "published", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "landed"}},
+		{ID: "failed", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "failed"}},
+		{ID: "scheduled", Name: tools.VKSchedulePost, Arguments: map[string]interface{}{"text": "later"}},
+	}
+	results := []domain.ToolResult{{ToolCallID: "published"}, {ToolCallID: "failed", IsError: true}, {ToolCallID: "scheduled"}}
+	turn.recordPostsAndReviews(context.Background(), businessID.String(), "message-1", calls, results)
+	require.Len(t, sink.events, 1)
+	assert.Equal(t, valuetelemetry.PostPublished, sink.events[0].Action)
+	assert.Equal(t, businessID, sink.events[0].BusinessID)
+	assert.Equal(t, "telegram", sink.events[0].Platform)
+	assert.Equal(t, businessID.String()+":message-1:published", sink.events[0].SourceID)
 }
 
 func (f *fakePostRepo) Create(_ context.Context, p *domain.Post) error {

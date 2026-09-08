@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 // reviewDispatchTimeout caps the per-platform NATS request budget for
@@ -81,6 +82,15 @@ type reviewService struct {
 	refresher         ReviewRefresher // nil = manual refresh disabled
 	drafter           SingleDrafter   // nil = batch-draft disabled (returns configured error)
 	auditLog          audit.Logger    // nil = manual-reply mutations not audited
+	valueTelemetry    valuetelemetry.Sink
+}
+
+// WithReviewValueTelemetry attaches the server-owned completion sink.
+func WithReviewValueTelemetry(svc ReviewService, sink valuetelemetry.Sink) ReviewService {
+	if s, ok := svc.(*reviewService); ok {
+		s.valueTelemetry = sink
+	}
+	return svc
 }
 
 // Compile-time check that reviewService implements ReviewService
@@ -343,6 +353,14 @@ func (s *reviewService) publishReply(ctx context.Context, review *domain.Review,
 
 	if dispatchErr != nil {
 		return fmt.Errorf("publish to %s: %w", review.Platform, dispatchErr)
+	}
+	if toolName != "" && s.valueTelemetry != nil {
+		if bizID, err := uuid.Parse(review.BusinessID); err == nil {
+			s.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{
+				Action: valuetelemetry.ReviewReplied, SourceID: review.BusinessID + ":" + review.ID,
+				BusinessID: bizID, Platform: review.Platform, Kind: "review_reply",
+			})
+		}
 	}
 	return nil
 }

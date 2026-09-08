@@ -27,7 +27,7 @@ func TestTelemetryEvent_InsertBatch(t *testing.T) {
 
 	uid := uuid.New()
 	mock.ExpectExec(`INSERT INTO telemetry_events`).
-		WithArgs(anyArgs(16)...).
+		WithArgs(anyArgs(18)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 2))
 
 	err = repo.InsertBatch(context.Background(), []TelemetryEventRow{

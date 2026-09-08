@@ -35,6 +35,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 const (
@@ -61,13 +62,19 @@ type VerifyUserRepo interface {
 
 // EmailVerificationService — see file docstring.
 type EmailVerificationService struct {
-	pool      *pgxpool.Pool
-	tokens    *repository.EmailVerificationTokenRepository
-	users     VerifyUserRepo
-	outbox    *repository.EmailOutboxRepository
-	redis     *redis.Client
-	publicURL string
-	tokenTTL  time.Duration
+	pool           *pgxpool.Pool
+	tokens         *repository.EmailVerificationTokenRepository
+	users          VerifyUserRepo
+	outbox         *repository.EmailOutboxRepository
+	redis          *redis.Client
+	publicURL      string
+	tokenTTL       time.Duration
+	valueTelemetry valuetelemetry.Sink
+}
+
+// SetValueTelemetry wires server-owned completion telemetry before serving.
+func (s *EmailVerificationService) SetValueTelemetry(sink valuetelemetry.Sink) {
+	s.valueTelemetry = sink
 }
 
 // NewEmailVerificationService constructs the service. All deps
@@ -163,6 +170,9 @@ func (s *EmailVerificationService) ConfirmVerify(ctx context.Context, plaintextT
 
 	if err := tx.Commit(ctx); err != nil {
 		return uuid.Nil, fmt.Errorf("confirm_verify commit: %w", err)
+	}
+	if s.valueTelemetry != nil {
+		s.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{Action: valuetelemetry.EmailVerified, SourceID: userID.String(), UserID: userID})
 	}
 	return userID, nil
 }
