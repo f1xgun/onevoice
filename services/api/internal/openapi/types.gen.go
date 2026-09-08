@@ -205,6 +205,14 @@ const (
 	MessageRoleUser      MessageRole = "user"
 )
 
+// Defines values for PendingApprovalStatus.
+const (
+	PendingApprovalStatusExpired     PendingApprovalStatus = "expired"
+	PendingApprovalStatusPending     PendingApprovalStatus = "pending"
+	PendingApprovalStatusResolving   PendingApprovalStatus = "resolving"
+	PendingApprovalStatusUnavailable PendingApprovalStatus = "unavailable"
+)
+
 // Defines values for PendingDeletionResponseCode.
 const (
 	AccountPendingDeletion  PendingDeletionResponseCode = "account_pending_deletion"
@@ -450,9 +458,9 @@ const (
 
 // Defines values for ListReviewsParamsReplyStatus.
 const (
-	Error   ListReviewsParamsReplyStatus = "error"
-	Pending ListReviewsParamsReplyStatus = "pending"
-	Replied ListReviewsParamsReplyStatus = "replied"
+	ListReviewsParamsReplyStatusError   ListReviewsParamsReplyStatus = "error"
+	ListReviewsParamsReplyStatusPending ListReviewsParamsReplyStatus = "pending"
+	ListReviewsParamsReplyStatusReplied ListReviewsParamsReplyStatus = "replied"
 )
 
 // AcceptInvitationResponse defines model for AcceptInvitationResponse.
@@ -1174,10 +1182,17 @@ type PendingApproval struct {
 	BatchId   string                `json:"batchId" validate:"required"`
 	Calls     []PendingApprovalCall `json:"calls" validate:"required"`
 	CreatedAt time.Time             `json:"createdAt" validate:"required"`
-	ExpiresAt time.Time             `json:"expiresAt" validate:"required"`
-	MessageId string                `json:"messageId" validate:"required"`
-	Status    string                `json:"status" validate:"required"`
+
+	// ExpiresAt Approval deadline; absent for an unavailable batch that has already been physically removed.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	MessageId string     `json:"messageId" validate:"required"`
+
+	// Status Unavailable means the batch was physically removed; it does not assert whether the tool executed.
+	Status PendingApprovalStatus `json:"status" validate:"required,oneof=pending resolving expired unavailable"`
 }
+
+// PendingApprovalStatus Unavailable means the batch was physically removed; it does not assert whether the tool executed.
+type PendingApprovalStatus string
 
 // PendingApprovalCall defines model for PendingApprovalCall.
 type PendingApprovalCall struct {

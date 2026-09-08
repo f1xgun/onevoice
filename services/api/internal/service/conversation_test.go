@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -251,6 +252,11 @@ type stubPendingToolCallRepo struct {
 	// ListErr forces the soft-error path in OpenChat — the call still
 	// succeeds with PendingApprovals=[].
 	ListErr error
+	// GetBatches/GetErrors drive orphan-approval point lookups. GetCalls records
+	// their order so tests can prove deduplication and the hard cap.
+	GetBatches map[string]*domain.PendingToolCallBatch
+	GetErrors  map[string]error
+	GetCalls   []string
 
 	// DeletedConvIDs records every conversationID passed to
 	// DeleteByConversationID so the delete-cascade test can assert the
@@ -279,8 +285,14 @@ func (s *stubPendingToolCallRepo) ListPendingByConversation(_ context.Context, _
 func (s *stubPendingToolCallRepo) Persist(_ context.Context, _ *domain.PendingToolCallBatch) error {
 	return nil
 }
-func (s *stubPendingToolCallRepo) GetByBatchID(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
-	return nil, nil
+func (s *stubPendingToolCallRepo) GetByBatchID(_ context.Context, id string) (*domain.PendingToolCallBatch, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GetCalls = append(s.GetCalls, id)
+	if err := s.GetErrors[id]; err != nil {
+		return nil, err
+	}
+	return s.GetBatches[id], nil
 }
 func (s *stubPendingToolCallRepo) AtomicTransitionToResolving(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
 	return nil, nil
@@ -835,7 +847,8 @@ func TestOpenChat_HappyPath_WithPending(t *testing.T) {
 	assert.Equal(t, "msg-42", pa.MessageID)
 	assert.Equal(t, "pending", pa.Status)
 	assert.Equal(t, created, pa.CreatedAt)
-	assert.Equal(t, expires, pa.ExpiresAt)
+	require.NotNil(t, pa.ExpiresAt)
+	assert.Equal(t, expires, *pa.ExpiresAt)
 	require.Len(t, pa.Calls, 1)
 	assert.Equal(t, "toolu_1", pa.Calls[0].CallID)
 	assert.Equal(t, "telegram__send_channel_post", pa.Calls[0].ToolName)
@@ -872,6 +885,132 @@ func TestOpenChat_PendingLookupSoftError(t *testing.T) {
 	require.NotNil(t, view.PendingApprovals)
 	assert.Empty(t, view.PendingApprovals, "PendingApprovals must degrade to [] on soft-error")
 }
+
+func TestOpenChat_ProjectsMissingActiveApprovalAsUnavailable(t *testing.T) {
+	requesterUser := uuid.New()
+	businessID := uuid.New()
+	const convID = "507f1f77bcf86cd799439103"
+	result := domain.ToolResult{ToolCallID: "call-1", Content: map[string]interface{}{"sent": true}}
+	msg := domain.Message{
+		ID: "msg-active", ConversationID: convID, Role: domain.MessageRoleAssistant,
+		Status: domain.MessageStatusPendingApproval, CreatedAt: time.Now().UTC(),
+		ToolCalls: []domain.ToolCall{
+			{ID: "call-1", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "one"}, ApprovalID: "batch-shared-call-1", Status: domain.ToolCallStatusPending},
+			{ID: "call-2", Name: "vk__publish_post", Arguments: map[string]interface{}{"text": "two"}, ApprovalID: "batch-shared-call-2", Status: domain.ToolCallStatusPending},
+		},
+		ToolResults: []domain.ToolResult{result},
+	}
+	pending := &stubPendingToolCallRepo{GetErrors: map[string]error{"batch-shared": domain.ErrBatchNotFound}}
+	svc := newConvSvc(t,
+		&stubConversationRepo{Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String(), BusinessID: businessID.String()}},
+		&stubMessageRepo{Messages: []domain.Message{msg}}, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, businessID, requesterUser)
+	require.NoError(t, err)
+	require.Len(t, view.PendingApprovals, 1)
+	assert.Equal(t, "unavailable", view.PendingApprovals[0].Status)
+	assert.Equal(t, "batch-shared", view.PendingApprovals[0].BatchID)
+	require.Len(t, view.PendingApprovals[0].Calls, 1)
+	assert.Equal(t, "call-2", view.PendingApprovals[0].Calls[0].CallID,
+		"a durable result suppresses the stale pending call")
+	assert.Nil(t, view.PendingApprovals[0].ExpiresAt, "a purged batch has no truthful expiry timestamp")
+	assert.Equal(t, []string{"batch-shared"}, pending.GetCalls, "shared batch IDs need one point lookup")
+	require.Len(t, view.Messages[0].ToolResults, 1)
+	assert.Equal(t, result, view.Messages[0].ToolResults[0], "read projection must preserve stored results")
+}
+
+func TestOpenChat_NewerCompletedAssistantSuppressesHistoricalOrphan(t *testing.T) {
+	requesterUser := uuid.New()
+	businessID := uuid.New()
+	const convID = "507f1f77bcf86cd799439106"
+	old := domain.Message{
+		ID: "old", ConversationID: convID, Role: domain.MessageRoleAssistant,
+		Status: domain.MessageStatusPendingApproval,
+		ToolCalls: []domain.ToolCall{{
+			ID: "old-call", ApprovalID: "old-batch-old-call", Status: domain.ToolCallStatusPending,
+		}},
+	}
+	latest := domain.Message{
+		ID: "latest", ConversationID: convID, Role: domain.MessageRoleAssistant,
+		Status: domain.MessageStatusComplete,
+	}
+	pending := &stubPendingToolCallRepo{GetErrors: map[string]error{"old-batch": domain.ErrBatchNotFound}}
+	svc := newConvSvc(t,
+		&stubConversationRepo{Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String(), BusinessID: businessID.String()}},
+		&stubMessageRepo{Messages: []domain.Message{old, latest}}, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, businessID, requesterUser)
+	require.NoError(t, err)
+	assert.Empty(t, view.PendingApprovals)
+	assert.Empty(t, pending.GetCalls, "historical pending turns must not trigger repository lookups")
+}
+
+func TestOpenChat_OrphanProjectionRequiresStrictIDAndNotFound(t *testing.T) {
+	requesterUser := uuid.New()
+	businessID := uuid.New()
+	const convID = "507f1f77bcf86cd799439104"
+	base := domain.Message{
+		ID: "msg-active", ConversationID: convID, Role: domain.MessageRoleAssistant,
+		Status: domain.MessageStatusPendingApproval,
+		ToolCalls: []domain.ToolCall{
+			{ID: "resolved-call", ApprovalID: "batch-resolved-resolved-call", Status: domain.ToolCallStatusPending},
+			{ID: "error-call", ApprovalID: "batch-error-error-call", Status: domain.ToolCallStatusPending},
+			{ID: "bad-call", ApprovalID: "batch-other-call", Status: domain.ToolCallStatusPending},
+			{ID: "approved-call", ApprovalID: "batch-old-approved-call", Status: domain.ToolCallStatusApproved},
+		},
+	}
+	pending := &stubPendingToolCallRepo{
+		GetBatches: map[string]*domain.PendingToolCallBatch{
+			"batch-resolved": {ID: "batch-resolved", Status: "resolved"},
+		},
+		GetErrors: map[string]error{"batch-error": errors.New("mongo timeout")},
+	}
+	svc := newConvSvc(t,
+		&stubConversationRepo{Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String(), BusinessID: businessID.String()}},
+		&stubMessageRepo{Messages: []domain.Message{base}}, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, businessID, requesterUser)
+	require.NoError(t, err)
+	assert.Empty(t, view.PendingApprovals, "resident resolved batches and storage errors are not missing")
+	assert.Equal(t, []string{"batch-resolved", "batch-error"}, pending.GetCalls)
+}
+
+func TestOpenChat_OrphanProjectionUsesOnlyLatestActiveMessageAndCapsLookups(t *testing.T) {
+	requesterUser := uuid.New()
+	businessID := uuid.New()
+	const convID = "507f1f77bcf86cd799439105"
+	old := domain.Message{
+		ID: "old", ConversationID: convID, Role: domain.MessageRoleAssistant,
+		Status:    domain.MessageStatusPendingApproval,
+		ToolCalls: []domain.ToolCall{{ID: "old-call", ApprovalID: "old-batch-old-call", Status: domain.ToolCallStatusPending}},
+	}
+	latest := domain.Message{
+		ID: "latest", ConversationID: convID, Role: domain.MessageRoleAssistant,
+		Status: domain.MessageStatusPendingApproval,
+	}
+	pending := &stubPendingToolCallRepo{GetErrors: make(map[string]error)}
+	for i := 0; i < maxOrphanApprovalLookupsForTest(); i++ {
+		callID := fmt.Sprintf("call-%02d", i)
+		batchID := fmt.Sprintf("batch-%02d", i)
+		latest.ToolCalls = append(latest.ToolCalls, domain.ToolCall{
+			ID: callID, ApprovalID: batchID + "-" + callID, Status: domain.ToolCallStatusPending,
+		})
+		pending.GetErrors[batchID] = domain.ErrBatchNotFound
+	}
+	svc := newConvSvc(t,
+		&stubConversationRepo{Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String(), BusinessID: businessID.String()}},
+		&stubMessageRepo{Messages: []domain.Message{old, latest}}, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, businessID, requesterUser)
+	require.NoError(t, err)
+	assert.Len(t, pending.GetCalls, 16)
+	assert.NotContains(t, pending.GetCalls, "old-batch")
+	assert.Len(t, view.PendingApprovals, 16)
+}
+
+// maxOrphanApprovalLookupsForTest adds one candidate past the production cap
+// without exporting an implementation detail solely for tests.
+func maxOrphanApprovalLookupsForTest() int { return 17 }
 
 // TestOpenChat_ConversationNotFound covers the missing-conversation path.
 // Returns the canonical sentinel so the handler maps to 404.

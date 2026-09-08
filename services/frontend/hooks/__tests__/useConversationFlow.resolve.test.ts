@@ -210,6 +210,31 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
     expect(result.current.pendingApproval!.batchId).toBe('batch-expired');
   });
 
+  it('preserves unavailable hydration as non-actionable state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            messages: [],
+            pendingApprovals: [{ ...expiredBatch, status: 'unavailable', expiresAt: undefined }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
+
+    const { result } = renderHook(
+      () => useConversationFlow({ conversationId: 'cid-hydrate-unavailable' }),
+      { wrapper: QueryWrapper }
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.pendingApproval?.status).toBe('unavailable');
+    act(() => result.current.dismissApproval());
+    expect(result.current.pendingApproval).toBeNull();
+  });
+
   it('hydrates pendingApproval state when GET /messages returns a non-empty pendingApprovals array', async () => {
     const fetchMock = vi.fn().mockImplementationOnce(async () => {
       return new Response(JSON.stringify({ messages: [], pendingApprovals: [singleCallBatch] }), {

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,7 +90,7 @@ type PendingApprovalSummary struct {
 	Calls     []ApprovalCallSummary `json:"calls"`
 	Status    string                `json:"status"`
 	CreatedAt time.Time             `json:"createdAt"`
-	ExpiresAt time.Time             `json:"expiresAt"`
+	ExpiresAt *time.Time            `json:"expiresAt,omitempty"`
 }
 
 // ApprovalCallSummary is the api → frontend (camelCase) projection of an approval batch element.
@@ -114,6 +116,12 @@ func (s *ConversationService) List(ctx context.Context, businessID, userID uuid.
 
 // defaultMessageListLimit caps the number of messages OpenChat returns.
 const defaultMessageListLimit = 200
+
+// maxOrphanApprovalLookups bounds point reads used to distinguish a physically
+// purged approval batch from a transient pending-store failure. A single paused
+// model turn is expected to contain one batch; the larger cap accommodates
+// legacy/malformed messages without allowing an unbounded reload fan-out.
+const maxOrphanApprovalLookups = 16
 
 // MoveToProject moves a conversation to a project (or no project) and returns the post-move row.
 // See docs/services/conversation.md.
@@ -236,14 +244,17 @@ func (s *ConversationService) OpenChat(
 		slog.WarnContext(ctx, "OpenChat: failed to load pending approvals",
 			"error", perr, "conversation_id", conversationID)
 	} else {
+		residentBatchIDs := make(map[string]struct{}, len(batches))
 		for _, b := range batches {
+			residentBatchIDs[b.ID] = struct{}{}
+			expiresAt := b.ExpiresAt
 			summary := PendingApprovalSummary{
 				BatchID:   b.ID,
 				MessageID: b.MessageID,
 				Calls:     make([]ApprovalCallSummary, 0, len(b.Calls)),
 				Status:    b.Status,
 				CreatedAt: b.CreatedAt,
-				ExpiresAt: b.ExpiresAt,
+				ExpiresAt: &expiresAt,
 			}
 			for _, c := range b.Calls {
 				summary.Calls = append(summary.Calls, ApprovalCallSummary{
@@ -255,10 +266,110 @@ func (s *ConversationService) OpenChat(
 			}
 			pendingApprovals = append(pendingApprovals, summary)
 		}
+		pendingApprovals = append(pendingApprovals,
+			s.projectUnavailableApprovals(ctx, messages, residentBatchIDs)...)
 	}
 
 	return &ChatView{
 		Messages:         messages,
 		PendingApprovals: pendingApprovals,
 	}, nil
+}
+
+// projectUnavailableApprovals returns response-only notices for approval IDs
+// whose batch was physically removed by MongoDB's TTL monitor. It examines only
+// the newest active approval message, never changes stored messages or results,
+// and treats only the repository's not-found sentinel as proof of absence.
+func (s *ConversationService) projectUnavailableApprovals(
+	ctx context.Context,
+	messages []domain.Message,
+	residentBatchIDs map[string]struct{},
+) []PendingApprovalSummary {
+	var active *domain.Message
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != domain.MessageRoleAssistant {
+			continue
+		}
+		if messages[i].Status == domain.MessageStatusPendingApproval {
+			active = &messages[i]
+		}
+		break
+	}
+	if active == nil {
+		return nil
+	}
+
+	type candidate struct {
+		batchID string
+		calls   []ApprovalCallSummary
+	}
+	candidates := make([]candidate, 0)
+	byBatchID := make(map[string]int)
+	resultCallIDs := make(map[string]struct{}, len(active.ToolResults))
+	for _, result := range active.ToolResults {
+		resultCallIDs[result.ToolCallID] = struct{}{}
+	}
+	for _, call := range active.ToolCalls {
+		if call.Status != domain.ToolCallStatusPending {
+			continue
+		}
+		if _, hasResult := resultCallIDs[call.ID]; hasResult {
+			continue
+		}
+		batchID, ok := approvalBatchID(call.ApprovalID, call.ID)
+		if !ok {
+			continue
+		}
+		if _, resident := residentBatchIDs[batchID]; resident {
+			continue
+		}
+		idx, seen := byBatchID[batchID]
+		if !seen {
+			if len(candidates) >= maxOrphanApprovalLookups {
+				continue
+			}
+			idx = len(candidates)
+			byBatchID[batchID] = idx
+			candidates = append(candidates, candidate{batchID: batchID})
+		}
+		candidates[idx].calls = append(candidates[idx].calls, ApprovalCallSummary{
+			CallID:         call.ID,
+			ToolName:       call.Name,
+			Args:           call.Arguments,
+			EditableFields: []string{},
+		})
+	}
+
+	out := make([]PendingApprovalSummary, 0, len(candidates))
+	for _, candidate := range candidates {
+		batch, err := s.pendingRepo.GetByBatchID(ctx, candidate.batchID)
+		if err == nil && batch != nil {
+			continue
+		}
+		if !errors.Is(err, domain.ErrBatchNotFound) {
+			if err != nil {
+				slog.WarnContext(ctx, "OpenChat: failed to verify approval batch",
+					"error", err, "conversation_id", active.ConversationID, "batch_id", candidate.batchID)
+			}
+			continue
+		}
+		out = append(out, PendingApprovalSummary{
+			BatchID:   candidate.batchID,
+			MessageID: active.ID,
+			Calls:     candidate.calls,
+			Status:    "unavailable",
+			CreatedAt: active.CreatedAt,
+		})
+	}
+	return out
+}
+
+// approvalBatchID validates the persisted "<batch_id>-<call_id>" correlation
+// without splitting on hyphens, which are valid in both identifiers.
+func approvalBatchID(approvalID, callID string) (string, bool) {
+	if approvalID == "" || callID == "" {
+		return "", false
+	}
+	batchID, ok := strings.CutSuffix(approvalID, "-"+callID)
+	return batchID, ok && batchID != ""
 }

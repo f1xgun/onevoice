@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 
 export interface ExpiredApprovalBannerProps {
+  status?: 'expired' | 'unavailable';
   /**
    * Optional callback invoked after the user dismisses the banner. The banner
    * self-manages its visibility via internal state — parents use this hook for
@@ -16,8 +17,13 @@ export interface ExpiredApprovalBannerProps {
   onDismiss?: () => void;
 }
 
-export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps) {
-  const t = useTranslations('chat.expiredBanner');
+export function ExpiredApprovalBanner({
+  status = 'expired',
+  onDismiss,
+}: ExpiredApprovalBannerProps) {
+  const t = useTranslations(
+    status === 'unavailable' ? 'chat.unavailableBanner' : 'chat.expiredBanner'
+  );
   const [visible, setVisible] = useState(true);
 
   if (!visible) {

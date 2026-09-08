@@ -2405,7 +2405,6 @@ components:
       - calls
       - status
       - createdAt
-      - expiresAt
       properties:
         batchId:
           type: string
@@ -2417,12 +2416,19 @@ components:
             $ref: '#/components/schemas/PendingApprovalCall'
         status:
           type: string
+          enum:
+          - pending
+          - resolving
+          - expired
+          - unavailable
+          description: Unavailable means the batch was physically removed; it does not assert whether the tool executed.
         createdAt:
           type: string
           format: date-time
         expiresAt:
           type: string
           format: date-time
+          description: Approval deadline; absent for an unavailable batch that has already been physically removed.
     PendingApprovalCall:
       type: object
       required:

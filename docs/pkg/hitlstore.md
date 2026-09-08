@@ -101,7 +101,7 @@ flows may legitimately have an empty `UserID`.
 
 | Name | Keys | Purpose |
 |---|---|---|
-| `pending_tool_calls_ttl` | `{expires_at: 1}` | `expireAfterSeconds=0` — docs expire at their own `expires_at` (up to 60s lag). Stillborn `preparing` rows have no `expires_at` so TTL skips them; `ReconcileOrphanPreparing` reaps them instead. |
+| `pending_tool_calls_ttl` | `{expires_at: 1}` | `expireAfterSeconds=0` — promoted docs expire at their own `expires_at` (up to 60s lag), including rows later marked `resolved` or `expired` because terminal transitions retain the field. Stillborn `preparing` rows have no `expires_at` so TTL skips them; `ReconcileOrphanPreparing` stamps it before they can be reaped. |
 | `pending_tool_calls_conv_status` | `{conversation_id: 1, status: 1}` | Supports `ListPendingByConversation`'s typical predicate. |
 | `pending_tool_calls_business` | `{business_id: 1}` | Future business-scoped dashboards / metrics queries. |
 
@@ -113,16 +113,21 @@ schema bootstrap.
 
 ## Lazy expiration
 
-`GetByBatchID` virtualizes `Status` to `"expired"` when `status == "pending"`
-but `expires_at` has already passed. This covers the up-to-60s window where
-the TTL sweep has not yet fired but the document is logically expired.
-Callers never see a stale `"pending"` past the 24h window.
+`GetByBatchID` virtualizes `Status` to `"expired"` when an open
+`pending`/`resolving`/`resuming` row has passed `expires_at`. This covers the
+up-to-60s window where the TTL sweep has not yet fired. After physical deletion,
+`GetByBatchID` returns `ErrBatchNotFound`; that absence does not prove whether a
+call executed, so message-history readers expose it as unavailable rather than
+claiming an execution outcome.
 
 ## `ListPendingByConversation`
 
-Returns every batch for the conversation whose status is `pending` OR
-`resolving`, sorted oldest-first. Resolved / expired / preparing batches
+Returns every batch for the conversation whose status is `pending`,
+`resolving`, or `resuming`, sorted oldest-first. Resolved / expired / preparing batches
 are filtered out — callers needing those use `GetByBatchID` directly.
+
+`MarkResolved` and `MarkExpired` change status only. They do not remove
+`expires_at`, so those terminal rows remain subject to the original TTL deadline.
 
 ## `MarkDispatched`
 

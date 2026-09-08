@@ -42,8 +42,8 @@ const AWAITING_TURN_MESSAGE_ID = '__onevoice_awaiting_turn__';
 const TURN_POLL_INTERVAL_MS = 3000;
 const TURN_POLL_MAX_ATTEMPTS = 200;
 
-// Preserves status === 'expired' so the UI owns the render decision
-// (ExpiredApprovalBanner).
+// Preserves terminal/non-actionable projection statuses so the UI owns the
+// render decision and never turns an unavailable approval into an action card.
 function normalizePendingApproval(raw: unknown): PendingApproval | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -59,7 +59,11 @@ function normalizePendingApproval(raw: unknown): PendingApproval | null {
     };
   });
   const status: PendingApproval['status'] =
-    r.status === 'expired' ? 'expired' : r.status === 'resolving' ? 'resolving' : 'pending';
+    r.status === 'expired' || r.status === 'unavailable'
+      ? r.status
+      : r.status === 'resolving'
+        ? 'resolving'
+        : 'pending';
   return {
     batchId: (r.batchId as string) ?? '',
     conversationId: r.conversationId as string | undefined,
@@ -197,6 +201,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const [isStreaming, setIsStreaming] = useState(false);
   const [awaitingTurn, setAwaitingTurn] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+
+  const dismissApproval = useCallback(() => setPendingApproval(null), []);
   const [isResolving, setIsResolving] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -683,6 +689,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     sendMessage,
     stop,
     pendingApproval,
+    dismissApproval,
     resolveApproval,
     isResolving,
   };
