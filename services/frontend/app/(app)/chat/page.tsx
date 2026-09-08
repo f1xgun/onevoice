@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -33,6 +33,8 @@ export default function ChatListPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const activeBusiness = useRef(activeBusinessId);
+  activeBusiness.current = activeBusinessId;
   const tChat = useTranslations('chat');
   const tCommon = useTranslations('common');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -57,8 +59,9 @@ export default function ChatListPage() {
     onSuccess: (conv: Conversation, businessId) => {
       trackClick('create_conversation', undefined, businessId);
       queryClient.invalidateQueries({
-        queryKey: conversationsQueryKey(activeBusinessId),
+        queryKey: conversationsQueryKey(businessId),
       });
+      if (activeBusiness.current !== businessId) return;
       router.push(`/chat/${conv.id}`);
     },
     onError: () => toast.error(tCommon('connectionError')),
@@ -97,10 +100,10 @@ export default function ChatListPage() {
       bizApi(businessId).delete(BIZ_API_PATHS.CONVERSATIONS.BY_ID(id)),
     onSuccess: (_, { businessId }) => {
       trackClick('delete_conversation', undefined, businessId);
-      setDeleteTarget(null);
       queryClient.invalidateQueries({
-        queryKey: conversationsQueryKey(activeBusinessId),
+        queryKey: conversationsQueryKey(businessId),
       });
+      if (activeBusiness.current === businessId) setDeleteTarget(null);
     },
     onError: () => toast.error(tCommon('connectionError')),
   });

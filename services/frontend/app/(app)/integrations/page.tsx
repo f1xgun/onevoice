@@ -78,6 +78,8 @@ export default function IntegrationsPage() {
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const activeBusiness = useRef(activeBusinessId);
+  activeBusiness.current = activeBusinessId;
   const canConnect = usePermission('integrations.connect').allowed;
   const canDisconnect = usePermission('integrations.disconnect').allowed;
   const [activeModalPlatform, setActiveModalPlatform] = useState<ModalPlatform | null>(null);
@@ -218,7 +220,8 @@ export default function IntegrationsPage() {
     },
     onSuccess: (_, { businessId }) => {
       trackClick('disconnect_integration', undefined, businessId);
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(businessId) });
+      if (activeBusiness.current !== businessId) return;
       toast.success(tIntegrations('page.channelDisconnected'));
     },
     onError: () => toast.error(tIntegrations('page.disconnectFailed')),
