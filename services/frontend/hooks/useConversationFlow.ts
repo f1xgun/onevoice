@@ -195,6 +195,10 @@ interface UseConversationFlowOptions {
   conversationId: string;
 }
 
+interface SendMessageOptions {
+  selectedPlatforms?: string[];
+}
+
 export function useConversationFlow({ conversationId }: UseConversationFlowOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -402,7 +406,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string, onAccepted?: () => void) => {
+    async (text: string, onAccepted?: () => void, options?: SendMessageOptions) => {
       if (isStreamingRef.current) return;
 
       if (turnPollRef.current) {
@@ -446,7 +450,13 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         const response = await authFetch(chatUrl(activeBusinessId, conversationId), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, locale }),
+          body: JSON.stringify({
+            message: text,
+            locale,
+            ...(options?.selectedPlatforms !== undefined
+              ? { selected_platforms: options.selectedPlatforms }
+              : {}),
+          }),
           signal: controller.signal,
         });
 

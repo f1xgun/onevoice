@@ -23,11 +23,13 @@ import (
 // TurnRequest is the inputs a Turn needs to run. Constructed by the HTTP
 // handler from request body + URL params + middleware-supplied context.
 type TurnRequest struct {
-	BusinessID     uuid.UUID
-	UserID         uuid.UUID
-	ConversationID string
-	Message        string
-	Model          string
+	BusinessID        uuid.UUID
+	UserID            uuid.UUID
+	ConversationID    string
+	Message           string
+	Model             string
+	SelectedPlatforms []string
+	PlatformScopeSet  bool
 
 	// ResumeBatchID is "" for fresh turns. When set, the gate step routes
 	// the request through StreamResume() instead of opening a fresh LLM call.

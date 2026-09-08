@@ -2019,6 +2019,21 @@ components:
             BCP-47 language tag (e.g. "ru", "en") for the LLM response
             language. Takes precedence over the Accept-Language header, which
             browsers cannot set on fetch. Empty falls back to Accept-Language.
+        selected_platforms:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          description: >-
+            Optional closed guided-compose publication scope. Omission preserves
+            ordinary chat behavior; when present, only these freshly active
+            platform integrations may be offered or dispatched.
+          items:
+            type: string
+            enum:
+            - telegram
+            - vk
+            - yandex_business
     SSEConcurrencyError:
       type: object
       required:
@@ -3095,6 +3110,17 @@ components:
           type: array
           items:
             type: string
+        selected_platforms:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - telegram
+            - vk
+            - yandex_business
         history:
           type: array
           items:

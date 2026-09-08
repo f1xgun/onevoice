@@ -1427,6 +1427,8 @@
       "channelsLabel": "Where to prepare the post",
       "channelsLoading": "Checking connected channels…",
       "channelsError": "We couldn't verify your connections. Try again later.",
+      "channelsRetry": "Try again",
+      "channelsPermission": "Your access does not include connection details, so this shortcut cannot verify destinations. You can still describe the post in the regular chat composer.",
       "channelsEmpty": "There are no confirmed connected channels. Connect one in Integrations first.",
       "channelsRequired": "Choose at least one channel.",
       "approvalHint": "The AI creates drafts only for the selected channels. You can edit each text and approve the whole group before publishing.",

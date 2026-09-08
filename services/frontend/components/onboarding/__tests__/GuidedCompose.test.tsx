@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
     { id: 'avito', fullLabel: 'Avito', status: 'coming_soon' },
   ],
   registryStatus: 'success' as 'success' | 'pending' | 'error',
+  permissionStatus: 'allowed' as 'allowed' | 'denied' | 'error',
+  registryRefetch: vi.fn(),
   integrationsByBusiness: {
     'org-a': [
       { platform: 'telegram', status: 'active' },
@@ -35,6 +37,15 @@ vi.mock('@/lib/hooks/usePlatforms', () => ({
     isSuccess: state.registryStatus === 'success',
     isPending: state.registryStatus === 'pending',
     isError: state.registryStatus === 'error',
+    refetch: state.registryRefetch,
+  }),
+}));
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({
+    allowed: state.permissionStatus === 'allowed',
+    isLoading: false,
+    isError: state.permissionStatus === 'error',
+    refetch: vi.fn(),
   }),
 }));
 vi.mock('@/lib/api/business-api', () => ({
@@ -61,6 +72,8 @@ async function openCompose() {
 beforeEach(() => {
   vi.clearAllMocks();
   state.registryStatus = 'success';
+  state.registryRefetch.mockReset();
+  state.permissionStatus = 'allowed';
   state.integrationsByBusiness = {
     'org-a': [
       { platform: 'telegram', status: 'active' },
@@ -128,6 +141,34 @@ describe('GuidedCompose connected channel selection', () => {
     });
     await waitFor(() => expect(screen.getByLabelText('Telegram')).toBeChecked());
     expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  });
+
+  it('keeps a platform eligible when one of its integration rows is still connected', async () => {
+    state.integrationsByBusiness['org-a'] = [
+      { platform: 'telegram', status: 'token_expired' },
+      { platform: 'telegram', status: 'active' },
+    ];
+    setup();
+    await openCompose();
+    await waitFor(() => expect(screen.getByLabelText('Telegram')).toBeChecked());
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  });
+
+  it('keeps ordinary chat as the honest fallback without integration-read permission', async () => {
+    state.permissionStatus = 'denied';
+    setup();
+    await openCompose();
+    expect(screen.getByText(/Опишите пост в обычном поле чата/)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('offers an accessible retry that refetches failed channel evidence', async () => {
+    state.registryStatus = 'error';
+    setup();
+    await openCompose();
+    await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(state.registryRefetch).toHaveBeenCalledTimes(1);
+    expect(state.get).toHaveBeenCalledTimes(2);
   });
 
   it('removes a selected channel when fresh integration evidence removes it', async () => {

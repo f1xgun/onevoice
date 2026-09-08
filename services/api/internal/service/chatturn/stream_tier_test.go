@@ -85,3 +85,17 @@ func TestBuildOrchestratorRequest_NilResolverPreservesLegacyEmptyTier(t *testing
 
 	require.Equal(t, "", body["tier"], "a nil resolver must forward the legacy empty tier")
 }
+
+func TestBuildOrchestratorRequest_PlatformScopePresence(t *testing.T) {
+	biz := &domain.Business{ID: uuid.New(), Name: "Acme"}
+	turn := &Turn{}
+
+	legacy := turn.buildOrchestratorRequest(context.Background(), turnReq(), enrichedFor(biz))
+	require.NotContains(t, legacy, "selected_platforms")
+
+	scopedReq := turnReq()
+	scopedReq.PlatformScopeSet = true
+	scopedReq.SelectedPlatforms = []string{"telegram"}
+	scoped := turn.buildOrchestratorRequest(context.Background(), scopedReq, enrichedFor(biz))
+	require.Equal(t, []string{"telegram"}, scoped["selected_platforms"])
+}

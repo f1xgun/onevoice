@@ -122,6 +122,8 @@ describe('ChatWindow — guided compose seeds the existing send path', () => {
     );
     expect(instruction).toContain('только в выбранных каналах: Telegram (telegram)');
     expect(instruction).toContain('одной группе подтверждения');
+    expect(sendMessage.mock.calls[0]?.[1]).toBeUndefined();
+    expect(sendMessage.mock.calls[0]?.[2]).toEqual({ selectedPlatforms: ['telegram'] });
   });
 
   it('reuses the existing editable multi-channel HITL batch', async () => {

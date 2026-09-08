@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { PenLine } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -15,6 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { bizApi } from '@/lib/api/business-api';
 import {
   COMPOSE_POST_TYPES,
+  COMPOSE_PLATFORM_IDS,
   buildComposeInstruction,
   isComposePostType,
   type ComposeDestination,
@@ -23,6 +24,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { channelConnectionState } from '@/lib/constants/integrationStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { usePlatforms, type EnrichedPlatform } from '@/lib/hooks/usePlatforms';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackEvent } from '@/lib/telemetry';
 
@@ -41,7 +43,7 @@ const composeSchema = z.object({
 type ComposeFormData = z.infer<typeof composeSchema>;
 
 export interface GuidedComposeProps {
-  onCompose: (instruction: string) => void;
+  onCompose: (instruction: string, selectedPlatforms: string[]) => void;
   disabled?: boolean;
   className?: string;
 }
@@ -51,21 +53,26 @@ export function confirmedComposeDestinations(
   integrations: readonly ComposeIntegration[]
 ): ComposeDestination[] {
   return platforms
-    .filter((platform) => platform.status === 'active' && platform.id !== 'google_business')
     .filter(
       (platform) =>
-        channelConnectionState(
-          integrations.filter((integration) => integration.platform === platform.id)
-        ) === 'connected'
+        platform.status === 'active' &&
+        (COMPOSE_PLATFORM_IDS as readonly string[]).includes(platform.id)
+    )
+    .filter((platform) =>
+      integrations
+        .filter((integration) => integration.platform === platform.id)
+        .some((integration) => channelConnectionState([integration]) === 'connected')
     )
     .map((platform) => ({ id: platform.id, label: platform.fullLabel }));
 }
 
 export function GuidedCompose({ onCompose, disabled = false, className }: GuidedComposeProps) {
   const t = useTranslations('gettingStarted.compose');
+  const locale = useLocale() === 'en' ? 'en' : 'ru';
   const [open, setOpen] = useState(false);
   const topicFieldId = useId();
   const businessId = useBusinessStore((state) => state.activeBusinessId);
+  const integrationRead = usePermission('integrations.read');
   const registry = usePlatforms();
   const integrations = useQuery<ComposeIntegration[]>({
     queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(businessId),
@@ -76,7 +83,7 @@ export function GuidedCompose({ onCompose, disabled = false, className }: Guided
           if (!Array.isArray(response.data)) throw new Error('Invalid integration list response');
           return response.data;
         }),
-    enabled: !!businessId,
+    enabled: !!businessId && integrationRead.allowed,
     retry: false,
   });
   const destinations = useMemo(
@@ -144,20 +151,28 @@ export function GuidedCompose({ onCompose, disabled = false, className }: Guided
         values.channels.includes(destination.id)
       );
       if (selected.length !== values.channels.length || selected.length === 0) return;
-      const composed = buildComposeInstruction(values.postType, values.topic, selected);
+      const composed = buildComposeInstruction(values.postType, values.topic, selected, locale);
       if (composed === null) return;
       trackEvent('activation', 'guided_compose', {
         metadata: { postType: values.postType, platforms: selected.map(({ id }) => id).join(',') },
       });
-      onCompose(composed);
+      onCompose(
+        composed,
+        selected.map(({ id }) => id)
+      );
       reset({ postType: values.postType, topic: '', channels: destinations.map(({ id }) => id) });
       setOpen(false);
     },
-    [businessId, destinations, disabled, onCompose, reset]
+    [businessId, destinations, disabled, locale, onCompose, reset]
   );
 
-  const loading = registry.isPending || integrations.isPending;
-  const loadError = registry.isError || integrations.isError;
+  const loading =
+    integrationRead.isLoading ||
+    registry.isPending ||
+    (integrationRead.allowed && integrations.isPending);
+  const permissionDenied =
+    !integrationRead.isLoading && !integrationRead.isError && !integrationRead.allowed;
+  const loadError = integrationRead.isError || registry.isError || integrations.isError;
   const canSubmit =
     !disabled &&
     !!businessId &&
@@ -240,10 +255,28 @@ export function GuidedCompose({ onCompose, disabled = false, className }: Guided
         <legend className="text-xs font-medium text-ink-soft">{t('channelsLabel')}</legend>
         {loading ? (
           <p className="text-sm text-ink-soft">{t('channelsLoading')}</p>
-        ) : loadError ? (
-          <p role="alert" className="text-sm text-danger">
-            {t('channelsError')}
+        ) : permissionDenied ? (
+          <p role="status" className="text-sm text-ink-soft">
+            {t('channelsPermission')}
           </p>
+        ) : loadError ? (
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-danger">
+              {t('channelsError')}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void integrationRead.refetch();
+                void registry.refetch();
+                void integrations.refetch();
+              }}
+            >
+              {t('channelsRetry')}
+            </Button>
+          </div>
         ) : destinations.length === 0 ? (
           <p className="text-sm text-ink-soft">{t('channelsEmpty')}</p>
         ) : (

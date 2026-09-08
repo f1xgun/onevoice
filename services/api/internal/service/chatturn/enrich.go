@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // enrichmentResult is the bag of fields the orchestrator request body needs:
@@ -64,6 +65,9 @@ func (t *Turn) enrich(ctx context.Context, req TurnRequest) (*enrichmentResult, 
 			active = append(active, integ.Platform)
 			seen[integ.Platform] = true
 		}
+	}
+	if req.PlatformScopeSet {
+		active = tools.IntersectSelectedPlatforms(active, req.SelectedPlatforms)
 	}
 
 	history := t.loadHistory(ctx, req.ConversationID)

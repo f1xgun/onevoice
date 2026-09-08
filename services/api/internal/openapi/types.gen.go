@@ -103,6 +103,20 @@ const (
 	ChatRequestProjectWhitelistModeNone     ChatRequestProjectWhitelistMode = "none"
 )
 
+// Defines values for ChatRequestSelectedPlatforms.
+const (
+	ChatRequestSelectedPlatformsTelegram       ChatRequestSelectedPlatforms = "telegram"
+	ChatRequestSelectedPlatformsVk             ChatRequestSelectedPlatforms = "vk"
+	ChatRequestSelectedPlatformsYandexBusiness ChatRequestSelectedPlatforms = "yandex_business"
+)
+
+// Defines values for ChatTurnRequestSelectedPlatforms.
+const (
+	ChatTurnRequestSelectedPlatformsTelegram       ChatTurnRequestSelectedPlatforms = "telegram"
+	ChatTurnRequestSelectedPlatformsVk             ChatTurnRequestSelectedPlatforms = "vk"
+	ChatTurnRequestSelectedPlatformsYandexBusiness ChatTurnRequestSelectedPlatforms = "yandex_business"
+)
+
 // Defines values for ConsentRequiredResponseCode.
 const (
 	ConsentRequired ConsentRequiredResponseCode = "consent_required"
@@ -647,6 +661,7 @@ type ChatRequest struct {
 	ProjectName              *string                          `json:"project_name,omitempty"`
 	ProjectSystemPrompt      *string                          `json:"project_system_prompt,omitempty"`
 	ProjectWhitelistMode     *ChatRequestProjectWhitelistMode `json:"project_whitelist_mode,omitempty" validate:"omitempty,oneof=inherit all explicit none"`
+	SelectedPlatforms        *[]ChatRequestSelectedPlatforms  `json:"selected_platforms,omitempty"`
 	Tier                     *string                          `json:"tier,omitempty"`
 	UserId                   *string                          `json:"user_id,omitempty"`
 }
@@ -654,13 +669,22 @@ type ChatRequest struct {
 // ChatRequestProjectWhitelistMode defines model for ChatRequest.ProjectWhitelistMode.
 type ChatRequestProjectWhitelistMode string
 
+// ChatRequestSelectedPlatforms defines model for ChatRequest.SelectedPlatforms.
+type ChatRequestSelectedPlatforms string
+
 // ChatTurnRequest defines model for ChatTurnRequest.
 type ChatTurnRequest struct {
 	// Locale BCP-47 language tag (e.g. "ru", "en") for the LLM response language. Takes precedence over the Accept-Language header, which browsers cannot set on fetch. Empty falls back to Accept-Language.
 	Locale  *string `json:"locale,omitempty"`
 	Message *string `json:"message,omitempty"`
 	Model   *string `json:"model,omitempty"`
+
+	// SelectedPlatforms Optional closed guided-compose publication scope. Omission preserves ordinary chat behavior; when present, only these freshly active platform integrations may be offered or dispatched.
+	SelectedPlatforms *[]ChatTurnRequestSelectedPlatforms `json:"selected_platforms,omitempty"`
 }
+
+// ChatTurnRequestSelectedPlatforms defines model for ChatTurnRequest.SelectedPlatforms.
+type ChatTurnRequestSelectedPlatforms string
 
 // ChatView defines model for ChatView.
 type ChatView struct {

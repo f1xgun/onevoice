@@ -98,10 +98,15 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
 
     let send: Promise<void>;
     await act(async () => {
-      send = result.current.sendMessage('post hi');
+      send = result.current.sendMessage('post hi', undefined, {
+        selectedPlatforms: ['telegram'],
+      });
     });
 
     await waitFor(() => expect(result.current.pendingApproval).not.toBeNull());
+    const chatCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/chat/cid-1'));
+    const chatBody = JSON.parse(String(chatCall?.[1]?.body));
+    expect(chatBody.selected_platforms).toEqual(['telegram']);
     expect(invalidateSpy).not.toHaveBeenCalledWith({
       queryKey: ['businesses', 'biz-test', 'conversations'],
     });

@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/sse"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/sseevent"
@@ -55,19 +56,20 @@ type historyEntry struct {
 
 // chatRequest is the POST /chat/{conversationID} body. See docs/orchestrator/chat-handler.md.
 type chatRequest struct {
-	Model                string         `json:"model"`
-	Message              string         `json:"message"`
-	BusinessID           string         `json:"business_id"`
-	BusinessName         string         `json:"business_name"`
-	BusinessCategory     string         `json:"business_category"`
-	BusinessAddress      string         `json:"business_address"`
-	BusinessPhone        string         `json:"business_phone"`
-	BusinessWebsite      string         `json:"business_website"`
-	BusinessDesc         string         `json:"business_description"`
-	BusinessVoiceTone    []string       `json:"business_voice_tone"`
-	BusinessVoiceProfile string         `json:"business_voice_profile"`
-	ActiveIntegrations   []string       `json:"active_integrations"`
-	History              []historyEntry `json:"history"`
+	Model                string          `json:"model"`
+	Message              string          `json:"message"`
+	BusinessID           string          `json:"business_id"`
+	BusinessName         string          `json:"business_name"`
+	BusinessCategory     string          `json:"business_category"`
+	BusinessAddress      string          `json:"business_address"`
+	BusinessPhone        string          `json:"business_phone"`
+	BusinessWebsite      string          `json:"business_website"`
+	BusinessDesc         string          `json:"business_description"`
+	BusinessVoiceTone    []string        `json:"business_voice_tone"`
+	BusinessVoiceProfile string          `json:"business_voice_profile"`
+	ActiveIntegrations   []string        `json:"active_integrations"`
+	SelectedPlatforms    json.RawMessage `json:"selected_platforms"`
+	History              []historyEntry  `json:"history"`
 
 	ProjectID            string   `json:"project_id"`
 	ProjectName          string   `json:"project_name"`
@@ -107,6 +109,21 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Model == "" {
 		req.Model = h.defaultModel
+	}
+	var selectedPlatforms []string
+	platformScopeSet := req.SelectedPlatforms != nil
+	if platformScopeSet {
+		var rawPlatforms []string
+		if err := json.Unmarshal(req.SelectedPlatforms, &rawPlatforms); err != nil {
+			http.Error(w, `{"error":"invalid selected_platforms"}`, http.StatusBadRequest)
+			return
+		}
+		var scopeErr error
+		selectedPlatforms, scopeErr = tools.NormalizeSelectedPlatforms(rawPlatforms)
+		if scopeErr != nil {
+			http.Error(w, `{"error":"invalid selected_platforms"}`, http.StatusBadRequest)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -174,6 +191,8 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		WhitelistMode:            mode,
 		AllowedTools:             req.ProjectAllowedTools,
 		ActiveIntegrations:       req.ActiveIntegrations,
+		SelectedPlatforms:        selectedPlatforms,
+		PlatformScopeSet:         platformScopeSet,
 		Messages:                 history,
 		ConversationID:           conversationID,
 		BusinessID:               req.BusinessID,

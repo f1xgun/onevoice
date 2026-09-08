@@ -33,6 +33,20 @@ describe('buildComposeInstruction', () => {
     expect(instruction).toContain('одной группе подтверждения');
     expect(instruction).not.toContain('yandex_business');
   });
+
+  it('builds the entire guided seed in English for an English locale', () => {
+    const instruction = buildComposeInstruction(
+      'announcement',
+      'Saturday opening',
+      [{ id: 'telegram', label: 'Telegram' }],
+      'en'
+    );
+
+    expect(instruction).toContain('Write an announcement');
+    expect(instruction).toContain('Publish only to these selected channels');
+    expect(instruction).toContain('single approval group');
+    expect(instruction).not.toMatch(/[А-Яа-яЁё]/);
+  });
 });
 
 describe('isComposePostType', () => {
