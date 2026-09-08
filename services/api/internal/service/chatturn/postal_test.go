@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 // counterValue reads the current value of a {name, labels} counter series from
@@ -369,6 +370,51 @@ type fakePostRepo struct {
 	created []domain.Post
 }
 
+type valueSink struct{ events []valuetelemetry.Event }
+
+func (s *valueSink) RecordValue(_ context.Context, event valuetelemetry.Event) {
+	s.events = append(s.events, event)
+}
+
+func TestRecordPosts_EmitsValueOnlyAfterSuccessfulPublishedPersistence(t *testing.T) {
+	businessID := uuid.New()
+	sink := &valueSink{}
+	repo := &fakePostRepo{}
+	turn := &Turn{valueTelemetry: sink, deps: Deps{Posts: repo}}
+	calls := []domain.ToolCall{
+		{ID: "published", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "landed"}},
+		{ID: "failed", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "failed"}},
+		{ID: "scheduled", Name: tools.VKSchedulePost, Arguments: map[string]interface{}{"text": "later"}},
+	}
+	results := []domain.ToolResult{{ToolCallID: "published"}, {ToolCallID: "failed", IsError: true}, {ToolCallID: "scheduled"}}
+	turn.recordPostsAndReviews(context.Background(), businessID.String(), "message-1", calls, results)
+	require.Len(t, sink.events, 1)
+	assert.Equal(t, valuetelemetry.PostPublished, sink.events[0].Action)
+	assert.Equal(t, businessID, sink.events[0].BusinessID)
+	assert.Equal(t, "telegram", sink.events[0].Platform)
+	assert.Equal(t, businessID.String()+":message-1:published", sink.events[0].SourceID)
+}
+
+func TestRecordPosts_ValueTelemetrySkipsPersistenceFailureAndReusesResumeIdentity(t *testing.T) {
+	businessID := uuid.New()
+	call := []domain.ToolCall{{ID: "call-1", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "landed"}}}
+	result := []domain.ToolResult{{ToolCallID: "call-1"}}
+
+	failedSink := &valueSink{}
+	(&Turn{valueTelemetry: failedSink, deps: Deps{Posts: failingPostRepo{}}}).recordPostsAndReviews(
+		context.Background(), businessID.String(), "resume-message", call, result,
+	)
+	require.Empty(t, failedSink.events, "a confirmed platform result is insufficient when Post persistence fails")
+
+	sink := &valueSink{}
+	turn := &Turn{valueTelemetry: sink, deps: Deps{Posts: &fakePostRepo{}}}
+	turn.recordPostsAndReviews(context.Background(), businessID.String(), "resume-message", call, result)
+	turn.recordPostsAndReviews(context.Background(), businessID.String(), "resume-message", call, result)
+	require.Len(t, sink.events, 2)
+	assert.Equal(t, sink.events[0].SourceID, sink.events[1].SourceID,
+		"reprocessing the same resumed tool call must reach SQL with the same dedupe identity")
+}
+
 func (f *fakePostRepo) Create(_ context.Context, p *domain.Post) error {
 	f.created = append(f.created, *p)
 	return nil
@@ -674,6 +720,7 @@ type reconcilingReviewRepo struct {
 	review        *domain.Review
 	updateCalls   []updateReplyCall
 	lastLookupKey [3]string
+	updateErr     error
 }
 
 type updateReplyCall struct {
@@ -696,7 +743,27 @@ func (r *reconcilingReviewRepo) GetByExternalID(_ context.Context, businessID, p
 
 func (r *reconcilingReviewRepo) UpdateReplyDispatched(_ context.Context, id, replyText, replyStatus, dispatchApprovalID string) error {
 	r.updateCalls = append(r.updateCalls, updateReplyCall{id: id, text: replyText, status: replyStatus, approvalID: dispatchApprovalID})
-	return nil
+	return r.updateErr
+}
+
+func TestReconcileReviewReplies_ValueTelemetryRequiresPersistenceAndUsesStableIdentity(t *testing.T) {
+	businessID := uuid.New()
+	review := &domain.Review{ID: "review-1", BusinessID: businessID.String(), Platform: a2a.AgentYandexBusiness, ExternalID: "external-1"}
+	calls := []domain.ToolCall{{ID: "call-1", Name: tools.YandexBusinessReplyReview, Arguments: map[string]interface{}{"review_id": "external-1", "text": "reply"}, ApprovalID: "approval-1"}}
+	results := []domain.ToolResult{{ToolCallID: "call-1"}}
+
+	failedSink := &valueSink{}
+	failed := &Turn{valueTelemetry: failedSink, deps: Deps{Reviews: &reconcilingReviewRepo{review: review, updateErr: errors.New("mongo down")}}}
+	failed.recordPostsAndReviews(context.Background(), businessID.String(), "message-1", calls, results)
+	require.Empty(t, failedSink.events)
+
+	sink := &valueSink{}
+	turn := &Turn{valueTelemetry: sink, deps: Deps{Reviews: &reconcilingReviewRepo{review: review}}}
+	turn.recordPostsAndReviews(context.Background(), businessID.String(), "message-1", calls, results)
+	turn.recordPostsAndReviews(context.Background(), businessID.String(), "message-1", calls, results)
+	require.Len(t, sink.events, 2)
+	assert.Equal(t, valuetelemetry.ReviewReplied, sink.events[0].Action)
+	assert.Equal(t, sink.events[0].SourceID, sink.events[1].SourceID)
 }
 
 // TestReconcileReviewReplies_FlipsStatusOnSuccessfulYandexReply is the

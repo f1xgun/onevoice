@@ -22,6 +22,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/oauthlock"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 // memberStatusSuspended is the business_members.status value that bars a member
@@ -166,16 +167,25 @@ type SharedSessionParams struct {
 }
 
 type integrationService struct {
-	repo      domain.IntegrationRepository
-	envelope  *crypto.Envelope
-	pool      oauthlock.LockExecutor
-	refreshMu sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock (legacy path fallback)
-	refresher TokenRefresher // nil for platforms that don't need refresh
-	audit     audit.Logger
-	nats      NATSPublisher     // nil when NATS is unreachable — revoke publish is skipped (fail-open)
-	actors    ActorLookup       // nil disables the connect-actor gate (in-process callers already gated upstream)
-	members   MembershipChecker // nil disables the connect-membership gate (in-process callers already gated upstream)
-	business  BusinessLookup    // nil disables the connect-business-existence gate (in-process callers pass a live business)
+	repo           domain.IntegrationRepository
+	envelope       *crypto.Envelope
+	pool           oauthlock.LockExecutor
+	refreshMu      sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock (legacy path fallback)
+	refresher      TokenRefresher // nil for platforms that don't need refresh
+	audit          audit.Logger
+	nats           NATSPublisher     // nil when NATS is unreachable — revoke publish is skipped (fail-open)
+	actors         ActorLookup       // nil disables the connect-actor gate (in-process callers already gated upstream)
+	members        MembershipChecker // nil disables the connect-membership gate (in-process callers already gated upstream)
+	business       BusinessLookup    // nil disables the connect-business-existence gate (in-process callers pass a live business)
+	valueTelemetry valuetelemetry.Sink
+}
+
+// WithIntegrationValueTelemetry attaches the server-owned completion sink.
+func WithIntegrationValueTelemetry(svc IntegrationService, sink valuetelemetry.Sink) IntegrationService {
+	if s, ok := svc.(*integrationService); ok {
+		s.valueTelemetry = sink
+	}
+	return svc
 }
 
 // Compile-time check that integrationService implements IntegrationService
@@ -543,6 +553,9 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	}
 
 	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID, params.ActorIP, params.UserAgent, params.ParsedFormat)
+	if s.valueTelemetry != nil {
+		s.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{Action: valuetelemetry.IntegrationConnected, SourceID: integration.ID.String(), UserID: params.ActorID, BusinessID: params.BusinessID, Platform: params.Platform, Kind: "integration"})
+	}
 
 	return integration, nil
 }

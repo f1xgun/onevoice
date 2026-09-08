@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -375,6 +376,13 @@ func (t *Turn) recordPostsAndReviews(
 			}
 			if err := t.deps.Posts.Create(ctx, post); err != nil {
 				slog.ErrorContext(ctx, "chatturn: failed to create post record", "tool", tc.Name, "error", err)
+			} else if status == "published" && t.valueTelemetry != nil {
+				if bizID, err := uuid.Parse(businessID); err == nil {
+					t.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{
+						Action: valuetelemetry.PostPublished, SourceID: businessID + ":" + broadcastGroupID + ":" + tc.ID,
+						BusinessID: bizID, Platform: info.platform, Kind: "post",
+					})
+				}
 			}
 			metrics.IncPostsPublished(info.platform, status)
 		}
@@ -573,6 +581,15 @@ func (t *Turn) reconcileReviewReplies(
 		if err := t.deps.Reviews.UpdateReplyDispatched(ctx, review.ID, replyText, domain.ReviewReplyStatusReplied, tc.ApprovalID); err != nil {
 			slog.WarnContext(ctx, "chatturn: failed to reconcile chat reply into review",
 				"tool", tc.Name, "review_id", review.ID, "error", err)
+			continue
+		}
+		if t.valueTelemetry != nil {
+			if bizID, err := uuid.Parse(businessID); err == nil {
+				t.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{
+					Action: valuetelemetry.ReviewReplied, SourceID: businessID + ":" + review.ID,
+					BusinessID: bizID, Platform: platform, Kind: "review_reply",
+				})
+			}
 		}
 	}
 }

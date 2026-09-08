@@ -18,14 +18,15 @@ import (
 // Metadata is pre-marshaled JSON ('{}' when empty); CorrelationID/ClientTS
 // are nullable client-supplied strings.
 type TelemetryEventRow struct {
-	UserID        *uuid.UUID
-	BusinessID    *uuid.UUID
-	EventType     string
-	Action        string
-	Page          string
-	Metadata      []byte
-	CorrelationID *string
-	ClientTS      *string
+	UserID          *uuid.UUID
+	BusinessID      *uuid.UUID
+	EventType       string
+	Action          string
+	Page            string
+	Metadata        []byte
+	CorrelationID   *string
+	ClientTS        *string
+	ServerDedupeKey *string
 }
 
 // TelemetryEventRepository owns SQL for telemetry_events.
@@ -53,14 +54,15 @@ func (r *TelemetryEventRepository) InsertBatch(ctx context.Context, rows []Telem
 	}
 	b := r.psql.
 		Insert("telemetry_events").
-		Columns("user_id", "business_id", "event_type", "action", "page", "metadata", "correlation_id", "client_ts")
+		Columns("user_id", "business_id", "event_type", "action", "page", "metadata", "correlation_id", "client_ts", "server_dedupe_key")
 	for _, row := range rows {
 		meta := row.Metadata
 		if len(meta) == 0 {
 			meta = []byte("{}")
 		}
-		b = b.Values(row.UserID, row.BusinessID, row.EventType, row.Action, row.Page, meta, row.CorrelationID, row.ClientTS)
+		b = b.Values(row.UserID, row.BusinessID, row.EventType, row.Action, row.Page, meta, row.CorrelationID, row.ClientTS, row.ServerDedupeKey)
 	}
+	b = b.Suffix("ON CONFLICT DO NOTHING")
 	sqlStr, args, err := b.ToSql()
 	if err != nil {
 		return fmt.Errorf("telemetry_events insert build: %w", err)

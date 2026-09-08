@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 // JWT token expiry durations.
@@ -83,6 +84,21 @@ type userService struct {
 	registerAudit    audit.Logger
 
 	registerConsentSvc *ConsentService
+	valueTelemetry     valuetelemetry.Sink
+}
+
+// WithUserValueTelemetry attaches the server-owned completion sink.
+func WithUserValueTelemetry(svc UserService, sink valuetelemetry.Sink) UserService {
+	if s, ok := svc.(*userService); ok {
+		s.valueTelemetry = sink
+	}
+	return svc
+}
+
+func (s *userService) recordSignup(ctx context.Context, userID uuid.UUID) {
+	if s.valueTelemetry != nil {
+		s.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{Action: valuetelemetry.SignupCompleted, SourceID: userID.String(), UserID: userID})
+	}
 }
 
 // RegisterTxPool is the tx-opening seam needed by Register.
@@ -190,6 +206,7 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		if s.registerAudit != nil {
 			audit.LogConsentRecorded(ctx, s.registerAudit, user.ID, "service_operation", "pre-v22")
 		}
+		s.recordSignup(ctx, user.ID)
 		return sanitizeUser(user), nil
 	}
 
@@ -201,6 +218,7 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
+	s.recordSignup(ctx, user.ID)
 	return sanitizeUser(user), nil
 }
 
@@ -250,6 +268,7 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 		if err := tx.Commit(ctx); err != nil {
 			return nil, fmt.Errorf("register commit: %w", err)
 		}
+		s.recordSignup(ctx, user.ID)
 		return sanitizeUser(user), nil
 	}
 

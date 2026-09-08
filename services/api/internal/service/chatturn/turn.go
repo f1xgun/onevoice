@@ -17,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -67,6 +68,7 @@ const defaultHistoryLimit = 100
 // *Turn instance.
 type Turn struct {
 	approvalTelemetry approvaltelemetry.Sink
+	valueTelemetry    valuetelemetry.Sink
 	deps              Deps
 }
 

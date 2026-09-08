@@ -199,6 +199,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	// which reuses chatProxyHandler.Turn(), sees it too.
 	chatProxyHandler.Turn().SetPlanResolver(svcs.PlanResolver)
 	chatProxyHandler.Turn().SetApprovalTelemetry(svcs.Telemetry)
+	chatProxyHandler.Turn().SetValueTelemetry(svcs.Telemetry)
 
 	var sseCounter *ssecounter.Counter
 	if h.Redis != nil && cfg.SSEMaxPerUser > 0 {

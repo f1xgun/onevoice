@@ -13,12 +13,68 @@ import (
 
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
+	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 )
 
 type fakeTelemetryRepo struct {
 	calls int
 	rows  []repository.TelemetryEventRow
 	err   error
+}
+
+func TestTelemetryService_RecordValue_ClosedTrustedAndPrivate(t *testing.T) {
+	repo := &channelTelemetryRepo{rows: make(chan []repository.TelemetryEventRow, 2)}
+	svc := NewTelemetryService(repo)
+	userID, businessID := uuid.New(), uuid.New()
+	svc.RecordValue(context.Background(), valuetelemetry.Event{
+		Action: valuetelemetry.IntegrationConnected, SourceID: "internal-integration-id",
+		UserID: userID, BusinessID: businessID, Platform: "telegram", Kind: "integration",
+	})
+	select {
+	case rows := <-repo.rows:
+		require.Len(t, rows, 1)
+		row := rows[0]
+		assert.Equal(t, "value", row.EventType)
+		assert.Equal(t, valuetelemetry.IntegrationConnected, row.Action)
+		require.NotNil(t, row.UserID)
+		require.NotNil(t, row.BusinessID)
+		assert.Equal(t, userID, *row.UserID)
+		assert.Equal(t, businessID, *row.BusinessID)
+		assert.JSONEq(t, `{"kind":"integration","platform":"telegram"}`, string(row.Metadata))
+		require.NotNil(t, row.ServerDedupeKey)
+		assert.NotContains(t, string(row.Metadata), "internal-integration-id")
+	case <-time.After(time.Second):
+		t.Fatal("value event was not queued")
+	}
+
+	svc.RecordValue(context.Background(), valuetelemetry.Event{Action: "forged", SourceID: "x", UserID: userID})
+	select {
+	case <-repo.rows:
+		t.Fatal("unknown server action was accepted")
+	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestTelemetryService_Ingest_DropsForgedValueFamily(t *testing.T) {
+	repo := &fakeTelemetryRepo{}
+	svc := NewTelemetryService(repo)
+	require.NoError(t, svc.Ingest(context.Background(), uuid.New(), []TelemetryEvent{{
+		EventType: "value", Action: valuetelemetry.PostPublished,
+	}}))
+	assert.Zero(t, repo.calls)
+}
+
+func TestTelemetryService_RecordValue_StableDedupeKey(t *testing.T) {
+	repo := &channelTelemetryRepo{rows: make(chan []repository.TelemetryEventRow, 2)}
+	svc := NewTelemetryService(repo)
+	event := valuetelemetry.Event{Action: valuetelemetry.SignupCompleted, SourceID: uuid.NewString(), UserID: uuid.New()}
+	svc.RecordValue(context.Background(), event)
+	first := <-repo.rows
+	svc.RecordValue(context.Background(), event)
+	second := <-repo.rows
+	require.NotNil(t, first[0].ServerDedupeKey)
+	require.NotNil(t, second[0].ServerDedupeKey)
+	assert.Equal(t, *first[0].ServerDedupeKey, *second[0].ServerDedupeKey)
 }
 
 func (f *fakeTelemetryRepo) InsertBatch(_ context.Context, rows []repository.TelemetryEventRow) error {

@@ -511,7 +511,11 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		reviewRefresher = s.ReviewSyncer
 	}
 	s.Telemetry = service.NewTelemetryService(repos.TelemetryEvent)
+	s.User = service.WithUserValueTelemetry(s.User, s.Telemetry)
+	s.Business = service.WithBusinessValueTelemetry(s.Business, s.Telemetry)
+	s.Integration = service.WithIntegrationValueTelemetry(s.Integration, s.Telemetry)
 	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher, reviewDrafter, s.AuditLogger, s.Telemetry)
+	s.Review = service.WithReviewValueTelemetry(s.Review, s.Telemetry)
 	if h.NATS != nil {
 		reviewDrafter.SetAutoPublisher(s.Review, s.AuditLogger)
 	}
@@ -597,6 +601,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		h.Redis,
 		cfg.PublicURL,
 	)
+	s.EmailVerification.SetValueTelemetry(s.Telemetry)
 
 	s.AccountDeletion = service.NewAccountDeletionService(
 		h.PG,
