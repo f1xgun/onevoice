@@ -1,7 +1,9 @@
 # Server value telemetry
 
-Canonical business completions are stored in `telemetry_events` with
-`event_type = value`. The closed server action set is:
+Canonical business completions that reach the telemetry writer are durably
+stored in `telemetry_events` with `event_type = value`. Emission into that
+writer remains bounded best-effort, as described below. The closed server
+action set is:
 
 | Action | Completion boundary | Metadata |
 |---|---|---|
@@ -28,7 +30,7 @@ stable internal source identity. A partial unique database index and
 idempotent. One cross-platform fan-out creates one event per successful platform
 call because each tool-call identity is distinct.
 
-Delivery is bounded best-effort. Approval and value telemetry share an
+Delivery to the durable table is bounded best-effort. Approval and value telemetry share an
 eight-write semaphore, each write has a two-second deadline, and saturated or
 failed writes are dropped without changing the business result. There is no
 durable telemetry outbox, so a process crash before the asynchronous insert can

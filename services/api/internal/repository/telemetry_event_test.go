@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -17,6 +18,22 @@ func anyArgs(n int) []any {
 		a[i] = pgxmock.AnyArg()
 	}
 	return a
+}
+
+func TestTelemetryEvent_InsertBatch_DuplicateServerKeysUseConflictNoop(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(func() { mock.Close() })
+	repo := NewTelemetryEventRepository(mock)
+	key := "stable-key"
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO telemetry_events") + `.*` + regexp.QuoteMeta("ON CONFLICT DO NOTHING")).
+		WithArgs(anyArgs(18)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	require.NoError(t, repo.InsertBatch(context.Background(), []TelemetryEventRow{
+		{EventType: "value", Action: "post_published", ServerDedupeKey: &key},
+		{EventType: "value", Action: "post_published", ServerDedupeKey: &key},
+	}))
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestTelemetryEvent_InsertBatch(t *testing.T) {
