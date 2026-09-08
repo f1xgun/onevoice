@@ -7,6 +7,8 @@ import { useTranslations } from 'next-intl';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { cn } from '@/lib/utils';
+import { approvalKind } from '@/lib/approvalTelemetry';
+import { useApprovalImpressions } from '@/hooks/useApprovalImpressions';
 import { PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
 import type { ApprovalAction, PendingApprovalCall } from '@/types/chat';
 
@@ -31,6 +33,7 @@ export interface AccordionEntryDraft {
 
 export interface ToolApprovalAccordionEntryProps {
   call: PendingApprovalCall;
+  batchId?: string;
   draft: AccordionEntryDraft;
   disabled: boolean;
   amberHighlighted: boolean;
@@ -41,6 +44,7 @@ export interface ToolApprovalAccordionEntryProps {
 
 export function ToolApprovalAccordionEntry({
   call,
+  batchId,
   draft,
   disabled,
   amberHighlighted,
@@ -49,6 +53,12 @@ export function ToolApprovalAccordionEntry({
   onSetRejectReason,
 }: ToolApprovalAccordionEntryProps) {
   const t = useTranslations('chat.toolApproval');
+  useApprovalImpressions(
+    `${batchId}-${call.callId}`,
+    approvalKind(call.toolName),
+    'chat',
+    !!batchId
+  );
   // Every tool in the approval card is a mutation the owner is being asked to
   // approve, so the args (the text/caption to be published) are shown expanded
   // by default — approving a collapsed card blind is the defect this avoids.

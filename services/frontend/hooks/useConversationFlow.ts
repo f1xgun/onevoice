@@ -14,6 +14,7 @@ import { API_BASE_URL, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { authFetch } from '@/lib/api/authFetch';
 import { applySSEEvent, consumeSSEStream } from '@/lib/sse';
 import { trackEvent } from '@/lib/telemetry';
+import { approvalKind, trackApprovalEvent } from '@/lib/approvalTelemetry';
 import { useResolveErrorMap } from '@/lib/resolveErrorMap';
 import { mapPreStreamChatError } from '@/lib/chatError';
 import type {
@@ -580,6 +581,25 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         isResolvingRef.current = false;
         setIsResolving(false);
         return;
+      }
+
+      for (const call of pendingApproval.calls) {
+        const decision = sanitizedDecisions.find((d) => d.id === call.callId);
+        const kind = approvalKind(call.toolName);
+        if (
+          kind &&
+          decision?.action === 'edit' &&
+          Object.entries(decision.edited_args ?? {}).some(
+            ([key, value]) => value !== call.args[key]
+          )
+        ) {
+          void trackApprovalEvent(
+            'edit_saved',
+            `${pendingApproval.batchId}-${call.callId}`,
+            kind,
+            'chat'
+          );
+        }
       }
 
       for (const c of pendingApproval.calls) {

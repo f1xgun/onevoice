@@ -18,6 +18,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { useApprovalImpressions } from '@/hooks/useApprovalImpressions';
 import { useReviewStatusBadges, type ReviewStatus } from '@/lib/constants/statuses';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { Badge } from '@/components/ui/badge';
@@ -510,6 +511,13 @@ function ReviewCard({
     review.draftStatus === 'ready' &&
     !!review.draftReply &&
     review.draftReply.trim().length > 0;
+  useApprovalImpressions(
+    `review-reply-${review.id}`,
+    'review_reply',
+    'reviews',
+    draftReady,
+    draftReady && canReply
+  );
   const draftGenerating =
     (status === 'pending' || status === 'error') && review.draftStatus === 'generating';
   const hasSentReply = status === 'replied' && !!review.replyText;

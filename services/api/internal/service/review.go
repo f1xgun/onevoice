@@ -17,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
 )
 
 // reviewDispatchTimeout caps the per-platform NATS request budget for
@@ -72,13 +73,14 @@ type natsRequester interface {
 }
 
 type reviewService struct {
-	repo            domain.ReviewRepository
-	businessService BusinessService
-	nc              natsRequester // nil = no platform dispatch (Mongo-only mode)
-	dispatchTimeout time.Duration
-	refresher       ReviewRefresher // nil = manual refresh disabled
-	drafter         SingleDrafter   // nil = batch-draft disabled (returns configured error)
-	auditLog        audit.Logger    // nil = manual-reply mutations not audited
+	approvalTelemetry approvaltelemetry.Sink
+	repo              domain.ReviewRepository
+	businessService   BusinessService
+	nc                natsRequester // nil = no platform dispatch (Mongo-only mode)
+	dispatchTimeout   time.Duration
+	refresher         ReviewRefresher // nil = manual refresh disabled
+	drafter           SingleDrafter   // nil = batch-draft disabled (returns configured error)
+	auditLog          audit.Logger    // nil = manual-reply mutations not audited
 }
 
 // Compile-time check that reviewService implements ReviewService
@@ -101,7 +103,7 @@ var _ AutoPublisher = (*reviewService)(nil)
 // auditLog records the manual-reply platform mutation (who published which
 // public reply, when). Nil disables that audit emission (Mongo-only / test
 // callers) — it is defaulted to a no-op logger so the write path never nil-panics.
-func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn, refresher ReviewRefresher, drafter SingleDrafter, auditLog audit.Logger) ReviewService {
+func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn, refresher ReviewRefresher, drafter SingleDrafter, auditLog audit.Logger, telemetry ...approvaltelemetry.Sink) ReviewService {
 	var requester natsRequester
 	if nc != nil {
 		requester = nc
@@ -109,14 +111,19 @@ func NewReviewService(repo domain.ReviewRepository, businessService BusinessServ
 	if auditLog == nil {
 		auditLog = audit.Nop()
 	}
+	var sink approvaltelemetry.Sink
+	if len(telemetry) > 0 {
+		sink = telemetry[0]
+	}
 	return &reviewService{
-		repo:            repo,
-		businessService: businessService,
-		nc:              requester,
-		dispatchTimeout: reviewDispatchTimeout,
-		refresher:       refresher,
-		drafter:         drafter,
-		auditLog:        auditLog,
+		approvalTelemetry: sink,
+		repo:              repo,
+		businessService:   businessService,
+		nc:                requester,
+		dispatchTimeout:   reviewDispatchTimeout,
+		refresher:         refresher,
+		drafter:           drafter,
+		auditLog:          auditLog,
 	}
 }
 
@@ -255,7 +262,7 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 		return err
 	}
 
-	return s.publishReply(ctx, review, replyText)
+	return s.publishReply(ctx, review, replyText, true)
 }
 
 // RetryReply re-sends the stored reply text of a review whose previous send
@@ -286,7 +293,7 @@ func (s *reviewService) RetryReply(ctx context.Context, businessID uuid.UUID, id
 		return err
 	}
 
-	return s.publishReply(ctx, review, review.ReplyText)
+	return s.publishReply(ctx, review, review.ReplyText, false)
 }
 
 // publishReply is the shared dispatch-and-persist tail of Reply and RetryReply:
@@ -294,8 +301,12 @@ func (s *reviewService) RetryReply(ctx context.Context, businessID uuid.UUID, id
 // success, error on a failed dispatch (the text is persisted either way so a
 // failed send can be retried verbatim). Callers run their own state guards
 // before this point.
-func (s *reviewService) publishReply(ctx context.Context, review *domain.Review, replyText string) error {
+func (s *reviewService) publishReply(ctx context.Context, review *domain.Review, replyText string, recordsDecision bool) error {
+	if recordsDecision {
+		s.recordReviewDecision(ctx, review, replyText)
+	}
 	toolName, dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
+	s.recordReviewResult(ctx, review, toolName, dispatchErr)
 	finalStatus := domain.ReviewReplyStatusReplied
 	if dispatchErr != nil {
 		finalStatus = domain.ReviewReplyStatusError
@@ -305,9 +316,14 @@ func (s *reviewService) publishReply(ctx context.Context, review *domain.Review,
 		s.auditReviewReplied(ctx, review, toolName)
 	}
 
+	editSavedRecorded := false
 	if dispatchErr == nil && toolName != "" {
 		if err := s.repo.UpdateReplyDispatched(ctx, review.ID, replyText, finalStatus, manualReplyApprovalID(review)); err != nil {
 			return fmt.Errorf("record successful review dispatch: %w", err)
+		}
+		if reviewEditSavedEligible(review, replyText, recordsDecision) {
+			s.recordReviewEditSaved(ctx, review)
+			editSavedRecorded = true
 		}
 	}
 
@@ -320,6 +336,9 @@ func (s *reviewService) publishReply(ctx context.Context, review *domain.Review,
 			"review_id", review.ID, "platform", review.Platform, "error", err,
 		)
 		return fmt.Errorf("update reply: %w", err)
+	}
+	if !editSavedRecorded && reviewEditSavedEligible(review, replyText, recordsDecision) {
+		s.recordReviewEditSaved(ctx, review)
 	}
 
 	if dispatchErr != nil {

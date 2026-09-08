@@ -510,7 +510,8 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	if s.ReviewSyncer != nil {
 		reviewRefresher = s.ReviewSyncer
 	}
-	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher, reviewDrafter, s.AuditLogger)
+	s.Telemetry = service.NewTelemetryService(repos.TelemetryEvent)
+	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher, reviewDrafter, s.AuditLogger, s.Telemetry)
 	if h.NATS != nil {
 		reviewDrafter.SetAutoPublisher(s.Review, s.AuditLogger)
 	}
@@ -560,6 +561,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.ToolsCache,
 		orchClient,
 	)
+	s.HITL.SetApprovalTelemetry(s.Telemetry)
 
 	if h.Redis != nil {
 		s.Lockout = lockout.New(h.Redis, lockout.Config{
@@ -626,7 +628,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		},
 	)
 
-	s.Telemetry = service.NewTelemetryService(repos.TelemetryEvent)
 	s.Feedback = service.NewFeedbackService(h.PG, repos.ProductFeedback, repos.EmailOutbox, repos.User, cfg.FeedbackNotifyEmail)
 	s.ChannelRequest = service.NewChannelRequestService(repos.ChannelDemandSignal)
 	s.Landing = service.NewLandingService(repos.Landing)

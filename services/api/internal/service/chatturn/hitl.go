@@ -380,7 +380,8 @@ func (t *Turn) runResumeStream(
 	batchID string,
 	body []byte,
 ) (TurnOutcome, error) {
-	if _, claimErr := t.deps.Pending.AtomicTransitionResolvingToResuming(ctx, batchID); claimErr != nil {
+	claimedBatch, claimErr := t.deps.Pending.AtomicTransitionResolvingToResuming(ctx, batchID)
+	if claimErr != nil {
 		if errors.Is(claimErr, domain.ErrBatchNotResolving) {
 			return OutcomeResumeInProgress, nil
 		}
@@ -408,6 +409,7 @@ func (t *Turn) runResumeStream(
 	}
 	recResultIdx := make(map[string]int)
 	freshCallIDs := make(map[string]struct{})
+	telemetryResults := make(map[string]bool)
 
 	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), streamBudget)
 	if corrID := logger.CorrelationIDFromContext(ctx); corrID != "" {
@@ -475,6 +477,7 @@ func (t *Turn) runResumeStream(
 						"tool_call_id", ev.ToolCallID, "conversation_id", conversationID)
 					break
 				}
+				t.recordApprovalResult(taskOpsCtx, claimedBatch, ev.ToolCallID, ev.ToolError != "", telemetryResults)
 				tr := domain.ToolResult{
 					ToolCallID: ev.ToolCallID,
 					Content:    content,

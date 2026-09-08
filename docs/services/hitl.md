@@ -98,6 +98,8 @@ handler layer (`handler/hitl.go`) does HTTP status mapping only.
    (`resume.go: dispatchApprovedCalls`) remains the load-bearing
    TOCTOU recheck.
 6. Persist final per-call verdicts via `RecordDecisions`.
+7. Emit best-effort, content-free `decision_recorded` telemetry for the
+   persisted verdicts. See [approval telemetry](approval-telemetry.md).
 
 The response is plain JSON. The client separately opens
 `/chat/{id}/resume` to obtain the SSE continuation stream.
@@ -107,14 +109,14 @@ The response is plain JSON. The client separately opens
 Each typed error in this file maps to a specific HTTP status code in
 `handler/hitl.go`.
 
-| Error | Status | Meaning |
-|---|---|---|
-| `ErrHITLBatchNotFound` | 404 | `batch_id` not in the collection |
-| `ErrHITLForbidden` | 403 | Actor's business does not own the batch |
-| `ErrHITLBatchExpired` | 410 | Batch passed its TTL window |
-| `ErrHITLBatchAlreadyResolving` | 409 | Concurrent resolve won the race |
-| `*ErrHITLDecisionsShape` | 400 | `missing` slice echoed in the response body |
-| `*ErrHITLRejectReasonTooLong` | 400 | `reject_reason` exceeds `MaxRejectReasonChars` |
+| Error                          | Status | Meaning                                        |
+| ------------------------------ | ------ | ---------------------------------------------- |
+| `ErrHITLBatchNotFound`         | 404    | `batch_id` not in the collection               |
+| `ErrHITLForbidden`             | 403    | Actor's business does not own the batch        |
+| `ErrHITLBatchExpired`          | 410    | Batch passed its TTL window                    |
+| `ErrHITLBatchAlreadyResolving` | 409    | Concurrent resolve won the race                |
+| `*ErrHITLDecisionsShape`       | 400    | `missing` slice echoed in the response body    |
+| `*ErrHITLRejectReasonTooLong`  | 400    | `reject_reason` exceeds `MaxRejectReasonChars` |
 
 `missingCallIDs` does not separately flag extra decisions: by pigeonhole, an
 extra decision whose ID matches no call in the batch implicitly leaves some
@@ -167,3 +169,5 @@ documentation lives in `pkg/domain/tool_entry.go`.
   the resume goroutine.
 - `docs/architecture.md` — top-level system flow.
 - `docs/api-design.md` — REST conventions and shared error shape.
+- `docs/services/approval-telemetry.md` — client/server event roles, privacy
+  boundary, correlation joins, and delivery limits.

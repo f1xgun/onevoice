@@ -1,5 +1,6 @@
-import { useAuthStore } from './auth';
 import { API_BASE_URL, API_PATHS } from '@/lib/constants/apiPaths';
+
+import { useAuthStore } from './auth';
 
 export interface TelemetryEvent {
   eventType: string;
@@ -38,6 +39,25 @@ export function trackEvent(
     metadata: opts?.metadata,
     timestamp: new Date().toISOString(),
   };
+
+  if (eventType === 'approval_server') return;
+  if (eventType === 'approval') {
+    const metadata = opts?.metadata;
+    if (
+      !['draft_shown', 'approval_shown', 'edit_saved'].includes(action) ||
+      !/^[a-f0-9]{64}$/.test(metadata?.draft_id ?? '') ||
+      !['post', 'review_reply'].includes(metadata?.kind ?? '') ||
+      !['chat', 'reviews'].includes(metadata?.source ?? '')
+    )
+      return;
+    event.metadata = {
+      draft_id: metadata!.draft_id!,
+      kind: metadata!.kind!,
+      source: metadata!.source!,
+    };
+    event.correlationId = event.metadata.draft_id;
+    event.page = `/${event.metadata.source}`;
+  }
 
   buffer.push(event);
 

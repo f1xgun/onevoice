@@ -13,12 +13,12 @@ Companion helpers `reemitApprovalEvent` and `sseInlineError` write standalone SS
 
 `gateOnRequest(ctx, conversationID, headerBatchID)` returns `(action, activeMsg, batch, batchID)`. `headerBatchID` is the resolved batch id from `X-Onevoice-Resume-Batch-Id` (or `?batch_id` query) — empty means the client did not request explicit resume.
 
-| Action | Trigger | Next step |
-|---|---|---|
-| `gateFresh` | no active msg, no resume header | start a new LLM turn |
-| `gateRejoinResume` | explicit header set, OR implicit rejoin (active msg + `resolving` batch) | call `streamResume` |
-| `gateReemitApproval` | active msg + `pending` batch (UI lost the approval card) | call `reemitApprovalEvent` (no orchestrator round-trip) |
-| `gateInlineError` | active msg with no active batch (orphan `in_progress`) | call `sseInlineError` |
+| Action               | Trigger                                                                  | Next step                                               |
+| -------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `gateFresh`          | no active msg, no resume header                                          | start a new LLM turn                                    |
+| `gateRejoinResume`   | explicit header set, OR implicit rejoin (active msg + `resolving` batch) | call `streamResume`                                     |
+| `gateReemitApproval` | active msg + `pending` batch (UI lost the approval card)                 | call `reemitApprovalEvent` (no orchestrator round-trip) |
+| `gateInlineError`    | active msg with no active batch (orphan `in_progress`)                   | call `sseInlineError`                                   |
 
 **Tri-case is locked.** The four constants must NOT collapse to two — the implicit-resume + explicit-resume contract is load-bearing.
 
@@ -45,15 +45,20 @@ The SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-
 
 ### Per-event mutation closure
 
-| `ev.Type` | Action |
-|---|---|
-| `text` | append to `postText` |
-| `tool_result` | append `domain.ToolResult` to `msg.ToolResults`; flip `msg.ToolCalls[idx].Status` to Approved/Rejected via `ToolError` empty-check |
-| `tool_rejected` | flip `msg.ToolCalls[idx].Status` to Rejected |
-| `error` | finalize: `msg.Status = Complete`, `msg.Content = postText.String()`, persist, mark `terminated = true` |
-| `done` | finalize as above + `fireAutoTitle = true` |
+| `ev.Type`       | Action                                                                                                                             |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `text`          | append to `postText`                                                                                                               |
+| `tool_result`   | append `domain.ToolResult` to `msg.ToolResults`; flip `msg.ToolCalls[idx].Status` to Approved/Rejected via `ToolError` empty-check |
+| `tool_rejected` | flip `msg.ToolCalls[idx].Status` to Rejected                                                                                       |
+| `error`         | finalize: `msg.Status = Complete`, `msg.Content = postText.String()`, persist, mark `terminated = true`                            |
+| `done`          | finalize as above + `fireAutoTitle = true`                                                                                         |
 
 Once `terminated`, any later frames the upstream emits are defensively ignored — keeps the persist decision idempotent.
+
+For a result tied to an approved or edited call in the claimed batch, the same
+branch emits content-free `send_result` telemetry. Duplicate results, orphan
+results, rejected calls, and non-publication tools emit none. See
+[approval telemetry](approval-telemetry.md) for the join and privacy contract.
 
 **`error`-event finalization is load-bearing.** Resume can fail mid-stream (LLM error, ctx cancel, max-iterations cap). The error event is already forwarded to the client; here we MUST transition the assistant `Message` off `pending_approval`/`in_progress`, otherwise every subsequent `POST /chat` hits the gate's `turn_already_in_progress` branch and the conversation is permanently stuck.
 
@@ -76,3 +81,5 @@ After `StreamSSE` returns, three cases are distinguished:
 - `pkg/orchestratorclient.StreamSSE` — SSE plumbing (detached ctx, scanner, drain loop).
 - `pkg/sse` — `Event` shape, `Marshal`, `ApprovalCall`.
 - `services/orchestrator/internal/resume` — the orchestrator-side resume goroutine that produces the SSE events consumed here.
+- `docs/services/approval-telemetry.md` — approval funnel events and stable
+  correlation identities.
