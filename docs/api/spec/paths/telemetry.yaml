@@ -53,6 +53,10 @@
       '401':
         $ref: ../openapi.yaml#/components/responses/Unauthorized
       '403':
-        $ref: ../openapi.yaml#/components/responses/Forbidden
+        description: Caller lacks the required business permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
       '404':
-        $ref: ../openapi.yaml#/components/responses/NotFound
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound

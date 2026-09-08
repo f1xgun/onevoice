@@ -2265,6 +2265,9 @@ type ListAgentTasksParams struct {
 	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// IngestBusinessTelemetryJSONBody defines parameters for IngestBusinessTelemetry.
+type IngestBusinessTelemetryJSONBody = []TelemetryEvent
+
 // OrchestratorChatParams defines parameters for OrchestratorChat.
 type OrchestratorChatParams struct {
 	XCorrelationID *string `json:"X-Correlation-ID,omitempty"`
@@ -2429,6 +2432,9 @@ type UpdateRoleJSONRequestBody = UpdateRoleRequest
 
 // UpdateBusinessScheduleJSONRequestBody defines body for UpdateBusinessSchedule for application/json ContentType.
 type UpdateBusinessScheduleJSONRequestBody = UpdateScheduleRequest
+
+// IngestBusinessTelemetryJSONRequestBody defines body for IngestBusinessTelemetry for application/json ContentType.
+type IngestBusinessTelemetryJSONRequestBody = IngestBusinessTelemetryJSONBody
 
 // UpdateBusinessToolApprovalsJSONRequestBody defines body for UpdateBusinessToolApprovals for application/json ContentType.
 type UpdateBusinessToolApprovalsJSONRequestBody = UpdateToolApprovalsRequest
