@@ -8,8 +8,11 @@ import { ActionButton as Button } from '@/components/design-system/ActionButton'
 import { MonoLabel } from '@/components/ui/mono-label';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useOnboardingProgress, type OnboardingStep } from '@/hooks/useOnboardingProgress';
+import { trackEvent } from '@/lib/telemetry';
+import type { OnboardingChannel } from '@/hooks/useOnboardingProgress';
 import { gettingStartedDismissKey, readDismissed, writeDismissed } from '@/lib/onboarding/dismiss';
 import { cn } from '@/lib/utils';
+import { OnboardingPlatformRows } from './OnboardingPlatformRows';
 
 export interface GettingStartedChecklistProps {
   /**
@@ -143,7 +146,12 @@ function ChecklistBody({ onOpenWizard, dismissible, onDismiss, className }: Chec
         {progress.steps
           .filter((step) => step.gating)
           .map((step) => (
-            <StepRow key={step.id} step={step} onOpenWizard={onOpenWizard} />
+            <StepRow
+              key={step.id}
+              step={step}
+              onOpenWizard={onOpenWizard}
+              channels={step.id === 'connectChannel' ? progress.channels : undefined}
+            />
           ))}
       </ol>
       {progress.steps.some((step) => !step.gating) && (
@@ -162,7 +170,22 @@ function ChecklistBody({ onOpenWizard, dismissible, onDismiss, className }: Chec
   );
 }
 
-function StepRow({ step, onOpenWizard }: { step: OnboardingStep; onOpenWizard?: () => void }) {
+function StepRow({
+  step,
+  onOpenWizard,
+  channels,
+}: {
+  step: OnboardingStep;
+  onOpenWizard?: () => void;
+  channels?: OnboardingChannel[];
+}) {
+  const businessId = useBusinessStore((s) => s.activeBusinessId);
+  function trackStep() {
+    if (businessId)
+      trackEvent('activation', 'activation_step', {
+        metadata: { business_id: businessId, platform: '', step: step.id },
+      });
+  }
   const t = useTranslations('gettingStarted');
   const label = t(`steps.${step.id}.label`);
   const hint = t(`steps.${step.id}.hint`);
@@ -172,7 +195,7 @@ function StepRow({ step, onOpenWizard }: { step: OnboardingStep; onOpenWizard?: 
     <li
       data-testid={`onboarding-step-${step.id}`}
       data-done={step.done ? 'true' : 'false'}
-      className="flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-paper-sunken"
+      className="flex flex-wrap items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-paper-sunken"
     >
       <StepMarker done={step.done} loading={step.loading} />
       <div className="min-w-0 flex-1">
@@ -188,18 +211,27 @@ function StepRow({ step, onOpenWizard }: { step: OnboardingStep; onOpenWizard?: 
       </div>
       {!step.done &&
         (showWizardHandler ? (
-          <Button variant="secondary" size="sm" onClick={onOpenWizard} className="shrink-0">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              trackStep();
+              onOpenWizard?.();
+            }}
+            className="shrink-0"
+          >
             {t(`steps.${step.id}.cta`)}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         ) : (
           <Button asChild variant="secondary" size="sm" className="shrink-0">
-            <Link href={step.href}>
+            <Link href={step.href} onClick={trackStep}>
               {t(`steps.${step.id}.cta`)}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </Button>
         ))}
+      {channels && <OnboardingPlatformRows channels={channels} />}
     </li>
   );
 }

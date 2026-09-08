@@ -127,6 +127,18 @@ export default function IntegrationsPage() {
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
+    const connect = searchParams.get('connect');
+    if (
+      canConnect &&
+      connect &&
+      Object.hasOwn(MODAL_COMPONENTS, connect) &&
+      platforms.some((platform) => platform.id === connect && platform.status === 'active') &&
+      connect !== 'google_business'
+    ) {
+      setActiveModalPlatform(connect as ModalPlatform);
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
+    }
+
     const reconnect = searchParams.get('reconnect');
     if (reconnect && reconnect in MODAL_COMPONENTS) {
       setActiveModalPlatform(reconnect as ModalPlatform);
@@ -154,7 +166,7 @@ export default function IntegrationsPage() {
       toast.error(message);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
-  }, [searchParams, qc, activeBusinessId, tIntegrations]);
+  }, [searchParams, qc, activeBusinessId, tIntegrations, canConnect, platforms]);
 
   const {
     data: integrations = [],

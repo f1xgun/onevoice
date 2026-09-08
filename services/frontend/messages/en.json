@@ -1391,7 +1391,19 @@
       "submit": "Prepare in chat",
       "cancel": "Cancel"
     },
-    "optional": "Optional"
+    "optional": "Optional",
+    "channels": {
+      "title": "Available channels",
+      "connect": "Connect",
+      "reconnect": "Reconnect",
+      "status": {
+        "loading": "Loading status…",
+        "connected": "Connected",
+        "disconnected": "Not connected",
+        "error": "Reconnect needed",
+        "unknown": "Status not yet known"
+      }
+    }
   },
   "help": {
     "reopen": "Help",
