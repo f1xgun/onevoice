@@ -337,19 +337,17 @@ oapi-gen: ## Regenerate types from docs/api/spec/openapi.yaml
 
 oapi-check: ## Fail if generated types are out of date relative to the spec
 	@command -v $(OAPI_BIN) >/dev/null 2>&1 || { echo "oapi-codegen not found; run 'make oapi-install'"; exit 1; }
-	@backup=$$(mktemp); \
-		cp $(OAPI_OUT) $$backup; \
-		go run ./tools/oapi-validate-tags $(OAPI_SPEC) $(OAPI_PREP); \
-		$(OAPI_BIN) -config $(OAPI_CONFIG) $(OAPI_PREP); \
-		rm -f $(OAPI_PREP); \
-		if ! diff -u $$backup $(OAPI_OUT) >/dev/null; then \
+	@set -eu; \
+		backup=$$(mktemp); \
+		cp "$(OAPI_OUT)" "$$backup"; \
+		trap 'cp "$$backup" "$(OAPI_OUT)"; rm -f "$$backup" "$(OAPI_PREP)"' EXIT; \
+		go run ./tools/oapi-validate-tags "$(OAPI_SPEC)" "$(OAPI_PREP)"; \
+		"$(OAPI_BIN)" -config "$(OAPI_CONFIG)" "$(OAPI_PREP)"; \
+		if ! diff -u "$$backup" "$(OAPI_OUT)" >/dev/null; then \
 			echo "drift detected: $(OAPI_OUT) does not match $(OAPI_SPEC)"; \
-			diff -u $$backup $(OAPI_OUT) || true; \
-			cp $$backup $(OAPI_OUT); \
-			rm -f $$backup; \
+			diff -u "$$backup" "$(OAPI_OUT)" || true; \
 			exit 1; \
 		fi; \
-		rm -f $$backup; \
 		echo "$(OAPI_OUT) is up to date with $(OAPI_SPEC)"
 
 .PHONY: lint-no-pprof docker-test-ulimit
