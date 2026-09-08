@@ -206,6 +206,7 @@ function ApprovalDraft({ batch: incomingBatch, onSubmit }: ToolApprovalCardProps
             <ToolApprovalAccordionEntry
               key={call.callId}
               call={call}
+              batchId={batch.batchId}
               draft={entryDraft}
               disabled={submitting || changed}
               amberHighlighted={draft.amberHighlighted}

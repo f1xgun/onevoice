@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
+	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -65,7 +66,8 @@ const defaultHistoryLimit = 100
 // per-request state on its stack. Safe for concurrent calls from a single
 // *Turn instance.
 type Turn struct {
-	deps Deps
+	approvalTelemetry approvaltelemetry.Sink
+	deps              Deps
 }
 
 // SetPlanResolver wires the per-business plan resolver post-construction. The

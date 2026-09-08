@@ -22,11 +22,13 @@ import (
 // unexpected call surfaces loudly.
 type stubReviewRepo struct {
 	domain.ReviewRepository
-	review            *domain.Review
-	updateReplies     int
-	lastReplyText     string
-	lastFeedback      *domain.ReviewDraftFeedback
-	dispatchedReplies int
+	review             *domain.Review
+	updateReplies      int
+	lastReplyText      string
+	lastFeedback       *domain.ReviewDraftFeedback
+	dispatchedReplies  int
+	updateReplyErr     error
+	dispatchedReplyErr error
 }
 
 func (s *stubReviewRepo) GetByID(_ context.Context, _ string) (*domain.Review, error) {
@@ -35,6 +37,9 @@ func (s *stubReviewRepo) GetByID(_ context.Context, _ string) (*domain.Review, e
 
 func (s *stubReviewRepo) UpdateReply(_ context.Context, _, replyText, status string, feedback *domain.ReviewDraftFeedback) error {
 	s.updateReplies++
+	if s.updateReplyErr != nil {
+		return s.updateReplyErr
+	}
 	s.review.ReplyStatus = status
 	s.lastReplyText = replyText
 	s.lastFeedback = feedback
@@ -43,6 +48,9 @@ func (s *stubReviewRepo) UpdateReply(_ context.Context, _, replyText, status str
 
 func (s *stubReviewRepo) UpdateReplyDispatched(_ context.Context, _, _, _, approvalID string) error {
 	s.dispatchedReplies++
+	if s.dispatchedReplyErr != nil {
+		return s.dispatchedReplyErr
+	}
 	s.review.DispatchApprovalID = approvalID
 	return nil
 }

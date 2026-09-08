@@ -20,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
 )
 
 // defaultToolsRegistryCacheTTL is the fallback TTL when callers pass a
@@ -86,11 +87,17 @@ const MaxRejectReasonChars = 500
 // registry cache, and orchestrator client behind the Resolve entry point.
 // See docs/services/hitl.md.
 type HITLService struct {
-	pendingRepo  domain.PendingToolCallRepository
-	businessRepo domain.BusinessRepository
-	projectRepo  domain.ProjectRepository
-	toolsCache   *ToolsRegistryCache
-	orch         *orchestratorclient.Client
+	approvalTelemetry approvaltelemetry.Sink
+	pendingRepo       domain.PendingToolCallRepository
+	businessRepo      domain.BusinessRepository
+	projectRepo       domain.ProjectRepository
+	toolsCache        *ToolsRegistryCache
+	orch              *orchestratorclient.Client
+}
+
+// SetApprovalTelemetry attaches the optional best-effort sink before serving requests.
+func (s *HITLService) SetApprovalTelemetry(sink approvaltelemetry.Sink) {
+	s.approvalTelemetry = sink
 }
 
 // NewHITLService constructs a HITLService; a nil dep is a wiring bug and panics.
@@ -287,8 +294,20 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		return nil, fmt.Errorf("record decisions: %w", err)
 	}
 
+	telemetryEvents := make([]approvaltelemetry.Event, 0, len(finalized))
 	for _, fc := range finalized {
 		metrics.IncHITLDecision(fc.Verdict)
+		kind := approvaltelemetry.Kind(fc.ToolName)
+		if s.approvalTelemetry != nil && kind != "" {
+			id := in.BatchID + "-" + fc.CallID
+			telemetryEvents = append(telemetryEvents, approvaltelemetry.Event{
+				BatchID: in.BatchID, DraftID: id, ApprovalID: id, Kind: kind,
+				Source: "chat", Action: "decision_recorded", Outcome: fc.Verdict,
+			})
+		}
+	}
+	if len(telemetryEvents) > 0 {
+		s.approvalTelemetry.RecordApproval(ctx, telemetryEvents...)
 	}
 
 	return result, nil

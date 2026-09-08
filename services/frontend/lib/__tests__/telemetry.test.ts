@@ -29,6 +29,32 @@ describe('telemetry — page-hide flush (AN-7)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps approval correlation while discarding content, PII and forged server outcomes', async () => {
+    const tele = await import('../telemetry');
+    tele.trackEvent('approval', 'draft_shown', {
+      page: '/reviews/person@example.com',
+      correlationId: 'person@example.com',
+      metadata: {
+        draft_id: 'a'.repeat(64),
+        kind: 'review_reply',
+        source: 'reviews',
+        text: 'PRIVATE',
+        args: 'SECRET',
+        author: 'person@example.com',
+      },
+    });
+    tele.trackEvent('approval', 'send_result', { metadata: { draft_id: 'a'.repeat(64) } });
+    await tele.flushTelemetry();
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({
+      page: '/reviews',
+      correlationId: 'a'.repeat(64),
+      metadata: { draft_id: 'a'.repeat(64), kind: 'review_reply', source: 'reviews' },
+    });
+    expect(JSON.stringify(body)).not.toMatch(/PRIVATE|SECRET|person@|send_result/);
+  });
+
   it('posts buffered events via keepalive fetch with the Authorization header', async () => {
     const tele = await import('../telemetry');
     tele.trackEvent('page_view', 'open', { page: '/dashboard' });

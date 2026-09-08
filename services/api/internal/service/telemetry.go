@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
+	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
 )
 
 // TelemetryEvent is the service-layer view of one frontend telemetry event.
@@ -32,12 +33,13 @@ type telemetryRepo interface {
 
 // TelemetryService persists telemetry batches.
 type TelemetryService struct {
-	repo telemetryRepo
+	repo           telemetryRepo
+	approvalWrites chan struct{}
 }
 
 // NewTelemetryService constructs a TelemetryService.
 func NewTelemetryService(repo telemetryRepo) *TelemetryService {
-	return &TelemetryService{repo: repo}
+	return &TelemetryService{repo: repo, approvalWrites: make(chan struct{}, 8)}
 }
 
 // Ingest persists a batch of telemetry events, stamping the authenticated
@@ -55,6 +57,21 @@ func (s *TelemetryService) Ingest(ctx context.Context, userID uuid.UUID, events 
 	}
 	rows := make([]repository.TelemetryEventRow, 0, len(events))
 	for _, e := range events {
+		if e.EventType == "approval_server" {
+			continue
+		}
+		if e.EventType == "approval" {
+			metadata, valid := approvaltelemetry.ClientMetadata(e.Action, e.Metadata)
+			if !valid {
+				continue
+			}
+			id := metadata["draft_id"]
+			rows = append(rows, repository.TelemetryEventRow{
+				EventType: e.EventType, Action: e.Action, Page: "/" + metadata["source"],
+				Metadata: marshalTelemetryMetadata(metadata), CorrelationID: &id,
+			})
+			continue
+		}
 		// Skip malformed events so empty event_type/action don't pollute the
 		// funnel store (the openapi type marks both required, but a bare
 		// decode does not enforce it).
