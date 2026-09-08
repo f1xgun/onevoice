@@ -1785,14 +1785,26 @@ components:
       - integration.connected
       - integration.disconnected
       - integration.token_rotated
+      - integration.token_decrypted
       - integration.metadata_updated
       - integration.external_id_updated
       - integration.token_expired
+      - integration.deleted
       - business.created
       - business.updated
+      - business.deletion_requested
+      - business.deletion_canceled
+      - business.not_owner_blocked
+      - business.self_deleted
       - project.created
       - project.updated
       - project.deleted
+      - rpa.scope_violation
+      - rpa.review_replied
+      - rpa.post_published
+      - rpa.photo_uploaded
+      - rpa.info_updated
+      - rpa.hours_updated
       - platform.post_published
       - platform.dm_sent
       - platform.review_replied
@@ -1825,7 +1837,10 @@ components:
           - integration
           - business
           - project
+          - rpa
+          - platform
           - review
+          - hitl
           - other
         resource:
           type: string

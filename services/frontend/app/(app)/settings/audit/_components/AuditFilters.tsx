@@ -16,6 +16,9 @@ const CATEGORIES: ReadonlyArray<AuditCategory | 'all'> = [
   'business',
   'project',
   'rpa',
+  'platform',
+  'review',
+  'hitl',
 ];
 
 interface Props {
@@ -46,6 +49,12 @@ export function AuditFilters({ value, onChange, businessID }: Props) {
         return t('categoryProject');
       case 'rpa':
         return t('categoryRpa');
+      case 'platform':
+        return t('categoryPlatform');
+      case 'review':
+        return t('categoryReview');
+      case 'hitl':
+        return t('categoryHitl');
       default:
         return c;
     }

@@ -60,48 +60,16 @@ type AuditLogDTO = openapi.AuditEvent
 // stays present in the JSON envelope).
 type AuditLogListResponse = openapi.AuditLogListResponse
 
-// knownActions is the closed validation set for the ?action= query parameter.
-// Adding a new audit action requires a matching entry here (failure mode: 400 invalid_action).
-var knownActions = map[string]struct{}{
-	audit.ActionRoleGranted:                  {},
-	audit.ActionMemberRemoved:                {},
-	audit.ActionRoleCreated:                  {},
-	audit.ActionRoleUpdated:                  {},
-	audit.ActionRoleDeleted:                  {},
-	audit.ActionInvitationCreated:            {},
-	audit.ActionInvitationRevoked:            {},
-	audit.ActionInvitationAccepted:           {},
-	audit.ActionLoginSuccess:                 {},
-	audit.ActionLoginFailed:                  {},
-	audit.ActionLogout:                       {},
-	audit.ActionPasswordChanged:              {},
-	audit.ActionUserRegistered:               {},
-	audit.ActionIntegrationConnected:         {},
-	audit.ActionIntegrationDisconnected:      {},
-	audit.ActionIntegrationTokenRotated:      {},
-	audit.ActionIntegrationTokenDecrypted:    {},
-	audit.ActionIntegrationDeleted:           {},
-	audit.ActionIntegrationMetadataUpdated:   {},
-	audit.ActionIntegrationExternalIDUpdated: {},
-	audit.ActionIntegrationTokenExpired:      {},
-	audit.ActionBusinessCreated:              {},
-	audit.ActionBusinessUpdated:              {},
-	audit.ActionBusinessDeletionRequested:    {},
-	audit.ActionBusinessDeletionCanceled:     {},
-	audit.ActionBusinessNotOwnerBlocked:      {},
-	audit.ActionBusinessSelfDeleted:          {},
-	audit.ActionProjectCreated:               {},
-	audit.ActionProjectUpdated:               {},
-	audit.ActionProjectDeleted:               {},
-	audit.ActionRPAScopeViolation:            {},
-	audit.ActionRPAReviewReplied:             {},
-	audit.ActionRPAPostPublished:             {},
-	audit.ActionRPAPhotoUploaded:             {},
-	audit.ActionRPAInfoUpdated:               {},
-	audit.ActionRPAHoursUpdated:              {},
-	audit.ActionPlatformPostPublished:        {},
-	audit.ActionPlatformDMSent:               {},
-	audit.ActionPlatformReviewReplied:        {},
+// knownActions validates ?action= against the package-owned business-feed
+// catalog, avoiding a second hand-maintained backend list.
+var knownActions = actionSet(audit.BusinessFeedActions())
+
+func actionSet(actions []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(actions))
+	for _, action := range actions {
+		set[action] = struct{}{}
+	}
+	return set
 }
 
 // noiseActionsHiddenByDefault lists high-volume system events suppressed from
@@ -139,6 +107,10 @@ var knownCategories = map[string]struct{}{
 	"integration": {},
 	"business":    {},
 	"project":     {},
+	"rpa":         {},
+	"platform":    {},
+	"review":      {},
+	"hitl":        {},
 }
 
 // Limit bounds for the ?limit= query param; the repo also clamps as defense-in-depth.

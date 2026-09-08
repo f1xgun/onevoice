@@ -2245,6 +2245,9 @@
       "categoryBusiness": "Organization",
       "categoryProject": "Projects",
       "categoryRpa": "Listing actions",
+      "categoryPlatform": "Platform actions",
+      "categoryReview": "Review automation",
+      "categoryHitl": "Approvals",
       "actionLabel": "Action",
       "actionAny": "Any",
       "dateLabel": "Period",
@@ -2283,7 +2286,9 @@
       "integration": "Integration",
       "business": "Organization",
       "project": "Project",
-      "policy": "Policy"
+      "policy": "Policy",
+      "review": "Review",
+      "conversation": "Conversation"
     },
     "errors": {
       "loadFailed": "Couldn't load the log. Please try again later.",
@@ -2343,7 +2348,9 @@
       "rpa_hours_updated": "Business hours updated",
       "platform_post_published": "Post published",
       "platform_dm_sent": "Direct message sent",
-      "platform_review_replied": "Review reply published"
+      "platform_review_replied": "Review reply published",
+      "review_auto_replied": "Review reply published automatically",
+      "hitl_approval_resolved": "Approval resolved"
     }
   },
   "sidebar": {

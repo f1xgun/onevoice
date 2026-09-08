@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import type { AuditLogDTO } from '../_lib/types';
-import { actionToI18nKey } from '../_lib/actionLabels';
+import { actionToI18nKey, isKnownAuditAction } from '../_lib/actionLabels';
 import { isKnownResource } from '../_lib/resourceLabels';
 import {
   Sheet,
@@ -54,7 +54,9 @@ export function AuditDetailPanel({ item, onClose }: Props) {
     >
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>{tActions(actionToI18nKey(item.action))}</SheetTitle>
+          <SheetTitle>
+            {isKnownAuditAction(item.action) ? tActions(actionToI18nKey(item.action)) : item.action}
+          </SheetTitle>
           <SheetDescription>{new Date(item.created_at).toLocaleString(LOCALE)}</SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-4 text-sm">

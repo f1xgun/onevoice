@@ -89,3 +89,34 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "other", ActionCategory(""))
 	require.Equal(t, "other", ActionCategory(".leading_dot"))
 }
+
+func TestBusinessFeedActionsScope(t *testing.T) {
+	actions := BusinessFeedActions()
+	require.ElementsMatch(t, []string{
+		ActionRoleGranted, ActionMemberRemoved, ActionRoleCreated, ActionRoleUpdated,
+		ActionRoleDeleted, ActionInvitationCreated, ActionInvitationRevoked, ActionInvitationAccepted,
+		ActionLoginSuccess, ActionLoginFailed, ActionLogout, ActionPasswordChanged, ActionUserRegistered,
+		ActionIntegrationConnected, ActionIntegrationDisconnected, ActionIntegrationTokenRotated,
+		ActionIntegrationTokenDecrypted, ActionIntegrationDeleted, ActionIntegrationMetadataUpdated,
+		ActionIntegrationExternalIDUpdated, ActionIntegrationTokenExpired,
+		ActionBusinessCreated, ActionBusinessUpdated, ActionBusinessDeletionRequested,
+		ActionBusinessDeletionCanceled, ActionBusinessNotOwnerBlocked, ActionBusinessSelfDeleted,
+		ActionProjectCreated, ActionProjectUpdated, ActionProjectDeleted,
+		ActionRPAScopeViolation, ActionRPAReviewReplied, ActionRPAPostPublished,
+		ActionRPAPhotoUploaded, ActionRPAInfoUpdated, ActionRPAHoursUpdated,
+		ActionPlatformPostPublished, ActionPlatformDMSent, ActionPlatformReviewReplied,
+		ActionReviewAutoReplied, ActionHITLApprovalResolved,
+	}, actions)
+
+	// User/global events have no business scope and must never become selectable
+	// through GET /businesses/{id}/audit-logs.
+	for _, action := range []string{
+		ActionPasswordResetRequested, ActionPasswordResetCompleted, ActionPasswordResetUnknownEmail,
+		ActionEmailVerificationLinkViewed, ActionEmailVerified, ActionEmailChangedBeforeVerify,
+		ActionConsentRecorded, ActionConsentReconsentRequired, ActionConsentReconsented,
+		ActionConsentWithdrawn, ActionConsentPolicyVersionBumped,
+		ActionDeletionRequested, ActionDeletionCanceled, ActionSoleOwnerBlocked, ActionUserSelfDeleted,
+	} {
+		require.NotContains(t, actions, action)
+	}
+}

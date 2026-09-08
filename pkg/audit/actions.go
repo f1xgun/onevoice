@@ -135,6 +135,31 @@ const (
 	ActionHITLApprovalResolved = "hitl.approval_resolved"
 )
 
+// businessFeedActions is the closed catalog accepted by the business-scoped
+// audit journal. User/global actions (password reset, verification, consent,
+// and account deletion) deliberately stay out of this list.
+var businessFeedActions = [...]string{
+	ActionRoleGranted, ActionMemberRemoved, ActionRoleCreated, ActionRoleUpdated,
+	ActionRoleDeleted, ActionInvitationCreated, ActionInvitationRevoked, ActionInvitationAccepted,
+	ActionLoginSuccess, ActionLoginFailed, ActionLogout, ActionPasswordChanged, ActionUserRegistered,
+	ActionIntegrationConnected, ActionIntegrationDisconnected, ActionIntegrationTokenRotated,
+	ActionIntegrationTokenDecrypted, ActionIntegrationDeleted, ActionIntegrationMetadataUpdated,
+	ActionIntegrationExternalIDUpdated, ActionIntegrationTokenExpired,
+	ActionBusinessCreated, ActionBusinessUpdated, ActionBusinessDeletionRequested,
+	ActionBusinessDeletionCanceled, ActionBusinessNotOwnerBlocked, ActionBusinessSelfDeleted,
+	ActionProjectCreated, ActionProjectUpdated, ActionProjectDeleted,
+	ActionRPAScopeViolation, ActionRPAReviewReplied, ActionRPAPostPublished,
+	ActionRPAPhotoUploaded, ActionRPAInfoUpdated, ActionRPAHoursUpdated,
+	ActionPlatformPostPublished, ActionPlatformDMSent, ActionPlatformReviewReplied,
+	ActionReviewAutoReplied, ActionHITLApprovalResolved,
+}
+
+// BusinessFeedActions returns a copy of the actions filterable through the
+// business-scoped audit endpoint.
+func BusinessFeedActions() []string {
+	return append([]string(nil), businessFeedActions[:]...)
+}
+
 // ActionCategory returns the closed-set category for an action string.
 // Unknown prefixes return "other" to bound metric label cardinality.
 func ActionCategory(action string) string {

@@ -17,6 +17,10 @@
         - integration
         - business
         - project
+        - rpa
+        - platform
+        - review
+        - hitl
     - name: action
       in: query
       required: false
