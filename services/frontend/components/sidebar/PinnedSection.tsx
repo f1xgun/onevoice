@@ -5,6 +5,8 @@ import type { RefObject } from 'react';
 import Link from 'next/link';
 import { Bookmark, ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+
+import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { cn } from '@/lib/utils';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
@@ -99,7 +101,10 @@ export function PinnedSection({
                       : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                   )}
                 >
-                  <span className="flex-1 truncate">{getDisplayTitle(conv)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{getDisplayTitle(conv)}</span>
+                    <ConversationPreview conversationId={conv.id} />
+                  </span>
                 </Link>
                 {/* Only chats with a real project get the mini chip.
                     Sibling of the row Link (not nested) to avoid <a in a>. */}

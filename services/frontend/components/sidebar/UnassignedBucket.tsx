@@ -13,8 +13,10 @@ import {
   Plus,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { toast } from 'sonner';
+
+import { ConversationPreview } from '@/components/chat/ConversationPreview';
+import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
 import { usePermission } from '@/lib/hooks/usePermission';
@@ -131,7 +133,10 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                   {pinned && (
                     <Bookmark size={10} className="shrink-0 text-yellow-400" aria-hidden />
                   )}
-                  <span className="flex-1 truncate">{getDisplayTitle(conv)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{getDisplayTitle(conv)}</span>
+                    <ConversationPreview conversationId={conv.id} />
+                  </span>
                 </Link>
                 <ChatRowMenu
                   conversation={conv}

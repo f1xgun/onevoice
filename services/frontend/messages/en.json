@@ -352,7 +352,9 @@
       "renamePlaceholder": "Chat name",
       "renameError": "Couldn't rename the chat",
       "deleteError": "Couldn't delete the chat",
-      "created": "Created"
+      "created": "Created",
+      "previewUnavailable": "Could not load preview",
+      "noMessages": "No messages yet"
     },
     "window": {
       "helpPrompt": "How can I help?",
@@ -887,7 +889,7 @@
       }
     },
     "aiSummary": {
-      "sample": "Sample",
+      "sample": "Sample text for customers",
       "sampleBody": "This is how OneVoice describes you to customers when answering questions or writing posts. If it doesn't sound right, tweak \"Basics\" or your tone.",
       "tips": "Tips",
       "tip1": "Mention your neighborhood — customers will recognize you by it.",
@@ -910,7 +912,7 @@
       "namePlaceholder": "Mint Coffee Shop",
       "categoryPlaceholder": "Pick a category",
       "customCategoryPlaceholder": "e.g. auto service",
-      "customCategoryAria": "Custom category",
+      "customCategoryAria": "Enter your category",
       "addressPlaceholder": "123 Main St, Springfield",
       "descriptionPlaceholder": "A small coffee shop by the subway. Specialty coffee, croissants baked fresh every morning.",
       "fields": {
@@ -922,7 +924,8 @@
         "description": "Description"
       },
       "descriptionHint": "What you do and who you do it for. OneVoice uses this when replying to customers and writing posts.",
-      "saving": "Saving…"
+      "saving": "Saving…",
+      "customCategoryHelp": "You selected “Other”. Enter your organization’s category below."
     },
     "scheduleForm": {
       "noSpecialDates": "Nothing marked yet. Add dates the AI should know about — holidays, renovations, private events.",
@@ -1402,7 +1405,13 @@
     "railAria": "Main navigation",
     "skipToContent": "Skip to content",
     "connected": "Connected",
-    "notConnected": "Connection not confirmed"
+    "notConnected": "Not connected — set up in Integrations",
+    "connectionUnknown": "Status unavailable — check Integrations",
+    "connectionLoading": "Checking connection",
+    "connectionAttention": "Needs attention — open Integrations",
+    "chooseOrganization": "Choose an organization",
+    "homeLabel": "OneVoice — go to chats",
+    "language": "Language"
   },
   "feedback": {
     "title": "Feedback",
@@ -1698,7 +1707,7 @@
         },
         "1": {
           "q": "What if the AI writes nonsense on behalf of my organization?",
-          "a": "It won't — because it can't publish. That is the core principle of OneVoice: the AI only prepares drafts; your Approve button publishes them. If you spot an awkward line, you write a correction in the chat, and the AI redoes it and remembers — over time the drafts land right on the first try more and more often."
+          "a": "The assistant prepares a draft. You review it and decide whether to allow sending. No external action runs without your confirmation."
         },
         "2": {
           "q": "How long does setup take?",
@@ -1773,14 +1782,17 @@
       "draftLabel": "Draft",
       "context": "Post · Telegram · For café guests · Prepared by the assistant",
       "draftTitle": "See you at 10:00 on Saturday",
-      "draft": "This Saturday we open an hour later, at 10:00. Join us for coffee and breakfast. On Sunday we return to our regular hours.",
+      "draft": "This Saturday we open later than usual, at 10:00. Join us for coffee and breakfast. On Sunday we return to our regular hours.",
       "editLabel": "Your edit",
-      "before": "Join us for coffee and breakfast.",
-      "after": "We look forward to seeing you for coffee and breakfast.",
+      "before": "10:00",
+      "after": "11:00",
       "decisionLabel": "Your decision",
       "status": "Review the text",
-      "decision": "After editing, you approve sending. Until then, the text remains a draft.",
-      "result": "In the working chat, the result appears after the platform responds. This is only an example of approval."
+      "decision": "Review the edited text, then press “Confirm” in the approval card. Only then will sending with your edit be authorized.",
+      "result": "In the working chat, the result appears after the platform responds. This is only an example of approval.",
+      "editHelp": "To change the time, choose “Edit” in the approval card. You can edit the text directly in the card’s fields.",
+      "editRequest": "In the “Text” field, replace 10:00 with 11:00.",
+      "decisionExample": "Example of actions in the approval card — these are labels, not buttons. In this example, “Edit” is selected."
     },
     "scenarios": {
       "title": "Two everyday requests",

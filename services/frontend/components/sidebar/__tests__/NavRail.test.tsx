@@ -179,3 +179,19 @@ it.each([
   expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   expect(screen.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
 });
+
+it('names the home link and every footer control before activation', () => {
+  render(
+    <Wrapper>
+      <NavRail />
+    </Wrapper>
+  );
+  const home = screen.getByRole('link', { name: /OneVoice/ });
+  expect(home).toHaveTextContent('OneVoice');
+  expect(home).toHaveAttribute('title', home.getAttribute('aria-label'));
+  for (const button of screen.getAllByRole('button')) {
+    expect(button).toHaveAccessibleName();
+  }
+  expect(screen.getByRole('button', { name: 'Выйти' })).toHaveTextContent('Выйти');
+  expect(screen.getByRole('button', { name: 'Language' })).toBeVisible();
+});

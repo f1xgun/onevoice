@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import ru from '@/messages/ru.json';
 import NewBusinessPage from '@/app/(app)/business/new/page';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import type { Business } from '@/types/business';
@@ -170,7 +171,9 @@ it.each([
     }
     await act(async () => finish({ data: {} }));
     if (kind === 'custom') {
-      expect(screen.getByRole('textbox', { name: 'Своя категория' })).toHaveValue(draft);
+      expect(
+        screen.getByRole('textbox', { name: ru.business.profileForm.customCategoryAria })
+      ).toHaveValue(draft);
     } else {
       expect(screen.getByRole('combobox', { name: 'Категория' })).toHaveTextContent(
         'Розничная торговля'
@@ -182,7 +185,9 @@ it.each([
     expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
     rerender(<ProfileForm defaultValues={{ name: 'Updated', category: initial }} />);
     if (kind === 'custom') {
-      expect(screen.getByRole('textbox', { name: 'Своя категория' })).toHaveValue(draft);
+      expect(
+        screen.getByRole('textbox', { name: ru.business.profileForm.customCategoryAria })
+      ).toHaveValue(draft);
     } else {
       expect(screen.getByRole('combobox', { name: 'Категория' })).toHaveTextContent(
         'Розничная торговля'
@@ -195,3 +200,26 @@ it.each([
     expect(await screen.findByRole('status')).toHaveTextContent('Данные сохранены');
   }
 );
+
+it('shows a visibly labelled custom category only after choosing Other', async () => {
+  const user = userEvent.setup();
+  render(<ProfileForm defaultValues={{ name: 'Test', category: 'cafe' }} />, {
+    wrapper: wrapper(new QueryClient()),
+  });
+  expect(
+    screen.queryByRole('textbox', { name: ru.business.profileForm.customCategoryAria })
+  ).toBeNull();
+  await user.click(screen.getByRole('combobox', { name: ru.business.profileForm.fields.category }));
+  await user.click(screen.getByRole('option', { name: ru.business.categories.other }));
+  const input = screen.getByRole('textbox', { name: ru.business.profileForm.customCategoryAria });
+  expect(input).toHaveValue('');
+  expect(input).toHaveAccessibleDescription(ru.business.profileForm.customCategoryHelp);
+  await user.click(screen.getByText(ru.business.profileForm.customCategoryAria));
+  expect(input).toHaveFocus();
+  await user.type(input, 'Bakery');
+  await user.click(screen.getByRole('combobox'));
+  await user.click(screen.getByRole('option', { name: ru.business.categories.cafe }));
+  expect(
+    screen.queryByRole('textbox', { name: ru.business.profileForm.customCategoryAria })
+  ).toBeNull();
+});

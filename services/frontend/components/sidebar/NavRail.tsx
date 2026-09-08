@@ -19,6 +19,7 @@ import {
   Minus,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
@@ -32,6 +33,8 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePlatformFullLabels } from '@/lib/platforms';
 import { useLogout } from '@/lib/hooks/useLogout';
+
+import { connectionStatus } from './connectionStatus';
 
 interface Integration {
   platform: string;
@@ -72,15 +75,21 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
-  const { data: integrations } = useQuery<Integration[]>({
+  const {
+    data: integrations,
+    isPending,
+    isError,
+  } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
     queryFn: () =>
       bizApi(activeBusinessId!)
         .get(BIZ_API_PATHS.INTEGRATIONS.ROOT)
-        .then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+        .then((r) => {
+          if (!Array.isArray(r.data)) throw new Error('Invalid integration list response');
+          return r.data as Integration[];
+        }),
     enabled: !!activeBusinessId,
     retry: false,
-    placeholderData: [],
   });
 
   async function handleLogout() {
@@ -101,11 +110,12 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
       >
         <Link
           href="/chat"
-          aria-label="OneVoice"
+          aria-label={tNav('homeLabel')}
+          title={tNav('homeLabel')}
           onClick={onNavigate}
-          className="mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-ink text-sm font-semibold tracking-tight text-paper"
+          className="mb-2 flex min-h-11 w-full items-center justify-center rounded-md bg-ink text-sm font-semibold tracking-tight text-paper"
         >
-          OV
+          OneVoice
         </Link>
         <BusinessSwitcher />
 
@@ -154,13 +164,20 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
             >
               {['telegram', 'vk', 'yandex_business'].map((platform) => {
                 const integration = integrations?.find((i) => i.platform === platform);
-                const connected = integration?.status === 'active';
+                const connected = !isError && !isPending && integration?.status === 'active';
                 return (
                   <span key={platform} className="flex items-center gap-2 text-meta text-ink-soft">
                     {connected ? <Check size={18} aria-hidden /> : <Minus size={18} aria-hidden />}
                     <span>
                       {platformFullLabels[platform]}:{' '}
-                      {tNav(connected ? 'connected' : 'notConnected')}
+                      {tNav(
+                        connectionStatus({
+                          businessId: activeBusinessId,
+                          pending: isPending,
+                          error: isError,
+                          status: integration?.status,
+                        })
+                      )}
                     </span>
                   </span>
                 );
@@ -171,7 +188,7 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
             <ul className="space-y-1">
               {['telegram', 'vk', 'yandex_business'].map((platform) => {
                 const integration = integrations?.find((i) => i.platform === platform);
-                const connected = integration?.status === 'active';
+                const connected = !isError && !isPending && integration?.status === 'active';
                 return (
                   <li key={platform} className="flex items-center gap-2 text-xs">
                     <span
@@ -193,25 +210,35 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
               type="button"
               onClick={() => setFeedbackOpen(true)}
               aria-label={tNav('feedback')}
-              className="mb-2 flex h-10 w-10 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="mb-2 flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
             >
-              <MessageSquarePlus size={18} />
+              <MessageSquarePlus size={18} aria-hidden />
+              <span>{tNav('feedback')}</span>
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">{tNav('feedback')}</TooltipContent>
         </Tooltip>
         <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
-        <ThemeSwitcher className="mb-2" side="right" align="end" />
-        <LanguageSwitcher className="mb-2" side="right" align="end" />
+        <ThemeSwitcher
+          className="mb-2 w-full justify-start gap-3 px-3"
+          showLabel
+          side="right"
+          align="end"
+        />
+        <div className="mb-2 flex w-full items-center gap-3 px-3">
+          <LanguageSwitcher className="min-h-11 min-w-11" side="right" align="end" />
+          <span className="text-meta text-ink-soft">{tNav('language')}</span>
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               onClick={handleLogout}
               aria-label={tNav('logout')}
-              className="mb-2 flex h-10 w-10 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
+              className="mb-2 flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
             >
-              <LogOut size={18} />
+              <LogOut size={18} aria-hidden />
+              <span>{tNav('logout')}</span>
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">{tNav('logout')}</TooltipContent>

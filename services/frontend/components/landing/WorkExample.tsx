@@ -6,6 +6,7 @@ import { StatusLine } from '@/components/design-system/StatusLine';
 
 export function WorkExample() {
   const t = useTranslations('landing.workExample');
+  const actions = useTranslations('chat.toolApproval.actions');
   return (
     <section
       id="work-example"
@@ -26,7 +27,9 @@ export function WorkExample() {
               <p className="text-meta text-ink-soft">{t('context')}</p>
               <h3 className="mt-3 text-document-title">{t('draftTitle')}</h3>
               <p className="mt-3 max-w-[66ch]">{t('draft')}</p>
-              <p className="mt-4 max-w-[66ch] text-meta">
+              <p className="mt-4 max-w-[66ch] text-meta">{t('editHelp')}</p>
+              <p className="mt-2 max-w-[66ch] text-reading">{t('editRequest')}</p>
+              <p className="mt-2 max-w-[66ch] text-meta">
                 {t('editLabel')}: <del>{t('before')}</del> →{' '}
                 <ins className="bg-brand-soft text-ink">{t('after')}</ins>
               </p>
@@ -38,6 +41,12 @@ export function WorkExample() {
           </dt>
           <dd className="max-w-[66ch] space-y-3 text-reading">
             <StatusLine role="status" tone="neutral" icon={FilePenLine} text={t('status')} />
+            <p className="text-meta text-ink-soft">{t('decisionExample')}</p>
+            <ul className="flex flex-wrap gap-x-4 gap-y-2 text-meta">
+              {(['approve', 'edit', 'reject'] as const).map((action) => (
+                <li key={action}>{actions(action)}</li>
+              ))}
+            </ul>
             <p>{t('decision')}</p>
             <p className="text-meta text-ink-soft">{t('result')}</p>
           </dd>

@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+
+import { ConversationPreview } from '@/components/chat/ConversationPreview';
 import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
@@ -88,6 +90,7 @@ export function ConversationItem({
         ) : (
           <button type="button" className="block min-h-11 w-full text-left" onClick={onOpen}>
             <p className="break-words text-action">{displayTitle}</p>
+            <ConversationPreview conversationId={conv.id} />
             <p className="text-sm text-ink-soft">
               {tRow('created')}{' '}
               <time dateTime={conv.createdAt}>

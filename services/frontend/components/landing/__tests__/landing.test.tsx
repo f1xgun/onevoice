@@ -18,6 +18,7 @@ vi.stubGlobal(
   'IntersectionObserver',
   class {
     observe() {}
+    unobserve() {}
     disconnect() {}
   }
 );
@@ -101,7 +102,7 @@ describe('landing entry', () => {
     const example = copy.landing.workExample;
     expect(example.draft).toContain(example.before);
     expect(example.after).not.toBe(example.before);
-    expect(example.draft.replace(example.before, example.after)).toContain('10:00');
+    expect(example.draft.replace(example.before, example.after)).toContain(example.after);
   });
   it('keeps locale key sets and nonbreaking prices aligned', () => {
     function keys(value: object, prefix = ''): string[] {
@@ -308,3 +309,23 @@ describe('mobile visual viewport', () => {
     Object.defineProperty(window, 'visualViewport', { configurable: true, value: undefined });
   });
 });
+
+it.each([
+  { locale: 'ru', copy: ru },
+  { locale: 'en', copy: en },
+] as const)(
+  'explains editing and the real decision actions next to the accessible example in $locale',
+  ({ locale, copy }) => {
+    globalThis.__setTestLocale(locale);
+    render(<LandingPage />);
+    const example = screen.getByRole('region', { name: copy.landing.workExample.title });
+    expect(within(example).getByText(copy.landing.workExample.editHelp)).toBeVisible();
+    expect(within(example).getByText(copy.landing.workExample.editRequest)).toBeVisible();
+    expect(within(example).getByText(copy.landing.workExample.decisionExample)).toBeVisible();
+    for (const action of ['approve', 'edit', 'reject'] as const) {
+      expect(within(example).getByText(copy.chat.toolApproval.actions[action])).toBeVisible();
+    }
+    expect(within(example).queryByRole('button', { hidden: true })).toBeNull();
+    expect(example.querySelector('[tabindex]')).toBeNull();
+  }
+);

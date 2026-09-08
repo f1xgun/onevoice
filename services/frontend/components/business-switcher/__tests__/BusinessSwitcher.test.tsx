@@ -179,3 +179,12 @@ it('cancels previous tenant queries and opens the chat list on switch', () => {
   expect(replace).toHaveBeenCalledWith('/chat');
   expect(setActive).toHaveBeenCalledWith('b2');
 });
+
+it('explains the organization initials with a visible and accessible name', () => {
+  arrange({ active: 'org', businesses: [{ id: 'org', name: 'Coffee place', role: 'owner' }] });
+  render(wrap(<BusinessSwitcher />));
+  const trigger = screen.getByRole('button', { name: /Coffee place/ });
+  expect(trigger).toHaveTextContent(trigger.getAttribute('aria-label')!);
+  expect(trigger).toHaveAttribute('title', trigger.getAttribute('aria-label'));
+  expect(trigger.querySelector('[aria-hidden]')).toHaveTextContent('CO');
+});

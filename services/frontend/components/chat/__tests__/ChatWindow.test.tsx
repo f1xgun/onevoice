@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { ChatWindow } from '../ChatWindow';
+import { WorkExample } from '@/components/landing/WorkExample';
+import ru from '@/messages/ru.json';
+import en from '@/messages/en.json';
 import { useAuthStore } from '@/lib/auth';
 import { singleCallBatch, expiredBatch } from '@/test-utils/pending-approval-fixtures';
+
+import { ChatWindow } from '../ChatWindow';
 
 // Mock sonner so toast.error from unrelated flows is inert.
 vi.mock('sonner', () => ({
@@ -121,6 +125,77 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
     expect(sendBtn).not.toBeNull();
     expect(sendBtn!).toBeDisabled();
   });
+
+  it.each([
+    { locale: 'ru', copy: ru, fields: /прямо в полях карточки/ },
+    { locale: 'en', copy: en, fields: /directly in the card’s fields/ },
+  ] as const)(
+    'makes the landing edit instructions executable while approval is pending: $locale',
+    async ({ locale, copy, fields }) => {
+      globalThis.__setTestLocale(locale);
+      const exampleCopy = copy.landing.workExample;
+      const approvalCopy = copy.chat.toolApproval;
+      const call = singleCallBatch.calls[0]!;
+      const batch = {
+        ...singleCallBatch,
+        calls: [{ ...call, args: { ...call.args, text: exampleCopy.draft } }],
+      };
+      const fetchMock = mockGetMessages({ messages: [], pendingApprovals: [batch] });
+      render(
+        <Wrapper>
+          <WorkExample />
+          <ChatWindow conversationId="conv-1" />
+        </Wrapper>
+      );
+      const example = screen.getByRole('region', { name: exampleCopy.title });
+      const help = within(example).getByText(exampleCopy.editHelp);
+      const request = within(example).getByText(exampleCopy.editRequest);
+      const decision = within(example).getByText(exampleCopy.decision);
+      expect(help).toHaveTextContent(approvalCopy.actions.edit);
+      expect(help).toHaveTextContent(fields);
+      expect(request).toHaveTextContent(approvalCopy.fields.text);
+      expect(request).toHaveTextContent(exampleCopy.before);
+      expect(request).toHaveTextContent(exampleCopy.after);
+      expect(decision).toHaveTextContent(approvalCopy.card.submitIdle);
+      expect([help, request, decision].map((node) => node.textContent).join(' ')).not.toMatch(
+        /(?:напиш|реплика|сообщение).*чат|(?:write|message|correction).*chat/i
+      );
+      expect(help.compareDocumentPosition(request) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        request.compareDocumentPosition(decision) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+
+      const card = await screen.findByRole('region', {
+        name: approvalCopy.card.titleWithCount.replace('{count}', '1'),
+      });
+      const composer = screen.getByRole('textbox', { name: copy.chat.window.messagePlaceholder });
+      expect(composer).toBeDisabled();
+      expect(within(card).queryByRole('textbox', { name: approvalCopy.fields.text })).toBeNull();
+      fetchMock.mockClear();
+      fireEvent.click(
+        within(card).getByRole('button', {
+          name: approvalCopy.actions.editAria.replace('{toolName}', call.toolName),
+        })
+      );
+      const textField = within(card).getByRole('textbox', { name: approvalCopy.fields.text });
+      expect(textField).toBeEnabled();
+      const editedText = exampleCopy.draft.replace(exampleCopy.before, exampleCopy.after);
+      fireEvent.change(textField, { target: { value: editedText } });
+      expect(textField).toHaveValue(editedText);
+      expect(composer).toBeDisabled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      fetchMock.mockImplementation(async () => new Response('data: {"type":"done"}\n\n'));
+      fireEvent.click(within(card).getByRole('button', { name: approvalCopy.card.submitIdle }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const [url, options] = fetchMock.mock.calls[0]!;
+      expect(url).toContain('/resolve');
+      expect(options.method).toBe('POST');
+      expect(JSON.parse(options.body)).toEqual({
+        decisions: [{ id: call.callId, action: 'edit', edited_args: { text: editedText } }],
+      });
+      await waitFor(() => expect(composer).toBeEnabled());
+    }
+  );
 
   it('baseline sanity: no card, no banner, and composer is enabled when pendingApprovals is empty', async () => {
     mockGetMessages({ messages: [], pendingApprovals: [] });

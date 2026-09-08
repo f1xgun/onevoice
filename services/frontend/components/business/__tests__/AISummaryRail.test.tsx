@@ -35,3 +35,12 @@ it.skipIf(!hasLayoutBrowser).each(['ru', 'en'] as const)(
   },
   15000
 );
+
+it('introduces sample content with a heading and explanation before organization details', () => {
+  render(<AISummaryRail business={{ name: 'Example organization' }} tones={[]} />);
+  const heading = screen.getByRole('heading', { level: 2 });
+  const section = heading.parentElement!;
+  expect(section.firstElementChild).toBe(heading);
+  expect(section.children[1].textContent).toBeTruthy();
+  expect(section.children[2]).toHaveTextContent('Example organization');
+});
