@@ -9,7 +9,7 @@
 
 'use client';
 
-import * as React from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { EmptyFrame } from './EmptyFrame';
@@ -18,25 +18,38 @@ export type ReviewsEmptyMode = 'all' | 'pending' | 'replied';
 
 export interface EmptyReviewsProps {
   mode?: ReviewsEmptyMode;
+  onResetFilters?: () => void;
   /** Optional pivot — "look at last week" link. */
   onLookBack?: () => void;
 }
 
-export function EmptyReviews({ mode = 'all', onLookBack }: EmptyReviewsProps) {
+export function EmptyReviews({ mode = 'all', onLookBack, onResetFilters }: EmptyReviewsProps) {
   const tStates = useTranslations('states.emptyReviews');
-  const title = tStates(`${mode}.title` as `${ReviewsEmptyMode}.title`);
-  const body = tStates(`${mode}.body` as `${ReviewsEmptyMode}.body`);
+  const title =
+    onResetFilters && mode === 'all'
+      ? tStates('filteredTitle')
+      : tStates(`${mode}.title` as `${ReviewsEmptyMode}.title`);
+  const body =
+    onResetFilters && mode === 'all'
+      ? tStates('filteredBody')
+      : tStates(`${mode}.body` as `${ReviewsEmptyMode}.body`);
   return (
     <EmptyFrame
       compact
       title={title}
       body={body}
       action={
-        onLookBack && mode === 'all' ? (
+        onResetFilters ? (
+          <Button onClick={onResetFilters}>{tStates('resetFilters')}</Button>
+        ) : onLookBack && mode === 'all' ? (
           <Button variant="ghost" size="sm" onClick={onLookBack}>
             {tStates('lookBack')}
           </Button>
-        ) : undefined
+        ) : (
+          <Button asChild>
+            <Link href="/integrations">{tStates('connectChannels')}</Link>
+          </Button>
+        )
       }
     />
   );

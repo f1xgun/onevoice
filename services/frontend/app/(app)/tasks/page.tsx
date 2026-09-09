@@ -8,7 +8,7 @@
 //   • status dot · title · platform · "когда" + status label
 //   • for error rows, an inline warning-soft callout below the row with
 //     a plain-Russian reason and (where applicable) a Reconnect CTA or
-//     auto-retry assurance.
+//     navigation to chat.
 //
 // No expand/collapse, no terminal log, no KV "Подробности". Brand Voice
 // Guide §3: failures explain what + why + what-to-do-next, calmly.
@@ -19,6 +19,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { format } from 'date-fns';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
@@ -38,11 +39,11 @@ import { useTasksStream } from '@/hooks/useTasksStream';
 import { explainError } from './explainError';
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { ChannelMark } from '@/components/ui/channel-mark';
-import { MonoLabel } from '@/components/ui/mono-label';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyTasks } from '@/components/states';
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { cn } from '@/lib/utils';
 
@@ -68,6 +69,8 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const tHeader = useTranslations('tasks');
+  const [filter, setFilter] = useState<'all' | TaskStatus>('all');
+  const tActions = useTranslations('tasks.actions');
   const tStats = useTranslations('tasks.stats');
   const {
     allowed: canRead,
@@ -79,6 +82,7 @@ export default function TasksPage() {
   const {
     data: queriedTasks = [],
     isLoading: tasksLoading,
+    isFetching: tasksFetching,
     isError: tasksError,
     refetch: refetchTasks,
   } = useQuery<AgentTask[]>({
@@ -116,9 +120,23 @@ export default function TasksPage() {
     return c;
   }, [tasks]);
 
-  const doneToday = counts.done;
-  const inFlight = counts.running;
+  const doneCount = counts.done;
+  const inFlight = counts.running + counts.pending;
   const needsHelp = counts.error;
+  const visibleTasks = tasks.filter((task) =>
+    filter === 'all'
+      ? true
+      : filter === 'running'
+        ? ['pending', 'running'].includes(task.status)
+        : task.status === filter
+  );
+  const statsReady = !isLoading && !isError && canRead;
+  const filterOptions = [
+    ['all', tActions('all')],
+    ['error', tStats('awaitingUser')],
+    ['running', tStats('inProgress')],
+    ['done', tStats('done')],
+  ] as const;
 
   return (
     <div className="min-h-screen bg-paper">
@@ -128,51 +146,76 @@ export default function TasksPage() {
       <div className="grid grid-cols-1 gap-3 px-4 pb-6 sm:grid-cols-3 sm:px-12">
         <BigStat
           label={tStats('done')}
-          value={doneToday}
-          hint={
-            doneToday === 0
-              ? tStats('doneEmptyHint')
-              : tStats('doneSummary', {
-                  success: doneToday,
-                  needsHelp,
-                })
-          }
+          value={statsReady ? doneCount : '—'}
+          hint={doneCount === 0 ? tStats('doneEmptyHint') : tStats('doneSummary')}
           tone="default"
+          onClick={() => setFilter('done')}
+          selected={filter === 'done'}
+          disabled={!statsReady}
+          actionLabel={tActions('viewCompleted')}
         />
         <BigStat
           label={tStats('inProgress')}
-          value={inFlight}
+          value={statsReady ? inFlight : '—'}
           hint={inFlight === 0 ? tStats('inProgressNone') : tStats('inProgressSome')}
           tone={inFlight > 0 ? 'accent' : 'default'}
+          onClick={() => setFilter('running')}
+          selected={filter === 'running'}
+          disabled={!statsReady}
+          actionLabel={tActions('viewInProgress')}
         />
         <BigStat
           label={tStats('awaitingUser')}
-          value={needsHelp}
+          value={statsReady ? needsHelp : '—'}
           hint={needsHelp === 0 ? tStats('awaitingNone') : tStats('awaitingSome')}
           tone={needsHelp > 0 ? 'warning' : 'default'}
+          onClick={() => setFilter('error')}
+          selected={filter === 'error'}
+          disabled={!statsReady}
+          actionLabel={tActions('viewNeedsHelp')}
         />
       </div>
 
       {/* Task list */}
       <div className="px-4 pb-16 sm:px-12">
+        <div
+          className="mb-4 flex flex-wrap items-center gap-2"
+          aria-label={tActions('filterLabel')}
+          role="group"
+        >
+          {filterOptions.map(([value, label]) => (
+            <Button
+              key={value}
+              variant={filter === value ? 'secondary' : 'ghost'}
+              size="sm"
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
         {isError ? (
           <ListLoadError
+            isPending={tasksFetching || permissionLoading}
             onRetry={() => {
               if (permissionError) void refetchPermission();
               else void refetchTasks();
             }}
           />
         ) : isLoading ? (
-          <TaskListSkeleton />
-        ) : tasks.length === 0 ? (
-          <EmptyTasks />
+          <LoadingPlaceholder>
+            <TaskListSkeleton />
+          </LoadingPlaceholder>
+        ) : visibleTasks.length === 0 ? (
+          <EmptyTasks onResetFilters={filter === 'all' ? undefined : () => setFilter('all')} />
         ) : (
           <div className="overflow-hidden rounded-md border border-line bg-paper-raised shadow-ov-1">
-            {tasks.map((task, idx) => (
+            {visibleTasks.map((task, idx) => (
               <TaskRow
                 key={task.id}
                 task={task}
-                last={idx === tasks.length - 1}
+                last={idx === visibleTasks.length - 1}
                 canRead={canRead}
               />
             ))}
@@ -212,7 +255,7 @@ function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canR
   const platformName = CHANNEL_NAMES[task.platform as keyof typeof CHANNEL_NAMES] ?? task.platform;
   const titleClass =
     status === 'error'
-      ? 'text-sm font-medium text-[var(--ov-danger-ink)] tracking-[-0.005em]'
+      ? 'text-sm font-medium text-danger'
       : 'text-sm font-medium text-ink tracking-[-0.005em]';
   const human = status === 'error' ? explainError(task) : null;
 
@@ -255,7 +298,7 @@ function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canR
             )}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-soft sm:hidden">
             <span className="inline-flex items-center gap-1.5">
-              <ChannelMark name={platformName} size={16} />
+              <PlatformIcon platform={task.platform} className="size-4" />
               {platformName}
             </span>
             <span aria-hidden>·</span>
@@ -269,7 +312,7 @@ function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canR
 
         {/* Desktop-only: platform column */}
         <span className="hidden items-center gap-2 sm:flex">
-          <ChannelMark name={platformName} size={20} />
+          <PlatformIcon platform={task.platform} />
           <span className="text-[13px] text-ink-mid">{platformName}</span>
         </span>
 
@@ -307,17 +350,24 @@ function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canR
               size="sm"
               className="min-h-[44px]"
               disabled={rerun.isPending || !activeBusinessId}
+              aria-busy={rerun.isPending}
               onClick={() => {
                 if (!rerun.isPending && activeBusinessId) {
                   rerun.mutate({ businessId: activeBusinessId, taskId: task.id });
                 }
               }}
             >
+              {rerun.isPending && (
+                <Loader2
+                  aria-hidden
+                  className="mr-2 size-4 animate-spin motion-reduce:animate-none"
+                />
+              )}
               {rerun.isPending ? tVerification('checking') : tVerification('checkAgain')}
             </Button>
           )}
           {rerunFailed && (
-            <span role="alert" className="text-[var(--ov-danger-ink)]">
+            <span role="alert" className="text-danger">
               {tVerification('failed')}
             </span>
           )}
@@ -326,7 +376,7 @@ function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canR
 
       {/* Inline human-only warning callout — no log, no JSON, no IDs. */}
       {human && (
-        <div className="mx-4 mb-4 flex items-start gap-3 rounded-md border border-[oklch(0.85_0.10_75)] bg-warning-soft px-4 py-3 sm:mx-5 sm:ml-[52px]">
+        <div className="mx-4 mb-4 flex items-start gap-3 rounded-md border border-warning bg-warning-soft px-4 py-3 sm:mx-5 sm:ml-[52px]">
           <span
             aria-hidden
             className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-warning text-[12px] font-semibold text-paper"
@@ -339,11 +389,12 @@ function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canR
             </p>
             {human.cta && (
               <div className="mt-3">
-                <Link href={human.cta.href}>
-                  <Button variant="primary" size="sm">
+                <Button variant="secondary" size="sm" asChild>
+                  <Link href={human.cta.href}>
                     {tErrors(human.cta.labelKey)}
-                  </Button>
-                </Link>
+                    <ArrowRight aria-hidden className="ml-2 size-4" />
+                  </Link>
+                </Button>
               </div>
             )}
             {human.willAutoRetry && (
@@ -358,34 +409,52 @@ function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canR
 
 // ─── BigStat tile ───────────────────────────────────────────────────
 
+interface BigStatProps {
+  label: string;
+  value: number | string;
+  hint: string;
+  tone: 'default' | 'accent' | 'warning';
+  selected: boolean;
+  disabled: boolean;
+  actionLabel: string;
+  onClick: () => void;
+}
+
 function BigStat({
   label,
   value,
   hint,
   tone,
-}: {
-  label: string;
-  value: number | string;
-  hint: string;
-  tone: 'default' | 'accent' | 'warning';
-}) {
-  const toneClass = {
-    default: 'border-line bg-paper-raised',
-    accent: 'border-[oklch(0.85_0.06_75)] bg-accent-soft',
-    warning: 'border-[oklch(0.85_0.10_75)] bg-warning-soft',
-  }[tone];
+  selected,
+  disabled,
+  actionLabel,
+  onClick,
+}: BigStatProps) {
   return (
-    <div
-      className={cn('flex flex-col gap-2 rounded-md border px-4 py-4 sm:px-6 sm:py-5', toneClass)}
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      disabled={disabled}
+      className={cn(
+        'flex flex-col gap-2 rounded-md border bg-paper-raised px-4 py-4 text-left transition-colors hover:bg-paper-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none sm:px-6 sm:py-5',
+        tone === 'warning' ? 'border-warning' : 'border-line',
+        selected && 'ring-2 ring-brand'
+      )}
     >
-      <MonoLabel tone={tone === 'accent' ? 'ochre' : tone === 'warning' ? 'mid' : 'soft'}>
-        {label}
-      </MonoLabel>
-      <span className="font-mono text-[32px] font-medium tabular-nums leading-none tracking-[-0.02em] text-ink">
-        {value}
+      <span className="text-meta font-medium text-ink-soft">{label}</span>
+      <span className="text-price tabular-nums text-ink">{value}</span>
+      <span
+        aria-hidden={disabled || undefined}
+        className={cn('text-meta text-ink-soft', disabled && 'invisible')}
+      >
+        {hint}
       </span>
-      <span className="text-[13px] leading-relaxed text-ink-mid">{hint}</span>
-    </div>
+      <span className="mt-2 inline-flex items-center gap-2 text-meta font-medium text-brand">
+        {actionLabel}
+        <ArrowRight aria-hidden className="size-4" />
+      </span>
+    </button>
   );
 }
 

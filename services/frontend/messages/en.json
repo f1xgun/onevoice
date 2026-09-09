@@ -591,7 +591,7 @@
   },
   "tasks": {
     "title": "What's been done",
-    "subtitle": "Here you can see the assistant's actions and their status. If an action failed, send the request again.",
+    "subtitle": "Assistant actions and their status. View tasks that need help to see the next step.",
     "status": {
       "pending": "Scheduled",
       "running": "In progress",
@@ -625,11 +625,11 @@
       "inProgress": "In progress now",
       "awaitingUser": "Waiting on you",
       "doneEmptyHint": "nothing yet",
-      "doneSummary": "of those {success} succeeded, {needsHelp, plural, one {# needs} other {# need}} your attention",
+      "doneSummary": "completed successfully",
       "inProgressNone": "no active tasks",
       "inProgressSome": "running right now",
       "awaitingNone": "all good",
-      "awaitingSome": "needs your attention"
+      "awaitingSome": "open the list and choose the next step"
     },
     "errors": {
       "tokenVk": "Looks like access to the VK community expired. This happens once every couple of weeks — you'll need to reconnect the channel, takes about a minute.",
@@ -640,13 +640,21 @@
       "reconnectYandex": "Reconnect Yandex.Business",
       "reconnectGoogle": "Reconnect Google",
       "reconnect": "Reconnect",
-      "rateLimit": "The platform asked us to wait. Try sending the request again in a few minutes.",
-      "transient": "The service was temporarily unreachable and the action didn't go through. Try sending the request again.",
+      "rateLimit": "The platform limited requests. Open chat, check the result and request another attempt in a few minutes if needed.",
+      "transient": "The platform was unavailable during this action. Open chat to check the result and decide what to do next.",
       "notFound": "Channel not found. Check that it's still connected and accessible.",
       "openIntegrations": "Open channels",
-      "media": "Couldn't upload the image — the file may be too large or the platform rejected it.",
-      "fallback": "Something went wrong and the action didn't go through. Try sending the request again.",
-      "autoRetryHint": "You don't have to click anything — we'll try again on our own."
+      "media": "The platform did not accept the image. Open chat to choose another file or reduce its size.",
+      "fallback": "The action could not be confirmed. Open chat, check the result on the platform and decide the next step.",
+      "autoRetryHint": "You don't have to click anything — we'll try again on our own.",
+      "openChat": "Open chat"
+    },
+    "actions": {
+      "all": "All tasks",
+      "filterLabel": "Task filter",
+      "viewCompleted": "View completed",
+      "viewInProgress": "View in progress",
+      "viewNeedsHelp": "Review failed actions"
     }
   },
   "agentTasks": {
@@ -879,7 +887,8 @@
     },
     "sendReplyError": "Couldn't send the reply",
     "refreshSuccess": "Reviews refreshed",
-    "refreshError": "Couldn't refresh the reviews"
+    "refreshError": "Couldn't refresh the reviews",
+    "updatingResults": "Updating reviews…"
   },
   "business": {
     "title": "Organization profile",
@@ -2504,14 +2513,18 @@
       "body": "Nothing's waiting for a reply. New messages will show up here automatically."
     },
     "emptyTasks": {
-      "title": "All done for today",
-      "body": "Take a breath. If something new comes in, OneVoice will let you know."
+      "title": "No tasks yet",
+      "body": "Ask OneVoice to prepare a post, reply to reviews or update your business details.",
+      "openChat": "Give an instruction in chat",
+      "filteredTitle": "No tasks in this category",
+      "filteredBody": "View other tasks or give a new instruction in chat.",
+      "resetFilters": "View all tasks"
     },
     "emptyReviews": {
       "lookBack": "Last week →",
       "all": {
-        "title": "No reviews this week",
-        "body": "New reviews will appear when customers leave them."
+        "title": "No reviews yet",
+        "body": "Connect your platforms to collect reviews in one place and prepare replies with OneVoice."
       },
       "pending": {
         "title": "No open reviews",
@@ -2520,7 +2533,11 @@
       "replied": {
         "title": "Nothing to show",
         "body": "No answered reviews in this selection. Clear the filter to see the rest."
-      }
+      },
+      "connectChannels": "Open integrations",
+      "resetFilters": "Reset filters",
+      "filteredTitle": "No reviews match these filters",
+      "filteredBody": "Reset filters to see reviews from other platforms."
     },
     "emptySearch": {
       "noResultsPrefix": "Nothing matched ",

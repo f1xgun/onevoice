@@ -3,18 +3,16 @@
 //
 // Extracted from posts/page.tsx as part of.
 import { useTranslations } from 'next-intl';
-import { ChannelMark } from '@/components/ui/channel-mark';
-import { CHANNEL_NAMES } from '@/lib/platforms';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 
 import { PLATFORM_SHORT_KEYS } from '../_helpers';
 
 export function ChannelChip({ platform }: { platform: string }) {
   const tShort = useTranslations('posts.platformShort');
   const shortLabel = PLATFORM_SHORT_KEYS.has(platform) ? tShort(platform) : platform;
-  const display = CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? shortLabel;
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-line-soft bg-paper px-2 py-0.5 text-[11px] text-ink-mid">
-      <ChannelMark name={display} size={14} />
+      <PlatformIcon platform={platform} className="size-3.5" />
       {shortLabel}
     </span>
   );
