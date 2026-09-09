@@ -22,6 +22,7 @@ type Repos struct {
 	Message            domain.MessageRepository
 	Review             domain.ReviewRepository
 	Post               domain.PostRepository
+	ContentTemplate    domain.ContentTemplateRepository
 	AgentTask          domain.AgentTaskRepository
 	Project            domain.ProjectRepository
 	Invitation         domain.InvitationRepository
@@ -123,6 +124,7 @@ func Repositories(h *DBHandles) *Repos {
 		Message:                repository.NewMessageRepository(h.Mongo),
 		Review:                 repository.NewReviewRepository(h.Mongo),
 		Post:                   repository.NewPostRepository(h.Mongo),
+		ContentTemplate:        repository.NewContentTemplateRepository(h.PG),
 		AgentTask:              repository.NewAgentTaskRepository(h.Mongo),
 		Project:                repository.NewProjectRepository(h.PG, h.Mongo),
 		Invitation:             repository.NewInvitationRepository(h.PG),

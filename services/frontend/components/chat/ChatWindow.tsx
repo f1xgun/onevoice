@@ -26,6 +26,7 @@ import { PermissionLoadError } from '@/components/permission/PermissionLoadError
 import { trackEvent } from '@/lib/telemetry';
 import type { Conversation } from '@/lib/conversations';
 import { useChatComposer } from '@/hooks/useChatComposer';
+import { TemplateChips } from '@/components/templates/TemplateChips';
 import { ChatHeader } from './ChatHeader';
 import { MessageBubble } from './MessageBubble';
 import { ProjectChip } from './ProjectChip';
@@ -71,8 +72,16 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const composerDisabled =
     isLoading || isStreaming || awaitingTurn || pendingApproval !== null || !canSend || loadError;
 
-  const { composerId, register, input, bottomRef, handleSend, handleScroll, handleKeyDown } =
-    useChatComposer({ messages, disabled: composerDisabled, sendMessage });
+  const {
+    composerId,
+    register,
+    input,
+    bottomRef,
+    handleSend,
+    handleScroll,
+    handleKeyDown,
+    prefill,
+  } = useChatComposer({ messages, disabled: composerDisabled, sendMessage });
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
@@ -204,6 +213,13 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
                     </button>
                   ))}
                 </div>
+                <TemplateChips
+                  businessId={activeBusinessId}
+                  conversationKey={conversationId}
+                  disabled={composerDisabled}
+                  currentInput={input}
+                  onPrefill={prefill}
+                />
                 <GuidedCompose
                   onCompose={(instruction, selectedPlatforms) =>
                     sendMessage(instruction, undefined, { selectedPlatforms })
@@ -234,6 +250,17 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       </div>
 
       <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
+        {!showEmptyState && (
+          <div className="mb-3">
+            <TemplateChips
+              businessId={activeBusinessId}
+              conversationKey={conversationId}
+              disabled={composerDisabled}
+              currentInput={input}
+              onPrefill={prefill}
+            />
+          </div>
+        )}
         <label htmlFor={composerId} className="mb-2 block text-meta font-medium">
           {tChat('messagePlaceholder')}
         </label>

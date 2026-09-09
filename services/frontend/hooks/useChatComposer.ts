@@ -58,5 +58,18 @@ export function useChatComposer({ messages, disabled, sendMessage }: ChatCompose
     }
   }
 
-  return { composerId, register, input, bottomRef, handleSend, handleScroll, handleKeyDown };
+  function prefill(text: string) {
+    setValue('message', text, { shouldDirty: true, shouldTouch: true });
+  }
+
+  return {
+    composerId,
+    register,
+    input,
+    bottomRef,
+    handleSend,
+    handleScroll,
+    handleKeyDown,
+    prefill,
+  };
 }

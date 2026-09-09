@@ -63,8 +63,12 @@ export interface BroadcastChannelResult {
 // broadcast row. broadcastChannels is present ONLY on merged rows (two or
 // more posts sharing a broadcastGroupId) and carries every member's
 // per-channel result, so a partial failure stays visible channel by channel.
+// sourcePostId preserves the first (representative) persisted member ID. The
+// merged row displays that representative platform's text, so saving it as a
+// template must read that same persisted post rather than the synthetic row ID.
 export interface PostRow extends Post {
   broadcastChannels?: BroadcastChannelResult[];
+  sourcePostId?: string;
 }
 
 export function isChannelError(result: PlatformResult): boolean {
@@ -73,7 +77,9 @@ export function isChannelError(result: PlatformResult): boolean {
 
 // mergeBroadcastGroups collapses the posts fanned out by one broadcast turn
 // (same non-empty broadcastGroupId, 2+ members) into a single PostRow at the
-// first member's position, keeping every other post untouched. Posts without
+// first member's position and text, keeping every other post untouched. The
+// first member is the representative source for actions that require a real
+// persisted post ID. Posts without
 // a group id — every record created before the field existed — render exactly
 // as before, so the history stays backward compatible.
 export function mergeBroadcastGroups(posts: Post[]): PostRow[] {
@@ -94,7 +100,13 @@ export function mergeBroadcastGroups(posts: Post[]): PostRow[] {
     }
     let row = mergedByGroup.get(gid);
     if (!row) {
-      row = { ...p, id: `broadcast-${gid}`, platformResults: {}, broadcastChannels: [] };
+      row = {
+        ...p,
+        id: `broadcast-${gid}`,
+        sourcePostId: p.id,
+        platformResults: {},
+        broadcastChannels: [],
+      };
       mergedByGroup.set(gid, row);
       rows.push(row);
     }

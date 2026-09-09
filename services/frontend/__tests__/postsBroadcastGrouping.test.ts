@@ -49,10 +49,25 @@ describe('mergeBroadcastGroups', () => {
     expect(rows).toHaveLength(2);
     const merged = rows[0];
     expect(merged.id).toBe('broadcast-g1');
+    expect(merged.sourcePostId).toBe('a');
     expect(merged.status).toBe('published');
     expect(merged.broadcastChannels).toHaveLength(2);
     expect(Object.keys(merged.platformResults ?? {}).sort()).toEqual(['telegram', 'vk']);
     expect(rows[1].id).toBe('z');
+  });
+
+  it('keeps the representative persisted post id and matching text for save-source actions', () => {
+    const rows = mergeBroadcastGroups([
+      post({ id: 'telegram-post', content: 'Telegram wording', broadcastGroupId: 'g1' }),
+      post({ id: 'vk-post', content: 'VK wording', broadcastGroupId: 'g1' }),
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 'broadcast-g1',
+      sourcePostId: 'telegram-post',
+      content: 'Telegram wording',
+    });
   });
 
   it('derives partial status and keeps the failed channel visible', () => {
