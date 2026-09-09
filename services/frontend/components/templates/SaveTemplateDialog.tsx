@@ -122,6 +122,7 @@ export function SaveTemplateDialog({
         type="button"
         variant="secondary"
         size="sm"
+        className="min-h-11"
         disabled={disabled || !businessId}
         onClick={() => setOpen(true)}
       >
@@ -137,7 +138,12 @@ export function SaveTemplateDialog({
             <label htmlFor={`template-name-${sourceId}`} className="text-sm font-medium text-ink">
               {t('name')}
             </label>
-            <Input id={`template-name-${sourceId}`} {...form.register('name')} autoFocus />
+            <Input
+              id={`template-name-${sourceId}`}
+              {...form.register('name')}
+              className="min-h-11"
+              autoFocus
+            />
             {form.formState.errors.name && <p className="text-xs text-danger">{t('nameError')}</p>}
           </div>
           <DialogFooter>

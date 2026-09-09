@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -12,6 +12,7 @@ import { AppInput as Input, AppTextarea as Textarea } from '@/components/design-
 import {
   Dialog,
   AppDialog as DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -106,6 +107,7 @@ export function TemplateChips({
   onPrefill,
 }: TemplateChipsProps) {
   const t = useTranslations('contentTemplates');
+  const editorId = useId();
   const read = usePermission('content.read');
   const create = usePermission('content.create');
   const update = usePermission('content.update');
@@ -229,7 +231,7 @@ export function TemplateChips({
   });
 
   function render(template: ContentTemplate, values: Record<string, string>) {
-    if (!businessId || disabled || !read.allowed) return;
+    if (!businessId || disabled || !read.allowed || renderMutation.isPending) return;
     renderMutation.mutate({
       scope: businessId,
       chat: conversationKey,
@@ -297,9 +299,9 @@ export function TemplateChips({
           <button
             key={template.id}
             type="button"
-            disabled={disabled}
+            disabled={disabled || renderMutation.isPending}
             onClick={() => choose(template)}
-            className="text-brand-ink max-w-48 truncate rounded-full border border-brand-soft bg-brand-soft px-3 py-1.5 text-sm transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-brand-ink min-h-11 max-w-48 truncate rounded-full border border-brand-soft bg-brand-soft px-3 py-1.5 text-sm transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-50"
           >
             {template.name}
           </button>
@@ -307,7 +309,7 @@ export function TemplateChips({
         <button
           type="button"
           onClick={() => setLibraryOpen(true)}
-          className="rounded-full border border-line px-3 py-1.5 text-sm text-ink-mid hover:bg-paper-sunken"
+          className="min-h-11 rounded-full border border-line px-3 py-1.5 text-sm text-ink-mid hover:bg-paper-sunken"
         >
           {t('manage', { count: templates.length })}
         </button>
@@ -316,6 +318,7 @@ export function TemplateChips({
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle>{t('fillTitle', { name: selected?.name ?? '' })}</DialogTitle>
+            <DialogDescription>{t('fillDescription')}</DialogDescription>
           </DialogHeader>
           <form onSubmit={valuesForm.handleSubmit(submitValues)} className="space-y-4">
             {selected?.placeholders.map((key) => (
@@ -326,6 +329,7 @@ export function TemplateChips({
                 <Input
                   id={`template-value-${key}`}
                   {...valuesForm.register(`values.${key}`)}
+                  className="min-h-11"
                   aria-invalid={!!valuesForm.formState.errors.values?.[key]}
                 />
                 {valuesForm.formState.errors.values?.[key] && (
@@ -354,6 +358,7 @@ export function TemplateChips({
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[620px]">
           <DialogHeader>
             <DialogTitle>{t('libraryTitle')}</DialogTitle>
+            <DialogDescription>{t('libraryDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {templates.map((template) => (
@@ -363,8 +368,9 @@ export function TemplateChips({
               >
                 <button
                   type="button"
+                  disabled={disabled || renderMutation.isPending}
                   onClick={() => choose(template)}
-                  className="min-w-0 flex-1 truncate text-left text-sm text-ink"
+                  className="min-h-11 min-w-0 flex-1 truncate rounded-sm px-2 text-left text-sm text-ink disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {template.name}
                 </button>
@@ -372,7 +378,7 @@ export function TemplateChips({
                   type="button"
                   size="sm"
                   variant="ghost"
-                  disabled={!update.allowed}
+                  disabled={!update.allowed || crud.isPending}
                   onClick={() => edit(template)}
                 >
                   {t('edit')}
@@ -394,7 +400,8 @@ export function TemplateChips({
           <Button
             type="button"
             variant="secondary"
-            disabled={!create.allowed || templates.length >= MAX_TEMPLATES}
+            className="min-h-11"
+            disabled={!create.allowed || templates.length >= MAX_TEMPLATES || crud.isPending}
             onClick={() => edit()}
           >
             {t('newTemplate')}
@@ -404,16 +411,59 @@ export function TemplateChips({
               onSubmit={editorForm.handleSubmit(submitEditor)}
               className="space-y-3 rounded-md border border-line bg-paper-sunken p-3"
             >
-              <Input {...editorForm.register('name')} placeholder={t('name')} />
-              <select
-                {...editorForm.register('kind')}
-                className="h-10 w-full rounded-md border border-control bg-paper px-3 text-sm"
-              >
-                <option value="post">{t('kindPost')}</option>
-                <option value="review_reply">{t('kindReview')}</option>
-              </select>
-              <Textarea {...editorForm.register('body')} rows={5} placeholder={t('body')} />
-              <Input {...editorForm.register('placeholders')} placeholder={t('placeholders')} />
+              <div className="space-y-1.5">
+                <label htmlFor={`${editorId}-name`} className="text-sm font-medium text-ink">
+                  {t('name')}
+                </label>
+                <Input
+                  id={`${editorId}-name`}
+                  {...editorForm.register('name')}
+                  className="min-h-11"
+                  disabled={crud.isPending}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor={`${editorId}-kind`} className="text-sm font-medium text-ink">
+                  {t('kind')}
+                </label>
+                <select
+                  id={`${editorId}-kind`}
+                  {...editorForm.register('kind')}
+                  disabled={crud.isPending}
+                  className="min-h-11 w-full rounded-md border border-control bg-paper px-3 text-sm disabled:opacity-50"
+                >
+                  <option value="post">{t('kindPost')}</option>
+                  <option value="review_reply">{t('kindReview')}</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor={`${editorId}-body`} className="text-sm font-medium text-ink">
+                  {t('bodyLabel')}
+                </label>
+                <Textarea
+                  id={`${editorId}-body`}
+                  {...editorForm.register('body')}
+                  rows={5}
+                  disabled={crud.isPending}
+                />
+                <p className="text-xs text-ink-soft">{t('syntaxHelp')}</p>
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor={`${editorId}-placeholders`}
+                  className="text-sm font-medium text-ink"
+                >
+                  {t('placeholdersLabel')}
+                </label>
+                <Input
+                  id={`${editorId}-placeholders`}
+                  {...editorForm.register('placeholders')}
+                  className="min-h-11"
+                  disabled={crud.isPending}
+                  placeholder={t('placeholdersExample')}
+                />
+                <p className="text-xs text-ink-soft">{t('placeholdersHelp')}</p>
+              </div>
               {Object.keys(editorForm.formState.errors).length > 0 && (
                 <p className="text-xs text-danger">{t('editorError')}</p>
               )}
@@ -421,6 +471,7 @@ export function TemplateChips({
                 <Button
                   type="button"
                   variant="ghost"
+                  disabled={crud.isPending}
                   onClick={() => {
                     setEditing(null);
                     setEditorOpen(false);
