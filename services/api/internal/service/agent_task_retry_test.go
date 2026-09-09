@@ -12,11 +12,13 @@ import (
 	natslib "github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // stubAgentTaskRepo serves a single task by (business_id, id) and records the
@@ -81,6 +83,50 @@ func TestRerunVerificationDistinguishesCASMissFromRepositoryFailure(t *testing.T
 		require.ErrorIs(t, err, dbErr)
 		require.NotErrorIs(t, err, ErrVerificationBusy)
 	})
+}
+
+func TestStoredTaskBSONRoundTripSupportsRebuildAndFreezeIntent(t *testing.T) {
+	original := domain.AgentTask{
+		ID:         "stored-task",
+		BusinessID: uuid.NewString(),
+		Platform:   a2a.AgentVK,
+		Type:       "update_group_info",
+		Status:     domain.AgentTaskStatusError,
+		Input: map[string]interface{}{
+			"group_id": "42",
+			"title":    "Frozen title",
+			"metadata": map[string]interface{}{
+				"flags": []interface{}{map[string]interface{}{"enabled": true}, "keep"},
+			},
+		},
+	}
+	raw, err := bson.Marshal(original)
+	require.NoError(t, err)
+	var stored domain.AgentTask
+	require.NoError(t, bson.Unmarshal(raw, &stored))
+	require.IsType(t, bson.D{}, stored.Input)
+
+	toolName, args, err := rebuildToolRequest(&stored)
+	require.NoError(t, err)
+	require.Equal(t, tools.VKUpdateGroupInfo, toolName)
+	encoded, err := json.Marshal(args)
+	require.NoError(t, err)
+	var dispatched map[string]interface{}
+	require.NoError(t, json.Unmarshal(encoded, &dispatched))
+	require.Equal(t, map[string]interface{}{
+		"group_id": "42",
+		"title":    "Frozen title",
+		"metadata": map[string]interface{}{
+			"flags": []interface{}{map[string]interface{}{"enabled": true}, "keep"},
+		},
+	}, dispatched)
+
+	repo := &stubAgentTaskRepo{task: &stored}
+	svc := &agentTaskService{repo: repo}
+	require.NoError(t, svc.freezeRetryIntent(context.Background(), &stored))
+	require.Equal(t, map[string]string{"title": "Frozen title"}, stored.VerificationExpected)
+	require.Equal(t, "42", stored.VerificationTarget)
+	require.Len(t, repo.updates, 1)
 }
 
 // dedupeRequester is a NATS stand-in that runs the REAL HITL dedupe gate

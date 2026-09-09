@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	natslib "github.com/nats-io/nats.go"
+	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -290,18 +291,57 @@ func rebuildToolRequest(task *domain.AgentTask) (toolName string, args map[strin
 	return task.Platform + "__" + task.Type, args, nil
 }
 
-// coerceArgs normalizes a stored task Input into a tool-argument map. A task
-// created in-process carries a map[string]interface{}; a task round-tripped
-// through BSON decodes into the same shape, so both are accepted. A nil Input
-// (no arguments) is a valid empty map. Any other shape is rejected.
+// coerceArgs normalizes a stored task Input into a JSON-safe tool-argument map.
+// Mongo decodes interface-typed documents as bson.D by default, including
+// documents nested inside arrays, so every BSON container must be converted
+// recursively before the arguments are dispatched as JSON.
 func coerceArgs(input interface{}) (map[string]interface{}, bool) {
 	if input == nil {
 		return map[string]interface{}{}, true
 	}
-	if m, ok := input.(map[string]interface{}); ok {
-		return m, true
+	switch value := normalizeBSONContainer(input).(type) {
+	case map[string]interface{}:
+		return value, true
+	default:
+		return nil, false
 	}
-	return nil, false
+}
+
+func normalizeBSONContainer(value interface{}) interface{} {
+	switch value := value.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(value))
+		for key, item := range value {
+			out[key] = normalizeBSONContainer(item)
+		}
+		return out
+	case bson.M:
+		out := make(map[string]interface{}, len(value))
+		for key, item := range value {
+			out[key] = normalizeBSONContainer(item)
+		}
+		return out
+	case bson.D:
+		out := make(map[string]interface{}, len(value))
+		for _, elem := range value {
+			out[elem.Key] = normalizeBSONContainer(elem.Value)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(value))
+		for i, item := range value {
+			out[i] = normalizeBSONContainer(item)
+		}
+		return out
+	case bson.A:
+		out := make([]interface{}, len(value))
+		for i, item := range value {
+			out[i] = normalizeBSONContainer(item)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 // persistRetryOutcome writes the re-dispatch result back onto the task so the
