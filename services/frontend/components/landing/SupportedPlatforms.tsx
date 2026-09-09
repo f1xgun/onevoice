@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { CircleCheck, CircleHelp, Clock, CircleOff } from 'lucide-react';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 
 const LANDING_PLATFORMS = [
@@ -49,7 +50,10 @@ export function SupportedPlatforms() {
                 : CircleOff;
         return (
           <li key={id} className="min-w-0 border-t border-line py-4">
-            <h3 className="text-action">{tPlatforms(`${id}.display`)}</h3>
+            <h3 className="flex items-center gap-3 text-action">
+              <PlatformIcon platform={id} className="h-6 w-6" />
+              {tPlatforms(`${id}.display`)}
+            </h3>
             <p className="mt-1 text-meta text-ink-soft">{tPlatforms(`${id}.meta`)}</p>
             <p className="mt-3 flex items-start gap-2 text-meta text-ink-soft">
               <Icon aria-hidden="true" className="h-5 w-5 shrink-0" />

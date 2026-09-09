@@ -21,6 +21,7 @@ it.each([
     const { container } = render(
       <PlatformStatus
         label="Telegram"
+        platform="telegram"
         businessId="org"
         pending={pending}
         error={error}
@@ -40,6 +41,7 @@ it.each([
   const { container } = render(
     <PlatformStatus
       label="Telegram"
+      platform="telegram"
       businessId="org"
       pending={false}
       error={false}

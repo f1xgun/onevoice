@@ -15,6 +15,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      keyframes: {
+        'page-enter': { from: { opacity: '0' }, to: { opacity: '1' } },
+      },
+      animation: { 'page-enter': 'page-enter 160ms ease-out' },
       colors: {
         // shadcn aliases — keep existing components working
         background: 'var(--background)',

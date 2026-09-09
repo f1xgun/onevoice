@@ -1,5 +1,6 @@
 'use client';
 
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
@@ -29,6 +30,7 @@ export function OnboardingPlatformRows({ channels }: OnboardingPlatformRowsProps
             {channel.state === 'connected' && (
               <Check aria-hidden className="h-4 w-4 text-success" />
             )}
+            <PlatformIcon platform={channel.platform} className="h-4 w-4" />
             {channel.label}
           </span>
           <span className="text-xs text-muted-foreground">{t(`status.${channel.state}`)}</span>

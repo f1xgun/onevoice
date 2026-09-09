@@ -39,6 +39,7 @@ export function Sidebar() {
           </Button>
         </SheetTrigger>
         <SheetContent
+          data-ov-motion
           side="left"
           className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-y-auto overscroll-contain p-0 pt-12 [&>button:first-child]:grid [&>button:first-child]:h-8 [&>button:first-child]:w-8 [&>button:first-child]:place-items-center"
         >
