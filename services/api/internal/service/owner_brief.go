@@ -11,8 +11,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +36,14 @@ const ownerBriefConcurrency = 4
 // ownerBriefDispatchTimeout caps the per-business NATS request budget for the
 // send_notification dispatch.
 const ownerBriefDispatchTimeout = 30 * time.Second
+const ownerBriefPassTimeout = 5 * time.Minute
+const ownerBriefBusinessTimeout = 45 * time.Second
+
+// OwnerBriefPassLocker holds the cross-replica lock through generation, dispatch,
+// and the durable per-week delivery stamp.
+type OwnerBriefPassLocker interface {
+	WithOwnerBriefLock(context.Context, func() error) (bool, error)
+}
 
 // ownerBriefTelemetryEventType and ownerBriefTelemetryAction name the server-
 // side telemetry event emitted on a successful send, powering the
@@ -67,6 +77,7 @@ type OwnerBriefService struct {
 	nc           natsRequester // nil = no dispatch (Mongo-only mode)
 	telemetry    ownerBriefTelemetrySink
 	now          func() time.Time // injectable clock for deterministic tests
+	locker       OwnerBriefPassLocker
 }
 
 // NewOwnerBriefService constructs an OwnerBriefService. A nil router (or empty
@@ -80,6 +91,7 @@ func NewOwnerBriefService(
 	model string,
 	nc natsRequester,
 	telemetry ownerBriefTelemetrySink,
+	locker OwnerBriefPassLocker,
 ) *OwnerBriefService {
 	return &OwnerBriefService{
 		integRepo:    integRepo,
@@ -89,6 +101,7 @@ func NewOwnerBriefService(
 		model:        model,
 		nc:           nc,
 		telemetry:    telemetry,
+		locker:       locker,
 		now:          time.Now,
 	}
 }
@@ -97,12 +110,24 @@ func NewOwnerBriefService(
 // Telegram integration, due-selects the businesses whose brief is enabled, has a
 // private owner recipient, matches the configured weekday/hour window, and has
 // not already been sent this ISO week, then composes+dispatches+stamps each in
-// bounded parallel. Per-business errors are logged and never abort the pass.
+// bounded parallel. Per-business failures are collected after other work finishes.
 func (s *OwnerBriefService) RunOnce(ctx context.Context) error {
 	if s == nil || s.nc == nil {
 		return nil
 	}
+	if s.locker == nil {
+		return errors.New("owner brief: pass lock is not configured")
+	}
+	passCtx, cancel := context.WithTimeout(ctx, ownerBriefPassTimeout)
+	defer cancel()
+	_, err := s.locker.WithOwnerBriefLock(passCtx, func() error { return s.runPass(passCtx) })
+	if err != nil {
+		return fmt.Errorf("owner brief pass: %w", err)
+	}
+	return nil
+}
 
+func (s *OwnerBriefService) runPass(ctx context.Context) error {
 	integrations, err := s.integRepo.ListAllActiveByPlatforms(ctx, []string{a2a.AgentTelegram})
 	if err != nil {
 		return fmt.Errorf("owner brief: list integrations: %w", err)
@@ -112,21 +137,35 @@ func (s *OwnerBriefService) RunOnce(ctx context.Context) error {
 
 	sem := make(chan struct{}, ownerBriefConcurrency)
 	var wg sync.WaitGroup
-	for i := range targets {
-		t := targets[i]
+	var errorMu sync.Mutex
+	var passErrors []error
+	appendError := func(err error) {
+		errorMu.Lock()
+		passErrors = append(passErrors, err)
+		errorMu.Unlock()
+	}
+enqueue:
+	for _, target := range targets {
+		select {
+		case <-ctx.Done():
+			appendError(ctx.Err())
+			break enqueue
+		case sem <- struct{}{}:
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if err := s.processBusiness(ctx, t); err != nil {
-				slog.ErrorContext(ctx, "owner brief: business pass failed",
-					"business_id", t.businessID, "error", err)
+			businessCtx, cancel := context.WithTimeout(ctx, ownerBriefBusinessTimeout)
+			defer cancel()
+			if err := s.processBusiness(businessCtx, target); err != nil {
+				slog.ErrorContext(ctx, "owner brief: business pass failed", "business_id", target.businessID, "error", err)
+				appendError(fmt.Errorf("business %s: %w", target.businessID, err))
 			}
 		}()
 	}
 	wg.Wait()
-	return nil
+	return errors.Join(passErrors...)
 }
 
 // ownerBriefTarget carries the trusted per-integration context the pass needs:
@@ -148,6 +187,9 @@ func dedupeOwnerBriefTargets(integrations []domain.Integration) []ownerBriefTarg
 	out := make([]ownerBriefTarget, 0, len(integrations))
 	for i := range integrations {
 		integ := integrations[i]
+		if integ.Status != domain.IntegrationStatusActive || integ.Platform != a2a.AgentTelegram {
+			continue
+		}
 		if seen[integ.BusinessID] {
 			continue
 		}
@@ -162,13 +204,23 @@ func dedupeOwnerBriefTargets(integrations []domain.Integration) []ownerBriefTarg
 }
 
 // telegramUserIDFromMetadata extracts the owner's private Telegram numeric id
-// from integration metadata, returning "" when absent or blank.
+// from integration metadata. Non-private, malformed, and absent IDs are rejected.
 func telegramUserIDFromMetadata(meta map[string]interface{}) string {
 	if meta == nil {
 		return ""
 	}
 	id, _ := meta["telegram_user_id"].(string)
-	return strings.TrimSpace(id)
+	id = strings.TrimSpace(id)
+	for _, digit := range id {
+		if digit < '0' || digit > '9' {
+			return ""
+		}
+	}
+	parsed, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || parsed <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(parsed, 10)
 }
 
 // processBusiness runs the full per-business pipeline: load the business, apply
@@ -201,6 +253,10 @@ func (s *OwnerBriefService) processBusiness(ctx context.Context, t ownerBriefTar
 	stats, err := s.stats.FetchStats(ctx, t.businessID.String(), now)
 	if err != nil {
 		return fmt.Errorf("fetch stats: %w", err)
+	}
+
+	if stats.Total == 0 {
+		return nil
 	}
 
 	tag := briefLocale(biz)

@@ -208,7 +208,7 @@ func newBriefFixture(t *testing.T, clock time.Time, router OwnerBriefRouter, sta
 	integRepo := &fakeBriefIntegRepo{integrations: []domain.Integration{telegramInteg(bizID, ownerMeta())}}
 	nc := &recordingRequester{}
 	tel := &recordingTelemetry{}
-	svc := NewOwnerBriefService(integRepo, bizRepo, stats, router, "test-model", nc, tel)
+	svc := NewOwnerBriefService(integRepo, bizRepo, stats, router, "test-model", nc, tel, inlineBriefLocker{})
 	svc.now = func() time.Time { return clock }
 	return svc, bizRepo, nc, tel, bizID
 }
@@ -303,7 +303,7 @@ func TestOwnerBrief_NoOwnerChannelSkip(t *testing.T) {
 		telegramInteg(bizID, map[string]interface{}{}), // no telegram_user_id
 	}}
 	nc := &recordingRequester{}
-	svc := NewOwnerBriefService(integRepo, bizRepo, fakeBriefStats{stats: someStats()}, &recordingRouter{reply: "x"}, "m", nc, &recordingTelemetry{})
+	svc := NewOwnerBriefService(integRepo, bizRepo, fakeBriefStats{stats: someStats()}, &recordingRouter{reply: "x"}, "m", nc, &recordingTelemetry{}, inlineBriefLocker{})
 	svc.now = mondayNineAM
 
 	if err := svc.RunOnce(context.Background()); err != nil {
@@ -329,7 +329,7 @@ func TestOwnerBrief_TenantScoping(t *testing.T) {
 	}}
 	router := &recordingRouter{reply: "x"}
 	nc := &recordingRequester{}
-	svc := NewOwnerBriefService(integRepo, bizRepo, fakeBriefStats{stats: someStats()}, router, "m", nc, &recordingTelemetry{})
+	svc := NewOwnerBriefService(integRepo, bizRepo, fakeBriefStats{stats: someStats()}, router, "m", nc, &recordingTelemetry{}, inlineBriefLocker{})
 	svc.now = mondayNineAM
 
 	if err := svc.RunOnce(context.Background()); err != nil {
@@ -490,7 +490,7 @@ func TestOwnerBrief_NilNATSNoOp(t *testing.T) {
 	bizID := uuid.New()
 	bizRepo := &fakeBriefBusinessRepo{businesses: map[uuid.UUID]*domain.Business{bizID: {ID: bizID, Name: "X"}}}
 	integRepo := &fakeBriefIntegRepo{integrations: []domain.Integration{telegramInteg(bizID, ownerMeta())}}
-	svc := NewOwnerBriefService(integRepo, bizRepo, fakeBriefStats{stats: someStats()}, &recordingRouter{reply: "x"}, "m", nil, nil)
+	svc := NewOwnerBriefService(integRepo, bizRepo, fakeBriefStats{stats: someStats()}, &recordingRouter{reply: "x"}, "m", nil, nil, inlineBriefLocker{})
 	svc.now = mondayNineAM
 	if err := svc.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce with nil NATS must be a no-op, got %v", err)
@@ -547,4 +547,10 @@ func TestIsoYearWeek_StableWithinWeek(t *testing.T) {
 	if isoYearWeek(monday) == isoYearWeek(nextWeek) {
 		t.Errorf("next-week stamp must differ, both = %s", isoYearWeek(monday))
 	}
+}
+
+type inlineBriefLocker struct{}
+
+func (inlineBriefLocker) WithOwnerBriefLock(_ context.Context, fn func() error) (bool, error) {
+	return true, fn()
 }
