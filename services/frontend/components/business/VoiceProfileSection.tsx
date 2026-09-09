@@ -129,6 +129,7 @@ function VoiceProfileForm({
         .put(BIZ_API_PATHS.BUSINESS.VOICE_PROFILE, { voiceProfile: profile })
         .then((response) => response.data),
     onSuccess: (_data, variables) => {
+      qc.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE(variables.businessId), variables.profile);
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_VOICE_PROFILE(variables.businessId) });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(variables.businessId) });
       if (!mountedRef.current || form.getValues('voiceProfile') !== variables.profile) return;

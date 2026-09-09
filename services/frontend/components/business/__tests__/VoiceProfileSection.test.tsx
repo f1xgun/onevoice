@@ -299,3 +299,40 @@ describe('VoiceProfileSection pending submit guard', () => {
     });
   });
 });
+
+describe('VoiceProfileSection successful-save cache consistency', () => {
+  it('keeps the saved text visible while the invalidation refetch is delayed', async () => {
+    vi.clearAllMocks();
+    businessState.activeBusinessId = 'business-a';
+    Object.assign(permissionState['business.read'], {
+      allowed: true,
+      isLoading: false,
+      isError: false,
+    });
+    Object.assign(permissionState['business.update'], {
+      allowed: true,
+      isLoading: false,
+      isError: false,
+    });
+    const delayedRefetch = deferred<{ data: { voiceProfile: string } }>();
+    getMock
+      .mockResolvedValueOnce({ data: { voiceProfile: 'old persisted text' } })
+      .mockReturnValueOnce(delayedRefetch.promise);
+    putMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+    const textarea = await screen.findByRole('textbox');
+    await user.clear(textarea);
+    await user.type(textarea, 'just saved text');
+    await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
+
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    expect(textarea).toHaveValue('just saved text');
+    expect(toastSuccess).toHaveBeenCalledWith('Профиль голоса сохранён');
+
+    await act(async () => {
+      delayedRefetch.resolve({ data: { voiceProfile: 'just saved text' } });
+      await delayedRefetch.promise;
+    });
+  });
+});
