@@ -45,8 +45,9 @@ const (
 	reconcileFetchTimeout = 90 * time.Second
 	// Drift delivery retries yield failed rows to later episodes instead of
 	// letting the oldest LIMIT page monopolize every reconciliation pass.
-	driftAlertRetryBase = time.Minute
-	driftAlertRetryMax  = time.Hour
+	driftAlertRetryBase       = time.Minute
+	driftAlertRetryMax        = time.Hour
+	driftAlertDispatchTimeout = 30 * time.Second
 )
 
 // reconcileSupportedPlatforms are the platforms whose profile OneVoice writes
@@ -360,7 +361,7 @@ func (s *ReconciliationService) deliverDriftAlert(ctx context.Context, episode d
 	args := map[string]interface{}{"text": text, "chat_id": chatID}
 	approvalID := "drift-alert-" + episode.EpisodeID.String()
 	if _, err := dispatchToolWithApproval(ctx, s.nc, a2a.AgentTelegram, tools.TelegramSendNotification,
-		args, episode.BusinessID.String(), approvalID, 30*time.Second); err != nil {
+		args, episode.BusinessID.String(), approvalID, driftAlertDispatchTimeout); err != nil {
 		return fmt.Errorf("deliver drift DM for %s: %w", episode.BusinessID, err)
 	}
 	if err := s.syncState.MarkDriftDMSettled(ctx, episode.SyncStateID, episode.EpisodeID); err != nil {
@@ -376,7 +377,7 @@ func (s *ReconciliationService) settleDriftDM(ctx context.Context, episode domai
 	return s.syncState.MarkDriftDMSettled(ctx, episode.SyncStateID, episode.EpisodeID)
 }
 
-func (s *ReconciliationService) privateDriftRecipient(ctx context.Context, businessID uuid.UUID) (string, bool, error) {
+func (s *ReconciliationService) privateDriftRecipient(ctx context.Context, businessID uuid.UUID) (chatID string, found bool, err error) {
 	integs, err := s.integRepo.ListByBusinessAndPlatform(ctx, businessID, a2a.AgentTelegram)
 	if err != nil {
 		return "", false, err

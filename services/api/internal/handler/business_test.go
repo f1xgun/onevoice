@@ -43,7 +43,7 @@ func TestBusinessHandler_DriftAlertSettings(t *testing.T) {
 		}, nil)
 		h, err := NewBusinessHandler(svc, nil, nil)
 		require.NoError(t, err)
-		req := withBizCtx(httptest.NewRequest(http.MethodGet, "/drift-alerts", nil), bc)
+		req := withBizCtx(httptest.NewRequest(http.MethodGet, "/drift-alerts", http.NoBody), bc)
 		rr := httptest.NewRecorder()
 		h.GetDriftAlerts(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
