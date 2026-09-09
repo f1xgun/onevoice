@@ -35,21 +35,25 @@ HEX — нормативное значение. CSS хранит полноце
 
 | Токен        | Светлая | Тёмная  | Назначение                  |
 | ------------ | ------- | ------- | --------------------------- |
-| paper        | #F5F4F0 | #202724 | Страница                    |
-| paper-raised | #FFFFFF | #29332E | Документ, поле, перекрытие  |
-| paper-sunken | #E7E9E3 | #35433B | Контекст и наведение        |
-| ink          | #202724 | #F2F3ED | Основной текст              |
-| ink-soft     | #58635D | #B9C3BA | Подписи и помощь            |
-| line         | #CAD0C9 | #48564D | Декоративная структура      |
-| control      | #77847C | #829389 | Значимая граница управления |
+| paper        | #F5F4F0 | #17191D | Страница                    |
+| paper-raised | #FFFFFF | #202328 | Документ, поле, перекрытие  |
+| paper-sunken | #E7E9E3 | #2A2E35 | Контекст и наведение        |
+| ink          | #202724 | #F1F3F5 | Основной текст              |
+| ink-soft     | #58635D | #BEC4CE | Подписи и помощь            |
+| line         | #CAD0C9 | #424850 | Декоративная структура      |
+| control      | #77847C | #858F9C | Значимая граница управления |
 | brand        | #245C55 | #99C6BA | Действие, ссылка, фокус     |
-| on-brand     | #FFFFFF | #202724 | Текст основной кнопки       |
+| on-brand     | #FFFFFF | #17191D | Текст основной кнопки       |
 | brand-hover  | #19463F | #B3D9CF | Наведение и нажатие         |
-| brand-soft   | #E0EBE5 | #23453E | Выбранное и выделение       |
+| brand-soft   | #E0EBE5 | #243D35 | Выбранное и выделение       |
 | success      | #41653B | #B6D3A0 | Подтверждённое выполнение   |
 | warning      | #7A4C18 | #E6C186 | Препятствие или уточнение   |
 | danger       | #A13C36 | #F1A39A | Ошибка или опасное действие |
 | info         | #365F8A | #A7C8EB | Выполнение операции         |
+
+Тёмная тема использует нейтральные графитовые поверхности; зелёный остаётся
+в действиях, фокусе и выделении. Область чтения чата в тёмной теме использует
+`paper`, чтобы отличаться от поднятых панелей навигации и заголовка.
 
 `paper-well` равен `paper-sunken`; `ink-mid` равен `ink`; `ink-faint` равен
 `ink-soft`; `line-soft` равен `line`. Все semantic-soft равны `paper-raised`.
@@ -60,7 +64,7 @@ paper-raised; primary → brand; primary-foreground → on-brand; secondary/mute
 paper-sunken; muted-foreground → ink-soft; accent → brand-soft;
 accent-foreground → ink; input → control; border → line; ring → brand;
 destructive → danger. Текст залитого destructive — белый в светлой теме и
-#202724 в тёмной. Прикладная опасная кнопка по умолчанию контурная.
+#17191D в тёмной. Прикладная опасная кнопка по умолчанию контурная.
 
 Старые `ov-accent` и `ochre` сохраняются только для совместимости. Новые места
 используют `brand`; новые имена `ochre` вне слоя совместимости запрещены.
@@ -477,21 +481,21 @@ Next.js 14 не повод делать downgrade. Шрифты обслужив
   }
   .dark {
     color-scheme: dark;
-    --ov-paper: #202724;
-    --ov-paper-raised: #29332E;
-    --ov-paper-sunken: #35433B;
-    --ov-ink: #F2F3ED;
-    --ov-ink-soft: #B9C3BA;
-    --ov-line: #48564D;
-    --ov-control: #829389;
+    --ov-paper: #17191D;
+    --ov-paper-raised: #202328;
+    --ov-paper-sunken: #2A2E35;
+    --ov-ink: #F1F3F5;
+    --ov-ink-soft: #BEC4CE;
+    --ov-line: #424850;
+    --ov-control: #858F9C;
     --ov-brand: #99C6BA;
-    --ov-on-brand: #202724;
+    --ov-on-brand: #17191D;
     --ov-brand-hover: #B3D9CF;
-    --ov-brand-soft: #23453E;
+    --ov-brand-soft: #243D35;
     --ov-success: #B6D3A0;
     --ov-warning: #E6C186;
     --ov-danger: #F1A39A;
-    --ov-on-danger: #202724;
+    --ov-on-danger: #17191D;
     --ov-info: #A7C8EB;
     --ov-overlay: rgb(0 0 0 / 0.64);
     --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.32);

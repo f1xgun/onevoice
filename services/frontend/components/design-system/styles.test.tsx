@@ -147,10 +147,10 @@ describe('compiled Tailwind button and field cascade', () => {
         if (primary) {
           expect(normal['background-color']).toBe(theme === 'light' ? '#245C55' : '#99C6BA');
           expect(hover['background-color']).toBe(theme === 'light' ? '#19463F' : '#B3D9CF');
-          expect(hover.color).toBe(theme === 'light' ? '#FFFFFF' : '#202724');
+          expect(hover.color).toBe(theme === 'light' ? '#FFFFFF' : '#17191D');
         } else if (variant !== 'link') {
-          expect(normal['background-color']).toBe(theme === 'light' ? '#FFFFFF' : '#29332E');
-          expect(hover['background-color']).toBe(theme === 'light' ? '#E7E9E3' : '#35433B');
+          expect(normal['background-color']).toBe(theme === 'light' ? '#FFFFFF' : '#202328');
+          expect(hover['background-color']).toBe(theme === 'light' ? '#E7E9E3' : '#2A2E35');
           expect(hover.color).toBe(
             dangerous
               ? theme === 'light'
@@ -158,16 +158,16 @@ describe('compiled Tailwind button and field cascade', () => {
                 : '#F1A39A'
               : theme === 'light'
                 ? '#202724'
-                : '#F2F3ED'
+                : '#F1F3F5'
           );
         } else {
           expect(normal['text-decoration-line']).toBe('underline');
         }
         button.setAttribute('disabled', '');
         const disabled = declarations(button, theme, 'hover');
-        expect(disabled['background-color']).toBe(theme === 'light' ? '#E7E9E3' : '#35433B');
-        expect(disabled.color).toBe(theme === 'light' ? '#58635D' : '#B9C3BA');
-        expect(disabled['border-color']).toBe(theme === 'light' ? '#77847C' : '#829389');
+        expect(disabled['background-color']).toBe(theme === 'light' ? '#E7E9E3' : '#2A2E35');
+        expect(disabled.color).toBe(theme === 'light' ? '#58635D' : '#BEC4CE');
+        expect(disabled['border-color']).toBe(theme === 'light' ? '#77847C' : '#858F9C');
         expect(disabled.opacity).toBe('1');
       }
     }
@@ -178,7 +178,7 @@ describe('compiled Tailwind button and field cascade', () => {
     (theme) => {
       const input = element(renderToStaticMarkup(<AppInput />));
       expect(declarations(input, theme)['border-color']).toBe(
-        theme === 'light' ? '#77847C' : '#829389'
+        theme === 'light' ? '#77847C' : '#858F9C'
       );
       const focused = declarations(input, theme, 'focus-visible');
       expect(focused['--tw-ring-color']).toBe(theme === 'light' ? '#245C55' : '#99C6BA');
