@@ -36,6 +36,7 @@ const shutdownTimeout = 30 * time.Second
 // worker mid-pass cannot write to a closed pool. Kept under typical SIGTERM
 // grace so a wedged worker can never block the process from exiting.
 const workerDrainTimeout = 10 * time.Second
+const verificationDrainTimeout = 95 * time.Second
 
 func main() {
 	log := logger.New("api")
@@ -87,6 +88,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	defer svcs.Close()
 
 	var workers sync.WaitGroup
+	var verificationWorkers sync.WaitGroup
+	if svcs.TaskVerification != nil {
+		svcs.TaskVerification.Start(ctx, 2, &verificationWorkers)
+	}
+	if svcs.PlatformSyncRunner != nil {
+		svcs.PlatformSyncRunner.Start(ctx, 2, &verificationWorkers)
+	}
 
 	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
@@ -133,7 +141,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	health.RegisterDefaultChecks(hc, handles.PG, mongoClient, handles.Redis, handles.NATS)
 
-	return runServers(ctx, log, cfg, handlers, hc, svcs, handles, repos, &workers)
+	return runServers(ctx, log, cfg, handlers, hc, svcs, handles, repos, &workers, &verificationWorkers)
 }
 
 // goWorker spawns fn as a tracked background worker. wg.Add happens on the
@@ -171,7 +179,7 @@ func waitWorkers(wg *sync.WaitGroup, bound time.Duration) bool {
 // runServers builds the public + internal chi routers and starts both
 // http.Servers with graceful shutdown. Process-lifecycle code, not wiring —
 // that is why it stays in cmd/main.go rather than internal/wire/.
-func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handlers *router.Handlers, hc *health.Checker, svcs *wire.Services, handles *wire.DBHandles, repos *wire.Repos, workers *sync.WaitGroup) error {
+func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handlers *router.Handlers, hc *health.Checker, svcs *wire.Services, handles *wire.DBHandles, repos *wire.Repos, workers, verificationWorkers *sync.WaitGroup) error {
 	rateLimits := router.RateLimits{
 		Register:    cfg.RateLimitRegister,
 		Login:       cfg.RateLimitLogin,
@@ -254,6 +262,9 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 
 	if !waitWorkers(workers, workerDrainTimeout) {
 		log.Warn("background workers did not drain within timeout — proceeding to close pools", "timeout", workerDrainTimeout)
+	}
+	if !waitWorkers(verificationWorkers, verificationDrainTimeout) {
+		log.Warn("task verification workers did not drain within timeout", "timeout", verificationDrainTimeout)
 	}
 
 	if srvErr != nil {

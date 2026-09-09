@@ -237,7 +237,8 @@ func (h *Handler) sharedBrowser(ctx context.Context, req a2a.ToolRequest, permal
 }
 
 func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	browser, err := h.getBrowser(ctx, req)
+	externalID, _ := req.Args["external_id"].(string)
+	browser, err := h.getBrowserForExternalID(ctx, req, externalID)
 	if err != nil {
 		return nil, err
 	}

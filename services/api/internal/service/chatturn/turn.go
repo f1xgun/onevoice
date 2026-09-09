@@ -40,6 +40,7 @@ type Deps struct {
 	Posts         domain.PostRepository
 	Reviews       domain.ReviewRepository
 	AgentTasks    domain.AgentTaskRepository
+	Verification  VerificationQueue
 
 	TaskHub *taskhub.Hub
 	Orch    *orchestratorclient.Client
@@ -55,6 +56,10 @@ type Deps struct {
 	// context per turn. A non-positive value falls back to
 	// defaultHistoryLimit so a struct-literal construction (tests) stays safe.
 	HistoryLimit int
+}
+
+type VerificationQueue interface {
+	Enqueue(businessID, taskID string, attempt int64) error
 }
 
 // defaultHistoryLimit is the fallback chat-history fetch limit when Deps
@@ -79,6 +84,8 @@ type Turn struct {
 func (t *Turn) SetPlanResolver(r PlanResolver) {
 	t.deps.PlanResolver = r
 }
+
+func (t *Turn) SetVerification(v VerificationQueue) { t.deps.Verification = v }
 
 // New constructs a Turn from a wired Deps. Required dependencies that are
 // nil produce a panic at construction time, mirroring the existing

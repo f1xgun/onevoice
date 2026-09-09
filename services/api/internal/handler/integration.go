@@ -251,7 +251,7 @@ func (h *IntegrationHandler) VerifyIntegrations(w http.ResponseWriter, r *http.R
 	}
 
 	if h.syncTrigger != nil {
-		go h.syncTrigger.SyncBusiness(business)
+		h.syncTrigger.SyncBusiness(business)
 	}
 	if h.reconciler != nil {
 		if err := h.reconciler.ScheduleImmediate(r.Context(), bc.BusinessID); err != nil {

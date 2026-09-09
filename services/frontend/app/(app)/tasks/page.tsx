@@ -15,8 +15,8 @@
 
 'use client';
 
-import { useCallback, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import Link from 'next/link';
@@ -26,6 +26,7 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import {
   TASK_STATUS_DOT_CLASSES,
   useTaskStatusLabels,
@@ -50,6 +51,16 @@ import { cn } from '@/lib/utils';
 // (e.g. browser put us to sleep). 30 s is fast enough that a missed task
 // surfaces within one poll cycle without flooding the backend.
 const POLL_INTERVAL_MS = 30_000;
+const VERIFICATION_STATUSES = new Set([
+  'pending',
+  'running',
+  'verified',
+  'mismatch',
+  'unverifiable',
+  'error',
+  'unsupported',
+]);
+const VERIFICATION_FIELDS = new Set(['title', 'description', 'website', 'phone', 'schedule']);
 
 // ─── Top-level page ─────────────────────────────────────────────────
 
@@ -58,12 +69,18 @@ export default function TasksPage() {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const tHeader = useTranslations('tasks');
   const tStats = useTranslations('tasks.stats');
+  const {
+    allowed: canRead,
+    isLoading: permissionLoading,
+    isError: permissionError,
+    refetch: refetchPermission,
+  } = usePermission('content.read');
 
   const {
-    data: tasks = [],
-    isLoading,
-    isError,
-    refetch,
+    data: queriedTasks = [],
+    isLoading: tasksLoading,
+    isError: tasksError,
+    refetch: refetchTasks,
   } = useQuery<AgentTask[]>({
     queryKey: QUERY_KEYS.BUSINESS_TASKS(activeBusinessId),
     queryFn: () =>
@@ -75,9 +92,12 @@ export default function TasksPage() {
           const list = (data as { tasks?: AgentTask[] } | null)?.tasks;
           return Array.isArray(list) ? list : [];
         }),
-    enabled: !!activeBusinessId,
+    enabled: !!activeBusinessId && canRead,
     refetchInterval: POLL_INTERVAL_MS,
   });
+  const tasks = useMemo(() => (canRead ? queriedTasks : []), [canRead, queriedTasks]);
+  const isLoading = permissionLoading || (canRead && tasksLoading);
+  const isError = permissionError || (canRead && tasksError);
 
   const onStreamEvent = useCallback(
     (_: TaskStreamEvent) => {
@@ -136,7 +156,12 @@ export default function TasksPage() {
       {/* Task list */}
       <div className="px-4 pb-16 sm:px-12">
         {isError ? (
-          <ListLoadError onRetry={refetch} />
+          <ListLoadError
+            onRetry={() => {
+              if (permissionError) void refetchPermission();
+              else void refetchTasks();
+            }}
+          />
         ) : isLoading ? (
           <TaskListSkeleton />
         ) : tasks.length === 0 ? (
@@ -144,7 +169,12 @@ export default function TasksPage() {
         ) : (
           <div className="overflow-hidden rounded-md border border-line bg-paper-raised shadow-ov-1">
             {tasks.map((task, idx) => (
-              <TaskRow key={task.id} task={task} last={idx === tasks.length - 1} />
+              <TaskRow
+                key={task.id}
+                task={task}
+                last={idx === tasks.length - 1}
+                canRead={canRead}
+              />
             ))}
           </div>
         )}
@@ -155,9 +185,27 @@ export default function TasksPage() {
 
 // ─── Single row (no expand/collapse) ────────────────────────────────
 
-function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
+function TaskRow({ task, last, canRead }: { task: AgentTask; last: boolean; canRead: boolean }) {
   const tErrors = useTranslations('tasks.errors');
   const tAgentTaskNames = useTranslations('agentTasks.displayName');
+  const tVerification = useTranslations('tasks.verification');
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const queryClient = useQueryClient();
+  const [rerunFailed, setRerunFailed] = useState(false);
+  const rerun = useMutation({
+    mutationFn: ({ businessId, taskId }: { businessId: string; taskId: string }) =>
+      bizApi(businessId).post(BIZ_API_PATHS.TASKS.RERUN(taskId)),
+    onMutate: () => setRerunFailed(false),
+    onSuccess: (_data, variables) =>
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.BUSINESS_TASKS(variables.businessId),
+      }),
+    onError: (_error, variables) => {
+      if (useBusinessStore.getState().activeBusinessId === variables.businessId) {
+        setRerunFailed(true);
+      }
+    },
+  });
   const taskStatusLabels = useTaskStatusLabels();
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const status = (task.status as TaskStatus) ?? 'pending';
@@ -174,6 +222,14 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
     return resolved && resolved !== task.displayNameKey ? resolved : null;
   })();
   const titleText = localizedName ?? task.displayName ?? task.type;
+  const knownVerificationStatus =
+    task.verificationStatus && VERIFICATION_STATUSES.has(task.verificationStatus)
+      ? task.verificationStatus
+      : null;
+  const mismatchNames = (task.verificationMismatches ?? []).map((field) =>
+    VERIFICATION_FIELDS.has(field) ? tVerification(`fields.${field}`) : tVerification('unknown')
+  );
+  const canRerun = canRead && task.verificationCanRerun === true;
 
   return (
     <div className={cn(!last && 'border-b border-line-soft')}>
@@ -225,6 +281,48 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
           <span className="text-xs text-ink-soft">{taskStatusLabels[status]}</span>
         </div>
       </div>
+
+      {task.verificationStatus && (
+        <div className="mx-4 mb-3 flex flex-wrap items-center gap-3 text-xs text-ink-mid sm:ml-[52px]">
+          <span>
+            {knownVerificationStatus
+              ? tVerification(knownVerificationStatus)
+              : tVerification('unknown')}
+          </span>
+          {mismatchNames.length > 0 && (
+            <span>{tVerification('mismatches', { fields: mismatchNames.join(', ') })}</span>
+          )}
+          {task.verificationCheckedAt && (
+            <time dateTime={task.verificationCheckedAt}>
+              {tVerification('checkedAt', {
+                time: format(new Date(task.verificationCheckedAt), 'd MMM HH:mm', {
+                  locale: dateFnsLocale,
+                }),
+              })}
+            </time>
+          )}
+          {canRerun && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-[44px]"
+              disabled={rerun.isPending || !activeBusinessId}
+              onClick={() => {
+                if (!rerun.isPending && activeBusinessId) {
+                  rerun.mutate({ businessId: activeBusinessId, taskId: task.id });
+                }
+              }}
+            >
+              {rerun.isPending ? tVerification('checking') : tVerification('checkAgain')}
+            </Button>
+          )}
+          {rerunFailed && (
+            <span role="alert" className="text-[var(--ov-danger-ink)]">
+              {tVerification('failed')}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Inline human-only warning callout — no log, no JSON, no IDs. */}
       {human && (

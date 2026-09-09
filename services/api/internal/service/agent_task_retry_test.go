@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -24,8 +25,9 @@ import (
 // unimplemented so an unexpected call panics loudly.
 type stubAgentTaskRepo struct {
 	domain.AgentTaskRepository
-	task    *domain.AgentTask
-	updates []domain.AgentTask
+	task       *domain.AgentTask
+	updates    []domain.AgentTask
+	restartErr error
 }
 
 func (s *stubAgentTaskRepo) GetByID(_ context.Context, businessID, taskID string) (*domain.AgentTask, error) {
@@ -44,6 +46,41 @@ func (s *stubAgentTaskRepo) Update(_ context.Context, task *domain.AgentTask) er
 	s.task.ErrorCode = task.ErrorCode
 	s.task.CompletedAt = task.CompletedAt
 	return nil
+}
+
+func (s *stubAgentTaskRepo) RestartVerification(_ context.Context, _, _ string) (*domain.AgentTask, error) {
+	if s.restartErr != nil {
+		return nil, s.restartErr
+	}
+	return s.task, nil
+}
+
+func TestRerunVerificationDistinguishesCASMissFromRepositoryFailure(t *testing.T) {
+	businessID := uuid.New()
+	task := &domain.AgentTask{
+		ID:                   "task-1",
+		BusinessID:           businessID.String(),
+		Status:               domain.AgentTaskStatusDone,
+		VerificationStatus:   domain.VerificationVerified,
+		VerificationExpected: map[string]string{"title": "Frozen"},
+		VerificationTarget:   "channel",
+	}
+	dbErr := errors.New("database unavailable")
+
+	t.Run("CAS miss is busy", func(t *testing.T) {
+		repo := &stubAgentTaskRepo{task: task, restartErr: domain.ErrAgentTaskNotFound}
+		svc := &agentTaskService{repo: repo, verification: &TaskVerification{}}
+		_, err := svc.RerunVerification(context.Background(), businessID, task.ID)
+		require.ErrorIs(t, err, ErrVerificationBusy)
+	})
+
+	t.Run("repository failure is internal", func(t *testing.T) {
+		repo := &stubAgentTaskRepo{task: task, restartErr: dbErr}
+		svc := &agentTaskService{repo: repo, verification: &TaskVerification{}}
+		_, err := svc.RerunVerification(context.Background(), businessID, task.ID)
+		require.ErrorIs(t, err, dbErr)
+		require.NotErrorIs(t, err, ErrVerificationBusy)
+	})
 }
 
 // dedupeRequester is a NATS stand-in that runs the REAL HITL dedupe gate

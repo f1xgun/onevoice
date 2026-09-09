@@ -166,10 +166,46 @@ type AgentTask struct {
 	// dedupe gate returns the cached result of a call that already landed instead
 	// of repeating an irreversible side effect. Empty for legacy rows that
 	// predate the field (those fall back to the stable per-task retry key).
-	DispatchApprovalID string     `json:"dispatchApprovalId,omitempty" bson:"dispatch_approval_id,omitempty"`
-	StartedAt          *time.Time `json:"startedAt,omitempty" bson:"started_at,omitempty"`
-	CompletedAt        *time.Time `json:"completedAt,omitempty" bson:"completed_at,omitempty"`
-	CreatedAt          time.Time  `json:"createdAt" bson:"created_at"`
+	DispatchApprovalID     string            `json:"dispatchApprovalId,omitempty" bson:"dispatch_approval_id,omitempty"`
+	VerificationStatus     string            `json:"verificationStatus,omitempty" bson:"verification_status,omitempty"`
+	VerificationFields     []string          `json:"verificationFields,omitempty" bson:"verification_fields,omitempty"`
+	VerificationMismatches []string          `json:"verificationMismatches,omitempty" bson:"verification_mismatches,omitempty"`
+	VerificationErrorCode  string            `json:"verificationErrorCode,omitempty" bson:"verification_error_code,omitempty"`
+	VerificationCheckedAt  *time.Time        `json:"verificationCheckedAt,omitempty" bson:"verification_checked_at,omitempty"`
+	VerificationExpected   map[string]string `json:"-" bson:"verification_expected,omitempty"`
+	VerificationTarget     string            `json:"-" bson:"verification_target,omitempty"`
+	VerificationAttempt    int64             `json:"-" bson:"verification_attempt,omitempty"`
+	VerificationUpdatedAt  *time.Time        `json:"-" bson:"verification_updated_at,omitempty"`
+	StartedAt              *time.Time        `json:"startedAt,omitempty" bson:"started_at,omitempty"`
+	CompletedAt            *time.Time        `json:"completedAt,omitempty" bson:"completed_at,omitempty"`
+	CreatedAt              time.Time         `json:"createdAt" bson:"created_at"`
+}
+
+const (
+	AgentTaskStatusRunning = "running"
+	AgentTaskStatusDone    = "done"
+	AgentTaskStatusError   = "error"
+
+	VerificationPending      = "pending"
+	VerificationRunning      = "running"
+	VerificationVerified     = "verified"
+	VerificationMismatch     = "mismatch"
+	VerificationUnverifiable = "unverifiable"
+	VerificationError        = "error"
+	VerificationUnsupported  = "unsupported"
+)
+
+// AgentTaskVerificationUpdate is a verification-only mutation. ExpectedStatus
+// and Attempt provide compare-and-set protection against duplicate workers and
+// stale completions from an earlier manual rerun.
+type AgentTaskVerificationUpdate struct {
+	ExpectedStatus string
+	Attempt        int64
+	Status         string
+	Fields         []string
+	Mismatches     []string
+	ErrorCode      string
+	CheckedAt      *time.Time
 }
 
 type Review struct {

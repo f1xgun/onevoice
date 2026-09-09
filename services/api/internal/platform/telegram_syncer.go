@@ -280,8 +280,8 @@ func (t *TelegramSyncer) FetchRemote(ctx context.Context, b *domain.Business, in
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
 		Result      struct {
-			Title       string `json:"title"`
-			Description string `json:"description"`
+			Title       *string `json:"title"`
+			Description *string `json:"description"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -294,8 +294,12 @@ func (t *TelegramSyncer) FetchRemote(ctx context.Context, b *domain.Business, in
 		}
 		return RemoteSnapshot{Err: desc}, nil
 	}
-	return RemoteSnapshot{Fields: map[string]string{
-		FieldTitle:       result.Result.Title,
-		FieldDescription: result.Result.Description,
-	}}, nil
+	fields := map[string]string{}
+	if result.Result.Title != nil {
+		fields[FieldTitle] = *result.Result.Title
+	}
+	if result.Result.Description != nil {
+		fields[FieldDescription] = *result.Result.Description
+	}
+	return RemoteSnapshot{Fields: fields}, nil
 }

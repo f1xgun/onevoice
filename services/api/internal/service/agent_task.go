@@ -84,6 +84,7 @@ type AgentTaskService interface {
 	// the LLM, reusing the same HITL dedupe path so a call that actually landed
 	// is not executed twice. It returns the task with its refreshed outcome.
 	Retry(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+	RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
 }
 
 type agentTaskService struct {
@@ -91,6 +92,7 @@ type agentTaskService struct {
 	businessService BusinessService
 	nc              natsRequester // nil = no platform dispatch (Mongo-only mode)
 	dispatchTimeout time.Duration
+	verification    *TaskVerification
 }
 
 // Compile-time check that agentTaskService implements AgentTaskService
@@ -100,17 +102,21 @@ var _ AgentTaskService = (*agentTaskService)(nil)
 // in that mode Retry rejects with an error because a retry cannot reach the
 // platform agents. businessService gates soft-deleted organizations out of the
 // retry path (nil disables that gate for in-process callers).
-func NewAgentTaskService(repo domain.AgentTaskRepository, businessService BusinessService, nc *natslib.Conn) AgentTaskService {
+func NewAgentTaskService(repo domain.AgentTaskRepository, businessService BusinessService, nc *natslib.Conn, verification ...*TaskVerification) AgentTaskService {
 	var requester natsRequester
 	if nc != nil {
 		requester = nc
 	}
-	return &agentTaskService{
+	s := &agentTaskService{
 		repo:            repo,
 		businessService: businessService,
 		nc:              requester,
 		dispatchTimeout: retryDispatchTimeout,
 	}
+	if len(verification) > 0 {
+		s.verification = verification[0]
+	}
+	return s
 }
 
 func (s *agentTaskService) List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
@@ -145,6 +151,9 @@ func (s *agentTaskService) Retry(ctx context.Context, businessID uuid.UUID, task
 	if _, ok := retryableErrorCodes[task.ErrorCode]; !ok {
 		return nil, newRetryRejection(task.ErrorCode)
 	}
+	if err := s.freezeRetryIntent(ctx, task); err != nil {
+		return nil, err
+	}
 
 	if s.nc == nil {
 		return nil, fmt.Errorf("task retry is not configured")
@@ -158,7 +167,73 @@ func (s *agentTaskService) Retry(ctx context.Context, businessID uuid.UUID, task
 	resp, dispatchErr := dispatchToolWithApproval(ctx, s.nc, task.Platform, toolName, args,
 		task.BusinessID, retryApprovalID(task), s.dispatchTimeout)
 
-	return s.persistRetryOutcome(ctx, task, resp.Result, dispatchErr)
+	fresh, persistErr := s.persistRetryOutcome(ctx, task, resp.Result, dispatchErr)
+	if persistErr == nil && dispatchErr == nil {
+		s.scheduleVerification(ctx, fresh)
+	}
+	return fresh, persistErr
+}
+
+func (s *agentTaskService) RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error) {
+	if err := s.gateBusiness(ctx, businessID); err != nil {
+		return nil, err
+	}
+	task, err := s.repo.GetByID(ctx, businessID.String(), taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get agent task: %w", err)
+	}
+	if task.Status != "done" || len(task.VerificationExpected) == 0 || task.VerificationTarget == "" || task.VerificationStatus == domain.VerificationUnsupported {
+		return nil, ErrVerificationUnavailable
+	}
+	if task.VerificationStatus == domain.VerificationPending || task.VerificationStatus == domain.VerificationRunning {
+		return nil, ErrVerificationBusy
+	}
+	if s.verification == nil {
+		return nil, ErrVerificationUnavailable
+	}
+	fresh, err := s.repo.RestartVerification(ctx, businessID.String(), taskID)
+	if err != nil {
+		if errors.Is(err, domain.ErrAgentTaskNotFound) {
+			return nil, ErrVerificationBusy
+		}
+		return nil, fmt.Errorf("restart task verification: %w", err)
+	}
+	if err := s.verification.Enqueue(fresh.BusinessID, fresh.ID, fresh.VerificationAttempt); err != nil {
+		return nil, err
+	}
+	s.verification.publish(ctx, fresh.BusinessID, fresh.ID)
+	return fresh, nil
+}
+
+func (s *agentTaskService) scheduleVerification(ctx context.Context, task *domain.AgentTask) {
+	if s.verification == nil || task == nil {
+		return
+	}
+	if len(task.VerificationExpected) == 0 || task.VerificationTarget == "" || task.VerificationStatus == domain.VerificationUnsupported {
+		return
+	}
+	task.VerificationStatus = domain.VerificationPending
+	task.VerificationAttempt++
+	if err := s.repo.Update(ctx, task); err == nil {
+		_ = s.verification.Enqueue(task.BusinessID, task.ID, task.VerificationAttempt)
+	}
+}
+
+func (s *agentTaskService) freezeRetryIntent(ctx context.Context, task *domain.AgentTask) error {
+	if len(task.VerificationExpected) > 0 {
+		return nil
+	}
+	expected, target, status := verificationIntent(task.Platform, task.Type, task.Input)
+	if len(expected) == 0 || target == "" || status == domain.VerificationUnsupported {
+		return nil
+	}
+	task.VerificationExpected, task.VerificationTarget = expected, target
+	// The original failed write remains unverified until a successful retry.
+	task.VerificationStatus = ""
+	if err := s.repo.Update(ctx, task); err != nil {
+		return fmt.Errorf("freeze retry verification intent: %w", err)
+	}
+	return nil
 }
 
 // gateBusiness re-loads the target business through the soft-delete-aware

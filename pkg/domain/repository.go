@@ -541,6 +541,9 @@ type AgentTaskRepository interface {
 	Update(ctx context.Context, task *AgentTask) error
 	GetByID(ctx context.Context, businessID, taskID string) (*AgentTask, error)
 	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
+	UpdateVerification(ctx context.Context, businessID, taskID string, update AgentTaskVerificationUpdate) error
+	RestartVerification(ctx context.Context, businessID, taskID string) (*AgentTask, error)
+	RecoverStaleVerifications(ctx context.Context, before time.Time) error
 }
 
 // --- HITL — pending tool-call batches. See docs/pkg/hitlstore.md + docs/pkg/domain-repository.md. ---

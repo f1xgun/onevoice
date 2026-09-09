@@ -41,20 +41,26 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
+const (
+	verificationQueueSize = 64
+	platformSyncQueueSize = 32
+)
+
 // Services aggregates every business-logic service the API consumes.
 type Services struct {
-	User            service.UserService
-	Business        service.BusinessService
-	Integration     service.IntegrationService
-	OAuth           *service.OAuthService
-	Post            service.PostService
-	ContentTemplate *service.ContentTemplateService
-	Review          service.ReviewService
-	AgentTask       service.AgentTaskService
-	Project         *service.ProjectService
-	Conversation    *service.ConversationService
-	HITL            *service.HITLService
-	Titler          *service.Titler // may be nil — graceful disable
+	User             service.UserService
+	Business         service.BusinessService
+	Integration      service.IntegrationService
+	OAuth            *service.OAuthService
+	Post             service.PostService
+	ContentTemplate  *service.ContentTemplateService
+	Review           service.ReviewService
+	AgentTask        service.AgentTaskService
+	TaskVerification *service.TaskVerification
+	Project          *service.ProjectService
+	Conversation     *service.ConversationService
+	HITL             *service.HITLService
+	Titler           *service.Titler // may be nil — graceful disable
 
 	// TelegramApproval consumes inline-button HITL approval callbacks published
 	// by the Telegram agent and resolves them server-side. Constructed in
@@ -74,7 +80,8 @@ type Services struct {
 	TelegramOwnerLinkConsumer *service.TelegramOwnerLinkConsumer
 	Searcher                  *service.Searcher
 	ToolsCache                *service.ToolsRegistryCache
-	PlatformSync              *platform.Syncer
+	PlatformSync              platform.BusinessSyncer
+	PlatformSyncRunner        *platform.SyncRunner
 	ReviewSyncer              *service.ReviewSyncer
 	ProductMetrics            *productmetrics.Collector
 	Reconciler                *service.ReconciliationService
@@ -450,7 +457,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.OAuth = service.NewOAuthService(h.Redis)
 	s.Post = service.NewPostService(repos.Post, s.Business)
 	s.ContentTemplate = service.NewContentTemplateService(repos.ContentTemplate, repos.Post, repos.Review)
-	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business, h.NATS)
 	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
 
 	conversationService, err := service.NewConversationService(repos.Conversation, repos.Message, repos.Project, h.PendingToolCallRepo)
@@ -543,8 +549,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		a2a.AgentVK:             vkSyncer,
 		a2a.AgentYandexBusiness: platform.NewYandexSyncer(yandexPublisher),
 	}
-	s.PlatformSync = platform.NewSyncer(adapter, repos.AgentTask, s.TaskHub, perPlatform)
-
 	// Proactive platform-sync reconciler (ships DARK; the loop is only started
 	// when SYNC_RECONCILE_ENABLED=true). The direct-API platforms are read via
 	// their RemoteFetcher; Yandex is fetched over NATS by the reconciler itself.
@@ -552,6 +556,11 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		a2a.AgentTelegram: telegramSyncer,
 		a2a.AgentVK:       vkSyncer,
 	}
+	s.TaskVerification = service.NewTaskVerification(repos.AgentTask, repos.Business, repos.Integration, remoteFetchers, h.NATS, s.TaskHub, verificationQueueSize)
+	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business, h.NATS, s.TaskVerification)
+	platformSyncer := platform.NewSyncer(adapter, repos.AgentTask, s.TaskHub, perPlatform, s.TaskVerification)
+	s.PlatformSyncRunner = platform.NewSyncRunner(platformSyncer, platformSyncQueueSize)
+	s.PlatformSync = s.PlatformSyncRunner
 	s.Reconciler = service.NewReconciliationService(
 		repos.SyncState,
 		repos.Integration,

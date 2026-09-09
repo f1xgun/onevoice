@@ -280,7 +280,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	}
 
 	if h.syncer != nil {
-		go h.syncer.SyncBusiness(updatedBusiness)
+		h.syncer.SyncBusiness(updatedBusiness)
 	}
 
 	writeJSON(w, http.StatusOK, updatedBusiness)
@@ -328,7 +328,7 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	}
 
 	if h.syncer != nil {
-		go h.syncer.SyncBusiness(updated)
+		h.syncer.SyncBusiness(updated)
 	}
 
 	writeJSON(w, http.StatusOK, updated)
@@ -446,7 +446,7 @@ func (h *BusinessHandler) UpdateDescriptionTemplate(w http.ResponseWriter, r *ht
 	}
 
 	if h.syncer != nil {
-		go h.syncer.SyncBusiness(updated)
+		h.syncer.SyncBusiness(updated)
 	}
 
 	writeJSON(w, http.StatusOK, updated)
@@ -832,7 +832,7 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.syncer != nil {
-		go h.syncer.SyncBusiness(updatedBusiness)
+		h.syncer.SyncBusiness(updatedBusiness)
 	}
 
 	writeJSON(w, http.StatusOK, updatedBusiness)

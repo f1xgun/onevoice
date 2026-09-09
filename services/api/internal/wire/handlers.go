@@ -203,6 +203,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	// legacy hardcoded empty tier). Set on the shared Turn so HITLHandler.Resume,
 	// which reuses chatProxyHandler.Turn(), sees it too.
 	chatProxyHandler.Turn().SetPlanResolver(svcs.PlanResolver)
+	chatProxyHandler.Turn().SetVerification(svcs.TaskVerification)
 	chatProxyHandler.Turn().SetApprovalTelemetry(svcs.Telemetry)
 	chatProxyHandler.Turn().SetValueTelemetry(svcs.Telemetry)
 

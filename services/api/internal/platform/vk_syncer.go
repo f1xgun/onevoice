@@ -127,9 +127,9 @@ func (v *VKSyncer) FetchRemote(ctx context.Context, b *domain.Business, integ do
 	var result struct {
 		Response struct {
 			Groups []struct {
-				Name        string `json:"name"`
-				Description string `json:"description"`
-				Site        string `json:"site"`
+				Name        *string `json:"name"`
+				Description *string `json:"description"`
+				Site        *string `json:"site"`
 			} `json:"groups"`
 		} `json:"response"`
 		Error *struct {
@@ -147,11 +147,17 @@ func (v *VKSyncer) FetchRemote(ctx context.Context, b *domain.Business, integ do
 		return RemoteSnapshot{Err: "groups.getById returned no group"}, nil
 	}
 	g := result.Response.Groups[0]
-	return RemoteSnapshot{Fields: map[string]string{
-		FieldTitle:       g.Name,
-		FieldDescription: g.Description,
-		FieldWebsite:     g.Site,
-	}}, nil
+	fields := map[string]string{}
+	if g.Name != nil {
+		fields[FieldTitle] = *g.Name
+	}
+	if g.Description != nil {
+		fields[FieldDescription] = *g.Description
+	}
+	if g.Site != nil {
+		fields[FieldWebsite] = *g.Site
+	}
+	return RemoteSnapshot{Fields: fields}, nil
 }
 
 // errTokenFetchFailed wraps a token-fetch error so the recorded AgentTask

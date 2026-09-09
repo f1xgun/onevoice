@@ -598,6 +598,28 @@
       "done": "Done",
       "error": "Needs help"
     },
+    "verification": {
+      "pending": "Check queued",
+      "running": "Checking on the platform",
+      "verified": "Confirmed on the platform",
+      "mismatch": "The platform shows different information",
+      "unverifiable": "Could not confirm every field",
+      "error": "Could not check the platform",
+      "unsupported": "Automatic confirmation is unavailable",
+      "checkAgain": "Check again",
+      "checking": "Queuing check…",
+      "unknown": "Verification status unavailable",
+      "failed": "Could not queue the check. Try again.",
+      "mismatches": "Different fields: {fields}",
+      "checkedAt": "Checked {time}",
+      "fields": {
+        "title": "name",
+        "description": "description",
+        "website": "website",
+        "phone": "phone",
+        "schedule": "hours"
+      }
+    },
     "stats": {
       "done": "Done",
       "inProgress": "In progress now",

@@ -298,6 +298,8 @@ paths:
     $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks
   /businesses/{id}/tasks/stream:
     $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1stream
+  /businesses/{id}/tasks/{taskId}/rerun:
+    $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1{taskId}~1rerun
   /businesses/{id}/search:
     $ref: paths/search.yaml#/~1businesses~1{id}~1search
   /businesses/{id}/channel-requests:
@@ -3105,6 +3107,23 @@ components:
           type: string
         errorCode:
           type: string
+        verificationStatus:
+          type: string
+          enum: [pending, running, verified, mismatch, unverifiable, error, unsupported]
+        verificationFields:
+          type: array
+          items: {type: string}
+        verificationMismatches:
+          type: array
+          items: {type: string}
+        verificationErrorCode:
+          type: string
+        verificationCheckedAt:
+          type: string
+          format: date-time
+        verificationCanRerun:
+          type: boolean
+          description: Server-authoritative eligibility for another readonly verification.
         startedAt:
           type: string
           format: date-time
