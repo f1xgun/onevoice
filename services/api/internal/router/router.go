@@ -71,6 +71,7 @@ type Handlers struct {
 	PresenceHealth       *handler.PresenceHealthHandler
 	WeeklyValueRecap     *handler.WeeklyValueRecapHandler
 	Post                 *handler.PostHandler
+	ContentTemplate      *handler.ContentTemplateHandler
 	AgentTask            *handler.AgentTaskHandler
 	Telemetry            *handler.TelemetryHandler
 	Project              *handler.ProjectHandler
@@ -338,6 +339,17 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				r.Get("/posts", handlers.Post.ListPosts)
 				r.Get("/posts/{id}", handlers.Post.GetPost)
+
+				if handlers.ContentTemplate != nil {
+					r.Get("/content-templates", handlers.ContentTemplate.List)
+					r.With(writeLimit).Post("/content-templates", handlers.ContentTemplate.Create)
+					r.Get("/content-templates/{templateId}", handlers.ContentTemplate.Get)
+					r.With(writeLimit).Put("/content-templates/{templateId}", handlers.ContentTemplate.Update)
+					r.With(writeLimit).Delete("/content-templates/{templateId}", handlers.ContentTemplate.Delete)
+					r.Post("/content-templates/{templateId}/render", handlers.ContentTemplate.Render)
+					r.With(writeLimit).Post("/content-templates/from-post/{postId}", handlers.ContentTemplate.CreateFromPost)
+					r.With(writeLimit).Post("/content-templates/from-review/{reviewId}", handlers.ContentTemplate.CreateFromReview)
+				}
 
 				if handlers.ChannelRequest != nil {
 					r.With(writeLimit).Post("/channel-requests", handlers.ChannelRequest.Create)

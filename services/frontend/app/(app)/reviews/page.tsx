@@ -22,6 +22,7 @@ import { useApprovalImpressions } from '@/hooks/useApprovalImpressions';
 import { useReviewStatusBadges, type ReviewStatus } from '@/lib/constants/statuses';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { Badge } from '@/components/ui/badge';
+import { SaveTemplateDialog } from '@/components/templates/SaveTemplateDialog';
 
 // Manual refresh fan-out budget. The backend caps total work at 90s; the
 // extra headroom absorbs network slack so the request doesn't surface as
@@ -172,6 +173,7 @@ export default function ReviewsPage() {
   } | null>(null);
   const [replyText, setReplyText] = useState('');
   const canReply = usePermission('content.update').allowed;
+  const canCreateTemplate = usePermission('content.create').allowed;
   const dialogReview = replyDialog?.businessId === activeBusinessId ? replyDialog.review : null;
 
   useEffect(() => {
@@ -467,6 +469,8 @@ export default function ReviewsPage() {
                 isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
                 isRetrying={retryMutation.isPending && retryMutation.variables?.id === review.id}
                 canReply={canReply}
+                businessId={activeBusinessId}
+                canCreateTemplate={canCreateTemplate}
               />
             ))}
           </div>
@@ -562,6 +566,8 @@ function ReviewCard({
   isSending,
   isRetrying,
   canReply,
+  businessId,
+  canCreateTemplate,
 }: {
   review: Review;
   onSendDraft: () => void;
@@ -571,6 +577,8 @@ function ReviewCard({
   isSending: boolean;
   isRetrying: boolean;
   canReply: boolean;
+  businessId: string | null;
+  canCreateTemplate: boolean;
 }) {
   const tReviews = useTranslations('reviews');
   const tPlatformLabels = useTranslations('reviews.platformLabels');
@@ -631,6 +639,14 @@ function ReviewCard({
         <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
           <MonoLabel>{tReviews('sentReply')}</MonoLabel>
           <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
+          <div className="mt-3">
+            <SaveTemplateDialog
+              businessId={businessId}
+              sourceId={review.id}
+              source="review"
+              disabled={!canCreateTemplate}
+            />
+          </div>
         </div>
       )}
 

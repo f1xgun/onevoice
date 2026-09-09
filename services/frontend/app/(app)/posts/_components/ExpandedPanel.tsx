@@ -9,6 +9,9 @@ import { useTranslations } from 'next-intl';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { SaveTemplateDialog } from '@/components/templates/SaveTemplateDialog';
+import { usePermission } from '@/lib/hooks/usePermission';
+import { useBusinessStore } from '@/lib/stores/business';
 
 import { firstLink, topLevelErrorStatus, type PostRow } from '../_helpers';
 import { MediaThumb } from './MediaThumb';
@@ -16,6 +19,8 @@ import { PlatformResultCard } from './PlatformResultCard';
 
 export function ExpandedPanel({ post }: { post: PostRow }) {
   const tPosts = useTranslations('posts');
+  const businessId = useBusinessStore((state) => state.activeBusinessId);
+  const createPermission = usePermission('content.create');
   const results =
     post.broadcastChannels?.map((c) => [c.platform, c.result] as const) ??
     (post.platformResults ? Object.entries(post.platformResults) : []);
@@ -80,6 +85,12 @@ export function ExpandedPanel({ post }: { post: PostRow }) {
           <Button variant="secondary" size="sm">
             {tPosts('duplicate')}
           </Button>
+          <SaveTemplateDialog
+            businessId={businessId}
+            sourceId={post.id}
+            source="post"
+            disabled={!createPermission.allowed}
+          />
           {firstLink(post) && (
             <Button variant="ghost" size="sm" asChild>
               <a href={firstLink(post) ?? undefined} target="_blank" rel="noopener noreferrer">

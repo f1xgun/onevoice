@@ -43,17 +43,18 @@ import (
 
 // Services aggregates every business-logic service the API consumes.
 type Services struct {
-	User         service.UserService
-	Business     service.BusinessService
-	Integration  service.IntegrationService
-	OAuth        *service.OAuthService
-	Post         service.PostService
-	Review       service.ReviewService
-	AgentTask    service.AgentTaskService
-	Project      *service.ProjectService
-	Conversation *service.ConversationService
-	HITL         *service.HITLService
-	Titler       *service.Titler // may be nil — graceful disable
+	User            service.UserService
+	Business        service.BusinessService
+	Integration     service.IntegrationService
+	OAuth           *service.OAuthService
+	Post            service.PostService
+	ContentTemplate *service.ContentTemplateService
+	Review          service.ReviewService
+	AgentTask       service.AgentTaskService
+	Project         *service.ProjectService
+	Conversation    *service.ConversationService
+	HITL            *service.HITLService
+	Titler          *service.Titler // may be nil — graceful disable
 
 	// TelegramApproval consumes inline-button HITL approval callbacks published
 	// by the Telegram agent and resolves them server-side. Constructed in
@@ -448,6 +449,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	}
 	s.OAuth = service.NewOAuthService(h.Redis)
 	s.Post = service.NewPostService(repos.Post, s.Business)
+	s.ContentTemplate = service.NewContentTemplateService(repos.ContentTemplate, repos.Post, repos.Review)
 	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business, h.NATS)
 	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
 

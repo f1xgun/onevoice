@@ -69,6 +69,8 @@ tags:
   description: Conversation CRUD + move/pin/unpin/messages.
 - name: posts
   description: Posts read surface.
+- name: content-templates
+  description: Organization-wide reusable post and review-reply templates.
 - name: reviews
   description: Reviews list/get/reply + cross-business refresh.
 - name: projects
@@ -264,6 +266,16 @@ paths:
     $ref: paths/posts.yaml#/~1businesses~1{id}~1posts
   /businesses/{id}/posts/{postID}:
     $ref: paths/posts.yaml#/~1businesses~1{id}~1posts~1{postID}
+  /businesses/{id}/content-templates:
+    $ref: paths/content_templates.yaml#/~1businesses~1{id}~1content-templates
+  /businesses/{id}/content-templates/{templateId}:
+    $ref: paths/content_templates.yaml#/~1businesses~1{id}~1content-templates~1{templateId}
+  /businesses/{id}/content-templates/{templateId}/render:
+    $ref: paths/content_templates.yaml#/~1businesses~1{id}~1content-templates~1{templateId}~1render
+  /businesses/{id}/content-templates/from-post/{postId}:
+    $ref: paths/content_templates.yaml#/~1businesses~1{id}~1content-templates~1from-post~1{postId}
+  /businesses/{id}/content-templates/from-review/{reviewId}:
+    $ref: paths/content_templates.yaml#/~1businesses~1{id}~1content-templates~1from-review~1{reviewId}
   /reviews/refresh:
     $ref: paths/reviews.yaml#/~1reviews~1refresh
   /businesses/{id}/reviews:
@@ -2677,6 +2689,52 @@ components:
         createdAt:
           type: string
           format: date-time
+    ContentTemplate:
+      type: object
+      required: [id, businessId, createdBy, name, kind, body, placeholders, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        businessId: {type: string, format: uuid}
+        createdBy: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 80}
+        kind: {type: string, enum: [post, review_reply]}
+        body: {type: string, minLength: 1, maxLength: 16384}
+        placeholders:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]{0,31}$'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ContentTemplateRequest:
+      type: object
+      required: [name, kind, body, placeholders]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 80}
+        kind: {type: string, enum: [post, review_reply]}
+        body: {type: string, minLength: 1, maxLength: 16384}
+        placeholders:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]{0,31}$'}
+    CreateContentTemplateFromSourceRequest:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 80}
+    RenderContentTemplateRequest:
+      type: object
+      required: [values]
+      properties:
+        values:
+          type: object
+          additionalProperties: {type: string, maxLength: 512}
+    RenderContentTemplateResponse:
+      type: object
+      required: [content]
+      properties:
+        content: {type: string, maxLength: 16384}
     PostPlatformResult:
       type: object
       required:

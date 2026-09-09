@@ -2613,6 +2613,35 @@
       }
     }
   },
+  "contentTemplates": {
+    "chipsLabel": "Organization templates",
+    "fillTitle": "Fill in “{name}”",
+    "prefill": "Add to message",
+    "renderError": "Could not prepare the template.",
+    "valueError": "Use no more than 512 characters.",
+    "manage": "Templates ({count})",
+    "libraryTitle": "Organization template library",
+    "newTemplate": "New template",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleted": "Template deleted.",
+    "kindPost": "Post",
+    "kindReview": "Review reply",
+    "body": "Template text. Insert declared variable names in braces.",
+    "placeholders": "Variables separated by commas, for example: name, city",
+    "editorError": "Check the name, text, and variables.",
+    "placeholderMismatch": "The declared variables must exactly match the variables used in the text.",
+    "saveAction": "Save as template",
+    "saveTitle": "Save organization template",
+    "saveDescription": "Everyone in this organization with content access can use it.",
+    "name": "Template name",
+    "nameError": "Enter a name of up to 80 characters.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Template saved.",
+    "saveError": "Could not save the template.",
+    "cancel": "Cancel"
+  },
   "footer": {
     "navAria": "Legal documents",
     "links": {

@@ -1,0 +1,84 @@
+/businesses/{id}/content-templates:
+  get:
+    operationId: listContentTemplates
+    tags: [content-templates]
+    parameters: [{$ref: ../openapi.yaml#/components/parameters/BusinessIDPath}]
+    responses:
+      '200': {description: Templates, content: {application/json: {schema: {type: array, items: {$ref: ../openapi.yaml#/components/schemas/ContentTemplate}}}}}
+      '403': {description: Missing content read permission, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+  post:
+    operationId: createContentTemplate
+    tags: [content-templates]
+    parameters: [{$ref: ../openapi.yaml#/components/parameters/BusinessIDPath}]
+    requestBody: {required: true, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ContentTemplateRequest}}}}
+    responses:
+      '201': {description: Created, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ContentTemplate}}}}
+      '400': {description: Invalid template, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '403': {description: Missing content create permission, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '409': {description: Organization template cap reached, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+/businesses/{id}/content-templates/{templateId}:
+  parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - {name: templateId, in: path, required: true, schema: {type: string, format: uuid}}
+  get:
+    operationId: getContentTemplate
+    tags: [content-templates]
+    responses:
+      '200': {description: Template, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ContentTemplate}}}}
+      '403': {description: Missing content read permission, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '404': {description: Template not found, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+  put:
+    operationId: updateContentTemplate
+    tags: [content-templates]
+    requestBody: {required: true, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ContentTemplateRequest}}}}
+    responses:
+      '200': {description: Updated, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ContentTemplate}}}}
+      '400': {description: Invalid template, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '403': {description: Missing content update permission, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '404': {description: Template not found, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+  delete:
+    operationId: deleteContentTemplate
+    tags: [content-templates]
+    responses:
+      '204': {description: Deleted}
+      '403': {description: Missing content delete permission, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '404': {description: Template not found, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+/businesses/{id}/content-templates/{templateId}/render:
+  post:
+    operationId: renderContentTemplate
+    tags: [content-templates]
+    parameters:
+      - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+      - {name: templateId, in: path, required: true, schema: {type: string, format: uuid}}
+    requestBody: {required: true, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/RenderContentTemplateRequest}}}}
+    responses:
+      '200': {description: Rendered content, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/RenderContentTemplateResponse}}}}
+      '400': {description: Invalid placeholder values, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '403': {description: Missing content read permission, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '404': {description: Template not found, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+/businesses/{id}/content-templates/from-post/{postId}:
+  post:
+    operationId: createContentTemplateFromPost
+    tags: [content-templates]
+    parameters:
+      - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+      - {name: postId, in: path, required: true, schema: {type: string}}
+    requestBody: {required: true, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/CreateContentTemplateFromSourceRequest}}}}
+    responses:
+      '201': {description: Created, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ContentTemplate}}}}
+      '400': {description: Invalid name or source, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '403': {description: Requires content read and create permissions, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '404': {description: Source not found, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+/businesses/{id}/content-templates/from-review/{reviewId}:
+  post:
+    operationId: createContentTemplateFromReview
+    tags: [content-templates]
+    parameters:
+      - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+      - {name: reviewId, in: path, required: true, schema: {type: string, format: uuid}}
+    requestBody: {required: true, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/CreateContentTemplateFromSourceRequest}}}}
+    responses:
+      '201': {description: Created, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ContentTemplate}}}}
+      '400': {description: Invalid name or missing persisted reply, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '403': {description: Requires content read and create permissions, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}
+      '404': {description: Source not found, content: {application/json: {schema: {$ref: ../openapi.yaml#/components/schemas/ErrorResponse}}}}

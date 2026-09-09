@@ -128,6 +128,13 @@ export const BIZ_API_PATHS = {
   POSTS: {
     ROOT: '/posts',
   },
+  CONTENT_TEMPLATES: {
+    ROOT: '/content-templates',
+    BY_ID: (id: string) => `/content-templates/${id}`,
+    RENDER: (id: string) => `/content-templates/${id}/render`,
+    FROM_POST: (id: string) => `/content-templates/from-post/${id}`,
+    FROM_REVIEW: (id: string) => `/content-templates/from-review/${id}`,
+  },
   TASKS: {
     ROOT: '/tasks',
     STREAM: '/tasks/stream',

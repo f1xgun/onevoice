@@ -164,6 +164,10 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create post handler: %w", err)
 	}
+	contentTemplateHandler, err := handler.NewContentTemplateHandler(svcs.ContentTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("wire: create content template handler: %w", err)
+	}
 	agentTaskHandler, err := handler.NewAgentTaskHandler(svcs.AgentTask, svcs.TaskHub)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create agent task handler: %w", err)
@@ -328,6 +332,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		PresenceHealth:       presenceHealthHandler,
 		WeeklyValueRecap:     weeklyValueRecapHandler,
 		Post:                 postHandler,
+		ContentTemplate:      contentTemplateHandler,
 		AgentTask:            agentTaskHandler,
 		Project:              projectHandler,
 		HITL:                 hitlHandler,

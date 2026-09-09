@@ -122,6 +122,18 @@ const (
 	ConsentRequired ConsentRequiredResponseCode = "consent_required"
 )
 
+// Defines values for ContentTemplateKind.
+const (
+	ContentTemplateKindPost        ContentTemplateKind = "post"
+	ContentTemplateKindReviewReply ContentTemplateKind = "review_reply"
+)
+
+// Defines values for ContentTemplateRequestKind.
+const (
+	ContentTemplateRequestKindPost        ContentTemplateRequestKind = "post"
+	ContentTemplateRequestKindReviewReply ContentTemplateRequestKind = "review_reply"
+)
+
 // Defines values for ConversationTitleStatus.
 const (
 	ConversationTitleStatusAuto        ConversationTitleStatus = "auto"
@@ -757,6 +769,33 @@ type ConsentRequiredResponse struct {
 // ConsentRequiredResponseCode defines model for ConsentRequiredResponse.Code.
 type ConsentRequiredResponseCode string
 
+// ContentTemplate defines model for ContentTemplate.
+type ContentTemplate struct {
+	Body         string              `json:"body" validate:"required,min=1,max=16384"`
+	BusinessId   openapi_types.UUID  `json:"businessId" validate:"required,uuid"`
+	CreatedAt    time.Time           `json:"createdAt" validate:"required"`
+	CreatedBy    openapi_types.UUID  `json:"createdBy" validate:"required,uuid"`
+	Id           openapi_types.UUID  `json:"id" validate:"required,uuid"`
+	Kind         ContentTemplateKind `json:"kind" validate:"required,oneof=post review_reply"`
+	Name         string              `json:"name" validate:"required,min=1,max=80"`
+	Placeholders []string            `json:"placeholders" validate:"required"`
+	UpdatedAt    time.Time           `json:"updatedAt" validate:"required"`
+}
+
+// ContentTemplateKind defines model for ContentTemplate.Kind.
+type ContentTemplateKind string
+
+// ContentTemplateRequest defines model for ContentTemplateRequest.
+type ContentTemplateRequest struct {
+	Body         string                     `json:"body" validate:"required,min=1,max=16384"`
+	Kind         ContentTemplateRequestKind `json:"kind" validate:"required,oneof=post review_reply"`
+	Name         string                     `json:"name" validate:"required,min=1,max=80"`
+	Placeholders []string                   `json:"placeholders" validate:"required"`
+}
+
+// ContentTemplateRequestKind defines model for ContentTemplateRequest.Kind.
+type ContentTemplateRequestKind string
+
 // Conversation defines model for Conversation.
 type Conversation struct {
 	BusinessId    openapi_types.UUID `json:"businessId" validate:"required,uuid"`
@@ -798,6 +837,11 @@ type CreateChannelRequestRequest struct {
 
 // CreateChannelRequestRequestChannel A not-yet-supported channel a business is expressing demand for.
 type CreateChannelRequestRequestChannel string
+
+// CreateContentTemplateFromSourceRequest defines model for CreateContentTemplateFromSourceRequest.
+type CreateContentTemplateFromSourceRequest struct {
+	Name string `json:"name" validate:"required,min=1,max=80"`
+}
 
 // CreateConversationRequest defines model for CreateConversationRequest.
 type CreateConversationRequest struct {
@@ -1495,6 +1539,16 @@ type RegisterRequest struct {
 	Email    openapi_types.Email `json:"email" validate:"required,email"`
 	Name     string              `json:"name" validate:"required,min=2,max=100"`
 	Password string              `json:"password" validate:"required,min=8"`
+}
+
+// RenderContentTemplateRequest defines model for RenderContentTemplateRequest.
+type RenderContentTemplateRequest struct {
+	Values map[string]string `json:"values" validate:"required"`
+}
+
+// RenderContentTemplateResponse defines model for RenderContentTemplateResponse.
+type RenderContentTemplateResponse struct {
+	Content string `json:"content" validate:"required,max=16384"`
 }
 
 // ReplyToReviewRequest defines model for ReplyToReviewRequest.
@@ -2441,6 +2495,21 @@ type CreateChannelRequestJSONRequestBody = CreateChannelRequestRequest
 
 // ChatTurnJSONRequestBody defines body for ChatTurn for application/json ContentType.
 type ChatTurnJSONRequestBody = ChatTurnRequest
+
+// CreateContentTemplateJSONRequestBody defines body for CreateContentTemplate for application/json ContentType.
+type CreateContentTemplateJSONRequestBody = ContentTemplateRequest
+
+// CreateContentTemplateFromPostJSONRequestBody defines body for CreateContentTemplateFromPost for application/json ContentType.
+type CreateContentTemplateFromPostJSONRequestBody = CreateContentTemplateFromSourceRequest
+
+// CreateContentTemplateFromReviewJSONRequestBody defines body for CreateContentTemplateFromReview for application/json ContentType.
+type CreateContentTemplateFromReviewJSONRequestBody = CreateContentTemplateFromSourceRequest
+
+// UpdateContentTemplateJSONRequestBody defines body for UpdateContentTemplate for application/json ContentType.
+type UpdateContentTemplateJSONRequestBody = ContentTemplateRequest
+
+// RenderContentTemplateJSONRequestBody defines body for RenderContentTemplate for application/json ContentType.
+type RenderContentTemplateJSONRequestBody = RenderContentTemplateRequest
 
 // CreateConversationJSONRequestBody defines body for CreateConversation for application/json ContentType.
 type CreateConversationJSONRequestBody = CreateConversationRequest

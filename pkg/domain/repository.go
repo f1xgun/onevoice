@@ -60,6 +60,14 @@ type BusinessScheduleRepository interface {
 	DeleteByBusinessID(ctx context.Context, businessID uuid.UUID) error
 }
 
+type ContentTemplateRepository interface {
+	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]ContentTemplate, error)
+	GetByID(ctx context.Context, businessID, id uuid.UUID) (*ContentTemplate, error)
+	Create(ctx context.Context, template *ContentTemplate, limit int) error
+	Update(ctx context.Context, template *ContentTemplate) error
+	Delete(ctx context.Context, businessID, id uuid.UUID) error
+}
+
 // IntegrationRepository persists per-business platform integrations.
 type IntegrationRepository interface {
 	Create(ctx context.Context, integration *Integration) error
