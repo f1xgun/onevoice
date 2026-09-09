@@ -150,4 +150,7 @@ export const BIZ_API_PATHS = {
     // GET /businesses/{id}/billing/summary → read-only usage transparency.
     SUMMARY: '/billing/summary',
   },
+  RECAP: {
+    LATEST: '/recap/latest',
+  },
 } as const;

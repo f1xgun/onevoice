@@ -69,6 +69,7 @@ type Handlers struct {
 	ChatProxy            *handler.ChatProxyHandler
 	Review               *handler.ReviewHandler
 	PresenceHealth       *handler.PresenceHealthHandler
+	WeeklyValueRecap     *handler.WeeklyValueRecapHandler
 	Post                 *handler.PostHandler
 	AgentTask            *handler.AgentTaskHandler
 	Telemetry            *handler.TelemetryHandler
@@ -330,6 +331,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/reviews/sla", handlers.Review.GetReviewSLA)
 				r.Get("/delegation-metrics", handlers.Review.GetDelegationMetrics)
 				r.Get("/presence-health", handlers.PresenceHealth.GetPresenceHealth)
+				r.Get("/recap/latest", handlers.WeeklyValueRecap.GetLatest)
 				r.Get("/reviews/{id}", handlers.Review.GetReview)
 				r.With(writeLimit).Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
 				r.With(writeLimit).Post("/reviews/{id}/reply/retry", handlers.Review.RetryReviewReply)

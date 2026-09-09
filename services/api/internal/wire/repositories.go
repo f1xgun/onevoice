@@ -103,6 +103,8 @@ type Repos struct {
 	// PresenceHealthSnapshot persists the weekly presence-health snapshot behind
 	// the read-only trend endpoint and the weekly snapshot worker.
 	PresenceHealthSnapshot domain.PresenceHealthSnapshotRepository
+	WeeklyValueRecap       domain.WeeklyValueRecapRepository
+	WeeklyValueRecapSource domain.WeeklyValueRecapSource
 }
 
 // Repositories constructs every domain repository against the connections
@@ -142,5 +144,7 @@ func Repositories(h *DBHandles) *Repos {
 		PlanDefinition:         repository.NewPlanDefinitionRepository(h.PG),
 		CreditGrant:            repository.NewCreditGrantExtAdapter(h.PG),
 		PresenceHealthSnapshot: repository.NewPresenceHealthSnapshotRepository(h.PG),
+		WeeklyValueRecap:       repository.NewWeeklyValueRecapRepository(h.PG),
+		WeeklyValueRecapSource: repository.NewWeeklyValueRecapSource(h.Mongo),
 	}
 }

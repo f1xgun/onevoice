@@ -371,6 +371,7 @@ const (
 	ButtonClick TelemetryEventEventType = "button_click"
 	ChatSend    TelemetryEventEventType = "chat_send"
 	PageView    TelemetryEventEventType = "page_view"
+	ValueRecap  TelemetryEventEventType = "value_recap"
 )
 
 // Defines values for TitlerConflictErrorError.
@@ -1834,7 +1835,7 @@ type TelegramOwnerLinkResponse struct {
 type TelemetryEvent struct {
 	Action        string                  `json:"action" validate:"required"`
 	CorrelationId *string                 `json:"correlationId,omitempty"`
-	EventType     TelemetryEventEventType `json:"eventType" validate:"required,oneof=page_view api_error chat_send button_click activation approval"`
+	EventType     TelemetryEventEventType `json:"eventType" validate:"required,oneof=page_view api_error chat_send button_click activation approval value_recap"`
 	Metadata      *map[string]string      `json:"metadata,omitempty"`
 	Page          string                  `json:"page" validate:"required"`
 	Timestamp     string                  `json:"timestamp" validate:"required"`
@@ -2152,6 +2153,17 @@ type WaitlistRequestSource string
 
 // WaitlistRequestSphere Optional organization-sphere segment.
 type WaitlistRequestSphere string
+
+// WeeklyValueRecap Counts of completed operations for one closed Monday-to-Monday UTC week.
+type WeeklyValueRecap struct {
+	CompletedSyncs          int                `json:"completedSyncs" validate:"required,min=0"`
+	CreatedAt               time.Time          `json:"createdAt" validate:"required"`
+	DispatchedReviewReplies int                `json:"dispatchedReviewReplies" validate:"required,min=0"`
+	Id                      openapi_types.UUID `json:"id" validate:"required,uuid"`
+	PublishedPosts          int                `json:"publishedPosts" validate:"required,min=0"`
+	WeekEnd                 time.Time          `json:"weekEnd" validate:"required"`
+	WeekStart               time.Time          `json:"weekStart" validate:"required"`
+}
 
 // YandexCompaniesResponse defines model for YandexCompaniesResponse.
 type YandexCompaniesResponse struct {

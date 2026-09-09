@@ -112,6 +112,13 @@ Production deployments must set the `*_REDIRECT_URI` env vars; the localhost def
 | `ReviewDraftMaxExamples` | `REVIEW_DRAFT_MAX_EXAMPLES` | `5` | Caps the few-shot context window. |
 | `ReviewDraftBatchLimit` | `REVIEW_DRAFT_BATCH_LIMIT` | `10` | Caps drafts per sync pass. |
 
+### Weekly value recap
+
+| Field | Env var | Default | Semantic |
+|---|---|---|---|
+| `WeeklyValueRecapEnabled` | `WEEKLY_VALUE_RECAP_ENABLED` | `false` | Enables the advisory-locked counts-only weekly recap sweep. Dark by default to avoid new Mongo reads during rollout. |
+| `WeeklyValueRecapPollInterval` | `WEEKLY_VALUE_RECAP_POLL_INTERVAL` | `24h` | Re-check cadence. The `(business_id, week_start)` upsert makes repeated passes idempotent. |
+
 ### Object storage (MinIO / S3)
 
 | Field | Env var | Default | Semantic |

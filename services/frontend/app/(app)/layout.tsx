@@ -17,6 +17,7 @@ import { Sidebar } from '@/components/sidebar';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
 import { BusinessRequiredGuard } from '@/components/BusinessRequiredGuard';
+import { WeeklyValueRecap } from '@/components/business/WeeklyValueRecap';
 import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
 // persistent yellow banner when emailVerified===false.
 // Mounted inside the <main> scroll container so it cohabits with route
@@ -177,6 +178,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 >
                   <DeletionGraceBanner />
                   <VerificationBanner />
+                  <WeeklyValueRecap />
                   <div className="min-h-0 flex-1">{children}</div>
                 </main>
               </Panel>
@@ -192,6 +194,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             >
               <DeletionGraceBanner />
               <VerificationBanner />
+              <WeeklyValueRecap />
               <div className="min-h-0 flex-1">{children}</div>
             </main>
           </div>

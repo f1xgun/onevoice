@@ -162,6 +162,7 @@ func TestTelemetryService_Ingest_AllowsCurrentClientEventTypes(t *testing.T) {
 		{EventType: "chat_send", Action: "send_message"},
 		{EventType: "button_click", Action: "connect_integration"},
 		{EventType: "activation", Action: "open_wizard"},
+		{EventType: "value_recap", Action: "shown", Metadata: map[string]string{"private": "drop"}},
 		{EventType: "approval", Action: "draft_shown", Metadata: map[string]string{
 			"draft_id": strings.Repeat("a", 64), "kind": "post", "source": "chat",
 		}},
@@ -171,6 +172,21 @@ func TestTelemetryService_Ingest_AllowsCurrentClientEventTypes(t *testing.T) {
 	require.Len(t, repo.rows, len(known))
 	for i, event := range known {
 		assert.Equal(t, event.EventType, repo.rows[i].EventType)
+	}
+}
+
+func TestTelemetryService_WeeklyRecapClosedTaxonomyAndPrivacy(t *testing.T) {
+	repo := &fakeTelemetryRepo{}
+	svc := NewTelemetryService(repo)
+	require.NoError(t, svc.Ingest(context.Background(), uuid.New(), []TelemetryEvent{
+		{EventType: "value_recap", Action: "shown", Metadata: map[string]string{"business_id": "drop"}, CorrelationID: "drop"},
+		{EventType: "value_recap", Action: "dismissed", Metadata: map[string]string{"counts": "drop"}},
+		{EventType: "value_recap", Action: "clicked_private_text"},
+	}))
+	require.Len(t, repo.rows, 2)
+	for _, row := range repo.rows {
+		assert.Nil(t, row.Metadata)
+		assert.Nil(t, row.CorrelationID)
 	}
 }
 

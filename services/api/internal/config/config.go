@@ -292,6 +292,11 @@ type Config struct {
 	// Default 24h.
 	PresenceHealthSnapshotPollInterval time.Duration
 
+	// WeeklyValueRecapEnabled gates the counts-only recap sweep. It ships dark
+	// until operators explicitly enable the additional weekly Mongo reads.
+	WeeklyValueRecapEnabled      bool
+	WeeklyValueRecapPollInterval time.Duration
+
 	// ConnectionHealthEnabled gates the proactive connection-health worker that
 	// re-probes each active Yandex session and DMs the owner on a fresh break.
 	// Defaults ON: a silently-expired session pauses review replies and profile
@@ -407,6 +412,8 @@ func Load() (*Config, error) {
 
 		PresenceHealthSnapshotEnabled:      getEnv("PRESENCE_HEALTH_SNAPSHOT_ENABLED", envBoolTrue) == envBoolTrue,
 		PresenceHealthSnapshotPollInterval: getEnvDuration("PRESENCE_HEALTH_SNAPSHOT_POLL_INTERVAL", 24*time.Hour), //nolint:mnd // env-driven default
+		WeeklyValueRecapEnabled:            getEnv("WEEKLY_VALUE_RECAP_ENABLED", "false") == envBoolTrue,
+		WeeklyValueRecapPollInterval:       getEnvDuration("WEEKLY_VALUE_RECAP_POLL_INTERVAL", 24*time.Hour), //nolint:mnd // env-driven default
 
 		ConnectionHealthEnabled:      getEnv("CONNECTION_HEALTH_ENABLED", envBoolTrue) == envBoolTrue,
 		ConnectionHealthPollInterval: getEnvDuration("CONNECTION_HEALTH_POLL_INTERVAL", 6*time.Hour), //nolint:mnd // env-driven default

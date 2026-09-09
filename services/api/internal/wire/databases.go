@@ -216,6 +216,16 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	indexesCancel3()
 
+	if cfg.WeeklyValueRecapEnabled {
+		recapIndexesCtx, recapIndexesCancel := context.WithTimeout(ctx, startupTimeout)
+		if err := repository.EnsureWeeklyValueRecapIndexes(recapIndexesCtx, h.Mongo); err != nil {
+			recapIndexesCancel()
+			h.Close()
+			return nil, fmt.Errorf("wire: ensure weekly recap indexes: %w", err)
+		}
+		recapIndexesCancel()
+	}
+
 	h.PendingToolCallRepo = hitlstore.NewPendingToolCallRepository(h.Mongo)
 	go runOrphanReconcile(h.PendingToolCallRepo)
 

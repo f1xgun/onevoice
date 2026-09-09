@@ -159,6 +159,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create presence health handler: %w", err)
 	}
+	weeklyValueRecapHandler := handler.NewWeeklyValueRecapHandler(svcs.WeeklyValueRecap)
 	postHandler, err := handler.NewPostHandler(svcs.Post)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create post handler: %w", err)
@@ -325,6 +326,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		ChatProxy:            chatProxyHandler,
 		Review:               reviewHandler,
 		PresenceHealth:       presenceHealthHandler,
+		WeeklyValueRecap:     weeklyValueRecapHandler,
 		Post:                 postHandler,
 		AgentTask:            agentTaskHandler,
 		Project:              projectHandler,
