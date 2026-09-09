@@ -121,6 +121,16 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 	assert.Equal(t, "running", got.Status)
 }
 
+func TestOnToolCall_PersistsExactOrigin(t *testing.T) {
+	repo := &fakeAgentTaskRepo{}
+	turn := newTurnForPostalTest(repo)
+	turn.onToolCallWithOrigin(context.Background(), "biz-1", "conv-7", "user-3", "call-1",
+		tools.TelegramSendChannelPost, "", "", map[string]interface{}{"text": "hi"}, "approval-1", map[string]string{})
+	require.Len(t, repo.created, 1)
+	require.Equal(t, "conv-7", repo.created[0].OriginConversationID)
+	require.Equal(t, "user-3", repo.created[0].OriginUserID)
+}
+
 // TestOnToolCall_PersistsDispatchApprovalID verifies the original approved
 // dispatch key ("<batch_id>-<call_id>") is stamped onto the created agent_tasks
 // document, so a later retry reads it and dedupes an already-landed call instead

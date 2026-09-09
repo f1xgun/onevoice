@@ -8,6 +8,7 @@ db.conversations.createIndex({ "user_id": 1, "updated_at": -1 });
 
 // Messages collection indexes
 db.messages.createIndex({ "conversation_id": 1, "created_at": 1 });
+db.messages.createIndex({ "business_id": 1, "tool_calls.approval_id": 1 }, { name: "messages_business_tool_approval", sparse: true });
 
 // Tasks collection indexes
 db.tasks.createIndex({ "business_id": 1, "created_at": -1 });

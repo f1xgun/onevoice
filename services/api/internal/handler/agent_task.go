@@ -104,6 +104,10 @@ func domainAgentTaskToOpenAPI(t domain.AgentTask) openapi.AgentTask {
 		v := t.ErrorCode
 		out.ErrorCode = &v
 	}
+	if t.ResolvedConversationID != "" {
+		v := t.ResolvedConversationID
+		out.OriginConversationId = &v
+	}
 	if t.VerificationStatus != "" {
 		v := openapi.AgentTaskVerificationStatus(t.VerificationStatus)
 		out.VerificationStatus = &v

@@ -79,6 +79,7 @@ func (t *Turn) streamOrchestrator(
 	body []byte,
 	headers map[string]string,
 	businessID string,
+	userID string,
 	state *streamState,
 	emit func(sse.Event),
 ) error {
@@ -89,7 +90,7 @@ func (t *Turn) streamOrchestrator(
 		Headers:        headers,
 		OrchCtxBudget:  streamBudget,
 		OnEvent: func(ev sse.Event) {
-			t.dispatchEvent(taskOpsCtx, businessID, state, ev)
+			t.dispatchEventWithOrigin(taskOpsCtx, businessID, conversationID, userID, state, ev)
 			if emit != nil {
 				emit(ev)
 			}
@@ -101,7 +102,7 @@ func (t *Turn) streamOrchestrator(
 // and triggers the on-the-fly postal side effects (AgentTask creation /
 // terminal-state writes happen mid-stream, not after, so the user sees
 // progress live).
-func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, state *streamState, ev sse.Event) {
+func (t *Turn) dispatchEventWithOrigin(taskOpsCtx context.Context, businessID, conversationID, userID string, state *streamState, ev sse.Event) {
 	switch ev.Type {
 	case sseEventDone:
 		state.doneSeen = true
@@ -113,7 +114,7 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 			Name:      ev.ToolName,
 			Arguments: ev.ToolArgs,
 		})
-		t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, "", state.idMap)
+		t.onToolCallWithOrigin(taskOpsCtx, businessID, conversationID, userID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, "", state.idMap)
 	case "tool_result":
 		var content map[string]interface{}
 		if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -139,6 +140,10 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 			state.streamErrCode = "STREAM_ERROR"
 		}
 	}
+}
+
+func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, state *streamState, ev sse.Event) {
+	t.dispatchEventWithOrigin(taskOpsCtx, businessID, "", "", state, ev)
 }
 
 // buildOrchestratorRequest assembles the JSON body forwarded to /chat/{id}.

@@ -3128,6 +3128,9 @@ components:
           type: string
         errorCode:
           type: string
+        originConversationId:
+          type: string
+          description: Exact originating conversation, present only when it is live and owned by the requesting user.
         verificationStatus:
           type: string
           enum: [pending, running, verified, mismatch, unverifiable, error, unsupported]

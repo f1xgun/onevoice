@@ -439,6 +439,8 @@ func TestEnsureMessageIndexes_Idempotent(t *testing.T) {
 		"named index messages_conversation_preview_recency must exist")
 	assert.True(t, names["messages_conversation_role_status_created_desc"],
 		"named index messages_conversation_role_status_created_desc must exist")
+	assert.True(t, names["messages_business_tool_approval"],
+		"named index messages_business_tool_approval must exist")
 }
 
 // TestEnsureMessageIndexes_CoexistsWithInitJS guards against the boot-abort that
@@ -477,4 +479,6 @@ func TestEnsureMessageIndexes_CoexistsWithInitJS(t *testing.T) {
 		"named index messages_conversation_preview_recency must exist")
 	assert.True(t, names["messages_conversation_role_status_created_desc"],
 		"named index messages_conversation_role_status_created_desc must exist")
+	assert.True(t, names["messages_business_tool_approval"],
+		"named index messages_business_tool_approval must exist")
 }

@@ -166,7 +166,13 @@ type AgentTask struct {
 	// dedupe gate returns the cached result of a call that already landed instead
 	// of repeating an irreversible side effect. Empty for legacy rows that
 	// predate the field (those fall back to the stable per-task retry key).
-	DispatchApprovalID     string            `json:"dispatchApprovalId,omitempty" bson:"dispatch_approval_id,omitempty"`
+	DispatchApprovalID string `json:"dispatchApprovalId,omitempty" bson:"dispatch_approval_id,omitempty"`
+	// OriginConversationID is set only for tasks dispatched from a chat turn.
+	// OriginUserID is retained for owner-scoped disclosure: conversations are
+	// private to their creator even when task history is shared by a business.
+	OriginConversationID   string            `json:"-" bson:"origin_conversation_id,omitempty"`
+	OriginUserID           string            `json:"-" bson:"origin_user_id,omitempty"`
+	ResolvedConversationID string            `json:"-" bson:"-"`
 	VerificationStatus     string            `json:"verificationStatus,omitempty" bson:"verification_status,omitempty"`
 	VerificationFields     []string          `json:"verificationFields,omitempty" bson:"verification_fields,omitempty"`
 	VerificationMismatches []string          `json:"verificationMismatches,omitempty" bson:"verification_mismatches,omitempty"`

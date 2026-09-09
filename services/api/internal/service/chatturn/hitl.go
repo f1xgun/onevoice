@@ -454,7 +454,7 @@ func (t *Turn) runResumeStream(
 						})
 					}
 				}
-				t.onToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, approvalID, idMap)
+				t.onToolCallWithOrigin(taskOpsCtx, businessID, conversationID, actorUserID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, approvalID, idMap)
 			case "tool_approval_required":
 				evCopy := ev
 				rePause = &evCopy
