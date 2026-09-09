@@ -33,6 +33,7 @@ const streamHeartbeatInterval = 20 * time.Second
 type AgentTaskService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
 	Retry(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+	RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
 }
 
 // AgentTaskHandler handles agent task-related HTTP requests
@@ -77,6 +78,8 @@ func domainAgentTaskToOpenAPI(t domain.AgentTask) openapi.AgentTask {
 		CompletedAt: t.CompletedAt,
 		CreatedAt:   t.CreatedAt,
 	}
+	canRerun := t.Status == "done" && len(t.VerificationExpected) > 0 && t.VerificationTarget != "" && t.VerificationStatus != domain.VerificationPending && t.VerificationStatus != domain.VerificationRunning && t.VerificationStatus != domain.VerificationUnsupported
+	out.VerificationCanRerun = &canRerun
 	if t.DisplayName != "" {
 		v := t.DisplayName
 		out.DisplayName = &v
@@ -101,7 +104,56 @@ func domainAgentTaskToOpenAPI(t domain.AgentTask) openapi.AgentTask {
 		v := t.ErrorCode
 		out.ErrorCode = &v
 	}
+	if t.VerificationStatus != "" {
+		v := openapi.AgentTaskVerificationStatus(t.VerificationStatus)
+		out.VerificationStatus = &v
+	}
+	if len(t.VerificationFields) > 0 {
+		out.VerificationFields = &t.VerificationFields
+	}
+	if len(t.VerificationMismatches) > 0 {
+		out.VerificationMismatches = &t.VerificationMismatches
+	}
+	if t.VerificationErrorCode != "" {
+		v := t.VerificationErrorCode
+		out.VerificationErrorCode = &v
+	}
+	if t.VerificationCheckedAt != nil {
+		out.VerificationCheckedAt = t.VerificationCheckedAt
+	}
 	return out
+}
+
+// RerunVerification repeats only the readonly external readback. writeLimit
+// bounds abuse even though content.read is sufficient authorization.
+func (h *AgentTaskHandler) RerunVerification(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "RerunVerification", authz.PermContentRead)
+	if !ok {
+		return
+	}
+	taskID := chi.URLParam(r, "taskId")
+	if taskID == "" {
+		writeJSONError(w, http.StatusBadRequest, "task id required")
+		return
+	}
+	task, err := h.agentTaskService.RerunVerification(r.Context(), bc.BusinessID, taskID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrAgentTaskNotFound), errors.Is(err, domain.ErrBusinessNotFound):
+			writeJSONError(w, http.StatusNotFound, "task not found")
+		case errors.Is(err, service.ErrVerificationBusy):
+			writeJSONCodeError(w, http.StatusConflict, "verification_busy")
+		case errors.Is(err, service.ErrVerificationUnavailable):
+			writeJSONCodeError(w, http.StatusUnprocessableEntity, "verification_unavailable")
+		case errors.Is(err, service.ErrVerificationQueueFull):
+			writeJSONCodeError(w, http.StatusServiceUnavailable, "verification_queue_full")
+		default:
+			slog.Error("failed to rerun task verification", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+	writeJSON(w, http.StatusAccepted, domainAgentTaskToOpenAPI(*task))
 }
 
 // ListTasks handles GET /api/v1/tasks

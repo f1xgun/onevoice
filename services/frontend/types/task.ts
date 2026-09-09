@@ -27,6 +27,19 @@ export interface AgentTask {
    * omit it and fall through to the calm summary on the Tasks page.
    */
   errorCode?: ErrorCode;
+  verificationStatus?:
+    | 'pending'
+    | 'running'
+    | 'verified'
+    | 'mismatch'
+    | 'unverifiable'
+    | 'error'
+    | 'unsupported';
+  verificationFields?: string[];
+  verificationMismatches?: string[];
+  verificationErrorCode?: string;
+  verificationCheckedAt?: string;
+  verificationCanRerun?: boolean;
   startedAt?: string;
   completedAt?: string;
   createdAt: string;

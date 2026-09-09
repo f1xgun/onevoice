@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	platformsync "github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service/valuetelemetry"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -142,6 +143,14 @@ func (t *Turn) onToolCall(
 		DispatchApprovalID: approvalID,
 		StartedAt:          &now,
 	}
+	expected, target, verificationStatus := t.chatVerificationIntent(ctx, businessID, toolName, toolArgs)
+	task.VerificationExpected, task.VerificationTarget = expected, target
+	if verificationStatus != domain.VerificationPending {
+		task.VerificationStatus = verificationStatus
+	}
+	if verificationStatus == domain.VerificationPending {
+		task.VerificationAttempt = 1
+	}
 	if err := t.deps.AgentTasks.Create(ctx, task); err != nil {
 		slog.ErrorContext(ctx, "chatturn: failed to create agent task record", "tool", toolName, "error", err)
 		return
@@ -207,7 +216,7 @@ func (t *Turn) onToolResult(
 	update := &domain.AgentTask{
 		ID:          taskID,
 		BusinessID:  businessID,
-		Status:      "done",
+		Status:      domain.AgentTaskStatusDone,
 		CompletedAt: &now,
 	}
 	if toolError != "" {
@@ -219,6 +228,7 @@ func (t *Turn) onToolResult(
 		update.ErrorCode = toolErrorCode
 	} else {
 		update.Output = content
+		update.VerificationStatus = freshVerificationStatus(ctx, t.deps.AgentTasks, businessID, taskID)
 	}
 	if err := t.deps.AgentTasks.Update(ctx, update); err != nil {
 		slog.ErrorContext(ctx, "chatturn: failed to update agent task record", "task_id", taskID, "error", err)
@@ -243,6 +253,87 @@ func (t *Turn) onToolResult(
 	if t.deps.TaskHub != nil {
 		t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
 	}
+	if fresh.Status == domain.AgentTaskStatusDone && fresh.VerificationStatus == domain.VerificationPending && t.deps.Verification != nil {
+		_ = t.deps.Verification.Enqueue(fresh.BusinessID, fresh.ID, fresh.VerificationAttempt)
+	}
+}
+
+func (t *Turn) chatVerificationIntent(ctx context.Context, businessID, toolName string, args map[string]interface{}) (expected map[string]string, target, status string) {
+	stringArg := func(key string) (string, bool) { value, ok := args[key].(string); return value, ok }
+	switch toolName {
+	case tools.VKUpdateGroupInfo:
+		target, ok := stringArg("group_id")
+		if !ok {
+			return nil, "", domain.VerificationUnverifiable
+		}
+		expected := map[string]string{}
+		for key, field := range map[string]string{"title": platformsync.FieldTitle, "description": platformsync.FieldDescription, "website": platformsync.FieldWebsite} {
+			if value, found := stringArg(key); found {
+				expected[field] = value
+			}
+		}
+		if phone, found := stringArg("phone"); found && phone != "" {
+			expected[platformsync.FieldPhone] = phone
+		}
+		if len(expected) > 0 {
+			return expected, target, domain.VerificationPending
+		}
+		return nil, target, domain.VerificationUnverifiable
+	case tools.YandexBusinessUpdateHours:
+		return map[string]string{platformsync.FieldSchedule: valueOrEmpty(args, "hours")}, t.yandexTarget(ctx, businessID), domain.VerificationPending
+	case tools.YandexBusinessUpdateInfo:
+		expected := map[string]string{}
+		for _, field := range []string{platformsync.FieldPhone, platformsync.FieldDescription} {
+			if value, ok := stringArg(field); ok {
+				expected[field] = value
+			}
+		}
+		target := t.yandexTarget(ctx, businessID)
+		if target != "" && len(expected) > 0 {
+			return expected, target, domain.VerificationPending
+		}
+		return expected, target, domain.VerificationUnverifiable
+	default:
+		return nil, "", domain.VerificationUnsupported
+	}
+}
+
+func valueOrEmpty(args map[string]interface{}, key string) string {
+	value, _ := args[key].(string)
+	return value
+}
+func (t *Turn) yandexTarget(ctx context.Context, businessID string) string {
+	id, err := uuid.Parse(businessID)
+	if err != nil {
+		return ""
+	}
+	integrations, err := t.deps.Integrations.ListByBusinessID(ctx, id)
+	if err != nil {
+		return ""
+	}
+	for _, integration := range integrations {
+		if integration.Platform == a2a.AgentYandexBusiness && integration.Status == domain.IntegrationStatusActive {
+			return integration.ExternalID
+		}
+	}
+	return ""
+}
+
+func freshVerificationStatus(ctx context.Context, repo domain.AgentTaskRepository, businessID, taskID string) string {
+	task, err := repo.GetByID(ctx, businessID, taskID)
+	if err != nil {
+		return ""
+	}
+	if task.VerificationStatus != "" {
+		return task.VerificationStatus
+	}
+	if len(task.VerificationExpected) == 0 {
+		return ""
+	}
+	if task.VerificationTarget == "" {
+		return domain.VerificationUnverifiable
+	}
+	return domain.VerificationPending
 }
 
 // integrationTokenInvalidCode is the typed error code a platform agent emits

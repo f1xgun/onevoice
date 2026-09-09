@@ -23,6 +23,14 @@ import (
 type mockAgentTaskService struct {
 	listFn  func(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
 	retryFn func(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+	rerunFn func(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+}
+
+func (m *mockAgentTaskService) RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error) {
+	if m.rerunFn == nil {
+		return nil, service.ErrVerificationUnavailable
+	}
+	return m.rerunFn(ctx, businessID, taskID)
 }
 
 func (m *mockAgentTaskService) List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
@@ -261,4 +269,32 @@ func TestRetryTask_PermanentReason(t *testing.T) {
 
 	assert.Equal(t, http.StatusConflict, rr.Code)
 	assert.Contains(t, rr.Body.String(), string(service.RetryReasonPermanent))
+}
+
+func TestRerunVerification_ReadPermissionQueuesReadback(t *testing.T) {
+	businessID, userID := uuid.New(), uuid.New()
+	svc := &mockAgentTaskService{rerunFn: func(_ context.Context, gotBusiness uuid.UUID, taskID string) (*domain.AgentTask, error) {
+		assert.Equal(t, businessID, gotBusiness)
+		assert.Equal(t, "task-1", taskID)
+		return &domain.AgentTask{ID: taskID, BusinessID: businessID.String(), Type: "sync_title", Platform: "telegram", Status: "done", VerificationStatus: domain.VerificationPending}, nil
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/businesses/"+businessID.String()+"/tasks/task-1/rerun", http.NoBody).WithContext(retryTaskCtx(businessID, userID, "task-1", authz.PermContentRead))
+	h.RerunVerification(rr, req)
+	assert.Equal(t, http.StatusAccepted, rr.Code)
+	assert.Contains(t, rr.Body.String(), domain.VerificationPending)
+}
+
+func TestRerunVerification_RequiresReadPermission(t *testing.T) {
+	businessID, userID := uuid.New(), uuid.New()
+	svc := &mockAgentTaskService{rerunFn: func(context.Context, uuid.UUID, string) (*domain.AgentTask, error) {
+		t.Fatal("service called without content.read")
+		return nil, nil
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/businesses/"+businessID.String()+"/tasks/task-1/rerun", http.NoBody).WithContext(retryTaskCtx(businessID, userID, "task-1"))
+	h.RerunVerification(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
 }

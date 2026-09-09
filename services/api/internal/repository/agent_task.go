@@ -71,10 +71,32 @@ func (r *agentTaskRepository) Update(ctx context.Context, task *domain.AgentTask
 	if task.CompletedAt != nil {
 		set["completed_at"] = task.CompletedAt
 	}
+	if task.VerificationStatus != "" && task.Status != "error" {
+		set["verification_status"] = task.VerificationStatus
+		set["verification_updated_at"] = time.Now()
+	}
+	if task.VerificationExpected != nil {
+		set["verification_expected"] = task.VerificationExpected
+	}
+	if task.VerificationTarget != "" {
+		set["verification_target"] = task.VerificationTarget
+	}
+	if task.VerificationAttempt > 0 {
+		set["verification_attempt"] = task.VerificationAttempt
+	}
+	if task.VerificationFields != nil {
+		set["verification_fields"] = task.VerificationFields
+	}
+	if task.VerificationExpected != nil && task.VerificationTarget == "" {
+		set["verification_target"] = task.VerificationTarget
+	}
 
 	update := bson.M{"$set": set}
-	if task.Status == taskStatusDone {
+	switch task.Status {
+	case taskStatusDone:
 		update["$unset"] = bson.M{"error": "", "error_code": ""}
+	case domain.AgentTaskStatusError:
+		update["$unset"] = bson.M{"verification_status": "", "verification_mismatches": "", "verification_error_code": "", "verification_checked_at": ""}
 	}
 
 	res, err := r.collection.UpdateOne(
@@ -87,6 +109,65 @@ func (r *agentTaskRepository) Update(ctx context.Context, task *domain.AgentTask
 	}
 	if res.MatchedCount == 0 {
 		return domain.ErrAgentTaskNotFound
+	}
+	return nil
+}
+
+func (r *agentTaskRepository) UpdateVerification(ctx context.Context, businessID, taskID string, v domain.AgentTaskVerificationUpdate) error {
+	filter := bson.M{"_id": taskID, "business_id": businessID, "verification_attempt": v.Attempt}
+	if v.ExpectedStatus != "" {
+		filter["verification_status"] = v.ExpectedStatus
+	}
+	set := bson.M{"verification_status": v.Status, "verification_fields": v.Fields, "verification_updated_at": time.Now()}
+	unset := bson.M{}
+	if v.CheckedAt != nil {
+		set["verification_checked_at"] = v.CheckedAt
+	}
+	if len(v.Mismatches) > 0 {
+		set["verification_mismatches"] = v.Mismatches
+	} else {
+		unset["verification_mismatches"] = ""
+	}
+	if v.ErrorCode != "" {
+		set["verification_error_code"] = v.ErrorCode
+	} else {
+		unset["verification_error_code"] = ""
+	}
+	update := bson.M{"$set": set}
+	if len(unset) > 0 {
+		update["$unset"] = unset
+	}
+	res, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("update agent task verification: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return domain.ErrAgentTaskNotFound
+	}
+	return nil
+}
+
+func (r *agentTaskRepository) RestartVerification(ctx context.Context, businessID, taskID string) (*domain.AgentTask, error) {
+	filter := bson.M{"_id": taskID, "business_id": businessID, "status": taskStatusDone,
+		"verification_status": bson.M{"$nin": []string{domain.VerificationPending, domain.VerificationRunning}}}
+	update := bson.M{"$set": bson.M{"verification_status": domain.VerificationPending, "verification_updated_at": time.Now()}, "$inc": bson.M{"verification_attempt": 1},
+		"$unset": bson.M{"verification_mismatches": "", "verification_error_code": "", "verification_checked_at": ""}}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	var task domain.AgentTask
+	if err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&task); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, domain.ErrAgentTaskNotFound
+		}
+		return nil, fmt.Errorf("restart agent task verification: %w", err)
+	}
+	return &task, nil
+}
+
+func (r *agentTaskRepository) RecoverStaleVerifications(ctx context.Context, before time.Time) error {
+	filter := bson.M{"verification_status": bson.M{"$in": []string{domain.VerificationPending, domain.VerificationRunning}}, "verification_updated_at": bson.M{"$lt": before}}
+	update := bson.M{"$set": bson.M{"verification_status": domain.VerificationError, "verification_error_code": "interrupted", "verification_checked_at": time.Now(), "verification_updated_at": time.Now()}}
+	if _, err := r.collection.UpdateMany(ctx, filter, update); err != nil {
+		return fmt.Errorf("recover stale task verifications: %w", err)
 	}
 	return nil
 }

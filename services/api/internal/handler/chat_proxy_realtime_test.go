@@ -80,6 +80,14 @@ func (r *spyAgentTaskRepo) ListByBusinessID(_ context.Context, _ string, _ domai
 	return nil, 0, nil
 }
 
+func (r *spyAgentTaskRepo) UpdateVerification(context.Context, string, string, domain.AgentTaskVerificationUpdate) error {
+	return nil
+}
+func (r *spyAgentTaskRepo) RestartVerification(context.Context, string, string) (*domain.AgentTask, error) {
+	return nil, domain.ErrAgentTaskNotFound
+}
+func (r *spyAgentTaskRepo) RecoverStaleVerifications(context.Context, time.Time) error { return nil }
+
 func uuidShort(n int) string {
 	return string(rune('a'+(n-1))) + "01"
 }

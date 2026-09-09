@@ -85,3 +85,45 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/tasks/{taskId}/rerun:
+  post:
+    operationId: rerunAgentTaskVerification
+    summary: Repeat readonly verification of a successful external action.
+    tags: [tasks]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: taskId
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '202':
+        description: Verification queued. This operation never repeats the external write.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AgentTask
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business or task not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: Verification is already pending or running.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '422':
+        description: The task cannot be verified from persisted intent/read capabilities.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

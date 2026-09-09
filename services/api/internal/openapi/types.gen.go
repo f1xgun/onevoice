@@ -18,6 +18,17 @@ const (
 	MtlsScopes       = "mtls.Scopes"
 )
 
+// Defines values for AgentTaskVerificationStatus.
+const (
+	AgentTaskVerificationStatusError        AgentTaskVerificationStatus = "error"
+	AgentTaskVerificationStatusMismatch     AgentTaskVerificationStatus = "mismatch"
+	AgentTaskVerificationStatusPending      AgentTaskVerificationStatus = "pending"
+	AgentTaskVerificationStatusRunning      AgentTaskVerificationStatus = "running"
+	AgentTaskVerificationStatusUnsupported  AgentTaskVerificationStatus = "unsupported"
+	AgentTaskVerificationStatusUnverifiable AgentTaskVerificationStatus = "unverifiable"
+	AgentTaskVerificationStatusVerified     AgentTaskVerificationStatus = "verified"
+)
+
 // Defines values for AuditAction.
 const (
 	AuthLoginFailed              AuditAction = "auth.login_failed"
@@ -485,9 +496,9 @@ const (
 
 // Defines values for ListReviewsParamsReplyStatus.
 const (
-	ListReviewsParamsReplyStatusError   ListReviewsParamsReplyStatus = "error"
-	ListReviewsParamsReplyStatusPending ListReviewsParamsReplyStatus = "pending"
-	ListReviewsParamsReplyStatusReplied ListReviewsParamsReplyStatus = "replied"
+	Error   ListReviewsParamsReplyStatus = "error"
+	Pending ListReviewsParamsReplyStatus = "pending"
+	Replied ListReviewsParamsReplyStatus = "replied"
 )
 
 // AcceptInvitationResponse defines model for AcceptInvitationResponse.
@@ -523,7 +534,18 @@ type AgentTask struct {
 	StartedAt *time.Time   `json:"startedAt"`
 	Status    string       `json:"status" validate:"required"`
 	Type      string       `json:"type" validate:"required"`
+
+	// VerificationCanRerun Server-authoritative eligibility for another readonly verification.
+	VerificationCanRerun   *bool                        `json:"verificationCanRerun,omitempty"`
+	VerificationCheckedAt  *time.Time                   `json:"verificationCheckedAt,omitempty"`
+	VerificationErrorCode  *string                      `json:"verificationErrorCode,omitempty"`
+	VerificationFields     *[]string                    `json:"verificationFields,omitempty"`
+	VerificationMismatches *[]string                    `json:"verificationMismatches,omitempty"`
+	VerificationStatus     *AgentTaskVerificationStatus `json:"verificationStatus,omitempty" validate:"omitempty,oneof=pending running verified mismatch unverifiable error unsupported"`
 }
+
+// AgentTaskVerificationStatus defines model for AgentTask.VerificationStatus.
+type AgentTaskVerificationStatus string
 
 // AgentTaskListResponse defines model for AgentTaskListResponse.
 type AgentTaskListResponse struct {

@@ -77,6 +77,7 @@ const (
 	FieldTitle       = "title"
 	FieldDescription = "description"
 	FieldWebsite     = "website"
+	FieldPhone       = "phone"
 	FieldSchedule    = "schedule"
 )
 
@@ -135,6 +136,10 @@ type integrationProvider interface {
 // taskRecorder creates AgentTask records for sync operations.
 type taskRecorder interface {
 	Create(ctx context.Context, task *domain.AgentTask) error
+	Update(ctx context.Context, task *domain.AgentTask) error
+}
+type verificationQueue interface {
+	Enqueue(businessID, taskID string, attempt int64) error
 }
 
 // TaskPublisher dispatches an A2A ToolRequest to a platform agent over NATS
@@ -143,9 +148,6 @@ type taskRecorder interface {
 type TaskPublisher interface {
 	RequestTool(ctx context.Context, subject string, req a2a.ToolRequest, timeout time.Duration) (*a2a.ToolResponse, error)
 }
-
-// syncBusinessTimeout bounds the per-business fan-out across all platforms.
-const syncBusinessTimeout = 30 * time.Second
 
 // capabilityDispatch describes a per-capability dispatch entry: the AgentTask
 // type, its Russian display name + i18n key, an input-builder that may
@@ -173,13 +175,14 @@ type Syncer struct {
 	tasks        taskRecorder
 	hub          *taskhub.Hub   // optional; may be nil
 	perPlatform  map[string]any // platform identifier → capability-implementing impl
+	verification verificationQueue
 }
 
 // NewSyncer wires the Syncer with required collaborators. integrations and
 // tasks are required (panic on nil to fail fast at startup); hub is optional.
 // perPlatform may be empty (the dispatch loop simply finds no implementations
 // and exits cleanly).
-func NewSyncer(integrations integrationProvider, tasks taskRecorder, hub *taskhub.Hub, perPlatform map[string]any) *Syncer {
+func NewSyncer(integrations integrationProvider, tasks taskRecorder, hub *taskhub.Hub, perPlatform map[string]any, verification ...verificationQueue) *Syncer {
 	if integrations == nil {
 		panic("platform.NewSyncer: integrations cannot be nil")
 	}
@@ -189,12 +192,16 @@ func NewSyncer(integrations integrationProvider, tasks taskRecorder, hub *taskhu
 	if perPlatform == nil {
 		perPlatform = map[string]any{}
 	}
-	return &Syncer{
+	s := &Syncer{
 		integrations: integrations,
 		tasks:        tasks,
 		hub:          hub,
 		perPlatform:  perPlatform,
 	}
+	if len(verification) > 0 {
+		s.verification = verification[0]
+	}
+	return s
 }
 
 // SyncBusiness pushes the updated business info to all active connected
@@ -202,9 +209,12 @@ func NewSyncer(integrations integrationProvider, tasks taskRecorder, hub *taskhu
 // only logged. Each capability runs independently — a failure in one does
 // not skip the others.
 func (s *Syncer) SyncBusiness(business *domain.Business) {
-	ctx, cancel := context.WithTimeout(context.Background(), syncBusinessTimeout)
-	defer cancel()
+	s.SyncBusinessContext(context.Background(), business)
+}
 
+// SyncBusinessContext runs the fan-out under a lifecycle-owned context. Each
+// platform operation applies its own bound (including Yandex's 90 seconds).
+func (s *Syncer) SyncBusinessContext(ctx context.Context, business *domain.Business) {
 	integrations, err := s.integrations.ListByBusinessID(ctx, business.ID)
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: failed to list integrations", "business_id", business.ID, "error", err)
@@ -247,8 +257,10 @@ func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, i
 			taskType:       "sync_description",
 			displayName:    "Синхронизация описания",
 			displayNameKey: "sync.business_description",
-			input:          func(error) map[string]string { return map[string]string{"channel_id": integ.ExternalID} },
-			fn:             d.SyncDescription,
+			input: func(error) map[string]string {
+				return map[string]string{"channel_id": integ.ExternalID, "description": renderBusinessDescription(b, maxTelegramDescription)}
+			},
+			fn: d.SyncDescription,
 		})
 	}
 	if p, ok := platImpl.(PhotoSyncer); ok && b.LogoURL != "" {
@@ -290,6 +302,22 @@ func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, i
 // helper — preserves the existing AgentTask shape verbatim.
 func (s *Syncer) runWithTask(ctx context.Context, b *domain.Business, integ domain.Integration, dispatch capabilityDispatch) {
 	started := time.Now()
+	input := dispatch.input(nil)
+	expected, target, verificationStatus := verificationIntent(integ.Platform, dispatch.taskType, input)
+	task := &domain.AgentTask{BusinessID: b.ID.String(), Type: dispatch.taskType, DisplayName: dispatch.displayName, DisplayNameKey: dispatch.displayNameKey, Status: "running", Platform: integ.Platform, Input: input, StartedAt: &started, VerificationExpected: expected, VerificationTarget: target}
+	if verificationStatus != domain.VerificationPending {
+		task.VerificationStatus = verificationStatus
+	}
+	if verificationStatus == domain.VerificationPending {
+		task.VerificationAttempt = 1
+	}
+	if err := s.tasks.Create(ctx, task); err != nil {
+		slog.ErrorContext(ctx, "platform sync: failed to record running task", "error", err)
+		return
+	}
+	if s.hub != nil {
+		s.hub.Publish(b.ID.String(), taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
+	}
 	err := dispatch.fn(ctx, b, integ)
 	status := "done"
 	errMsg := ""
@@ -297,40 +325,50 @@ func (s *Syncer) runWithTask(ctx context.Context, b *domain.Business, integ doma
 		status = "error"
 		errMsg = err.Error()
 	}
-	s.recordTask(ctx, b.ID, integ.Platform, dispatch.taskType, dispatch.displayName, dispatch.displayNameKey, status, dispatch.input(err), errMsg, started)
-}
-
-// recordTask creates an AgentTask record (if a recorder is configured) for a
-// sync operation that has already completed. startedAt is captured before the
-// operation so the stored duration is meaningful. displayName is the legacy
-// Russian literal shown on the Tasks page when the FE has no i18n catalog
-// entry for displayNameKey; the key is the canonical id under
-// `agentTasks.displayName.*` in messages/*.json and the FE renders
-// `t(displayNameKey) || displayName`.
-func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, displayName, displayNameKey, status string, input interface{}, errMsg string, startedAt time.Time) {
-	if s.tasks == nil {
-		return
+	task.Status, task.Error = status, errMsg
+	now := time.Now()
+	task.CompletedAt = &now
+	if err == nil {
+		task.VerificationStatus = verificationStatus
+		task.VerificationUpdatedAt = &now
+	} else {
+		task.VerificationStatus = ""
 	}
-	completedAt := time.Now()
-	task := &domain.AgentTask{
-		BusinessID:     businessID.String(),
-		Type:           taskType,
-		DisplayName:    displayName,
-		DisplayNameKey: displayNameKey,
-		Status:         status,
-		Platform:       platform,
-		Input:          input,
-		StartedAt:      &startedAt,
-		CompletedAt:    &completedAt,
-		CreatedAt:      completedAt,
-		Error:          errMsg,
-	}
-	if err := s.tasks.Create(ctx, task); err != nil {
-		slog.ErrorContext(ctx, "platform sync: failed to record task", "error", err)
+	persistCtx, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer persistCancel()
+	if updateErr := s.tasks.Update(persistCtx, task); updateErr != nil {
+		slog.ErrorContext(ctx, "platform sync: failed to update task", "task_id", task.ID, "error", updateErr)
 		return
 	}
 	if s.hub != nil {
-		s.hub.Publish(businessID.String(), taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
+		s.hub.Publish(b.ID.String(), taskhub.Event{Kind: taskhub.KindUpdated, Task: *task})
+	}
+	if err == nil && task.VerificationStatus == domain.VerificationPending && s.verification != nil {
+		if enqueueErr := s.verification.Enqueue(task.BusinessID, task.ID, task.VerificationAttempt); enqueueErr != nil {
+			slog.WarnContext(ctx, "platform sync: verification queue full", "task_id", task.ID)
+		}
+	}
+}
+
+func verificationIntent(platformID, taskType string, input map[string]string) (expected map[string]string, target, status string) {
+	switch platformID + "__" + taskType {
+	case "telegram__sync_title":
+		return map[string]string{FieldTitle: input["name"]}, input["channel_id"], domain.VerificationPending
+	case "telegram__sync_description":
+		return map[string]string{FieldDescription: input["description"]}, input["channel_id"], domain.VerificationPending
+	case "vk__sync_info":
+		expected := map[string]string{FieldTitle: input["title"], FieldDescription: input["description"]}
+		if website, ok := input["website"]; ok {
+			expected[FieldWebsite] = website
+		}
+		if input["phone"] != "" {
+			expected[FieldPhone] = input["phone"]
+		}
+		return expected, input["group_id"], domain.VerificationPending
+	case "yandex_business__sync_hours":
+		return map[string]string{FieldSchedule: input["hours"]}, input["permalink"], domain.VerificationPending
+	default:
+		return nil, "", domain.VerificationUnsupported
 	}
 }
 

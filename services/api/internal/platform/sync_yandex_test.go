@@ -43,6 +43,18 @@ func (f *fakeTaskRecorder) Create(_ context.Context, t *domain.AgentTask) error 
 	return nil
 }
 
+func (f *fakeTaskRecorder) Update(_ context.Context, t *domain.AgentTask) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.tasks {
+		if f.tasks[i].ID == t.ID || f.tasks[i].ID == "" {
+			f.tasks[i] = t
+			return nil
+		}
+	}
+	return nil
+}
+
 func (f *fakeTaskRecorder) snapshot() []*domain.AgentTask {
 	f.mu.Lock()
 	defer f.mu.Unlock()
