@@ -87,7 +87,7 @@ export function ExpandedPanel({ post }: { post: PostRow }) {
           </Button>
           <SaveTemplateDialog
             businessId={businessId}
-            sourceId={post.id}
+            sourceId={post.sourcePostId ?? post.id}
             source="post"
             disabled={!createPermission.allowed}
           />
