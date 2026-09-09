@@ -39,14 +39,9 @@ func contentTemplateTestPool(t *testing.T) (*pgxpool.Pool, domain.ContentTemplat
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `CREATE TABLE businesses (id uuid PRIMARY KEY, deleted_at timestamptz)`)
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `CREATE TABLE content_templates (
-			id uuid PRIMARY KEY, business_id uuid NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
-			created_by uuid NOT NULL REFERENCES users(id), name varchar(80) NOT NULL CHECK (btrim(name) <> ''),
-			kind varchar(20) NOT NULL CHECK (kind IN ('post', 'review_reply')),
-			body text NOT NULL CHECK (btrim(body) <> '' AND octet_length(body) <= 16384),
-			placeholders text[] NOT NULL DEFAULT '{}' CHECK (cardinality(placeholders) <= 10),
-			created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
-		)`)
+	migration, err := os.ReadFile("../../../../migrations/postgres/000043_content_templates.up.sql")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, string(migration))
 	require.NoError(t, err)
 	return pool, NewContentTemplateRepository(pool)
 }
