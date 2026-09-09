@@ -173,6 +173,16 @@ type SyncStateRepository interface {
 	// never "drift".
 	MarkFailure(ctx context.Context, id uuid.UUID, lastError string, checkedAt, nextCheckAt time.Time) error
 
+	// WithReconcileLock serializes the complete fleet-wide pass.
+	WithReconcileLock(ctx context.Context, fn func() error) (bool, error)
+	// MarkCheckedEpisode atomically applies drift state and its episode lifecycle.
+	MarkCheckedEpisode(ctx context.Context, id uuid.UUID, snapshot map[string]string, driftFields []string, checkedAt, nextCheckAt time.Time) (DriftAlertEpisode, error)
+	ListPendingDriftAlerts(ctx context.Context) ([]DriftAlertEpisode, error)
+	GetCurrentDriftAlert(ctx context.Context, id, episodeID uuid.UUID) (DriftAlertEpisode, error)
+	MarkDriftTaskCreated(ctx context.Context, id, episodeID uuid.UUID) error
+	MarkDriftDMSettled(ctx context.Context, id, episodeID uuid.UUID) error
+	ScheduleDriftAlertRetry(ctx context.Context, id, episodeID uuid.UUID, retryAt time.Time) error
+
 	// ScheduleImmediate sets next_check_at = now() for every row of a business so
 	// the manual verify-and-repair endpoint triggers a re-check on the next pass.
 	ScheduleImmediate(ctx context.Context, businessID uuid.UUID) error

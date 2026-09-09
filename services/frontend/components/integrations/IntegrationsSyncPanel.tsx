@@ -24,6 +24,7 @@ import { usePermission } from '@/lib/hooks/usePermission';
 import { getIntegrationDisplay } from '@/lib/integrations';
 import { usePlatformMeta, type PlatformId } from '@/lib/platforms';
 import { trackClick } from '@/lib/telemetry';
+import { DriftAlertSettings } from './DriftAlertSettings';
 
 interface Integration {
   id: string;
@@ -178,6 +179,7 @@ export function IntegrationsSyncPanel({ businessId, integrations }: Props) {
           </ul>
         )}
       </div>
+      <DriftAlertSettings key={businessId} businessId={businessId} />
     </div>
   );
 }

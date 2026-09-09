@@ -28,6 +28,7 @@ import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
 import { ChannelDemandCards } from '@/components/integrations/ChannelDemandCards';
+import { ScopedBusinessLink } from '@/components/integrations/ScopedBusinessLink';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
 import type { PlatformId } from '@/lib/platforms';
@@ -274,6 +275,7 @@ export default function IntegrationsPage() {
 
   return (
     <>
+      <ScopedBusinessLink />
       <PageHeader title={tIntegrations('title')} sub={tIntegrations('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">

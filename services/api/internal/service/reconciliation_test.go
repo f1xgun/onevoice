@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,11 +36,15 @@ type markFailureCall struct {
 
 type fakeSyncStateRepo struct {
 	domain.SyncStateRepository
-	mu       sync.Mutex
-	due      []domain.SyncState
-	upserts  int
-	checked  []markCheckedCall
-	failures []markFailureCall
+	mu         sync.Mutex
+	due        []domain.SyncState
+	upserts    int
+	checked    []markCheckedCall
+	failures   []markFailureCall
+	current    domain.DriftAlertEpisode
+	currentErr error
+	settled    int
+	retries    []time.Time
 }
 
 func (f *fakeSyncStateRepo) UpsertPending(_ context.Context, _ uuid.UUID, _, _ string) error {
@@ -60,6 +65,33 @@ func (f *fakeSyncStateRepo) MarkChecked(_ context.Context, id uuid.UUID, _ map[s
 	return nil
 }
 
+func (f *fakeSyncStateRepo) MarkCheckedEpisode(ctx context.Context, id uuid.UUID, snapshot map[string]string, driftFields []string, checkedAt, nextCheckAt time.Time) (domain.DriftAlertEpisode, error) {
+	err := f.MarkChecked(ctx, id, snapshot, driftFields, checkedAt, nextCheckAt)
+	return domain.DriftAlertEpisode{SyncStateID: id, EpisodeID: uuid.New(), Fields: driftFields}, err
+}
+
+func (f *fakeSyncStateRepo) WithReconcileLock(_ context.Context, fn func() error) (bool, error) {
+	return true, fn()
+}
+
+func (f *fakeSyncStateRepo) ListPendingDriftAlerts(context.Context) ([]domain.DriftAlertEpisode, error) {
+	return nil, nil
+}
+
+func (f *fakeSyncStateRepo) GetCurrentDriftAlert(context.Context, uuid.UUID, uuid.UUID) (domain.DriftAlertEpisode, error) {
+	return f.current, f.currentErr
+}
+
+func (f *fakeSyncStateRepo) MarkDriftDMSettled(context.Context, uuid.UUID, uuid.UUID) error {
+	f.settled++
+	return nil
+}
+
+func (f *fakeSyncStateRepo) ScheduleDriftAlertRetry(_ context.Context, _, _ uuid.UUID, retryAt time.Time) error {
+	f.retries = append(f.retries, retryAt)
+	return nil
+}
+
 func (f *fakeSyncStateRepo) MarkFailure(_ context.Context, id uuid.UUID, lastError string, _, nextCheckAt time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -69,8 +101,14 @@ func (f *fakeSyncStateRepo) MarkFailure(_ context.Context, id uuid.UUID, lastErr
 
 type fakeReconcileIntegRepo struct {
 	domain.IntegrationRepository
-	active []domain.Integration
-	byKey  map[string]*domain.Integration
+	active        []domain.Integration
+	byKey         map[string]*domain.Integration
+	byPlatform    []domain.Integration
+	byPlatformErr error
+}
+
+func (f *fakeReconcileIntegRepo) ListByBusinessAndPlatform(context.Context, uuid.UUID, string) ([]domain.Integration, error) {
+	return f.byPlatform, f.byPlatformErr
 }
 
 func (f *fakeReconcileIntegRepo) ListAllActiveByPlatforms(_ context.Context, _ []string) ([]domain.Integration, error) {
@@ -122,6 +160,20 @@ func (s stubYandexInfoRequester) RequestMsgWithContext(_ context.Context, _ *nat
 type fakePlanStore struct {
 	plan planresolver.Plan
 	err  error
+}
+
+type fakeDriftTaskRepo struct {
+	domain.AgentTaskRepository
+	created int
+}
+
+func (f *fakeDriftTaskRepo) Create(context.Context, *domain.AgentTask) error {
+	f.created++
+	return nil
+}
+
+func (f *fakeDriftTaskRepo) GetByID(context.Context, string, string) (*domain.AgentTask, error) {
+	return nil, domain.ErrAgentTaskNotFound
 }
 
 func (f fakePlanStore) ActivePlanForBusiness(_ context.Context, _ uuid.UUID) (planresolver.Plan, error) {
@@ -367,5 +419,111 @@ func TestYandexFetch_ViaNATSStub(t *testing.T) {
 	}
 	if len(ss.checked) != 1 {
 		t.Fatalf("expected one MarkChecked, got %+v", ss.checked)
+	}
+}
+
+func TestPrivateDriftRecipientRequiresPositiveNumericUserID(t *testing.T) {
+	businessID := uuid.New()
+	for _, tc := range []struct {
+		value string
+		ok    bool
+	}{
+		{"123456", true},
+		{" 123456 ", true},
+		{"-100123456", false},
+		{"@channel", false},
+		{"0", false},
+		{"", false},
+	} {
+		svc := &ReconciliationService{integRepo: &fakeReconcileIntegRepo{byPlatform: []domain.Integration{{
+			Status:   domain.IntegrationStatusActive,
+			Metadata: map[string]interface{}{"telegram_user_id": tc.value},
+		}}}}
+		_, ok, err := svc.privateDriftRecipient(context.Background(), businessID)
+		if err != nil {
+			t.Fatalf("privateDriftRecipient(%q): %v", tc.value, err)
+		}
+		if ok != tc.ok {
+			t.Errorf("privateDriftRecipient(%q) ok=%v, want %v", tc.value, ok, tc.ok)
+		}
+	}
+}
+
+func TestDriftRecipientLookupFailureRetriesWithoutSettling(t *testing.T) {
+	episode := domain.DriftAlertEpisode{
+		SyncStateID: uuid.New(), EpisodeID: uuid.New(), BusinessID: uuid.New(),
+		Platform: a2a.AgentVK,
+	}
+	ss := &fakeSyncStateRepo{current: episode}
+	svc := &ReconciliationService{
+		syncState: ss,
+		integRepo: &fakeReconcileIntegRepo{byPlatformErr: errors.New("postgres unavailable")},
+		businessRepo: &fakeReconcileBizRepo{biz: &domain.Business{
+			ID: episode.BusinessID,
+			Settings: map[string]interface{}{platform.DriftAlertSettingsKey: map[string]interface{}{
+				"enabled": true, "locale": "ru",
+			}},
+		}},
+		nc: stubYandexInfoRequester{}, driftDMEnabled: true, now: func() time.Time { return time.Unix(1000, 0) },
+	}
+	err := svc.deliverOrScheduleDriftAlert(context.Background(), episode)
+	if err == nil || !strings.Contains(err.Error(), "resolve private drift recipient") {
+		t.Fatalf("expected recipient lookup error, got %v", err)
+	}
+	if ss.settled != 0 {
+		t.Fatalf("lookup failure falsely settled %d alerts", ss.settled)
+	}
+	if len(ss.retries) != 1 || !ss.retries[0].Equal(time.Unix(1000, 0).Add(driftAlertRetryBase)) {
+		t.Fatalf("retry schedule = %v", ss.retries)
+	}
+}
+
+func TestDriftAlertRetryDelayIsBounded(t *testing.T) {
+	if got := driftAlertRetryDelay(0); got != time.Minute {
+		t.Fatalf("first retry = %v", got)
+	}
+	if got := driftAlertRetryDelay(100); got != time.Hour {
+		t.Fatalf("bounded retry = %v", got)
+	}
+}
+
+func TestLocalizedDriftFieldsUsesClosedLabels(t *testing.T) {
+	fields := []string{platform.FieldTitle, platform.FieldDescription, platform.FieldWebsite, platform.FieldSchedule, "unknown"}
+	if got := localizedDriftFields(fields, "ru"); got != "название, описание, сайт, часы работы" {
+		t.Fatalf("Russian labels = %q", got)
+	}
+	if got := localizedDriftFields(fields, "en"); got != "name, description, website, business hours" {
+		t.Fatalf("English labels = %q", got)
+	}
+}
+
+func TestDeliverDriftAlertRevalidatesBeforeCreatingTask(t *testing.T) {
+	businessID := uuid.New()
+	episode := domain.DriftAlertEpisode{
+		SyncStateID: uuid.New(), EpisodeID: uuid.New(), BusinessID: businessID,
+		Platform: a2a.AgentVK, Fields: []string{platform.FieldTitle},
+	}
+	for _, tc := range []struct {
+		name        string
+		currentErr  error
+		businessErr error
+	}{
+		{name: "cleared episode", currentErr: domain.ErrDriftEpisodeNotFound},
+		{name: "deleted business", businessErr: domain.ErrBusinessNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tasks := &fakeDriftTaskRepo{}
+			ss := &fakeSyncStateRepo{current: episode, currentErr: tc.currentErr}
+			svc := &ReconciliationService{
+				syncState: ss, tasks: tasks,
+				businessRepo: &fakeReconcileBizRepo{biz: &domain.Business{ID: businessID}, err: tc.businessErr},
+			}
+			if err := svc.deliverDriftAlert(context.Background(), episode); err != nil {
+				t.Fatalf("deliverDriftAlert: %v", err)
+			}
+			if tasks.created != 0 {
+				t.Fatalf("created %d stale tasks", tasks.created)
+			}
+		})
 	}
 }
