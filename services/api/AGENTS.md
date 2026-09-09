@@ -69,6 +69,10 @@ cd services/api && GOWORK=off go test -race ./...
 cd services/api && golangci-lint run --config ../../.golangci.yml ./...
 ```
 
+Mongo repository tests require `MONGODB_TEST_URI` pointing to an isolated test
+instance. They delete their test databases during cleanup. Omitting the variable
+skips these tests; it must never select the local development database implicitly.
+
 ## Database Migrations
 
 Two migration directories exist in this repo. **Both must carry the same logical schema.** When adding a table, column, or index for a phase, add a numbered file to BOTH paths using the next free slot in each.

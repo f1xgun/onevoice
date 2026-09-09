@@ -16,11 +16,12 @@ import (
 )
 
 func setupMongoTestDB(t *testing.T) *mongo.Database {
+	t.Helper()
 	ctx := context.Background()
 
 	mongoURI := os.Getenv("MONGODB_TEST_URI")
 	if mongoURI == "" {
-		mongoURI = "mongodb://localhost:27017"
+		t.Skip("MONGODB_TEST_URI must explicitly name an isolated test MongoDB")
 	}
 
 	clientOpts := options.Client().
