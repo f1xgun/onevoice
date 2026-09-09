@@ -271,15 +271,14 @@ func TestProjectRepository_Delete(t *testing.T) {
 
 // --- Mongo cascade integration test (skips when MongoDB unavailable) ------
 
-// setupMongoTestDBForProject mirrors conversation_test.go's skip pattern.
-// Skips cleanly when MongoDB is unreachable instead of failing CI.
+// setupMongoTestDBForProject requires an explicitly configured test MongoDB.
 func setupMongoTestDBForProject(t *testing.T) *mongo.Database {
 	t.Helper()
 	ctx := context.Background()
 
 	mongoURI := os.Getenv("MONGODB_TEST_URI")
 	if mongoURI == "" {
-		mongoURI = "mongodb://localhost:27017"
+		t.Skip("MONGODB_TEST_URI must explicitly name an isolated test MongoDB")
 	}
 
 	clientOpts := options.Client().
