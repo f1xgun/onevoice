@@ -161,6 +161,12 @@ const (
 	CreateChannelRequestRequestChannelWildberries CreateChannelRequestRequestChannel = "wildberries"
 )
 
+// Defines values for DriftAlertSettingsLocale.
+const (
+	DriftAlertSettingsLocaleEn DriftAlertSettingsLocale = "en"
+	DriftAlertSettingsLocaleRu DriftAlertSettingsLocale = "ru"
+)
+
 // Defines values for HITLAlreadyResolvedErrorError.
 const (
 	BatchAlreadyResolved HITLAlreadyResolvedErrorError = "batch already resolved"
@@ -434,6 +440,12 @@ const (
 	ToolFloorAuto      ToolFloor = "auto"
 	ToolFloorForbidden ToolFloor = "forbidden"
 	ToolFloorManual    ToolFloor = "manual"
+)
+
+// Defines values for UpdateDriftAlertSettingsRequestLocale.
+const (
+	UpdateDriftAlertSettingsRequestLocaleEn UpdateDriftAlertSettingsRequestLocale = "en"
+	UpdateDriftAlertSettingsRequestLocaleRu UpdateDriftAlertSettingsRequestLocale = "ru"
 )
 
 // Defines values for UpdatePreferredLocaleRequestLocale.
@@ -938,6 +950,16 @@ type DraftReplyResponse struct {
 	Model      *string `json:"model,omitempty"`
 	Provider   *string `json:"provider,omitempty"`
 }
+
+// DriftAlertSettings defines model for DriftAlertSettings.
+type DriftAlertSettings struct {
+	// Enabled Whether private drift notifications are enabled. Defaults to false.
+	Enabled bool                     `json:"enabled" validate:"required"`
+	Locale  DriftAlertSettingsLocale `json:"locale" validate:"required,oneof=ru en"`
+}
+
+// DriftAlertSettingsLocale defines model for DriftAlertSettings.Locale.
+type DriftAlertSettingsLocale string
 
 // EmailBeforeVerifyRequest defines model for EmailBeforeVerifyRequest.
 type EmailBeforeVerifyRequest struct {
@@ -2038,6 +2060,15 @@ type UpdateDescriptionTemplateRequest struct {
 	DescriptionTemplate *string `json:"descriptionTemplate,omitempty" validate:"omitempty,max=1024"`
 }
 
+// UpdateDriftAlertSettingsRequest defines model for UpdateDriftAlertSettingsRequest.
+type UpdateDriftAlertSettingsRequest struct {
+	Enabled *bool                                 `json:"enabled,omitempty"`
+	Locale  UpdateDriftAlertSettingsRequestLocale `json:"locale" validate:"required,oneof=ru en"`
+}
+
+// UpdateDriftAlertSettingsRequestLocale defines model for UpdateDriftAlertSettingsRequest.Locale.
+type UpdateDriftAlertSettingsRequestLocale string
+
 // UpdateMemberRoleRequest defines model for UpdateMemberRoleRequest.
 type UpdateMemberRoleRequest struct {
 	RoleId openapi_types.UUID `json:"role_id" validate:"required,uuid"`
@@ -2547,6 +2578,9 @@ type HitlResolveBatchJSONRequestBody = HITLResolveRequest
 
 // UpdateBusinessDescriptionTemplateJSONRequestBody defines body for UpdateBusinessDescriptionTemplate for application/json ContentType.
 type UpdateBusinessDescriptionTemplateJSONRequestBody = UpdateDescriptionTemplateRequest
+
+// UpdateBusinessDriftAlertsJSONRequestBody defines body for UpdateBusinessDriftAlerts for application/json ContentType.
+type UpdateBusinessDriftAlertsJSONRequestBody = UpdateDriftAlertSettingsRequest
 
 // SelectGoogleLocationJSONRequestBody defines body for SelectGoogleLocation for application/json ContentType.
 type SelectGoogleLocationJSONRequestBody = GoogleSelectLocationRequest

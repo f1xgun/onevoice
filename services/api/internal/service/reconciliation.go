@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,6 +43,13 @@ const (
 	// reconcileFetchTimeout bounds a single remote fetch. Generous because the
 	// Yandex path is an RPA browser round-trip.
 	reconcileFetchTimeout = 90 * time.Second
+	// Drift delivery retries yield failed rows to later episodes instead of
+	// letting the oldest LIMIT page monopolize every reconciliation pass.
+	driftAlertRetryBase       = time.Minute
+	driftAlertRetryMax        = time.Hour
+	driftAlertDispatchTimeout = 30 * time.Second
+	reconcilePassTimeout      = 5 * time.Minute
+	driftRetryPersistTimeout  = 2 * time.Second
 )
 
 // reconcileSupportedPlatforms are the platforms whose profile OneVoice writes
@@ -63,13 +72,16 @@ type tierResolver interface {
 // repair. It never auto-heals: on drift it only stores + exposes the delta; the
 // verify endpoint re-invokes the existing SyncBusiness re-push.
 type ReconciliationService struct {
-	syncState    domain.SyncStateRepository
-	integRepo    domain.IntegrationRepository
-	businessRepo domain.BusinessRepository
-	nc           natsRequester
-	fetchers     map[string]platform.RemoteFetcher
-	tiers        tierResolver
-	now          func() time.Time
+	syncState      domain.SyncStateRepository
+	integRepo      domain.IntegrationRepository
+	businessRepo   domain.BusinessRepository
+	nc             natsRequester
+	fetchers       map[string]platform.RemoteFetcher
+	tiers          tierResolver
+	now            func() time.Time
+	tasks          domain.AgentTaskRepository
+	driftDMEnabled bool
+	publicURL      string
 }
 
 // NewReconciliationService wires the reconciler. nc may be nil (Yandex checks
@@ -98,12 +110,41 @@ func NewReconciliationService(
 	}
 }
 
+// SetDriftAlerts wires the informational task and optional private-DM delivery.
+// The environment gate is independent from each business's explicit consent.
+func (s *ReconciliationService) SetDriftAlerts(tasks domain.AgentTaskRepository, dmEnabled bool, publicURL string) {
+	s.tasks = tasks
+	s.driftDMEnabled = dmEnabled
+	s.publicURL = strings.TrimRight(publicURL, "/")
+}
+
 // Reconcile runs one reconcile pass: it enrolls any newly connected channel,
 // then fetches + compares every due channel. It is a sweeperFunc — the returned
 // count is the number of channels found drifting this pass. Per-channel fetch
 // failures are recorded (backoff) but never fail the pass.
 func (s *ReconciliationService) Reconcile(ctx context.Context) (int, error) {
-	s.enroll(ctx)
+	passCtx, cancel := context.WithTimeout(ctx, reconcilePassTimeout)
+	defer cancel()
+	var count int
+	locked, err := s.syncState.WithReconcileLock(passCtx, func() error {
+		var runErr error
+		count, runErr = s.reconcilePass(passCtx)
+		return runErr
+	})
+	if err != nil {
+		return 0, err
+	}
+	if !locked {
+		return 0, nil
+	}
+	return count, nil
+}
+
+func (s *ReconciliationService) reconcilePass(ctx context.Context) (int, error) {
+	var passErrs []error
+	if err := s.enroll(ctx); err != nil {
+		passErrs = append(passErrs, err)
+	}
 
 	now := s.now()
 	due, err := s.syncState.ListDue(ctx, now, reconcileBatchSize)
@@ -112,11 +153,24 @@ func (s *ReconciliationService) Reconcile(ctx context.Context) (int, error) {
 	}
 
 	var drifted atomic.Int64
+	var errsMu sync.Mutex
 	sem := make(chan struct{}, reconcileConcurrency)
 	var wg sync.WaitGroup
+	admissionCanceled := false
 	for _, row := range due {
+		if err := ctx.Err(); err != nil {
+			admissionCanceled = true
+			break
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			admissionCanceled = true
+		}
+		if admissionCanceled {
+			break
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(row domain.SyncState) {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -124,6 +178,9 @@ func (s *ReconciliationService) Reconcile(ctx context.Context) (int, error) {
 			if rerr != nil {
 				slog.ErrorContext(ctx, "reconcile: channel check failed",
 					"business_id", row.BusinessID, "platform", row.Platform, "error", rerr)
+				errsMu.Lock()
+				passErrs = append(passErrs, fmt.Errorf("check %s/%s: %w", row.Platform, row.ExternalID, rerr))
+				errsMu.Unlock()
 				return
 			}
 			if d {
@@ -132,24 +189,33 @@ func (s *ReconciliationService) Reconcile(ctx context.Context) (int, error) {
 		}(row)
 	}
 	wg.Wait()
-	return int(drifted.Load()), nil
+	if admissionCanceled {
+		passErrs = append(passErrs, ctx.Err())
+	}
+	if err := s.retryPendingAlerts(ctx); err != nil {
+		passErrs = append(passErrs, err)
+	}
+	return int(drifted.Load()), errors.Join(passErrs...)
 }
 
 // enroll upserts a sync_state row for every active integration on a supported
 // platform so newly connected channels are picked up on the next pass. Errors
 // are logged and skipped — enrollment is best-effort and retried each pass.
-func (s *ReconciliationService) enroll(ctx context.Context) {
+func (s *ReconciliationService) enroll(ctx context.Context) error {
 	integs, err := s.integRepo.ListAllActiveByPlatforms(ctx, reconcileSupportedPlatforms)
 	if err != nil {
 		slog.ErrorContext(ctx, "reconcile: enroll list integrations failed", "error", err)
-		return
+		return fmt.Errorf("list integrations for enrollment: %w", err)
 	}
+	var errs []error
 	for _, integ := range integs {
 		if err := s.syncState.UpsertPending(ctx, integ.BusinessID, integ.Platform, integ.ExternalID); err != nil {
 			slog.ErrorContext(ctx, "reconcile: enroll upsert failed",
 				"business_id", integ.BusinessID, "platform", integ.Platform, "error", err)
+			errs = append(errs, fmt.Errorf("enroll %s/%s: %w", integ.Platform, integ.ExternalID, err))
 		}
 	}
+	return errors.Join(errs...)
 }
 
 // reconcileOne fetches, compares, and records the result for a single channel.
@@ -199,10 +265,198 @@ func (s *ReconciliationService) reconcileOne(ctx context.Context, row domain.Syn
 	}
 
 	next := now.Add(s.cadence(ctx, business.ID, row.Platform))
-	if err := s.syncState.MarkChecked(ctx, row.ID, snapshot.Fields, drift, now, next); err != nil {
+	episode, err := s.syncState.MarkCheckedEpisode(ctx, row.ID, snapshot.Fields, drift, now, next)
+	if err != nil {
 		return false, err
 	}
+	if drifted {
+		if err := s.deliverOrScheduleDriftAlert(ctx, episode); err != nil {
+			return drifted, err
+		}
+	}
 	return drifted, nil
+}
+
+func (s *ReconciliationService) retryPendingAlerts(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	pending, err := s.syncState.ListPendingDriftAlerts(ctx)
+	if err != nil {
+		return fmt.Errorf("list pending drift alerts: %w", err)
+	}
+	var errs []error
+	for _, episode := range pending {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+			break
+		}
+		if err := s.deliverOrScheduleDriftAlert(ctx, episode); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (s *ReconciliationService) deliverOrScheduleDriftAlert(ctx context.Context, episode domain.DriftAlertEpisode) error {
+	err := s.deliverDriftAlert(ctx, episode)
+	if err == nil {
+		return nil
+	}
+	retryAt := s.now().Add(driftAlertRetryDelay(episode.RetryCount))
+	scheduleCtx := ctx
+	cancel := func() {}
+	if ctx.Err() != nil {
+		scheduleCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), driftRetryPersistTimeout)
+	}
+	defer cancel()
+	if scheduleErr := s.syncState.ScheduleDriftAlertRetry(scheduleCtx, episode.SyncStateID, episode.EpisodeID, retryAt); scheduleErr != nil {
+		return errors.Join(err, fmt.Errorf("schedule drift alert retry: %w", scheduleErr))
+	}
+	return err
+}
+
+func driftAlertRetryDelay(retryCount int) time.Duration {
+	delay := driftAlertRetryBase
+	for i := 0; i < retryCount && delay < driftAlertRetryMax; i++ {
+		delay *= 2
+	}
+	if delay > driftAlertRetryMax {
+		return driftAlertRetryMax
+	}
+	return delay
+}
+
+func (s *ReconciliationService) deliverDriftAlert(ctx context.Context, episode domain.DriftAlertEpisode) error {
+	if episode.Platform != a2a.AgentVK && episode.Platform != a2a.AgentYandexBusiness {
+		return nil
+	}
+	current, err := s.syncState.GetCurrentDriftAlert(ctx, episode.SyncStateID, episode.EpisodeID)
+	if errors.Is(err, domain.ErrDriftEpisodeNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("revalidate drift episode: %w", err)
+	}
+	episode = current
+	business, err := s.businessRepo.GetByID(ctx, episode.BusinessID)
+	if errors.Is(err, domain.ErrBusinessNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("revalidate drift business: %w", err)
+	}
+	if s.tasks != nil && episode.TaskCreatedAt == nil {
+		id := "drift-alert-" + episode.EpisodeID.String()
+		href := "/integrations?businessId=" + episode.BusinessID.String()
+		input := map[string]interface{}{"fields": episode.Fields, "href": href, "businessId": episode.BusinessID.String()}
+		if _, ok, lookupErr := s.privateDriftRecipient(ctx, episode.BusinessID); lookupErr == nil && !ok {
+			input["dmPrerequisite"] = "link_private_telegram"
+		}
+		_, err := s.tasks.GetByID(ctx, episode.BusinessID.String(), id)
+		if errors.Is(err, domain.ErrAgentTaskNotFound) {
+			err = s.tasks.Create(ctx, &domain.AgentTask{
+				ID: id, BusinessID: episode.BusinessID.String(), Type: "drift_alert",
+				DisplayName: "Профиль площадки изменился", DisplayNameKey: "sync.drift_alert",
+				Status: "done", Platform: episode.Platform,
+				Input: input,
+			})
+		}
+		if err == nil {
+			if err := s.syncState.MarkDriftTaskCreated(ctx, episode.SyncStateID, episode.EpisodeID); err != nil {
+				return fmt.Errorf("acknowledge drift task: %w", err)
+			}
+		} else {
+			return fmt.Errorf("create drift task: %w", err)
+		}
+	}
+	if !s.driftDMEnabled || episode.DMSettledAt != nil || s.nc == nil {
+		return s.settleDriftDM(ctx, episode)
+	}
+	pref := platform.DriftAlertFromSettings(business.Settings)
+	if !pref.Enabled {
+		return s.settleDriftDM(ctx, episode)
+	}
+	chatID, ok, err := s.privateDriftRecipient(ctx, episode.BusinessID)
+	if err != nil {
+		return fmt.Errorf("resolve private drift recipient: %w", err)
+	}
+	if !ok {
+		return s.settleDriftDM(ctx, episode)
+	}
+	fields := localizedDriftFields(episode.Fields, pref.Locale)
+	href := s.publicURL + "/integrations?businessId=" + episode.BusinessID.String()
+	text := "Профиль организации изменился на площадке " + driftPlatformName(episode.Platform, "ru") + ". Поля: " + fields + ". Проверьте организацию: " + href
+	if pref.Locale == "en" {
+		text = "An organization profile changed on " + driftPlatformName(episode.Platform, "en") + ". Fields: " + fields + ". Review this organization: " + href
+	}
+	args := map[string]interface{}{"text": text, "chat_id": chatID}
+	approvalID := "drift-alert-" + episode.EpisodeID.String()
+	if _, err := dispatchToolWithApproval(ctx, s.nc, a2a.AgentTelegram, tools.TelegramSendNotification,
+		args, episode.BusinessID.String(), approvalID, driftAlertDispatchTimeout); err != nil {
+		return fmt.Errorf("deliver drift DM for %s: %w", episode.BusinessID, err)
+	}
+	if err := s.syncState.MarkDriftDMSettled(ctx, episode.SyncStateID, episode.EpisodeID); err != nil {
+		return fmt.Errorf("acknowledge drift DM: %w", err)
+	}
+	return nil
+}
+
+func (s *ReconciliationService) settleDriftDM(ctx context.Context, episode domain.DriftAlertEpisode) error {
+	if episode.DMSettledAt != nil {
+		return nil
+	}
+	return s.syncState.MarkDriftDMSettled(ctx, episode.SyncStateID, episode.EpisodeID)
+}
+
+func (s *ReconciliationService) privateDriftRecipient(ctx context.Context, businessID uuid.UUID) (chatID string, found bool, err error) {
+	integs, err := s.integRepo.ListByBusinessAndPlatform(ctx, businessID, a2a.AgentTelegram)
+	if err != nil {
+		return "", false, err
+	}
+	for _, integ := range integs {
+		if integ.Status != domain.IntegrationStatusActive {
+			continue
+		}
+		if id, ok := integ.Metadata["telegram_user_id"].(string); ok {
+			value := strings.TrimSpace(id)
+			parsed, err := strconv.ParseInt(value, 10, 64)
+			if err == nil && parsed > 0 {
+				return value, true, nil
+			}
+		}
+	}
+	return "", false, nil
+}
+
+func localizedDriftFields(fields []string, locale string) string {
+	labels := map[string][2]string{
+		platform.FieldTitle:       {"название", "name"},
+		platform.FieldDescription: {"описание", "description"},
+		platform.FieldWebsite:     {"сайт", "website"},
+		platform.FieldSchedule:    {"часы работы", "business hours"},
+	}
+	idx := 0
+	if locale == "en" {
+		idx = 1
+	}
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if label, ok := labels[field]; ok {
+			out = append(out, label[idx])
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+func driftPlatformName(platformID, locale string) string {
+	if platformID == a2a.AgentVK {
+		return "VK"
+	}
+	if locale == "en" {
+		return "Yandex Business"
+	}
+	return "Яндекс Бизнес"
 }
 
 // recordFailure applies the failure backoff + metric for a fetch that did not

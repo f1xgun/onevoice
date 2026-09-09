@@ -162,6 +162,8 @@ paths:
     $ref: paths/business.yaml#/~1businesses~1{id}~1review-autopilot
   /businesses/{id}/owner-brief:
     $ref: paths/business.yaml#/~1businesses~1{id}~1owner-brief
+  /businesses/{id}/drift-alerts:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1drift-alerts
   /businesses/{id}/integrations/vk/auth-url:
     $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1auth-url
   /businesses/{id}/integrations/vk/communities:
@@ -1119,6 +1121,25 @@ components:
           minimum: 0
           maximum: 23
           description: Hour-of-day (0-23) the brief fires at.
+    DriftAlertSettings:
+      type: object
+      required: [enabled, locale]
+      properties:
+        enabled:
+          type: boolean
+          description: Whether private drift notifications are enabled. Defaults to false.
+        locale:
+          type: string
+          enum: [ru, en]
+    UpdateDriftAlertSettingsRequest:
+      type: object
+      required: [locale]
+      properties:
+        enabled:
+          type: boolean
+        locale:
+          type: string
+          enum: [ru, en]
     UploadLogoRequest:
       type: object
       required:

@@ -123,6 +123,20 @@ type SyncState struct {
 	UpdatedAt           time.Time         `json:"updatedAt" db:"updated_at"`
 }
 
+// DriftAlertEpisode is the durable notification state for one sync mismatch.
+type DriftAlertEpisode struct {
+	SyncStateID   uuid.UUID
+	BusinessID    uuid.UUID
+	Platform      string
+	ExternalID    string
+	Fields        []string
+	EpisodeID     uuid.UUID
+	TaskCreatedAt *time.Time
+	DMSettledAt   *time.Time
+	RetryAt       *time.Time
+	RetryCount    int
+}
+
 // Subscription is one business's billing plan. The v1.6 reshape moves the
 // tenant key from user_id (legacy, dead) to business_id — usage_logs and the
 // whole billing model are business-scoped. ParentBusinessID (agency seam),

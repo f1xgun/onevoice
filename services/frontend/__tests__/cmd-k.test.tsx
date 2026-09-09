@@ -48,10 +48,14 @@ vi.mock('@/lib/telemetry', () => ({
   trackEvent: vi.fn(),
 }));
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
-  usePathname: () => '/chat',
-}));
+vi.mock('next/navigation', () => {
+  const searchParams = new URLSearchParams();
+  return {
+    useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
+    usePathname: () => '/chat',
+    useSearchParams: () => searchParams,
+  };
+});
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },

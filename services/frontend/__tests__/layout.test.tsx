@@ -9,10 +9,14 @@ import type * as ProjHooks from '@/hooks/useProjects';
 
 // Pathname mock — toggled per test.
 const usePathnameMock = vi.fn(() => '/chat');
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
-  usePathname: () => usePathnameMock(),
-}));
+vi.mock('next/navigation', () => {
+  const searchParams = new URLSearchParams();
+  return {
+    useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
+    usePathname: () => usePathnameMock(),
+    useSearchParams: () => searchParams,
+  };
+});
 
 vi.mock('@/lib/auth', async () => {
   const tokenStore = { user: null as unknown, accessToken: 'test-token', isAuthenticated: true };

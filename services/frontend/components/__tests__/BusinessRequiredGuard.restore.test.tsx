@@ -9,10 +9,14 @@ import { api } from '@/lib/api';
 import { authFetch } from '@/lib/api/authFetch';
 
 const navigation = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
-vi.mock('next/navigation', () => ({
-  useRouter: () => navigation,
-  usePathname: () => '/chat',
-}));
+vi.mock('next/navigation', () => {
+  const searchParams = new URLSearchParams();
+  return {
+    useRouter: () => navigation,
+    usePathname: () => '/chat',
+    useSearchParams: () => searchParams,
+  };
+});
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn() } }));
 vi.mock('@/lib/api/authFetch', () => ({ authFetch: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));

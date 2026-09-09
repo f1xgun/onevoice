@@ -32,6 +32,55 @@ type MockBusinessService struct {
 	mock.Mock
 }
 
+func TestBusinessHandler_DriftAlertSettings(t *testing.T) {
+	businessID, userID := uuid.New(), uuid.New()
+	bc := bizPerms(businessID, userID)
+
+	t.Run("get defaults to explicit opt-out", func(t *testing.T) {
+		svc := new(MockBusinessService)
+		svc.On("GetByID", mock.Anything, businessID).Return(&domain.Business{
+			ID: businessID, Settings: map[string]interface{}{},
+		}, nil)
+		h, err := NewBusinessHandler(svc, nil, nil)
+		require.NoError(t, err)
+		req := withBizCtx(httptest.NewRequest(http.MethodGet, "/drift-alerts", http.NoBody), bc)
+		rr := httptest.NewRecorder()
+		h.GetDriftAlerts(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+		assert.JSONEq(t, `{"enabled":false,"locale":"ru"}`, rr.Body.String())
+	})
+
+	t.Run("put accepts false and scopes the settings sub-key", func(t *testing.T) {
+		svc := new(MockBusinessService)
+		svc.On("UpdateSettingsKeys", mock.Anything, businessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
+			value, ok := keys[platform.DriftAlertSettingsKey].(map[string]interface{})
+			return ok && value["enabled"] == false && value["locale"] == "en"
+		}), userID).Return(&domain.Business{ID: businessID}, nil)
+		h, err := NewBusinessHandler(svc, nil, nil)
+		require.NoError(t, err)
+		req := withBizCtx(httptest.NewRequest(http.MethodPut, "/drift-alerts",
+			strings.NewReader(`{"enabled":false,"locale":"en"}`)), bc)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		h.UpdateDriftAlerts(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+		assert.JSONEq(t, `{"enabled":false,"locale":"en"}`, rr.Body.String())
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("put rejects an omitted enabled flag", func(t *testing.T) {
+		svc := new(MockBusinessService)
+		h, err := NewBusinessHandler(svc, nil, nil)
+		require.NoError(t, err)
+		req := withBizCtx(httptest.NewRequest(http.MethodPut, "/drift-alerts",
+			strings.NewReader(`{"locale":"ru"}`)), bc)
+		rr := httptest.NewRecorder()
+		h.UpdateDriftAlerts(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		svc.AssertNotCalled(t, "UpdateSettingsKeys")
+	})
+}
+
 func (m *MockBusinessService) Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error) {
 	args := m.Called(ctx, business, ownerUserID)
 	if args.Get(0) == nil {

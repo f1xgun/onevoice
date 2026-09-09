@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -186,4 +187,170 @@ func prefixColumns(alias string) string {
 		out += c
 	}
 	return out
+}
+
+// WithReconcileLock holds a transaction-scoped advisory lock on one pinned
+// connection for the complete pass. false means another process owns the pass.
+func (r *syncStateRepository) WithReconcileLock(ctx context.Context, fn func() error) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin reconcile lock: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var locked bool
+	if err := tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock(hashtext('onevoice.sync-reconcile'))").Scan(&locked); err != nil {
+		return false, fmt.Errorf("acquire reconcile lock: %w", err)
+	}
+	if !locked {
+		return false, nil
+	}
+	if err := fn(); err != nil {
+		return true, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return true, fmt.Errorf("commit reconcile lock: %w", err)
+	}
+	return true, nil
+}
+
+// MarkCheckedEpisode atomically records the snapshot and creates one episode
+// on a false-to-true transition. A matching snapshot clears the episode.
+func (r *syncStateRepository) MarkCheckedEpisode(ctx context.Context, id uuid.UUID, snapshot map[string]string, driftFields []string, checkedAt, nextCheckAt time.Time) (domain.DriftAlertEpisode, error) {
+	if snapshot == nil {
+		snapshot = map[string]string{}
+	}
+	if driftFields == nil {
+		driftFields = []string{}
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return domain.DriftAlertEpisode{}, fmt.Errorf("marshal snapshot: %w", err)
+	}
+	candidate := uuid.New()
+	const q = `
+		UPDATE sync_state
+		SET last_remote_snapshot=$2, drift_detected=$3, drift_fields=$4,
+		    consecutive_failures=0, last_error='', last_checked_at=$5,
+		    next_check_at=$6, updated_at=now(),
+		    drift_episode_id=CASE
+		      WHEN NOT $3 THEN NULL
+		      WHEN NOT drift_detected OR drift_episode_id IS NULL THEN $7
+		      ELSE drift_episode_id END,
+		    drift_task_created_at=CASE
+		      WHEN NOT $3 OR NOT drift_detected OR drift_episode_id IS NULL THEN NULL
+		      ELSE drift_task_created_at END,
+		    drift_dm_settled_at=CASE
+		      WHEN NOT $3 OR NOT drift_detected OR drift_episode_id IS NULL THEN NULL
+		      ELSE drift_dm_settled_at END,
+		    drift_alert_retry_at=CASE
+		      WHEN NOT $3 THEN NULL
+		      WHEN NOT drift_detected OR drift_episode_id IS NULL THEN now()
+		      ELSE drift_alert_retry_at END,
+		    drift_alert_retry_count=CASE
+		      WHEN NOT $3 OR NOT drift_detected OR drift_episode_id IS NULL THEN 0
+		      ELSE drift_alert_retry_count END,
+		    drift_approval_id=CASE
+		      WHEN NOT $3 THEN ''
+		      WHEN NOT drift_detected OR drift_episode_id IS NULL THEN 'drift-alert-' || $7::text
+		      ELSE drift_approval_id END
+		WHERE id=$1
+		RETURNING id,business_id,platform,external_id,drift_fields,
+		          COALESCE(drift_episode_id, '00000000-0000-0000-0000-000000000000'::uuid),
+		          drift_task_created_at,drift_dm_settled_at,drift_alert_retry_at,drift_alert_retry_count`
+	var out domain.DriftAlertEpisode
+	err = r.pool.QueryRow(ctx, q, id, raw, len(driftFields) > 0, driftFields, checkedAt, nextCheckAt, candidate).Scan(
+		&out.SyncStateID, &out.BusinessID, &out.Platform, &out.ExternalID, &out.Fields, &out.EpisodeID,
+		&out.TaskCreatedAt, &out.DMSettledAt, &out.RetryAt, &out.RetryCount)
+	if err != nil {
+		return out, fmt.Errorf("mark checked episode: %w", err)
+	}
+	return out, nil
+}
+
+func (r *syncStateRepository) ListPendingDriftAlerts(ctx context.Context) ([]domain.DriftAlertEpisode, error) {
+	const q = `SELECT s.id,s.business_id,s.platform,s.external_id,s.drift_fields,s.drift_episode_id,
+		s.drift_task_created_at,s.drift_dm_settled_at,s.drift_alert_retry_at,s.drift_alert_retry_count
+		FROM sync_state s JOIN integrations i ON i.business_id=s.business_id
+		 AND i.platform=s.platform AND i.external_id=s.external_id
+		 AND i.status='active' AND i.deleted_at IS NULL
+		JOIN businesses b ON b.id=s.business_id AND b.deleted_at IS NULL
+		WHERE s.drift_detected AND s.drift_episode_id IS NOT NULL
+		  AND s.platform IN ('vk', 'yandex_business')
+		  AND (s.drift_task_created_at IS NULL OR s.drift_dm_settled_at IS NULL)
+		  AND COALESCE(s.drift_alert_retry_at, '-infinity'::timestamptz) <= now()
+		ORDER BY s.drift_alert_retry_at NULLS FIRST, s.updated_at LIMIT 100`
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("list pending drift alerts: %w", err)
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.DriftAlertEpisode, error) {
+		var x domain.DriftAlertEpisode
+		err := row.Scan(&x.SyncStateID, &x.BusinessID, &x.Platform, &x.ExternalID, &x.Fields,
+			&x.EpisodeID, &x.TaskCreatedAt, &x.DMSettledAt, &x.RetryAt, &x.RetryCount)
+		return x, err
+	})
+}
+
+// GetCurrentDriftAlert revalidates the exact episode against a live business
+// and its exact active integration immediately before any notification side
+// effect.
+func (r *syncStateRepository) GetCurrentDriftAlert(ctx context.Context, id, episodeID uuid.UUID) (domain.DriftAlertEpisode, error) {
+	const q = `SELECT s.id,s.business_id,s.platform,s.external_id,s.drift_fields,s.drift_episode_id,
+		s.drift_task_created_at,s.drift_dm_settled_at,s.drift_alert_retry_at,s.drift_alert_retry_count
+		FROM sync_state s
+		JOIN businesses b ON b.id=s.business_id AND b.deleted_at IS NULL
+		JOIN integrations i ON i.business_id=s.business_id
+		 AND i.platform=s.platform AND i.external_id=s.external_id
+		 AND i.status='active' AND i.deleted_at IS NULL
+		WHERE s.id=$1 AND s.drift_episode_id=$2 AND s.drift_detected`
+	var x domain.DriftAlertEpisode
+	err := r.pool.QueryRow(ctx, q, id, episodeID).Scan(
+		&x.SyncStateID, &x.BusinessID, &x.Platform, &x.ExternalID, &x.Fields,
+		&x.EpisodeID, &x.TaskCreatedAt, &x.DMSettledAt, &x.RetryAt, &x.RetryCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return x, domain.ErrDriftEpisodeNotFound
+	}
+	if err != nil {
+		return x, fmt.Errorf("get current drift alert: %w", err)
+	}
+	return x, nil
+}
+
+func (r *syncStateRepository) MarkDriftTaskCreated(ctx context.Context, id, episode uuid.UUID) error {
+	return r.markEpisodeTime(ctx, id, episode, true)
+}
+
+func (r *syncStateRepository) MarkDriftDMSettled(ctx context.Context, id, episode uuid.UUID) error {
+	return r.markEpisodeTime(ctx, id, episode, false)
+}
+
+func (r *syncStateRepository) ScheduleDriftAlertRetry(ctx context.Context, id, episode uuid.UUID, retryAt time.Time) error {
+	const q = `UPDATE sync_state
+		SET drift_alert_retry_at=$3,drift_alert_retry_count=drift_alert_retry_count+1,updated_at=now()
+		WHERE id=$1 AND drift_episode_id=$2`
+	tag, err := r.pool.Exec(ctx, q, id, episode, retryAt)
+	if err != nil {
+		return fmt.Errorf("schedule drift alert retry: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrDriftEpisodeNotFound
+	}
+	return nil
+}
+
+func (r *syncStateRepository) markEpisodeTime(ctx context.Context, id, episode uuid.UUID, task bool) error {
+	q := `UPDATE sync_state SET drift_dm_settled_at=now(),updated_at=now()
+		WHERE id=$1 AND drift_episode_id=$2`
+	if task {
+		q = `UPDATE sync_state SET drift_task_created_at=now(),updated_at=now()
+			WHERE id=$1 AND drift_episode_id=$2`
+	}
+	tag, err := r.pool.Exec(ctx, q, id, episode)
+	if err != nil {
+		return fmt.Errorf("mark drift alert state: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("drift episode changed")
+	}
+	return nil
 }

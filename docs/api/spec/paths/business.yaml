@@ -780,6 +780,68 @@
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 
+/businesses/{id}/drift-alerts:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getBusinessDriftAlerts
+    summary: Return the per-business drift notification preference.
+    tags: [business]
+    responses:
+      '200':
+        description: Stored preference, defaulting to disabled.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/DriftAlertSettings
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateBusinessDriftAlerts
+    summary: Set the opt-in drift notification preference.
+    tags: [business]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateDriftAlertSettingsRequest
+    responses:
+      '200':
+        description: Updated preference.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/DriftAlertSettings
+      '400':
+        description: Malformed body or unsupported locale.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+
 /businesses/{id}/channel-requests:
   parameters:
   - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath

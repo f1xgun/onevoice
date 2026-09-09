@@ -656,7 +656,8 @@
         "business_description": "Update description",
         "photo": "Update photo",
         "data": "Update data",
-        "hours": "Update hours"
+        "hours": "Update hours",
+        "drift_alert": "Review changed platform data"
       },
       "tools": {
         "telegram": {
@@ -1192,6 +1193,20 @@
         "description": "description",
         "website": "website",
         "schedule": "business hours"
+      },
+      "alerts": {
+        "title": "Notify me when platform data changes",
+        "description": "Creates an in-app task for VK or Yandex mismatches. Private Telegram alerts require your explicit opt-in and a linked private account.",
+        "language": "Message language",
+        "ru": "Russian",
+        "en": "English",
+        "save": "Save",
+        "saving": "Saving…",
+        "saved": "Alert preferences saved.",
+        "failed": "Could not save alert preferences.",
+        "loading": "Loading notification preferences…",
+        "loadFailed": "Could not load notification preferences.",
+        "retry": "Retry"
       }
     },
     "vkCommunity": {

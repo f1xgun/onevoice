@@ -173,6 +173,9 @@ type Config struct {
 	// regardless, but the background reconcile loop is only started when this is
 	// explicitly enabled, so the default deploy carries zero extra polling load.
 	SyncReconcileEnabled bool
+	// DriftAlertDeliveryEnabled is an independent, default-off fleet gate for
+	// private Telegram drift notifications. In-app tasks do not depend on it.
+	DriftAlertDeliveryEnabled bool
 	// SyncReconcilePollInterval is how often the reconciler wakes to check for
 	// due channels. Per-channel cadence (24h free / 6h paid) is enforced via each
 	// row's next_check_at, so this is only the poll granularity, not the re-check
@@ -403,6 +406,7 @@ func Load() (*Config, error) {
 
 		SyncReconcileEnabled:      getEnv("SYNC_RECONCILE_ENABLED", "false") == envBoolTrue,
 		SyncReconcilePollInterval: getEnvDuration("SYNC_RECONCILE_POLL_INTERVAL", 30*time.Minute), //nolint:mnd // env-driven default
+		DriftAlertDeliveryEnabled: getEnv("DRIFT_ALERT_DELIVERY_ENABLED", "false") == envBoolTrue,
 
 		CreditGrantEnabled:      getEnv("CREDIT_GRANT_ENABLED", envBoolTrue) == envBoolTrue,
 		CreditGrantPollInterval: getEnvDuration("CREDIT_GRANT_POLL_INTERVAL", time.Hour),

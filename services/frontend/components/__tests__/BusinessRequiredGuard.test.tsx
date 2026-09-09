@@ -11,6 +11,7 @@ const usePathnameMock = vi.fn(() => '/chat');
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace, push: mockPush }),
   usePathname: () => usePathnameMock(),
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 // Mock useBusinessList hook
@@ -79,6 +80,7 @@ describe('BusinessRequiredGuard', () => {
     mockReplace.mockClear();
     setActiveMock.mockClear();
     clearMock.mockClear();
+    window.history.replaceState({}, '', '/chat');
   });
 
   it('Test 1: /login renders children directly (bypass)', async () => {
@@ -474,5 +476,61 @@ describe('BusinessRequiredGuard', () => {
 
     retryButton.click();
     expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors an integrations deep link only when the UUID is an active membership', async () => {
+    const first = '2bf1157a-e7f8-4310-a2ae-cce7a955f579';
+    const requested = '7b7d23dc-d21c-4e01-9f10-1f4bea92a1bf';
+    usePathnameMock.mockReturnValue('/integrations');
+    storeActiveBusinessId = first;
+    window.history.replaceState({}, '', '/integrations?businessId=' + requested);
+    useBusinessListMock.mockReturnValue({
+      data: [
+        { id: first, name: 'First', role: { id: 'r1', name: 'owner' } },
+        { id: requested, name: 'Requested', role: { id: 'r1', name: 'owner' } },
+      ],
+      isLoading: false,
+    });
+
+    render(
+      <Wrapper>
+        <BusinessRequiredGuard>
+          <div>protected</div>
+        </BusinessRequiredGuard>
+      </Wrapper>
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(setActiveMock).toHaveBeenCalledWith(requested);
+  });
+
+  it('does not switch to an inaccessible integrations deep-link UUID', async () => {
+    const active = '2bf1157a-e7f8-4310-a2ae-cce7a955f579';
+    usePathnameMock.mockReturnValue('/integrations');
+    storeActiveBusinessId = active;
+    window.history.replaceState(
+      {},
+      '',
+      '/integrations?businessId=7b7d23dc-d21c-4e01-9f10-1f4bea92a1bf'
+    );
+    useBusinessListMock.mockReturnValue({
+      data: [{ id: active, name: 'Active', role: { id: 'r1', name: 'owner' } }],
+      isLoading: false,
+    });
+
+    render(
+      <Wrapper>
+        <BusinessRequiredGuard>
+          <div>protected</div>
+        </BusinessRequiredGuard>
+      </Wrapper>
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(setActiveMock).not.toHaveBeenCalled();
   });
 });

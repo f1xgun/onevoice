@@ -35,7 +35,15 @@ type nilDueSyncStateRepo struct {
 	domain.SyncStateRepository
 }
 
+func (nilDueSyncStateRepo) WithReconcileLock(_ context.Context, fn func() error) (bool, error) {
+	return true, fn()
+}
+
 func (nilDueSyncStateRepo) ListDue(context.Context, time.Time, int) ([]domain.SyncState, error) {
+	return nil, nil
+}
+
+func (nilDueSyncStateRepo) ListPendingDriftAlerts(context.Context) ([]domain.DriftAlertEpisode, error) {
 	return nil, nil
 }
 

@@ -25,6 +25,7 @@ export const QUERY_KEYS = {
   BUSINESS_INTEGRATIONS: (bizId: string | null) => ['businesses', bizId, 'integrations'] as const,
   BUSINESS_INTEGRATIONS_DRIFT: (bizId: string | null) =>
     ['businesses', bizId, 'integrations', 'drift'] as const,
+  BUSINESS_DRIFT_ALERTS: (bizId: string | null) => ['businesses', bizId, 'drift-alerts'] as const,
   BUSINESS_VK_COMMUNITIES: (bizId: string | null) =>
     ['businesses', bizId, 'vk-communities'] as const,
   BUSINESS_YANDEX_DELEGATED_CONFIG: (bizId: string | null) =>

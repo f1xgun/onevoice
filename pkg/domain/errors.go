@@ -43,9 +43,10 @@ var (
 
 // Integration errors.
 var (
-	ErrIntegrationNotFound = errors.New("integration not found")
-	ErrIntegrationExists   = errors.New("integration already exists")
-	ErrTokenExpired        = errors.New("token expired")
+	ErrIntegrationNotFound  = errors.New("integration not found")
+	ErrDriftEpisodeNotFound = errors.New("drift episode not found")
+	ErrIntegrationExists    = errors.New("integration already exists")
+	ErrTokenExpired         = errors.New("token expired")
 	// ErrServiceUnavailable is returned when a downstream resource (e.g. the
 	// OAuth advisory lock) is exhausted or temporarily unavailable.
 	ErrServiceUnavailable = errors.New("service unavailable")

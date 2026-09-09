@@ -674,6 +674,62 @@ func (h *BusinessHandler) UpdateOwnerBrief(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, updated)
 }
 
+// GetDriftAlerts returns the explicit, default-off drift notification consent.
+func (h *BusinessHandler) GetDriftAlerts(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "GetDriftAlerts", authz.PermBusinessRead)
+	if !ok {
+		return
+	}
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "get drift alerts failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	pref := platform.DriftAlertFromSettings(business.Settings)
+	writeJSON(w, http.StatusOK, openapi.DriftAlertSettings{
+		Enabled: pref.Enabled,
+		Locale:  openapi.DriftAlertSettingsLocale(pref.Locale),
+	})
+}
+
+// UpdateDriftAlerts stores only driftAlerts, preserving every sibling setting.
+func (h *BusinessHandler) UpdateDriftAlerts(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "UpdateDriftAlerts", authz.PermBusinessUpdate)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
+	req, ok := decodeAndValidate[openapi.UpdateDriftAlertSettingsRequest](w, r, "invalid request body")
+	if !ok {
+		return
+	}
+	if req.Enabled == nil {
+		writeJSONError(w, http.StatusBadRequest, "enabled is required")
+		return
+	}
+	value := map[string]interface{}{"enabled": *req.Enabled, "locale": string(req.Locale)}
+	_, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID,
+		map[string]interface{}{platform.DriftAlertSettingsKey: value}, bc.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "update drift alerts failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, openapi.DriftAlertSettings{
+		Enabled: *req.Enabled,
+		Locale:  openapi.DriftAlertSettingsLocale(req.Locale),
+	})
+}
+
 // GetBusinessToolApprovals handles GET /business/{id}/tool-approvals.
 // Response shape: `{"toolApprovals": {"tool_name": "auto"|"manual", ...}}`.
 // Absence from the map means the registry floor applies.

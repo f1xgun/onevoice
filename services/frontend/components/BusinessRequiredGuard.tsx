@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, type ReactNode } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { useBusinessStore } from '@/lib/stores/business';
 import { BusinessDeletionGraceBanner } from '@/components/business/BusinessDeletionGraceBanner';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
+import { resolveScopedBusinessId } from '@/components/integrations/ScopedBusinessLink';
 
 const OWNER_ROLE_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -29,6 +30,7 @@ function normalizePath(pathname: string): string {
 export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() ?? '';
+  const searchParams = useSearchParams();
   const t = useTranslations('businessGuard');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const setActive = useBusinessStore((s) => s.setActive);
@@ -36,6 +38,12 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   const isBypass = BYPASS_PATHS.some((p) => pathname.startsWith(p));
   const isAccountScoped = ACCOUNT_SCOPED_PATHS.includes(normalizePath(pathname));
   const hasNoBusiness = businesses?.length === 0;
+  const availableBusinesses = businesses?.filter((business) => !business.deletion_pending_until);
+  const requestedBusinessId =
+    normalizePath(pathname) === '/integrations' ? searchParams.get('businessId') : null;
+  const scopedBusinessId = availableBusinesses
+    ? resolveScopedBusinessId(requestedBusinessId, availableBusinesses)
+    : null;
 
   useEffect(() => {
     if (isBypass) return;
@@ -51,10 +59,22 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
     }
     const available = businesses.filter((b) => !b.deletion_pending_until);
     const validIds = new Set(available.map((b) => b.id));
+    if (scopedBusinessId && scopedBusinessId !== activeBusinessId) {
+      setActive(scopedBusinessId);
+      return;
+    }
     if (!activeBusinessId || !validIds.has(activeBusinessId)) {
       setActive(available[0]?.id ?? null);
     }
-  }, [businesses, activeBusinessId, setActive, router, isBypass, isAccountScoped]);
+  }, [
+    businesses,
+    activeBusinessId,
+    setActive,
+    router,
+    isBypass,
+    isAccountScoped,
+    scopedBusinessId,
+  ]);
 
   if (isBypass) {
     return <>{children}</>;
@@ -108,6 +128,7 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   );
   if (
     isLoading ||
+    (!!scopedBusinessId && activeBusinessId !== scopedBusinessId) ||
     (!activeBusinessId && !(isAccountScoped && hasNoBusiness)) ||
     (!!activeBusinessId && !activeIsAvailable)
   ) {
