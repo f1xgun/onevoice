@@ -304,10 +304,9 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 	reply = clampRunes(reply, ingestedTextMaxRunes)
 
 	author, _ := m["author"].(string)
-	if author == "" {
-		if fromID, ok := metaInt(m, "from_id"); ok {
-			author = fmt.Sprintf("vk_user_%d", fromID)
-		}
+	if platform == a2a.AgentVK {
+		fromID, _ := metaInt(m, "from_id")
+		author = domain.VKReviewAuthorName(author, fromID)
 	}
 
 	rating := 0

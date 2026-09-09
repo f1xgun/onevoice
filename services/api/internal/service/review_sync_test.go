@@ -80,3 +80,25 @@ func TestSyncOne_HappyPathReturnsNil(t *testing.T) {
 		t.Errorf("BulkUpsert calls = %d, want 1", repo.bulkUpsertCalls)
 	}
 }
+
+func TestReviewFromMap_VKAuthor(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		fromID int
+		want   string
+	}{
+		{"Иван Петров", 123, "Иван Петров"},
+		{"", 123, domain.VKUnknownUserName},
+		{"", -123, domain.VKUnknownCommunityName},
+	} {
+		t.Run(tt.want, func(t *testing.T) {
+			review := reviewFromMap(map[string]interface{}{"id": float64(2), "post_id": float64(3), "author": tt.name, "from_id": float64(tt.fromID)}, "business", a2a.AgentVK)
+			if review.AuthorName != tt.want {
+				t.Fatalf("author = %q, want %q", review.AuthorName, tt.want)
+			}
+			if review.ExternalID != "3_2" {
+				t.Fatalf("external ID changed: %q", review.ExternalID)
+			}
+		})
+	}
+}
