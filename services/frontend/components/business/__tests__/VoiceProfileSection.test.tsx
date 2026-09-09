@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { StrictMode, type ReactNode } from 'react';
 import {
   VoiceProfileSection,
   VOICE_PROFILE_MAX_LENGTH,
@@ -188,5 +188,114 @@ describe('VoiceProfileSection', () => {
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
     expect(await screen.findByRole('textbox', { name: label })).toBeVisible();
     expect(screen.getByRole('button', { name: button })).toBeVisible();
+  });
+});
+
+describe('VoiceProfileSection review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    businessState.activeBusinessId = 'business-a';
+    Object.assign(permissionState['business.read'], {
+      allowed: true,
+      isLoading: false,
+      isError: false,
+    });
+    Object.assign(permissionState['business.update'], {
+      allowed: true,
+      isLoading: false,
+      isError: false,
+    });
+    getMock.mockResolvedValue({ data: { voiceProfile: 'persisted' } });
+    putMock.mockResolvedValue({ data: {} });
+  });
+
+  it('resets and toasts after a save mounted under React StrictMode', async () => {
+    const user = userEvent.setup();
+    render(
+      <StrictMode>
+        <VoiceProfileSection />
+      </StrictMode>,
+      { wrapper: wrapper(newClient()) }
+    );
+    const textarea = await screen.findByRole('textbox');
+    await user.clear(textarea);
+    await user.type(textarea, 'saved in strict mode');
+    await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Профиль голоса сохранён'));
+    expect(screen.getByRole('button', { name: 'Сохранить профиль' })).toBeDisabled();
+  });
+
+  it('accepts refetched persisted data only while the editor is clean', async () => {
+    const user = userEvent.setup();
+    const client = newClient();
+    render(<VoiceProfileSection />, { wrapper: wrapper(client) });
+    const textarea = await screen.findByRole('textbox');
+    await waitFor(() => expect(textarea).toHaveValue('persisted'));
+
+    client.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE('business-a'), 'refetched clean');
+    await waitFor(() => expect(textarea).toHaveValue('refetched clean'));
+
+    await user.clear(textarea);
+    await user.type(textarea, 'newer dirty text');
+    client.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE('business-a'), 'older refetch');
+    await waitFor(() => expect(textarea).toHaveValue('newer dirty text'));
+  });
+
+  it('guards submitted events when editing is denied', async () => {
+    permissionState['business.update'].allowed = false;
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+    const form = (await screen.findByRole('textbox')).closest('form');
+    fireEvent.submit(form!);
+    expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a status skeleton while profile data loads', async () => {
+    getMock.mockReturnValue(deferred<never>().promise);
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+    expect(screen.getByRole('status', { name: 'Загрузка…' })).toBeVisible();
+  });
+
+  it('offers the localized retry action after a read error', async () => {
+    const user = userEvent.setup();
+    getMock.mockRejectedValueOnce(new Error('failed')).mockResolvedValueOnce({
+      data: { voiceProfile: 'after retry' },
+    });
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+    await user.click(await screen.findByRole('button', { name: 'Повторить' }));
+    expect(await screen.findByRole('textbox')).toHaveValue('after retry');
+    expect(getMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('VoiceProfileSection pending submit guard', () => {
+  it('does not start a second mutation while a save is pending', async () => {
+    businessState.activeBusinessId = 'business-a';
+    Object.assign(permissionState['business.read'], {
+      allowed: true,
+      isLoading: false,
+      isError: false,
+    });
+    Object.assign(permissionState['business.update'], {
+      allowed: true,
+      isLoading: false,
+      isError: false,
+    });
+    getMock.mockResolvedValue({ data: { voiceProfile: 'persisted' } });
+    const pendingSave = deferred<{ data: Record<string, never> }>();
+    putMock.mockReturnValue(pendingSave.promise);
+    const user = userEvent.setup();
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+    const textarea = await screen.findByRole('textbox');
+    await user.clear(textarea);
+    await user.type(textarea, 'save once');
+    const form = textarea.closest('form')!;
+    fireEvent.submit(form);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Сохраняем…' })).toBeDisabled());
+    fireEvent.submit(form);
+    expect(putMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      pendingSave.resolve({ data: {} });
+      await pendingSave.promise;
+    });
   });
 });
