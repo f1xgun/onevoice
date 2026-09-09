@@ -866,3 +866,19 @@ func TestReplyToReview_AlreadyAnswered(t *testing.T) {
 
 	assert.Equal(t, http.StatusConflict, rr.Code)
 }
+
+func TestDomainReviewToOpenAPI_VKLegacyAuthors(t *testing.T) {
+	for _, tt := range []struct{ platform, name, want string }{
+		{"vk", "vk_user_240508926", domain.VKUnknownUserName},
+		{"vk", "vk_user_-12", domain.VKUnknownCommunityName},
+		{"vk", "Иван Петров", "Иван Петров"},
+		{"vk", "", domain.VKUnknownUserName},
+		{"telegram", "vk_user_12", "vk_user_12"},
+	} {
+		t.Run(tt.platform+tt.name, func(t *testing.T) {
+			review := domain.Review{BusinessID: uuid.NewString(), Platform: tt.platform, AuthorName: tt.name}
+			assert.Equal(t, tt.want, domainReviewToOpenAPI(review).AuthorName)
+			assert.Equal(t, tt.name, review.AuthorName, "display fallback does not mutate stored data")
+		})
+	}
+}

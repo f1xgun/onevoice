@@ -1,5 +1,10 @@
 'use client';
 
+import { EmptyFrame } from '@/components/states/EmptyFrame';
+import { EmptyAction } from '@/components/states/EmptyAction';
+
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useTranslations } from 'next-intl';
 import type { AuditLogDTO } from '../_lib/types';
 import { actionToI18nKey, isKnownAuditAction } from '../_lib/actionLabels';
@@ -14,6 +19,8 @@ interface Props {
   hasNextPage: boolean;
   isFetchingMore: boolean;
   onLoadMore: () => void;
+  onResetFilters?: () => void;
+  isRefreshing?: boolean;
   onRowClick: (item: AuditLogDTO) => void;
 }
 
@@ -69,32 +76,48 @@ export function AuditTable({
   isFetchingMore,
   onLoadMore,
   onRowClick,
+  onResetFilters,
+  isRefreshing = false,
 }: Props) {
   const t = useTranslations('audit.table');
+  const tEmpty = useTranslations('states.actions');
   const tActions = useTranslations();
   const tFilters = useTranslations('audit.filters');
   const tResources = useTranslations('audit.resources');
 
-  if (isLoading && items.length === 0) {
+  if ((isLoading || isRefreshing) && items.length === 0) {
     return (
-      <div data-testid="audit-table-loading" className="space-y-2" aria-busy="true">
+      <LoadingPlaceholder data-testid="audit-table-loading" className="space-y-2" aria-busy="true">
         {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
           <Skeleton key={i} className="h-10 w-full" />
         ))}
-      </div>
+      </LoadingPlaceholder>
     );
   }
 
   if (items.length === 0) {
     return (
-      <p data-testid="audit-table-empty" className="py-12 text-center text-ink-soft">
-        {t('empty')}
-      </p>
+      <div data-testid="audit-table-empty">
+        <EmptyFrame
+          title={t('empty')}
+          body={t('emptyBody')}
+          action={
+            <>
+              <EmptyAction />
+              {onResetFilters && (
+                <Button variant="ghost" size="sm" onClick={onResetFilters}>
+                  {tEmpty('resetFilters')}
+                </Button>
+              )}
+            </>
+          }
+        />
+      </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" aria-busy={isRefreshing || isFetchingMore}>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>

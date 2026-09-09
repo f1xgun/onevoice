@@ -131,12 +131,17 @@ func domainReviewToOpenAPI(r domain.Review) openapi.Review {
 		businessID = uuid.Nil
 	}
 
+	authorName := r.AuthorName
+	if r.Platform == "vk" {
+		authorName = domain.VKReviewAuthorName(authorName, 0)
+	}
+
 	out := openapi.Review{
 		Id:          r.ID,
 		BusinessId:  businessID,
 		Platform:    r.Platform,
 		ExternalId:  r.ExternalID,
-		AuthorName:  r.AuthorName,
+		AuthorName:  authorName,
 		Rating:      r.Rating,
 		Text:        r.Text,
 		ReplyStatus: openapi.ReviewReplyStatus(r.ReplyStatus),

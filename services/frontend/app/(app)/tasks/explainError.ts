@@ -24,6 +24,7 @@ export interface HumanError {
 
 export function explainError(task: AgentTask): HumanError {
   const platform = task.platform;
+  const chatCTA = { labelKey: 'openChat', href: '/chat' };
 
   switch (task.errorCode) {
     case 'integration_token_invalid': {
@@ -35,17 +36,17 @@ export function explainError(task: AgentTask): HumanError {
       return { summaryKey, cta: { labelKey, href } };
     }
     case 'rate_limit_exceeded':
-      return { summaryKey: 'rateLimit', willAutoRetry: false };
+      return { summaryKey: 'rateLimit', cta: chatCTA, willAutoRetry: false };
     case 'transient':
-      return { summaryKey: 'transient', willAutoRetry: false };
+      return { summaryKey: 'transient', cta: chatCTA, willAutoRetry: false };
     case 'channel_not_found':
       return {
         summaryKey: 'notFound',
         cta: { labelKey: 'openIntegrations', href: API_PATHS.INTEGRATIONS.ROOT },
       };
     case 'media_too_large':
-      return { summaryKey: 'media' };
+      return { summaryKey: 'media', cta: chatCTA };
     default:
-      return { summaryKey: 'fallback', willAutoRetry: false };
+      return { summaryKey: 'fallback', cta: chatCTA, willAutoRetry: false };
   }
 }

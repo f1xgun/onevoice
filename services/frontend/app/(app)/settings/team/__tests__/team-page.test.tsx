@@ -181,3 +181,28 @@ describe('TeamPage', () => {
     );
   });
 });
+
+it('does not flash an empty invitation list while the request is pending', async () => {
+  vi.mocked(useInvitations).mockReturnValue({ data: [], isLoading: true } as any);
+  const user = userEvent.setup();
+  const { container } = render(wrap(<TeamPage />));
+  await user.click(screen.getByRole('tab', { name: /Приглашения/ }));
+  expect(screen.queryByText(messages.team.invitations.empty.title)).not.toBeInTheDocument();
+  expect(container.querySelector('[data-loading-placeholder]')).toBeInTheDocument();
+});
+
+it('shows a retry action instead of an empty invitation list after a failed request', async () => {
+  const refetch = vi.fn();
+  vi.mocked(useInvitations).mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: true,
+    refetch,
+  } as any);
+  const user = userEvent.setup();
+  render(wrap(<TeamPage />));
+  await user.click(screen.getByRole('tab', { name: /Приглашения/ }));
+  expect(screen.queryByText(messages.team.invitations.empty.title)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: messages.common.retry }));
+  expect(refetch).toHaveBeenCalledOnce();
+});

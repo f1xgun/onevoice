@@ -1,17 +1,21 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { ToolCard } from './ToolCard';
 import type { ToolCall } from '@/types/chat';
-import { PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
+import { usePlatformFullLabels, getPlatform } from '@/lib/platforms';
 
 function PlatformBadge({ name }: { name: string }) {
   const platform = getPlatform(name);
+  const labels = usePlatformFullLabels();
+  const tCard = useTranslations('chat.toolCard');
   return (
-    <span className="rounded bg-paper-raised px-2 py-1 text-meta text-ink">
-      {PLATFORM_LABELS[platform] ?? platform.toUpperCase()}
+    <span className="inline-flex items-center gap-1.5 rounded bg-paper-raised px-2 py-1 text-meta text-ink">
+      <PlatformIcon platform={platform} className="h-4 w-4" />
+      {labels[platform] ?? tCard('unknownPlatform')}
     </span>
   );
 }
@@ -22,6 +26,7 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
   const [expanded, setExpanded] = useState(false);
 
   const doneCount = toolCalls.filter((t) => t.status === 'done').length;
+  const pendingCount = toolCalls.filter((tool) => tool.status === 'pending').length;
   const failCount = toolCalls.filter((t) => t.status === 'error').length;
   const platforms = Array.from(new Set(toolCalls.map((t) => t.name.split('__')[0])));
 
@@ -49,6 +54,12 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
         <span className="ml-1 text-meta text-ink-soft">
           {tCalls('doneCount', { done: doneCount, total: toolCalls.length })}
         </span>
+        {pendingCount > 0 && (
+          <span role="status" className="inline-flex items-center gap-1 text-meta text-info">
+            <Loader2 aria-hidden className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            {tCalls('runningCount', { count: pendingCount })}
+          </span>
+        )}
         {failCount > 0 && (
           <span className="ml-1 text-meta text-danger">
             {tCalls('failCount', { failed: failCount })}

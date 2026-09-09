@@ -33,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
 import { ListLoadError } from '@/components/lists/ListLoadError';
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
 import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import {
   Dialog,
@@ -50,7 +51,7 @@ import {
 } from '@/components/ui/select';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
-import { ChannelMark } from '@/components/ui/channel-mark';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { cn } from '@/lib/utils';
 import type { Review } from '@/types/review';
 import {
@@ -65,25 +66,16 @@ import {
   type DelegationMetrics,
 } from './_components/DelegationMetricsBoard';
 
-// ChannelMark `name` map (icon hint, EN-only — these are brand icon ids,
-// not user-facing copy). The user-facing display label is resolved
-// per-render through `reviews.platformLabels.<id>` inside the consumer
-// so a locale switch retitles the row without remounting.
-const PLATFORM_CHANNEL_MARK: Record<string, string> = {
-  yandex_business: 'Yandex.Business',
-  yandex: 'Yandex',
-  google: 'Google',
-  google_business: 'Google',
-  '2gis': '2GIS',
-  telegram: 'Telegram',
-  vk: 'VK',
-};
-
-// Whitelist of platform ids that have a translation key under
-// reviews.platformLabels. Anything outside this set falls back to the
-// raw platform id (defensive against backend adding new sources before
-// the FE has copy ready).
-const PLATFORM_LABEL_KEYS: ReadonlySet<string> = new Set(Object.keys(PLATFORM_CHANNEL_MARK));
+// Known labels are localized; unknown platform IDs remain visible as a fallback.
+const PLATFORM_LABEL_KEYS: ReadonlySet<string> = new Set([
+  'yandex_business',
+  'yandex',
+  'google',
+  'google_business',
+  '2gis',
+  'telegram',
+  'vk',
+]);
 
 // Telegram channels and VK comments don't carry a 0–5 rating — the
 // platform simply has no concept of one. Showing zero stars is misleading
@@ -192,6 +184,8 @@ export default function ReviewsPage() {
   const {
     data: reviews = [],
     isLoading,
+    isFetching,
+    isPlaceholderData,
     isError,
     refetch,
   } = useQuery<Review[]>({
@@ -210,6 +204,8 @@ export default function ReviewsPage() {
         });
     },
     enabled: !!activeBusinessId,
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === activeBusinessId ? previousData : undefined,
   });
 
   const slaQuery = useQuery<ReviewSLAResponse>({
@@ -335,6 +331,7 @@ export default function ReviewsPage() {
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatCell
+            isLoading={isLoading || isError}
             label={tReviews('stats.pendingLabel')}
             value={stats.pending}
             hint={
@@ -344,11 +341,13 @@ export default function ReviewsPage() {
             }
           />
           <StatCell
+            isLoading={isLoading || isError}
             label={tReviews('stats.totalLabel')}
             value={stats.total}
             hint={tReviews('stats.totalHint')}
           />
           <StatCell
+            isLoading={isLoading || isError}
             label={tReviews('stats.avgLabel')}
             value={stats.avg == null ? tReviews('stats.avgEmpty') : stats.avg.toFixed(1)}
             hint={
@@ -425,6 +424,7 @@ export default function ReviewsPage() {
             className="ml-auto gap-1.5"
             onClick={() => activeBusinessId && refreshMutation.mutate(activeBusinessId)}
             disabled={refreshMutation.isPending}
+            aria-busy={refreshMutation.isPending}
             title={tReviews('refreshTitle')}
           >
             {refreshMutation.isPending ? (
@@ -436,22 +436,35 @@ export default function ReviewsPage() {
           </Button>
         </div>
 
-        {isError && <ListLoadError onRetry={refetch} />}
+        {isPlaceholderData && (
+          <p role="status" className="mb-3 flex items-center gap-2 text-meta text-ink-soft">
+            <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
+            {tReviews('updatingResults')}
+          </p>
+        )}
+        {isError && <ListLoadError onRetry={refetch} isPending={isFetching} />}
 
         {!isError && isLoading && (
-          <div className="space-y-3 duration-200 animate-in fade-in">
+          <LoadingPlaceholder className="space-y-3">
             {Array.from({ length: 3 }, (_, i) => (
               <ReviewSkeleton key={i} />
             ))}
-          </div>
+          </LoadingPlaceholder>
         )}
 
-        {!isError && !isLoading && reviews.length === 0 && (
-          <ReviewsEmptyState replyStatus={replyStatus} />
+        {!isError && !isLoading && !isPlaceholderData && reviews.length === 0 && (
+          <ReviewsEmptyState
+            replyStatus={replyStatus}
+            filtered={platform !== 'all' || replyStatus !== 'all'}
+            onResetFilters={() => {
+              setPlatform('all');
+              setReplyStatus('all');
+            }}
+          />
         )}
 
         {!isError && !isLoading && reviews.length > 0 && (
-          <div className="space-y-3 duration-300 animate-in fade-in">
+          <div className="space-y-3" aria-busy={isPlaceholderData}>
             <p className="text-xs text-ink-soft">{tReviews('loadedSortLabel')}</p>
             {sortedReviews.map((review) => (
               <ReviewCard
@@ -468,7 +481,7 @@ export default function ReviewsPage() {
                 }
                 isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
                 isRetrying={retryMutation.isPending && retryMutation.variables?.id === review.id}
-                canReply={canReply}
+                canReply={canReply && !isPlaceholderData}
                 businessId={activeBusinessId}
                 canCreateTemplate={canCreateTemplate}
               />
@@ -486,9 +499,10 @@ export default function ReviewsPage() {
             <div className="space-y-4">
               <div className="rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
-                  <ChannelMark
-                    name={PLATFORM_CHANNEL_MARK[dialogReview.platform] ?? dialogReview.platform}
-                    size={20}
+                  <PlatformIcon
+                    platform={
+                      dialogReview.platform === 'yandex' ? 'yandex_business' : dialogReview.platform
+                    }
                   />
                   <span className="text-sm font-medium text-ink">{dialogReview.authorName}</span>
                   {platformHasRating(dialogReview.platform) && (
@@ -541,7 +555,9 @@ function StatCell({
   label,
   value,
   hint,
+  isLoading,
 }: {
+  isLoading: boolean;
   label: string;
   value: string | number;
   hint?: string;
@@ -550,9 +566,16 @@ function StatCell({
     <div className="rounded-md border border-line bg-paper-raised px-5 py-4">
       <MonoLabel>{label}</MonoLabel>
       <div className="mt-1.5 text-[26px] font-medium leading-none tracking-[-0.015em] text-ink">
-        {value}
+        {isLoading ? '—' : value}
       </div>
-      {hint && <div className="mt-1.5 text-xs text-ink-soft">{hint}</div>}
+      {hint && (
+        <div
+          aria-hidden={isLoading || undefined}
+          className={cn('mt-1.5 text-xs text-ink-soft', isLoading && 'invisible')}
+        >
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
@@ -584,9 +607,7 @@ function ReviewCard({
   const tPlatformLabels = useTranslations('reviews.platformLabels');
   const statusBadge = useReviewStatusBadges();
   const locale = useLocale() as Locale;
-  const channelMark = PLATFORM_CHANNEL_MARK[review.platform] ?? review.platform;
   const meta = {
-    channel: channelMark,
     label: PLATFORM_LABEL_KEYS.has(review.platform)
       ? tPlatformLabels(review.platform)
       : review.platform,
@@ -616,7 +637,10 @@ function ReviewCard({
     <article className="rounded-lg border border-line bg-paper-raised p-6 shadow-ov-1">
       {/* Header — channel mark, name, stars, date, status badge */}
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <ChannelMark name={meta.channel} size={22} />
+        <PlatformIcon
+          platform={review.platform === 'yandex' ? 'yandex_business' : review.platform}
+          className="size-6"
+        />
         <span className="text-sm font-medium text-ink">{review.authorName}</span>
         <span aria-hidden className="size-1 rounded-full bg-ink-faint" />
         <span className="text-xs text-ink-soft">{meta.label}</span>
@@ -659,7 +683,19 @@ function ReviewCard({
           <p className="mt-2 text-xs text-ink-soft">{tReviews('failedReply.explanation')}</p>
           {canReply && (
             <div className="mt-3 flex gap-2">
-              <Button variant="primary" size="sm" onClick={onRetry} disabled={isRetrying}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onRetry}
+                disabled={isRetrying}
+                aria-busy={isRetrying}
+              >
+                {isRetrying && (
+                  <Loader2
+                    aria-hidden
+                    className="mr-2 size-4 animate-spin motion-reduce:animate-none"
+                  />
+                )}
                 {isRetrying ? tReviews('sending') : tReviews('failedReply.retry')}
               </Button>
               <Button variant="ghost" size="sm" onClick={onWriteOwn} disabled={isRetrying}>
@@ -680,7 +716,19 @@ function ReviewCard({
           <p className="mt-2 text-sm leading-relaxed text-ink">{review.draftReply}</p>
           {canReply && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button variant="primary" size="sm" onClick={onSendDraft} disabled={isSending}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onSendDraft}
+                disabled={isSending}
+                aria-busy={isSending}
+              >
+                {isSending && (
+                  <Loader2
+                    aria-hidden
+                    className="mr-2 size-4 animate-spin motion-reduce:animate-none"
+                  />
+                )}
                 {isSending ? tReviews('sending') : tReviews('send')}
               </Button>
               <Button variant="ghost" size="sm" onClick={onEdit} disabled={isSending}>
@@ -723,8 +771,14 @@ function ReviewCard({
   );
 }
 
-function ReviewsEmptyState({ replyStatus }: { replyStatus: string }) {
+interface ReviewsEmptyStateProps {
+  replyStatus: string;
+  filtered: boolean;
+  onResetFilters: () => void;
+}
+
+function ReviewsEmptyState({ replyStatus, filtered, onResetFilters }: ReviewsEmptyStateProps) {
   const mode: ReviewsEmptyMode =
     replyStatus === 'pending' ? 'pending' : replyStatus === 'replied' ? 'replied' : 'all';
-  return <EmptyReviews mode={mode} />;
+  return <EmptyReviews mode={mode} onResetFilters={filtered ? onResetFilters : undefined} />;
 }

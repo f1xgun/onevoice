@@ -252,7 +252,8 @@ describe('VoiceProfileSection review regressions', () => {
   it('shows a status skeleton while profile data loads', async () => {
     getMock.mockReturnValue(deferred<never>().promise);
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    expect(screen.getByRole('status', { name: 'Загрузка…' })).toBeVisible();
+    expect(screen.getByRole('status', { hidden: true })).toHaveAttribute('aria-hidden', 'true');
+    expect(await screen.findByRole('status', { name: 'Загрузка…' })).toBeVisible();
   });
 
   it('offers the localized retry action after a read error', async () => {

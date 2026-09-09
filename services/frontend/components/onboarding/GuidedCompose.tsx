@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
@@ -254,7 +256,9 @@ export function GuidedCompose({ onCompose, disabled = false, className }: Guided
       <fieldset className="space-y-2">
         <legend className="text-xs font-medium text-ink-soft">{t('channelsLabel')}</legend>
         {loading ? (
-          <p className="text-sm text-ink-soft">{t('channelsLoading')}</p>
+          <LoadingPlaceholder as="p" className="text-sm text-ink-soft">
+            {t('channelsLoading')}
+          </LoadingPlaceholder>
         ) : permissionDenied ? (
           <p role="status" className="text-sm text-ink-soft">
             {t('channelsPermission')}

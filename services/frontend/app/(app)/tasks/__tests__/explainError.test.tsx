@@ -56,7 +56,7 @@ describe('explainError', () => {
     const out = explainError(task({ errorCode: 'rate_limit_exceeded' }));
     expect(out.summaryKey).toBe('rateLimit');
     expect(out.willAutoRetry).toBe(false);
-    expect(out.cta).toBeUndefined();
+    expect(out.cta).toEqual({ labelKey: 'openChat', href: '/chat' });
   });
 
   it('transient returns transient and does NOT promise auto-retry', () => {
@@ -72,10 +72,10 @@ describe('explainError', () => {
     expect(out.cta?.href).toBe('/integrations');
   });
 
-  it('media_too_large returns media (no CTA, no retry hint)', () => {
+  it('media_too_large offers chat to revise the image without promising a retry', () => {
     const out = explainError(task({ errorCode: 'media_too_large' }));
     expect(out.summaryKey).toBe('media');
-    expect(out.cta).toBeUndefined();
+    expect(out.cta).toEqual({ labelKey: 'openChat', href: '/chat' });
     expect(out.willAutoRetry).toBeFalsy();
   });
 

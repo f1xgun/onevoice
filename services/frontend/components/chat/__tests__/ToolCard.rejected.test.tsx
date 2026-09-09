@@ -23,7 +23,7 @@ describe('ToolCard — rejected', () => {
 
   it('SS: rejected tool name carries line-through + text-muted-foreground classes', () => {
     render(<ToolCard tool={makeRejected()} />);
-    const nameNode = screen.getByText('telegram__send_channel_post');
+    const nameNode = screen.getByText('Отправить пост');
     expect(nameNode.className).toMatch(/\bline-through\b/);
     expect(nameNode.className).toMatch(/\btext-muted-foreground\b/);
   });

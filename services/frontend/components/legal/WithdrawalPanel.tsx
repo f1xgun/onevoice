@@ -13,6 +13,8 @@
 
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useEffect, useState } from 'react';
 import { useTranslations, useLocale, useFormatter } from 'next-intl';
 import { toast } from 'sonner';
@@ -110,9 +112,13 @@ export function WithdrawalPanel() {
 
   if (!consents) {
     return (
-      <p aria-live="polite" className="text-[14px] text-[var(--ov-ink-mid)]">
+      <LoadingPlaceholder
+        as="p"
+        aria-live="polite"
+        className="text-[14px] text-[var(--ov-ink-mid)]"
+      >
         {t('loading')}
-      </p>
+      </LoadingPlaceholder>
     );
   }
 

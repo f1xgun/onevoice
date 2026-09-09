@@ -141,7 +141,9 @@ describe('BusinessRequiredGuard', () => {
     );
 
     expect(queryByText('protected')).toBeNull();
-    expect(getByRole('status')).toBeTruthy();
+    expect(
+      getByRole('status', { hidden: true }).closest('[data-loading-placeholder]')
+    ).toHaveAttribute('data-loading-placeholder', 'pending');
   });
 
   it('Test 5: businesses=[] redirects to /onboarding and sets activeBusinessId to null', async () => {
@@ -300,7 +302,9 @@ describe('BusinessRequiredGuard', () => {
     );
 
     expect(queryByText('protected')).toBeNull();
-    expect(getByRole('status')).toBeTruthy();
+    expect(
+      getByRole('status', { hidden: true }).closest('[data-loading-placeholder]')
+    ).toHaveAttribute('data-loading-placeholder', 'pending');
     expect(setActiveMock).toHaveBeenCalledWith('biz-1');
   });
 
@@ -409,7 +413,9 @@ describe('BusinessRequiredGuard', () => {
 
     expect(setActiveMock).toHaveBeenCalledWith('biz-1');
     expect(queryByText('protected')).toBeNull();
-    expect(getByRole('status')).toBeTruthy();
+    expect(
+      getByRole('status', { hidden: true }).closest('[data-loading-placeholder]')
+    ).toHaveAttribute('data-loading-placeholder', 'pending');
   });
 
   it.each([

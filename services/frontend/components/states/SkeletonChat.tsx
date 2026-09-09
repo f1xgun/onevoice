@@ -5,6 +5,8 @@
 // before message hydration completes — replaces the previous
 // indeterminate spinner.
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -62,7 +64,7 @@ export interface SkeletonChatProps {
 export function SkeletonChat({ className }: SkeletonChatProps) {
   const tSkeleton = useTranslations('states.skeleton');
   return (
-    <div
+    <LoadingPlaceholder
       role="status"
       aria-label={tSkeleton('chat')}
       aria-busy="true"
@@ -72,6 +74,6 @@ export function SkeletonChat({ className }: SkeletonChatProps) {
       <Bubble side="left" width="42%" lines={1} />
       <Bubble side="right" width="55%" lines={2} />
       <Bubble side="left" width="68%" lines={3} />
-    </div>
+    </LoadingPlaceholder>
   );
 }

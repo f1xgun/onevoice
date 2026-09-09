@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, AlertTriangle } from 'lucide-react';
@@ -114,11 +116,11 @@ export function ToolsPageClient() {
         )}
 
         {isLoading && (
-          <div className="flex flex-col gap-3">
+          <LoadingPlaceholder className="flex flex-col gap-3">
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-24 w-full" />
-          </div>
+          </LoadingPlaceholder>
         )}
 
         {loadError && !isLoading && (

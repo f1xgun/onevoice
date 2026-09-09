@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useMemo } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
@@ -46,11 +48,11 @@ export function PermissionTree({
 
   if (isLoading || !catalog) {
     return (
-      <div className="space-y-2" aria-busy="true">
+      <LoadingPlaceholder className="space-y-2" aria-busy="true">
         {Array.from({ length: SKELETON_GROUPS }).map((_, i) => (
           <Skeleton key={i} className="h-10 w-full" />
         ))}
-      </div>
+      </LoadingPlaceholder>
     );
   }
 

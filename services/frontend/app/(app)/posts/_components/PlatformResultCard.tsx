@@ -5,7 +5,7 @@
 import { useTranslations } from 'next-intl';
 import { ExternalLink } from 'lucide-react';
 
-import { ChannelMark } from '@/components/ui/channel-mark';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import type { Post } from '@/types/post';
 
@@ -25,7 +25,7 @@ export function PlatformResultCard({
   const display = CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? shortLabel;
   return (
     <div className="flex items-center gap-2.5 rounded-sm border border-line-soft bg-paper px-3 py-2">
-      <ChannelMark name={display} size={20} />
+      <PlatformIcon platform={platform} />
       <span className="flex-1 truncate text-[13px] text-ink-mid">
         {ok
           ? result.url

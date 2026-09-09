@@ -43,3 +43,17 @@ Same shape as all other platform agents:
 cd services/agent-vk && GOWORK=off go test -race ./...
 cd services/agent-vk && golangci-lint run --config ../../.golangci.yml ./...
 ```
+
+## Review author names
+
+`GetComments` uses `wall.getComments` with `extended=1` and resolves each
+comment's signed `from_id` against `profiles` (people) or `groups` (communities),
+including nested thread comments. Names travel in the existing `author` result
+field; no extra profile API requests are needed. Missing profiles have a readable
+fallback; deleted and banned accounts have explicit labels.
+
+The API's normal review sync updates existing `author_name` values on upsert,
+so refreshing reviews replaces historical `vk_user_<id>` labels without a schema
+migration. A sync that omits profile data does not overwrite a previously known
+name. Until refreshed, API serialization hides historical synthetic names behind
+the same readable fallback; it does not claim to know an unavailable real name.

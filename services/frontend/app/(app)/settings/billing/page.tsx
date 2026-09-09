@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useMemo, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
@@ -141,7 +143,7 @@ function SummaryCards({ summary }: { summary: BillingSummary }) {
 
 function LoadingCards() {
   return (
-    <div aria-busy="true" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <LoadingPlaceholder aria-busy="true" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {[0, 1, 2, 3].map((i) => (
         <Card key={i}>
           <CardHeader>
@@ -152,7 +154,7 @@ function LoadingCards() {
           </CardContent>
         </Card>
       ))}
-    </div>
+    </LoadingPlaceholder>
   );
 }
 

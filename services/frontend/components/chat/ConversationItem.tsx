@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { Loader2, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 
 import { ConversationPreview } from '@/components/chat/ConversationPreview';
@@ -29,19 +29,27 @@ export interface Conversation {
   projectId?: string | null;
 }
 
+interface ConversationItemProps {
+  busy?: boolean;
+  canUpdate?: boolean;
+  canDelete?: boolean;
+  conv: Conversation;
+  onOpen: () => void;
+  onRename: (title: string) => void;
+  onDelete: () => void;
+  onRegenerateTitle: () => void;
+}
+
 export function ConversationItem({
   conv,
   onOpen,
   onRename,
   onDelete,
   onRegenerateTitle,
-}: {
-  conv: Conversation;
-  onOpen: () => void;
-  onRename: (title: string) => void;
-  onDelete: () => void;
-  onRegenerateTitle: () => void;
-}) {
+  busy = false,
+  canUpdate = true,
+  canDelete = true,
+}: ConversationItemProps) {
   const tRow = useTranslations('chat.rowMenu');
   const getDisplayTitle = useConversationDisplayTitle();
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
@@ -69,7 +77,10 @@ export function ConversationItem({
   const displayTitle = getDisplayTitle(conv);
 
   return (
-    <div className="group flex min-h-16 items-center gap-3 border-b border-line px-4 py-3 hover:bg-paper-sunken">
+    <div
+      aria-busy={busy}
+      className="group flex min-h-16 items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-paper-sunken"
+    >
       <div className="min-w-0 flex-1">
         {editing ? (
           <Input
@@ -90,9 +101,9 @@ export function ConversationItem({
           />
         ) : (
           <button type="button" className="block min-h-11 w-full text-left" onClick={onOpen}>
-            <p className="break-words text-action">{displayTitle}</p>
+            <p className="line-clamp-1 break-words text-action">{displayTitle}</p>
             <ConversationPreview preview={conv.preview} />
-            <p className="text-sm text-ink-soft">
+            <p className="mt-1 text-meta text-ink-soft">
               {tRow('created')}{' '}
               <time dateTime={conv.createdAt}>
                 {formatDistanceToNow(new Date(conv.createdAt), {
@@ -105,11 +116,18 @@ export function ConversationItem({
         )}
       </div>
 
-      {!editing && (
+      {busy && (
+        <span role="status" className="flex shrink-0 items-center gap-1 text-meta text-ink-soft">
+          <Loader2 aria-hidden className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+          {tRow('updating')}
+        </span>
+      )}
+      {!editing && (canUpdate || canDelete) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
+              disabled={busy}
               size="icon"
               aria-label={tRow('triggerAria', { title: displayTitle })}
               className="shrink-0"
@@ -119,20 +137,22 @@ export function ConversationItem({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                setDraft(conv.title);
-                setEditing(true);
-              }}
-            >
-              <Pencil size={14} className="mr-2" />
-              {tRow('rename')}
-            </DropdownMenuItem>
+            {canUpdate && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDraft(conv.title);
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={14} className="mr-2" />
+                {tRow('rename')}
+              </DropdownMenuItem>
+            )}
             {/* Between Переименовать and Удалить.
                 Hidden when titleStatus === 'manual' so manual renames stay
                 sovereign (hard rule). */}
-            {conv.titleStatus !== 'manual' && (
+            {canUpdate && conv.titleStatus !== 'manual' && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -143,19 +163,28 @@ export function ConversationItem({
                 {tRow('regenerateTitle')}
               </DropdownMenuItem>
             )}
-            <DropdownMenuSeparator />
-            <MoveChatMenuItem conversationId={conv.id} currentProjectId={conv.projectId ?? null} />
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-[var(--ov-danger)] focus:text-[var(--ov-danger)]"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              <Trash2 size={14} className="mr-2" />
-              {tRow('delete')}
-            </DropdownMenuItem>
+            {canUpdate && (
+              <>
+                <DropdownMenuSeparator />
+                <MoveChatMenuItem
+                  conversationId={conv.id}
+                  currentProjectId={conv.projectId ?? null}
+                />
+              </>
+            )}
+            {canUpdate && canDelete && <DropdownMenuSeparator />}
+            {canDelete && (
+              <DropdownMenuItem
+                className="text-[var(--ov-danger)] focus:text-[var(--ov-danger)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash2 size={14} className="mr-2" />
+                {tRow('delete')}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

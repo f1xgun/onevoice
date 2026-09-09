@@ -4,6 +4,8 @@
 // "Skeleton: карточки метрик" (lines 240–254). Used while
 // /posts (and similar) compute aggregate counters.
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,7 +25,7 @@ export interface SkeletonMetricStripProps {
 export function SkeletonMetricStrip({ count = 4, className }: SkeletonMetricStripProps) {
   const tSkeleton = useTranslations('states.skeleton');
   return (
-    <div
+    <LoadingPlaceholder
       role="status"
       aria-label={tSkeleton('metricStrip')}
       aria-busy="true"
@@ -43,6 +45,6 @@ export function SkeletonMetricStrip({ count = 4, className }: SkeletonMetricStri
           <Skeleton className="h-2 w-[120px] opacity-60" />
         </div>
       ))}
-    </div>
+    </LoadingPlaceholder>
   );
 }

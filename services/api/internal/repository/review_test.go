@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -796,4 +797,21 @@ func TestReviewRepository_FailedReplyPreservesDraft(t *testing.T) {
 	got, err = repo.GetByID(ctx, review.ID)
 	require.NoError(t, err)
 	require.Empty(t, got.DraftReply)
+}
+
+func TestReviewUpsert_VKAuthorRefresh(t *testing.T) {
+	for _, name := range []string{"Иван Петров", domain.VKUnknownUserName, domain.VKUnknownCommunityName} {
+		t.Run(name, func(t *testing.T) {
+			_, update := reviewUpsert(&domain.Review{Platform: "vk", AuthorName: name})
+			set := update["$set"].(bson.M)
+			insert := update["$setOnInsert"].(bson.M)
+			if name == "Иван Петров" {
+				assert.Equal(t, name, set["author_name"], "sync upgrades previously stored synthetic names")
+				assert.NotContains(t, insert, "author_name")
+			} else {
+				assert.NotContains(t, set, "author_name", "missing profile must not erase a known name")
+				assert.Equal(t, name, insert["author_name"], "new reviews still have a readable fallback")
+			}
+		})
+	}
 }

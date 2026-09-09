@@ -12,6 +12,7 @@ import (
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
 	"golang.org/x/time/rate"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/safefetch"
 )
 
@@ -187,15 +188,31 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 		return nil, err
 	}
 
-	resp, err := c.vk.WallGetComments(vkapi.Params{
+	resp, err := c.vk.WallGetCommentsExtended(vkapi.Params{
 		"owner_id":           groupID,
 		"post_id":            postID,
 		"count":              count,
-		"extended":           0,
 		"thread_items_count": 10,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("vk wall.getComments: %w", err)
+	}
+
+	// Extended responses contain the names of authors on this owned wall,
+	// including thread authors. Resolve in one request rather than per comment.
+	authors := make(map[int]string, len(resp.Profiles)+len(resp.Groups))
+	for _, profile := range resp.Profiles {
+		name := strings.TrimSpace(strings.TrimSpace(profile.FirstName) + " " + strings.TrimSpace(profile.LastName))
+		switch profile.Deactivated {
+		case "deleted":
+			name = "Удалённый аккаунт ВКонтакте"
+		case "banned":
+			name = "Заблокированный аккаунт ВКонтакте"
+		}
+		authors[profile.ID] = name
+	}
+	for _, group := range resp.Groups {
+		authors[-group.ID] = strings.TrimSpace(group.Name)
 	}
 
 	ownerID, _ := strconv.Atoi(groupID)
@@ -210,6 +227,7 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 				"text":    cleanVKText(entry.text),
 				"date":    entry.date,
 				"from_id": entry.fromID,
+				"author":  domain.VKReviewAuthorName(authors[entry.fromID], int64(entry.fromID)),
 				"post_id": postID,
 			}
 			var latestReply, latestReplyAt int

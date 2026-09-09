@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useTranslations } from 'next-intl';
 
 import { Skeleton } from '@/components/ui/skeleton';
@@ -31,7 +33,7 @@ export default function RolesPage() {
 
         {isLoading ? (
           <>
-            <section className="space-y-3" aria-busy="true">
+            <LoadingPlaceholder as="section" className="space-y-3" aria-busy="true">
               <h2 className="text-lg font-medium text-ink">{tList('systemSection')}</h2>
               <ul
                 role="list"
@@ -45,8 +47,8 @@ export default function RolesPage() {
                   </li>
                 ))}
               </ul>
-            </section>
-            <section className="space-y-3" aria-busy="true">
+            </LoadingPlaceholder>
+            <LoadingPlaceholder as="section" className="space-y-3" aria-busy="true">
               <h2 className="text-lg font-medium text-ink">{tList('customSection')}</h2>
               <ul
                 role="list"
@@ -60,7 +62,7 @@ export default function RolesPage() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </LoadingPlaceholder>
           </>
         ) : isError ? (
           <div className="rounded-md border border-dashed border-line p-6">

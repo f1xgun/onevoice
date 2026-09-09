@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { type UseFormReturn } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
 import {
@@ -87,7 +89,9 @@ export function ToolsTab({
                   onChange={field.onChange}
                 />
               ) : (
-                <p className="text-sm text-muted-foreground">{tForm('loadingTools')}</p>
+                <LoadingPlaceholder as="p" className="text-sm text-muted-foreground">
+                  {tForm('loadingTools')}
+                </LoadingPlaceholder>
               )}
             </FormControl>
             <FormMessage />

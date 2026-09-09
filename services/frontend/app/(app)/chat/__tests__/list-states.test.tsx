@@ -20,6 +20,9 @@ vi.mock('@/lib/stores/business', () => ({
 }));
 vi.mock('@/lib/conversations', () => ({ listConversations: vi.fn() }));
 vi.mock('@/lib/api/business-api', () => ({ bizApi: vi.fn() }));
+vi.mock('@/hooks/useProjects', () => ({
+  useProjectsQuery: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }),
+}));
 vi.mock('@/lib/telemetry', () => ({ trackClick: h.trackClick }));
 
 function renderPage() {
@@ -35,7 +38,10 @@ it('separates pending data, a failed list and a successful empty retry', async (
   h.activeBusinessId = 'test-org';
   vi.mocked(listConversations).mockReturnValueOnce(new Promise(() => {}));
   renderPage();
-  expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
+  expect(screen.getByRole('status', { hidden: true })).toHaveAttribute(
+    'data-loading-placeholder',
+    'pending'
+  );
   expect(screen.queryByText('Нет диалогов')).not.toBeInTheDocument();
   cleanup();
   vi.mocked(listConversations)

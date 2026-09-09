@@ -4,6 +4,8 @@
 // PlatformCard layout. Static paper-sunken blocks shaped like the
 // real card: square mark + title + description + CTA strip.
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,7 +20,7 @@ export interface SkeletonChannelsProps {
 export function SkeletonChannels({ count = 3, className }: SkeletonChannelsProps) {
   const tSkeleton = useTranslations('states.skeleton');
   return (
-    <div
+    <LoadingPlaceholder
       role="status"
       aria-label={tSkeleton('channels')}
       aria-busy="true"
@@ -38,6 +40,6 @@ export function SkeletonChannels({ count = 3, className }: SkeletonChannelsProps
           </div>
         </div>
       ))}
-    </div>
+    </LoadingPlaceholder>
   );
 }

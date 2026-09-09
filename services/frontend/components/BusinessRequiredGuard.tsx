@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useEffect, type ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -133,13 +135,13 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
     (!!activeBusinessId && !activeIsAvailable)
   ) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <LoadingPlaceholder className="flex h-screen items-center justify-center">
         <div
           role="status"
           aria-label={t('loading')}
           className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-transparent"
         />
-      </div>
+      </LoadingPlaceholder>
     );
   }
 

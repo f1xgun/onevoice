@@ -10,6 +10,8 @@
 
 'use client';
 
+import { EmptyAction } from './EmptyAction';
+
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
@@ -31,7 +33,9 @@ export function EmptyInbox({ onOpenArchive }: EmptyInboxProps) {
           <Button variant="secondary" size="sm" onClick={onOpenArchive}>
             {tStates('openArchive')}
           </Button>
-        ) : undefined
+        ) : (
+          <EmptyAction />
+        )
       }
     />
   );

@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -21,11 +23,11 @@ export default function EditProjectPage() {
     return (
       <>
         <PageHeader title={tEdit('title')} />
-        <div className="mx-auto w-full max-w-2xl space-y-3 px-4 pb-10 sm:px-12 sm:pb-16">
+        <LoadingPlaceholder className="mx-auto w-full max-w-2xl space-y-3 px-4 pb-10 sm:px-12 sm:pb-16">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-40 w-full" />
-        </div>
+        </LoadingPlaceholder>
       </>
     );
   }

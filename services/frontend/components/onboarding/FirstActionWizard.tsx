@@ -24,7 +24,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { localeToIntlTag, type Locale } from '@/lib/i18n/locales';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { MonoLabel } from '@/components/ui/mono-label';
-import { ChannelMark } from '@/components/ui/channel-mark';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import {
   Dialog,
   AppDialog as DialogContent,
@@ -50,16 +50,6 @@ const POLL_TIMEOUT_MS = 60_000;
 // The chat fallback route — a brand-new org with no reviews is pointed here to
 // compose a post instead (the guided-compose path lands later).
 const CHAT_HREF = '/chat';
-
-const PLATFORM_CHANNEL_MARK: Record<string, string> = {
-  yandex_business: 'Yandex.Business',
-  yandex: 'Yandex',
-  google: 'Google',
-  google_business: 'Google',
-  '2gis': '2GIS',
-  telegram: 'Telegram',
-  vk: 'VK',
-};
 
 const PLATFORMS_WITH_RATING = new Set([
   'yandex_business',
@@ -342,14 +332,13 @@ function PreparingState({ label, hint }: { label: string; hint: string }) {
 function ReadyState({ review, publishing }: { review: Review; publishing: boolean }) {
   const t = useTranslations('gettingStarted.wizard');
   const locale = useLocale() as Locale;
-  const channelMark = PLATFORM_CHANNEL_MARK[review.platform] ?? review.platform;
   const hasRating = PLATFORMS_WITH_RATING.has(review.platform) && review.rating > 0;
 
   return (
     <div className="space-y-4" aria-busy={publishing}>
       <div className="rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
         <div className="mb-1.5 flex items-center gap-2">
-          <ChannelMark name={channelMark} size={20} />
+          <PlatformIcon platform={review.platform} />
           <span className="text-sm font-medium text-ink">{review.authorName}</span>
           {hasRating && <StarRating rating={review.rating} />}
           <span className="ml-auto">

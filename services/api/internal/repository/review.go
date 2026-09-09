@@ -99,9 +99,13 @@ func reviewUpsert(review *domain.Review) (filter, update bson.M) {
 	}
 
 	setFields := bson.M{
-		"author_name": review.AuthorName,
-		"rating":      review.Rating,
-		"text":        review.Text,
+		"rating": review.Rating,
+		"text":   review.Text,
+	}
+	// Missing profile data must not erase a previously resolved VK name.
+	unknownVKAuthor := review.Platform == "vk" && (review.AuthorName == domain.VKUnknownUserName || review.AuthorName == domain.VKUnknownCommunityName)
+	if !unknownVKAuthor {
+		setFields["author_name"] = review.AuthorName
 	}
 	if review.ReplyText != "" {
 		setFields["reply_text"] = review.ReplyText
@@ -134,6 +138,9 @@ func reviewUpsert(review *domain.Review) (filter, update bson.M) {
 		// created_at must never mutate after first insert, so it lives in
 		// $setOnInsert rather than $set.
 		"created_at": review.CreatedAt,
+	}
+	if unknownVKAuthor {
+		insertFields["author_name"] = review.AuthorName
 	}
 	if _, set := setFields["reply_status"]; !set {
 		insertFields["reply_status"] = review.ReplyStatus

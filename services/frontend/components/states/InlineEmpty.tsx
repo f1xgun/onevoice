@@ -17,12 +17,16 @@ import { cn } from '@/lib/utils';
 
 export interface InlineEmptyProps {
   children: React.ReactNode;
+  action?: React.ReactNode;
   className?: string;
 }
 
-export function InlineEmpty({ children, className }: InlineEmptyProps) {
+export function InlineEmpty({ children, action, className }: InlineEmptyProps) {
   return (
-    <div className={cn('px-5 py-10 text-center text-sm text-ink-soft', className)}>{children}</div>
+    <div className={cn('px-5 py-10 text-center text-sm text-ink-soft', className)}>
+      {children}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
   );
 }
 

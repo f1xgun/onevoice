@@ -6,6 +6,8 @@
 // the real inbox row: avatar disc + two-line text + right-side
 // timestamp.
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,7 +35,7 @@ export interface SkeletonInboxProps {
 export function SkeletonInbox({ rows = 4, className }: SkeletonInboxProps) {
   const tSkeleton = useTranslations('states.skeleton');
   return (
-    <div
+    <LoadingPlaceholder
       role="status"
       aria-label={tSkeleton('inbox')}
       aria-live="polite"
@@ -68,6 +70,6 @@ export function SkeletonInbox({ rows = 4, className }: SkeletonInboxProps) {
           <Skeleton className="h-[9px] w-[50px]" />
         </div>
       ))}
-    </div>
+    </LoadingPlaceholder>
   );
 }

@@ -3,13 +3,15 @@
 // posts-table grid template so the page doesn't reflow when data lands.
 //
 // Extracted from posts/page.tsx as part of.
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { Skeleton } from '@/components/ui/skeleton';
 
 const SKELETON_ROW_COUNT = 5;
 
 export function PostsSkeleton() {
   return (
-    <div className="divide-y divide-line-soft">
+    <LoadingPlaceholder className="divide-y divide-line-soft">
       {Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
         <div
           key={i}
@@ -23,6 +25,6 @@ export function PostsSkeleton() {
           <span aria-hidden />
         </div>
       ))}
-    </div>
+    </LoadingPlaceholder>
   );
 }

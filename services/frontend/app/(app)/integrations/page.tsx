@@ -1,5 +1,7 @@
 'use client';
 
+import { EmptyAction } from '@/components/states/EmptyAction';
+
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -293,7 +295,10 @@ export default function IntegrationsPage() {
 
         <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
         {!activeBusinessId ? (
-          <InlineEmpty className="mb-8 rounded-lg border border-line bg-paper-raised">
+          <InlineEmpty
+            action={<EmptyAction href="/business" action="chooseBusiness" />}
+            className="mb-8 rounded-lg border border-line bg-paper-raised"
+          >
             {tIntegrations('page.chooseOrganization')}
           </InlineEmpty>
         ) : integrationsError ? (
@@ -324,7 +329,10 @@ export default function IntegrationsPage() {
           </div>
         ) : integrations.length === 0 && !canConnect ? (
           <div className="mb-8">
-            <InlineEmpty className="rounded-lg border border-line bg-paper-raised">
+            <InlineEmpty
+              action={<EmptyAction href="/getting-started" action="gettingStarted" />}
+              className="rounded-lg border border-line bg-paper-raised"
+            >
               {tIntegrations('page.viewerNoChannels')}
             </InlineEmpty>
           </div>

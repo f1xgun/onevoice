@@ -596,3 +596,42 @@ func TestHTTPTimeoutMechanism_BoundsStalledPeer(t *testing.T) {
 		t.Fatal("PublishPost blocked past the injected HTTP timeout: VK REST client is not bounded")
 	}
 }
+
+func TestClient_GetComments_ResolvesAuthorsFromExtendedResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "/method/wall.getComments", r.URL.Path)
+		assert.Equal(t, "1", r.Form.Get("extended"))
+		w.Header().Set("Content-Type", "application/json")
+		assert.Equal(t, "-123456", r.Form.Get("owner_id"))
+		_, _ = w.Write([]byte(`{"response": {
+			"items": [
+				{"id":1,"from_id":11,"text":"Top level","date":1,"thread":{"items":[
+					{"id":2,"from_id":22,"text":"Thread","date":2},
+					{"id":3,"from_id":-55,"text":"Community","date":3}
+				]}},
+				{"id":4,"from_id":33,"text":"Deleted","date":4},
+				{"id":5,"from_id":44,"text":"Missing","date":5},
+				{"id":6,"from_id":-66,"text":"Missing community","date":6},
+				{"id":7,"from_id":77,"text":"Banned","date":7},
+				{"id":8,"from_id":88,"text":"No name","date":8}
+			],
+			"profiles":[
+				{"id":22,"first_name":" Мария ","last_name":" Иванова "},
+				{"id":11,"first_name":"Иван","last_name":"Петров","is_closed":true},
+				{"id":33,"first_name":"DELETED","deactivated":"deleted"},
+				{"id":77,"first_name":"Old name","deactivated":"banned"},
+				{"id":88,"first_name":"  ","last_name":" "}
+			],
+			"groups":[{"id":55,"name":"Кофейня"}]
+		}}`))
+	}))
+	defer srv.Close()
+
+	comments, err := newClient(srv).GetComments("-123456", 42, 10)
+	require.NoError(t, err)
+	require.Len(t, comments, 8)
+	for i, want := range []string{"Иван Петров", "Мария Иванова", "Кофейня", "Удалённый аккаунт ВКонтакте", "Пользователь ВКонтакте", "Сообщество ВКонтакте", "Заблокированный аккаунт ВКонтакте", "Пользователь ВКонтакте"} {
+		assert.Equal(t, want, comments[i]["author"])
+	}
+}

@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -92,11 +94,11 @@ export default function AcceptInvitePage() {
     <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-12">
       <div className="w-full max-w-md rounded-lg border border-line bg-paper-raised p-8 shadow-ov-2">
         {preview.isLoading && (
-          <div className="flex flex-col gap-4">
+          <LoadingPlaceholder className="flex flex-col gap-4">
             <Skeleton className="h-3 w-1/2" />
             <Skeleton className="h-6 w-3/4" />
             <Skeleton className="h-9 w-full" />
-          </div>
+          </LoadingPlaceholder>
         )}
 
         {preview.isError &&

@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocale, useTranslations } from 'next-intl';
@@ -51,9 +53,12 @@ export function DriftAlertSettings({ businessId }: { businessId: string }) {
 
   if (readPermission.isLoading) {
     return (
-      <div className="mt-6 border-t border-line-soft pt-5 text-sm text-ink-mid" role="status">
+      <LoadingPlaceholder
+        className="mt-6 border-t border-line-soft pt-5 text-sm text-ink-mid"
+        role="status"
+      >
         {t('loading')}
-      </div>
+      </LoadingPlaceholder>
     );
   }
   if (readPermission.isError) {
@@ -75,9 +80,12 @@ export function DriftAlertSettings({ businessId }: { businessId: string }) {
   if (!canRead) return null;
   if (query.isLoading) {
     return (
-      <div className="mt-6 border-t border-line-soft pt-5 text-sm text-ink-mid" role="status">
+      <LoadingPlaceholder
+        className="mt-6 border-t border-line-soft pt-5 text-sm text-ink-mid"
+        role="status"
+      >
         {t('loading')}
-      </div>
+      </LoadingPlaceholder>
     );
   }
   if (query.isError) {
