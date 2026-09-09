@@ -2,6 +2,8 @@
 
 import { useTranslations } from 'next-intl';
 
+import { PlatformIcon } from './PlatformIcons';
+
 import { ActionButton } from '@/components/design-system/ActionButton';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { MonoLabel } from '@/components/ui/mono-label';
@@ -64,8 +66,10 @@ export function ChannelDemandCards({ businessId, platforms }: ChannelDemandCards
             >
               <span
                 aria-hidden
-                className="h-10 w-10 shrink-0 rounded-md border border-line-soft bg-paper-sunken"
-              />
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-soft bg-paper-sunken"
+              >
+                <PlatformIcon platform={platform.id} className="h-6 w-6" />
+              </span>
               <div className="min-w-32 flex-1">
                 <div className="text-[15px] font-medium text-ink">{platform.fullLabel}</div>
                 <MonoLabel className="mt-0.5">

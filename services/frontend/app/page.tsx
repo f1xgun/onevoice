@@ -3,8 +3,7 @@ import { ArrowRight, Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { ThemeSwitcher } from '@/components/design-system/ThemeSwitcher';
-import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { AppearanceControls } from '@/components/design-system/AppearanceControls';
 import { WorkExample } from '@/components/landing/WorkExample';
 import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
 import { WaitlistForm } from '@/components/landing/WaitlistForm';
@@ -68,11 +67,8 @@ function SiteNav({ mode }: LandingEntryProps) {
         >
           {tNav('pricing')}
         </a>
-        <div className="flex items-center gap-1">
-          <ThemeSwitcher />
-          <LanguageSwitcher className="min-h-11 min-w-11" />
-        </div>
-        <nav className="hidden items-center gap-6 text-sm text-ink-mid md:flex">
+        <AppearanceControls className="md:order-last md:ml-3" />
+        <nav className="hidden items-center gap-6 text-sm text-ink-mid md:ml-4 md:flex">
           {NAV_HREFS.map((href) => (
             <a key={href} href={href} className="underline hover:text-brand">
               {navLabels[href]}

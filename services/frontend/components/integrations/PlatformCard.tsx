@@ -7,12 +7,13 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
 
+import { PlatformIcon } from './PlatformIcons';
+
 import { getIntegrationDisplay } from '@/lib/integrations';
 import {
   PLATFORM_DISPLAY_FIELD,
   PLATFORM_REFRESH_ENDPOINTS,
   isKnownPlatform,
-  platformInitials,
   type PlatformId,
 } from '@/lib/platforms';
 import {
@@ -125,7 +126,6 @@ export function PlatformCard({
   }
 
   const connection = channelConnectionState(integrations);
-  const initials = platformInitials(platform, label);
 
   return (
     <div
@@ -140,7 +140,7 @@ export function PlatformCard({
           aria-hidden
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-soft bg-paper-sunken font-mono text-[11px] text-ink-soft"
         >
-          {initials}
+          <PlatformIcon platform={platform} className="h-6 w-6" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
