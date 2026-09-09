@@ -87,11 +87,12 @@ func TestContentTemplateCreateSerializesOrganizationCap(t *testing.T) {
 	close(errs)
 	created, limited := 0, 0
 	for err := range errs {
-		if err == nil {
+		switch {
+		case err == nil:
 			created++
-		} else if errors.Is(err, domain.ErrContentTemplateLimit) {
+		case errors.Is(err, domain.ErrContentTemplateLimit):
 			limited++
-		} else {
+		default:
 			t.Errorf("unexpected create error: %v", err)
 		}
 	}

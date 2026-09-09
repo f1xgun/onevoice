@@ -25,15 +25,15 @@ func (r *handlerTemplateRepo) GetByID(_ context.Context, businessID, id uuid.UUI
 	if r.template.BusinessID != businessID || r.template.ID != id {
 		return nil, domain.ErrContentTemplateNotFound
 	}
-	copy := r.template
-	return &copy, nil
+	cloned := r.template
+	return &cloned, nil
 }
 func (r *handlerTemplateRepo) Create(context.Context, *domain.ContentTemplate, int) error { return nil }
 func (r *handlerTemplateRepo) Update(context.Context, *domain.ContentTemplate) error      { return nil }
 func (r *handlerTemplateRepo) Delete(context.Context, uuid.UUID, uuid.UUID) error         { return nil }
 
 func templateHandlerRequest(method, path string, businessID uuid.UUID, permissions ...authz.Permission) *http.Request {
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequest(method, path, http.NoBody)
 	routeCtx := chi.NewRouteContext()
 	routeCtx.URLParams.Add("templateId", path[strings.LastIndex(path, "/")+1:])
 	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx)

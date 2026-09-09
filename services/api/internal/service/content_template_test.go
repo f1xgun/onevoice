@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 type contentTemplateRepoStub struct{ created *domain.ContentTemplate }

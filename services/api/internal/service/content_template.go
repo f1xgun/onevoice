@@ -103,13 +103,13 @@ func referencedPlaceholders(body string) (map[string]struct{}, error) {
 			if closeOffset < 0 {
 				return nil, invalidContentTemplate("malformed placeholder")
 			}
-			close := i + 1 + closeOffset
-			key := body[i+1 : close]
+			closing := i + 1 + closeOffset
+			key := body[i+1 : closing]
 			if !contentTemplatePlaceholder.MatchString(key) || strings.ContainsAny(key, "{}") {
 				return nil, invalidContentTemplate("malformed placeholder")
 			}
 			out[key] = struct{}{}
-			i = close + 1
+			i = closing + 1
 		case '}':
 			if i+1 < len(body) && body[i+1] == '}' {
 				i += 2
@@ -215,25 +215,26 @@ func (s *ContentTemplateService) Render(ctx context.Context, businessID, id uuid
 func renderContentTemplate(body string, values map[string]string) (string, error) {
 	var rendered strings.Builder
 	for i := 0; i < len(body); {
-		if body[i] == '{' && i+1 < len(body) && body[i+1] == '{' {
+		switch {
+		case body[i] == '{' && i+1 < len(body) && body[i+1] == '{':
 			rendered.WriteByte('{')
 			i += 2
-		} else if body[i] == '}' && i+1 < len(body) && body[i+1] == '}' {
+		case body[i] == '}' && i+1 < len(body) && body[i+1] == '}':
 			rendered.WriteByte('}')
 			i += 2
-		} else if body[i] == '{' {
+		case body[i] == '{':
 			closeOffset := strings.IndexByte(body[i+1:], '}')
 			if closeOffset < 0 {
 				return "", invalidContentTemplate("malformed placeholder")
 			}
-			close := i + 1 + closeOffset
-			value, ok := values[body[i+1:close]]
+			closing := i + 1 + closeOffset
+			value, ok := values[body[i+1:closing]]
 			if !ok {
 				return "", invalidContentTemplate("invalid placeholder value")
 			}
 			rendered.WriteString(value)
-			i = close + 1
-		} else {
+			i = closing + 1
+		default:
 			rendered.WriteByte(body[i])
 			i++
 		}
