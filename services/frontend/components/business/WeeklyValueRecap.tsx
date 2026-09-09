@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { useAuthStore } from '@/lib/auth';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackEvent } from '@/lib/telemetry';
@@ -48,7 +49,7 @@ export function WeeklyValueRecap() {
       bizApi(businessId!)
         .get<WeeklyRecap>(BIZ_API_PATHS.RECAP.LATEST)
         .then((response) =>
-          response.status === 204 ? null : weeklyRecapSchema.parse(response.data)
+          response.status === HTTP_STATUS.NO_CONTENT ? null : weeklyRecapSchema.parse(response.data)
         ),
     enabled: !!businessId && !!userId && readPermission.allowed,
     retry: false,
