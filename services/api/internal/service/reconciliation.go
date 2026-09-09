@@ -48,6 +48,8 @@ const (
 	driftAlertRetryBase       = time.Minute
 	driftAlertRetryMax        = time.Hour
 	driftAlertDispatchTimeout = 30 * time.Second
+	reconcilePassTimeout      = 5 * time.Minute
+	driftRetryPersistTimeout  = 2 * time.Second
 )
 
 // reconcileSupportedPlatforms are the platforms whose profile OneVoice writes
@@ -121,10 +123,12 @@ func (s *ReconciliationService) SetDriftAlerts(tasks domain.AgentTaskRepository,
 // count is the number of channels found drifting this pass. Per-channel fetch
 // failures are recorded (backoff) but never fail the pass.
 func (s *ReconciliationService) Reconcile(ctx context.Context) (int, error) {
+	passCtx, cancel := context.WithTimeout(ctx, reconcilePassTimeout)
+	defer cancel()
 	var count int
-	locked, err := s.syncState.WithReconcileLock(ctx, func() error {
+	locked, err := s.syncState.WithReconcileLock(passCtx, func() error {
 		var runErr error
-		count, runErr = s.reconcilePass(ctx)
+		count, runErr = s.reconcilePass(passCtx)
 		return runErr
 	})
 	if err != nil {
@@ -152,9 +156,21 @@ func (s *ReconciliationService) reconcilePass(ctx context.Context) (int, error) 
 	var errsMu sync.Mutex
 	sem := make(chan struct{}, reconcileConcurrency)
 	var wg sync.WaitGroup
+	admissionCanceled := false
 	for _, row := range due {
+		if err := ctx.Err(); err != nil {
+			admissionCanceled = true
+			break
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			admissionCanceled = true
+		}
+		if admissionCanceled {
+			break
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(row domain.SyncState) {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -173,6 +189,9 @@ func (s *ReconciliationService) reconcilePass(ctx context.Context) (int, error) 
 		}(row)
 	}
 	wg.Wait()
+	if admissionCanceled {
+		passErrs = append(passErrs, ctx.Err())
+	}
 	if err := s.retryPendingAlerts(ctx); err != nil {
 		passErrs = append(passErrs, err)
 	}
@@ -259,12 +278,19 @@ func (s *ReconciliationService) reconcileOne(ctx context.Context, row domain.Syn
 }
 
 func (s *ReconciliationService) retryPendingAlerts(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	pending, err := s.syncState.ListPendingDriftAlerts(ctx)
 	if err != nil {
 		return fmt.Errorf("list pending drift alerts: %w", err)
 	}
 	var errs []error
 	for _, episode := range pending {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+			break
+		}
 		if err := s.deliverOrScheduleDriftAlert(ctx, episode); err != nil {
 			errs = append(errs, err)
 		}
@@ -278,7 +304,13 @@ func (s *ReconciliationService) deliverOrScheduleDriftAlert(ctx context.Context,
 		return nil
 	}
 	retryAt := s.now().Add(driftAlertRetryDelay(episode.RetryCount))
-	if scheduleErr := s.syncState.ScheduleDriftAlertRetry(ctx, episode.SyncStateID, episode.EpisodeID, retryAt); scheduleErr != nil {
+	scheduleCtx := ctx
+	cancel := func() {}
+	if ctx.Err() != nil {
+		scheduleCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), driftRetryPersistTimeout)
+	}
+	defer cancel()
+	if scheduleErr := s.syncState.ScheduleDriftAlertRetry(scheduleCtx, episode.SyncStateID, episode.EpisodeID, retryAt); scheduleErr != nil {
 		return errors.Join(err, fmt.Errorf("schedule drift alert retry: %w", scheduleErr))
 	}
 	return err

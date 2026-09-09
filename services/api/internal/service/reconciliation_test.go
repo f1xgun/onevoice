@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -36,15 +37,17 @@ type markFailureCall struct {
 
 type fakeSyncStateRepo struct {
 	domain.SyncStateRepository
-	mu         sync.Mutex
-	due        []domain.SyncState
-	upserts    int
-	checked    []markCheckedCall
-	failures   []markFailureCall
-	current    domain.DriftAlertEpisode
-	currentErr error
-	settled    int
-	retries    []time.Time
+	mu          sync.Mutex
+	due         []domain.SyncState
+	upserts     int
+	checked     []markCheckedCall
+	failures    []markFailureCall
+	current     domain.DriftAlertEpisode
+	currentErr  error
+	settled     int
+	retries     []time.Time
+	deadline    time.Time
+	retryCtxErr error
 }
 
 func (f *fakeSyncStateRepo) UpsertPending(_ context.Context, _ uuid.UUID, _, _ string) error {
@@ -70,7 +73,8 @@ func (f *fakeSyncStateRepo) MarkCheckedEpisode(ctx context.Context, id uuid.UUID
 	return domain.DriftAlertEpisode{SyncStateID: id, EpisodeID: uuid.New(), Fields: driftFields}, err
 }
 
-func (f *fakeSyncStateRepo) WithReconcileLock(_ context.Context, fn func() error) (bool, error) {
+func (f *fakeSyncStateRepo) WithReconcileLock(ctx context.Context, fn func() error) (bool, error) {
+	f.deadline, _ = ctx.Deadline()
 	return true, fn()
 }
 
@@ -87,7 +91,8 @@ func (f *fakeSyncStateRepo) MarkDriftDMSettled(context.Context, uuid.UUID, uuid.
 	return nil
 }
 
-func (f *fakeSyncStateRepo) ScheduleDriftAlertRetry(_ context.Context, _, _ uuid.UUID, retryAt time.Time) error {
+func (f *fakeSyncStateRepo) ScheduleDriftAlertRetry(ctx context.Context, _, _ uuid.UUID, retryAt time.Time) error {
+	f.retryCtxErr = ctx.Err()
 	f.retries = append(f.retries, retryAt)
 	return nil
 }
@@ -124,11 +129,13 @@ func (f *fakeReconcileIntegRepo) GetByBusinessPlatformExternal(_ context.Context
 
 type fakeReconcileBizRepo struct {
 	domain.BusinessRepository
-	biz *domain.Business
-	err error
+	biz   *domain.Business
+	err   error
+	reads atomic.Int64
 }
 
 func (f *fakeReconcileBizRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+	f.reads.Add(1)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -466,7 +473,9 @@ func TestDriftRecipientLookupFailureRetriesWithoutSettling(t *testing.T) {
 		}},
 		nc: stubYandexInfoRequester{}, driftDMEnabled: true, now: func() time.Time { return time.Unix(1000, 0) },
 	}
-	err := svc.deliverOrScheduleDriftAlert(context.Background(), episode)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := svc.deliverOrScheduleDriftAlert(ctx, episode)
 	if err == nil || !strings.Contains(err.Error(), "resolve private drift recipient") {
 		t.Fatalf("expected recipient lookup error, got %v", err)
 	}
@@ -476,6 +485,9 @@ func TestDriftRecipientLookupFailureRetriesWithoutSettling(t *testing.T) {
 	if len(ss.retries) != 1 || !ss.retries[0].Equal(time.Unix(1000, 0).Add(driftAlertRetryBase)) {
 		t.Fatalf("retry schedule = %v", ss.retries)
 	}
+	if ss.retryCtxErr != nil {
+		t.Fatalf("retry persistence inherited canceled context: %v", ss.retryCtxErr)
+	}
 }
 
 func TestDriftAlertRetryDelayIsBounded(t *testing.T) {
@@ -484,6 +496,60 @@ func TestDriftAlertRetryDelayIsBounded(t *testing.T) {
 	}
 	if got := driftAlertRetryDelay(100); got != time.Hour {
 		t.Fatalf("bounded retry = %v", got)
+	}
+}
+
+func TestReconcileAppliesPassDeadline(t *testing.T) {
+	ss := &fakeSyncStateRepo{}
+	svc := &ReconciliationService{
+		syncState:    ss,
+		integRepo:    &fakeReconcileIntegRepo{},
+		businessRepo: &fakeReconcileBizRepo{},
+		now:          time.Now,
+	}
+	started := time.Now()
+	_, err := svc.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if ss.deadline.IsZero() {
+		t.Fatal("reconcile lock context has no deadline")
+	}
+	remaining := ss.deadline.Sub(started)
+	if remaining <= 0 || remaining > reconcilePassTimeout+100*time.Millisecond {
+		t.Fatalf("reconcile deadline remaining = %v", remaining)
+	}
+}
+
+func TestReconcileCanceledContextStopsDueAdmission(t *testing.T) {
+	businessID := uuid.New()
+	rows := make([]domain.SyncState, 200)
+	for i := range rows {
+		rows[i] = domain.SyncState{
+			ID: uuid.New(), BusinessID: businessID,
+			Platform: a2a.AgentVK, ExternalID: "community",
+		}
+	}
+	ss := &fakeSyncStateRepo{due: rows}
+	businesses := &fakeReconcileBizRepo{biz: &domain.Business{ID: businessID}}
+	svc := &ReconciliationService{
+		syncState:    ss,
+		integRepo:    &fakeReconcileIntegRepo{},
+		businessRepo: businesses,
+		now:          time.Now,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	_, err := svc.Reconcile(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Reconcile error = %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("canceled pass took %v", elapsed)
+	}
+	if reads := businesses.reads.Load(); reads != 0 {
+		t.Fatalf("admitted %d due checks after cancellation", reads)
 	}
 }
 
