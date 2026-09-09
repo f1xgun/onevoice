@@ -658,6 +658,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			cfg.OwnerBriefModel,
 			h.NATS,
 			s.Telemetry,
+			repository.NewOwnerBriefLock(h.PG),
 		)
 		log.Info("owner brief: service constructed", "model", cfg.OwnerBriefModel, "llm_composer", briefRouter != nil)
 	}
