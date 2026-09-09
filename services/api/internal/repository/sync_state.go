@@ -273,6 +273,7 @@ func (r *syncStateRepository) ListPendingDriftAlerts(ctx context.Context) ([]dom
 		FROM sync_state s JOIN integrations i ON i.business_id=s.business_id
 		 AND i.platform=s.platform AND i.external_id=s.external_id
 		 AND i.status='active' AND i.deleted_at IS NULL
+		JOIN businesses b ON b.id=s.business_id AND b.deleted_at IS NULL
 		WHERE s.drift_detected AND s.drift_episode_id IS NOT NULL
 		  AND s.platform IN ('vk', 'yandex_business')
 		  AND (s.drift_task_created_at IS NULL OR s.drift_dm_settled_at IS NULL)

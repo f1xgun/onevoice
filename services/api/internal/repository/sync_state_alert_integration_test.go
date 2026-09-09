@@ -54,6 +54,10 @@ func TestDriftAlertMigrationLifecycleAndLock(t *testing.T) {
 				status text NOT NULL, deleted_at timestamptz
 			)`)
 			require.NoError(t, err)
+			_, err = pool.Exec(ctx, `CREATE TABLE businesses (
+				id uuid PRIMARY KEY, deleted_at timestamptz
+			)`)
+			require.NoError(t, err)
 			sql, err := os.ReadFile(filepath.Clean(migration))
 			require.NoError(t, err)
 			_, err = pool.Exec(ctx, string(sql))
@@ -61,6 +65,8 @@ func TestDriftAlertMigrationLifecycleAndLock(t *testing.T) {
 
 			repo := &syncStateRepository{pool: pool}
 			stateID, businessID := uuid.New(), uuid.New()
+			_, err = pool.Exec(ctx, `INSERT INTO businesses (id) VALUES ($1)`, businessID)
+			require.NoError(t, err)
 			_, err = pool.Exec(ctx, `INSERT INTO sync_state
 				(id,business_id,platform,external_id) VALUES ($1,$2,'vk','community')`,
 				stateID, businessID)
@@ -97,7 +103,21 @@ func TestDriftAlertMigrationLifecycleAndLock(t *testing.T) {
 					bid, externalID)
 				require.NoError(t, err)
 				failureEpisodes[id] = episode
+				_, err = pool.Exec(ctx, `INSERT INTO businesses (id) VALUES ($1)`, bid)
+				require.NoError(t, err)
 			}
+			deletedStateID, deletedBusinessID, deletedEpisodeID := uuid.New(), uuid.New(), uuid.New()
+			_, err = pool.Exec(ctx, `INSERT INTO businesses (id,deleted_at) VALUES ($1,now())`, deletedBusinessID)
+			require.NoError(t, err)
+			_, err = pool.Exec(ctx, `INSERT INTO sync_state
+				(id,business_id,platform,external_id,drift_detected,drift_fields,drift_episode_id,
+				 drift_alert_retry_at,updated_at)
+				VALUES ($1,$2,'vk','deleted',true,'{title}',$3,now()-interval '2 days',now()-interval '2 days')`,
+				deletedStateID, deletedBusinessID, deletedEpisodeID)
+			require.NoError(t, err)
+			_, err = pool.Exec(ctx, `INSERT INTO integrations
+				(business_id,platform,external_id,status) VALUES ($1,'vk','deleted','active')`, deletedBusinessID)
+			require.NoError(t, err)
 			_, err = pool.Exec(ctx, `INSERT INTO integrations
 				(business_id,platform,external_id,status) VALUES ($1,'vk','community','active')`,
 				businessID)
@@ -106,6 +126,7 @@ func TestDriftAlertMigrationLifecycleAndLock(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, firstPage, 100)
 			for _, episode := range firstPage {
+				require.NotEqual(t, deletedStateID, episode.SyncStateID)
 				require.NoError(t, repo.ScheduleDriftAlertRetry(
 					ctx, episode.SyncStateID, episode.EpisodeID, now.Add(time.Hour)))
 				delete(failureEpisodes, episode.SyncStateID)
@@ -113,6 +134,8 @@ func TestDriftAlertMigrationLifecycleAndLock(t *testing.T) {
 			secondPage, err := repo.ListPendingDriftAlerts(ctx)
 			require.NoError(t, err)
 			require.Len(t, secondPage, 2)
+			require.NotEqual(t, deletedStateID, secondPage[0].SyncStateID)
+			require.NotEqual(t, deletedStateID, secondPage[1].SyncStateID)
 			require.Contains(t, []uuid.UUID{secondPage[0].SyncStateID, secondPage[1].SyncStateID}, stateID)
 			require.Len(t, failureEpisodes, 1)
 
