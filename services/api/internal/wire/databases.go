@@ -189,6 +189,15 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	indexesCancelReviews()
 
+	contentIndexesCtx, contentIndexesCancel := context.WithTimeout(ctx, startupTimeout)
+	if err := repository.EnsureContentListIndexes(contentIndexesCtx, h.Mongo); err != nil {
+		contentIndexesCancel()
+		slog.ErrorContext(contentIndexesCtx, "failed to ensure content list indexes", "error", err)
+		h.Close()
+		return nil, fmt.Errorf("wire: ensure content list indexes: %w", err)
+	}
+	contentIndexesCancel()
+
 	indexesCtxMessages, indexesCancelMessages := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.EnsureMessageIndexes(indexesCtxMessages, h.Mongo); err != nil {
 		indexesCancelMessages()
