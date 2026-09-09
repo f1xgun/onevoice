@@ -354,7 +354,8 @@
       "deleteError": "Couldn't delete the chat",
       "created": "Created",
       "previewUnavailable": "Could not load preview",
-      "noMessages": "No messages yet"
+      "noMessages": "No messages yet",
+      "updating": "Updating…"
     },
     "window": {
       "helpPrompt": "How can I help?",
@@ -393,7 +394,8 @@
       "unassignedLabel": "Unassigned",
       "movedTo": "Chat moved to \"{name}\"",
       "undo": "Undo",
-      "moveError": "Couldn't move the chat"
+      "moveError": "Couldn't move the chat",
+      "moving": "Moving…"
     },
     "expiredBanner": {
       "message": "This action expired — send a new message to continue.",
@@ -414,7 +416,8 @@
       "showActions": "Show actions ({count})",
       "hideActions": "Hide actions ({count})",
       "doneCount": "Completed {done} of {total}",
-      "failCount": "{failed} failed"
+      "failCount": "{failed} failed",
+      "runningCount": "Running: {count}"
     },
     "toolCard": {
       "running": "Running",
@@ -446,7 +449,9 @@
       "errorFallback": "The action couldn't be completed. Please try again in a moment.",
       "errorDetailsLabel": "Details",
       "decisionUnavailableBadge": "Approval needed",
-      "decisionUnavailableReason": "Decision not found — please approve again"
+      "decisionUnavailableReason": "Decision not found — please approve again",
+      "unknownAction": "Platform action",
+      "unknownPlatform": "Platform"
     },
     "streamError": {
       "streamInterrupted": "The response ended before completion. Try sending your instruction again.",
@@ -524,6 +529,19 @@
         "limit": "Limit",
         "parse_mode": "Text formatting"
       }
+    },
+    "list": {
+      "description": "Chats organized by project — find a task or start a new one.",
+      "search": "Search chats, messages and projects",
+      "unavailableProject": "Project unavailable",
+      "creating": "Creating chat…",
+      "createFirst": "Start your first chat",
+      "emptyDescription": "Ask OneVoice to prepare a post, check reviews or update your business information.",
+      "emptyReadOnly": "Your team’s chats will appear here. Ask a team member with create access to start the first task.",
+      "noResults": "No matching chats. Try another name or clear your search.",
+      "clearSearch": "Clear search",
+      "count": "{count, plural, one {# chat} other {# chats}}",
+      "deleting": "Deleting…"
     }
   },
   "posts": {

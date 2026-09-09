@@ -140,3 +140,22 @@ it('renders the list preview in pinned, project and unassigned sidebar rows', ()
   expect(get.mock.calls.some(([, path]) => String(path).includes('/messages'))).toBe(false);
   client.clear();
 });
+
+it('renders bounded Markdown inside chat controls without links, remote images or raw HTML', async () => {
+  const { ConversationPreview } = await import('../ConversationPreview');
+  const { container } = render(
+    <button type="button">
+      <ConversationPreview
+        preview={
+          '# Итоги\n\n- **Telegram**: отправлено\n- [ВКонтакте](https://example.com): готово\n\n![Изображение](https://example.com/tracker.png)\n<script>alert(1)</script>'
+        }
+      />
+    </button>
+  );
+  expect(screen.getByText('Telegram').tagName).toBe('STRONG');
+  expect(screen.getByText('ВКонтакте')).toBeVisible();
+  expect(container.querySelector('a, img, script, h1, p, ul')).toBeNull();
+  expect(container.querySelector('.line-clamp-2')).not.toBeNull();
+  expect(container.textContent).not.toContain('**');
+  expect(container.textContent).not.toContain('alert(1)');
+});

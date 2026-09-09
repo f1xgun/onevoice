@@ -4,7 +4,8 @@ import { Pencil, Check, CircleAlert, Loader2, CircleHelp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { ErrorCode, ToolCall } from '@/types/chat';
-import { PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
+import { usePlatformFullLabels, getPlatform } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -39,7 +40,8 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   const tCard = useTranslations('chat.toolCard');
   const tToolNames = useTranslations('agentTasks.displayName');
   const platform = getPlatform(tool.name);
-  const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
+  const labels = usePlatformFullLabels();
+  const label = labels[platform] ?? tCard('unknownPlatform');
 
   const decisionUnavailable = tool.rejectReason === 'decision_unavailable';
 
@@ -48,9 +50,15 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
     : undefined;
 
   const displayName = (() => {
-    if (!tool.displayNameKey) return tool.name;
-    const resolved = tToolNames(tool.displayNameKey);
-    return resolved && resolved !== tool.displayNameKey ? resolved : tool.name;
+    const [toolPlatform, action] = tool.name.split('__');
+    const derivedKey = action ? `tools.${toolPlatform}.${action}.name` : undefined;
+    for (const key of [tool.displayNameKey, derivedKey]) {
+      if (!key || !tToolNames.has(key)) continue;
+      const resolved = tToolNames(key);
+      if (resolved && resolved !== key && resolved !== `agentTasks.displayName.${key}`)
+        return resolved;
+    }
+    return tCard('unknownAction');
   })();
 
   const toolNameClasses = cn(
@@ -69,12 +77,15 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="rounded bg-paper-sunken px-2 py-1 text-meta text-ink">{label}</span>
+          <span className="inline-flex items-center gap-1.5 rounded bg-paper-sunken px-2 py-1 text-meta text-ink">
+            <PlatformIcon platform={platform} className="h-4 w-4" />
+            {label}
+          </span>
           <span className={toolNameClasses}>{displayName}</span>
         </div>
         {tool.status === 'pending' && (
           <Badge tone="info" dot aria-label={tCard('running')}>
-            <Loader2 aria-hidden className="h-4 w-4" />
+            <Loader2 aria-hidden className="h-4 w-4 animate-spin motion-reduce:animate-none" />
             {tCard('running')}
           </Badge>
         )}

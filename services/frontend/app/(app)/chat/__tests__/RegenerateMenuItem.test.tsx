@@ -42,13 +42,15 @@ vi.mock('@/lib/api/business-api', () => ({
 // Stub MoveChatMenuItem's projects fetch so dropdown rendering does not
 // throw when the kebab is opened.
 vi.mock('@/hooks/useProjects', () => ({
-  useProjectsQuery: () => ({ data: [], isLoading: false }),
+  useProjectsQuery: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }),
 }));
 
 vi.mock('@/hooks/useConversations', () => ({
   useMoveConversation: () => ({ mutate: vi.fn() }),
   conversationsQueryKey: (bizId: string) => ['businesses', bizId, 'conversations'] as const,
 }));
+
+vi.mock('@/lib/hooks/usePermission', () => ({ usePermission: () => ({ allowed: true }) }));
 
 vi.mock('@/lib/telemetry', () => ({
   trackClick: vi.fn(),

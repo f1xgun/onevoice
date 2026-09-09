@@ -22,7 +22,7 @@ describe('ToolCard — expired', () => {
 
   it('XX: expired tool name carries line-through class', () => {
     render(<ToolCard tool={makeExpired()} />);
-    const nameNode = screen.getByText('telegram__send_channel_post');
+    const nameNode = screen.getByText('Отправить пост');
     expect(nameNode.className).toMatch(/\bline-through\b/);
   });
 

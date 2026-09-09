@@ -1,5 +1,6 @@
 'use client';
 
+import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
@@ -32,6 +33,7 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
   );
 
   function handleMove(destId: string | null, destName: string) {
+    if (move.isPending) return;
     move.mutate(
       { id: conversationId, projectId: destId, previousProjectId: currentProjectId },
       {
@@ -70,7 +72,12 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
 
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger>{tMove('trigger')}</DropdownMenuSubTrigger>
+      <DropdownMenuSubTrigger aria-busy={move.isPending}>
+        {move.isPending && (
+          <Loader2 aria-hidden className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+        )}
+        {move.isPending ? tMove('moving') : tMove('trigger')}
+      </DropdownMenuSubTrigger>
       <DropdownMenuPortal>
         <DropdownMenuSubContent>
           {!hasOtherDestinations ? (
@@ -80,7 +87,7 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
           ) : (
             <>
               <DropdownMenuItem
-                disabled={unassignedDisabled}
+                disabled={unassignedDisabled || move.isPending}
                 onSelect={(e) => {
                   e.preventDefault();
                   handleMove(null, unassignedLabel);
@@ -92,7 +99,7 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
               {otherProjects.map((p) => (
                 <DropdownMenuItem
                   key={p.id}
-                  disabled={p.id === currentProjectId}
+                  disabled={p.id === currentProjectId || move.isPending}
                   onSelect={(e) => {
                     e.preventDefault();
                     handleMove(p.id, p.name);

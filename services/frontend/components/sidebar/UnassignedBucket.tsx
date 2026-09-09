@@ -10,6 +10,7 @@ import {
   ChevronRight,
   FolderMinus,
   MoreHorizontal,
+  Loader2,
   Plus,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -90,11 +91,16 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
             type="button"
             onClick={handleCreate}
             disabled={createConversation.isPending}
+            aria-busy={createConversation.isPending}
             aria-label={tSide('unassignedNewChatAria')}
             title={tSide('unassignedNewChatTitle')}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/bucket:opacity-100 md:h-8 md:w-8"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft hover:bg-paper-sunken hover:text-ink md:h-8 md:w-8"
           >
-            <Plus size={14} />
+            {createConversation.isPending ? (
+              <Loader2 aria-hidden size={14} className="animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Plus size={14} />
+            )}
           </button>
         )}
       </div>

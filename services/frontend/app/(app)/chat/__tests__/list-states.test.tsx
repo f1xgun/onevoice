@@ -20,6 +20,9 @@ vi.mock('@/lib/stores/business', () => ({
 }));
 vi.mock('@/lib/conversations', () => ({ listConversations: vi.fn() }));
 vi.mock('@/lib/api/business-api', () => ({ bizApi: vi.fn() }));
+vi.mock('@/hooks/useProjects', () => ({
+  useProjectsQuery: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }),
+}));
 vi.mock('@/lib/telemetry', () => ({ trackClick: h.trackClick }));
 
 function renderPage() {
