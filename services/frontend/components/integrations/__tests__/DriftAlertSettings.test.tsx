@@ -57,7 +57,10 @@ describe('DriftAlertSettings', () => {
 
   it('shows permission loading and a retryable permission error', () => {
     const view = render(<DriftAlertSettings businessId="business-a" />);
-    expect(screen.getByRole('status')).toHaveTextContent('loading');
+    expect(screen.getByRole('status', { hidden: true })).toHaveAttribute(
+      'data-loading-placeholder',
+      'pending'
+    );
 
     Object.assign(mocks.read, { isLoading: false, isError: true });
     view.rerender(<DriftAlertSettings businessId="business-a" />);

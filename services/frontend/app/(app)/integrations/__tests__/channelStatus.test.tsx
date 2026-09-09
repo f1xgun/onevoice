@@ -77,13 +77,12 @@ it.each([null, {}, { data: [] }])('keeps an invalid list response %j unknown', a
   expect(screen.queryByText('Не подключено')).not.toBeInTheDocument();
 });
 
-it('shows loading until the API returns instead of assuming channels are disconnected', () => {
+it('shows loading until the API returns instead of assuming channels are disconnected', async () => {
   getMock.mockReturnValue(new Promise(() => {}));
   renderPage();
-  expect(screen.getByRole('status', { name: 'Загружаем подключённые каналы' })).toHaveAttribute(
-    'aria-busy',
-    'true'
-  );
+  expect(
+    await screen.findByRole('status', { name: 'Загружаем подключённые каналы' })
+  ).toHaveAttribute('aria-busy', 'true');
   expect(screen.queryByText('Не подключено')).not.toBeInTheDocument();
   expect(screen.queryByText('Ошибка подключения')).not.toBeInTheDocument();
 });

@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -168,7 +170,9 @@ export function IntegrationsSyncPanel({ businessId, integrations }: Props) {
                   </div>
                   <div className="shrink-0">
                     {isLoading ? (
-                      <Skeleton className="h-[22px] w-28 rounded-full" />
+                      <LoadingPlaceholder>
+                        <Skeleton className="h-[22px] w-28 rounded-full" />
+                      </LoadingPlaceholder>
                     ) : (
                       renderBadge(isSuccess ? status : 'not_checked')
                     )}

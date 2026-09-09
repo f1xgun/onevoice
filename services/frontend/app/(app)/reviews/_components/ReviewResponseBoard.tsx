@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
@@ -70,11 +72,14 @@ export function ReviewResponseBoard({
       </div>
 
       {isLoading ? (
-        <div data-testid="response-board-loading" className="grid gap-3 sm:grid-cols-4">
+        <LoadingPlaceholder
+          data-testid="response-board-loading"
+          className="grid gap-3 sm:grid-cols-4"
+        >
           {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-24 rounded-md" />
           ))}
-        </div>
+        </LoadingPlaceholder>
       ) : isError ? (
         <div
           role="alert"
