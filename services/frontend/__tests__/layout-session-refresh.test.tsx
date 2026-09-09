@@ -7,10 +7,14 @@ import type * as ConvHooks from '@/hooks/useConversations';
 import type * as ProjHooks from '@/hooks/useProjects';
 
 const replaceMock = vi.fn();
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: replaceMock, refresh: vi.fn() }),
-  usePathname: () => '/chat',
-}));
+vi.mock('next/navigation', () => {
+  const searchParams = new URLSearchParams();
+  return {
+    useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: replaceMock, refresh: vi.fn() }),
+    usePathname: () => '/chat',
+    useSearchParams: () => searchParams,
+  };
+});
 
 // No access token in the store: the layout takes the mount-time refresh path.
 vi.mock('@/lib/auth', () => {
