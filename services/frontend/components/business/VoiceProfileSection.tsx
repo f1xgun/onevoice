@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useEffect, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,10 +55,14 @@ export function VoiceProfileSection() {
 
   if (readPerm.isLoading || profileQuery.isPending) {
     return (
-      <div role="status" aria-label={tCommon('loading')} className="flex flex-col gap-3">
+      <LoadingPlaceholder
+        role="status"
+        aria-label={tCommon('loading')}
+        className="flex flex-col gap-3"
+      >
         <Skeleton className="h-28 w-full" />
         <Skeleton className="h-8 w-36 self-end" />
-      </div>
+      </LoadingPlaceholder>
     );
   }
 

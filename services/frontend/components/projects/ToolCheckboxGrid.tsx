@@ -1,5 +1,9 @@
 'use client';
 
+import { EmptyAction } from '@/components/states/EmptyAction';
+
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useEffect, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -130,11 +134,20 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
   const { data: tools, isLoading } = useTools();
 
   if (activeIntegrations.length === 0) {
-    return <p className="text-sm text-muted-foreground">{tToolGrid('noIntegrations')}</p>;
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">{tToolGrid('noIntegrations')}</p>
+        <EmptyAction href="/integrations" label="connectChannels" />
+      </div>
+    );
   }
 
   if (isLoading || !tools) {
-    return <p className="text-sm text-muted-foreground">{tToolGrid('loading')}</p>;
+    return (
+      <LoadingPlaceholder as="p" className="text-sm text-muted-foreground">
+        {tToolGrid('loading')}
+      </LoadingPlaceholder>
+    );
   }
 
   const buckets = groupByPlatform(tools);

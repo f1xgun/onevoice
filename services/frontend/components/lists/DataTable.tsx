@@ -15,6 +15,8 @@
 // Anti-pattern: do NOT bake filter/search/pagination state in.
 // Composition over monolith.
 'use client';
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { Fragment, useState, type ReactNode } from 'react';
 
 import { MonoLabel } from '@/components/ui/mono-label';
@@ -179,7 +181,7 @@ const SKELETON_ROW_COUNT = 5;
 function DefaultSkeleton<T>({ columns, gridTemplate, minWidth }: DefaultSkeletonProps<T>) {
   const rowStyle = { gridTemplateColumns: gridTemplate, minWidth };
   return (
-    <div className="divide-y divide-line-soft">
+    <LoadingPlaceholder className="divide-y divide-line-soft">
       {Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
         <div key={i} className="grid items-center gap-4 px-5 py-4" style={rowStyle} aria-hidden>
           {columns.map((col) => (
@@ -187,6 +189,6 @@ function DefaultSkeleton<T>({ columns, gridTemplate, minWidth }: DefaultSkeleton
           ))}
         </div>
       ))}
-    </div>
+    </LoadingPlaceholder>
   );
 }

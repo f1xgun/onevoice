@@ -1337,7 +1337,8 @@
       "cancel": "Cancel",
       "connect": "Connect",
       "connecting": "Connecting…",
-      "connectFailed": "Couldn't connect the location"
+      "connectFailed": "Couldn't connect the location",
+      "loading": "Loading locations…"
     },
     "whitelistWarning": {
       "title": "New integration won't be added to projects with their own tool list",
@@ -2364,7 +2365,9 @@
       "relJustNow": "just now",
       "relMinutes": "{m} min ago",
       "relHours": "{h} h ago",
-      "relDays": "{d} d ago"
+      "relDays": "{d} d ago",
+      "emptyBody": "Start with a task in chat: draft a post, reply to a review, or update your profile.",
+      "updating": "Updating events…"
     },
     "panel": {
       "actor": "Author",
@@ -2533,6 +2536,13 @@
     },
     "stickyAlert": {
       "dismissAria": "Dismiss notification"
+    },
+    "actions": {
+      "openChat": "Open chat",
+      "gettingStarted": "Choose the next step",
+      "connectChannels": "Connect a channel",
+      "resetFilters": "Reset filters",
+      "chooseBusiness": "Choose an organization"
     }
   },
   "account": {

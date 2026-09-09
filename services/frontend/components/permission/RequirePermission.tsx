@@ -20,6 +20,7 @@ export interface RequirePermissionProps {
  * Use to prevent showing destructive buttons that would 403 anyway.
  */
 export function RequirePermission({ perm, fallback = null, children }: RequirePermissionProps) {
-  const { allowed } = usePermission(perm);
+  const { allowed, isLoading } = usePermission(perm);
+  if (isLoading) return null;
   return <>{allowed ? children : fallback}</>;
 }

@@ -7,6 +7,8 @@
 // are owned per section (ProfileForm, HoursForm, SpecialDatesForm,
 // VoiceToneSection) so a save in one section doesn't block another.
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -35,7 +37,7 @@ function BusinessSkeleton() {
   return (
     <>
       <PageHeader title={tBusiness('title')} sub={tBusiness('subtitle')} />
-      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
+      <LoadingPlaceholder className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
         <div className="flex min-w-0 flex-col gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="rounded-lg border border-line bg-paper-raised p-6">
@@ -52,7 +54,7 @@ function BusinessSkeleton() {
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
-      </div>
+      </LoadingPlaceholder>
     </>
   );
 }

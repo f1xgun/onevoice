@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+import { ListLoadError } from '@/components/lists/ListLoadError';
 import { useTranslations } from 'next-intl';
 import { UserPlus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,7 +20,13 @@ import { InviteModal } from './_components/InviteModal';
 export default function TeamPage() {
   const tPage = useTranslations('team.page');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  const { data: invitations = [] } = useInvitations(activeBusinessId);
+  const {
+    data: invitations = [],
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useInvitations(activeBusinessId);
   const { data: roles = [] } = useRoles(activeBusinessId);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [sessionTokens, setSessionTokens] = useState<Record<string, string>>({});
@@ -72,11 +80,18 @@ export default function TeamPage() {
           <MembersTab businessId={activeBusinessId} roles={roles} />
         </TabsContent>
         <TabsContent value="invitations" className="mt-6">
-          <InvitationsTab
-            businessId={activeBusinessId}
-            invitations={invitations}
-            sessionTokens={sessionTokens}
-          />
+          {isLoading ? (
+            <LoadingPlaceholder className="h-48 animate-pulse rounded-lg bg-paper-sunken" />
+          ) : isError ? (
+            <ListLoadError onRetry={() => void refetch()} isPending={isFetching} />
+          ) : (
+            <InvitationsTab
+              businessId={activeBusinessId}
+              invitations={invitations}
+              sessionTokens={sessionTokens}
+              onInvite={() => setInviteOpen(true)}
+            />
+          )}
         </TabsContent>
       </Tabs>
       <InviteModal

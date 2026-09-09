@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { MoreHorizontal } from 'lucide-react';
@@ -84,7 +86,7 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-line bg-paper-raised p-6">
+      <LoadingPlaceholder className="rounded-lg border border-line bg-paper-raised p-6">
         {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 py-3">
             <Skeleton className="h-6 w-6 rounded-full" />
@@ -92,7 +94,7 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
             <Skeleton className="ml-auto h-4 w-24" />
           </div>
         ))}
-      </div>
+      </LoadingPlaceholder>
     );
   }
 

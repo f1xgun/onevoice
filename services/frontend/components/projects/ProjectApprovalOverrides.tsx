@@ -1,5 +1,7 @@
 'use client';
 
+import { EmptyAction } from '@/components/states/EmptyAction';
+
 import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -145,7 +147,12 @@ export function ProjectApprovalOverrides({
   const platforms = TOOL_PLATFORM_ORDER.filter((p) => buckets[p].length > 0);
 
   if (manualTools.length === 0) {
-    return <p className="text-sm text-muted-foreground">{tOverMain('noTools')}</p>;
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">{tOverMain('noTools')}</p>
+        <EmptyAction href="/settings/tools" label="gettingStarted" />
+      </div>
+    );
   }
 
   return (

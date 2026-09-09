@@ -44,6 +44,9 @@ export function useAuditLogs(businessID: string | null, filters: AuditFilters) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     enabled: !!businessID,
+    // Retain rows while changing filters, but never across organizations.
+    placeholderData: (previous, query) =>
+      query?.queryKey[1] === businessID ? previous : undefined,
   });
   const items: AuditLogDTO[] = q.data?.pages.flatMap((p) => p.items) ?? [];
   return {

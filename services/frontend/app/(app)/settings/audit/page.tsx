@@ -42,10 +42,8 @@ export default function AuditPage() {
   const [filters, setFilters] = useState<TFilters>(defaultFilters);
   const [selected, setSelected] = useState<AuditLogDTO | null>(null);
 
-  const { items, hasNextPage, fetchNextPage, isLoading, isFetchingNextPage, error } = useAuditLogs(
-    businessID,
-    filters
-  );
+  const { items, hasNextPage, fetchNextPage, isLoading, isFetching, isFetchingNextPage, error } =
+    useAuditLogs(businessID, filters);
 
   const errorMessage = useMemo(() => {
     if (!error) return null;
@@ -81,16 +79,33 @@ export default function AuditPage() {
           </div>
         ) : null}
 
-        <AuditTable
-          items={items}
-          isLoading={isLoading}
-          hasNextPage={!!hasNextPage}
-          isFetchingMore={isFetchingNextPage}
-          onLoadMore={() => {
-            void fetchNextPage();
-          }}
-          onRowClick={setSelected}
-        />
+        {isFetching && !isLoading && !isFetchingNextPage && (
+          <p role="status" className="text-meta text-ink-soft">
+            {t('table.updating')}
+          </p>
+        )}
+        {!errorMessage && (
+          <AuditTable
+            isRefreshing={isFetching && !isLoading && !isFetchingNextPage}
+            onResetFilters={
+              filters.from ||
+              filters.to ||
+              filters.action ||
+              filters.actorID ||
+              (filters.category && filters.category !== 'all')
+                ? () => setFilters({ category: 'all' })
+                : undefined
+            }
+            items={items}
+            isLoading={isLoading}
+            hasNextPage={!!hasNextPage}
+            isFetchingMore={isFetchingNextPage}
+            onLoadMore={() => {
+              void fetchNextPage();
+            }}
+            onRowClick={setSelected}
+          />
+        )}
 
         <AuditDetailPanel item={selected} onClose={() => setSelected(null)} />
       </section>

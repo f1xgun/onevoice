@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -87,7 +89,9 @@ export function VKCommunityPickerModal({ open, onClose }: VKCommunityPickerModal
         </DialogHeader>
 
         {isLoading && (
-          <div className="py-8 text-center text-sm text-ink-soft">{tPicker('loading')}</div>
+          <LoadingPlaceholder className="py-8 text-center text-sm text-ink-soft">
+            {tPicker('loading')}
+          </LoadingPlaceholder>
         )}
 
         {isError && (

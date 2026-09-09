@@ -1,5 +1,7 @@
 'use client';
 
+import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
+
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -102,7 +104,9 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
         </DialogHeader>
 
         {isLoading && (
-          <div className="py-8 text-center text-sm text-gray-500">Загрузка локаций...</div>
+          <LoadingPlaceholder className="py-8 text-center text-sm text-gray-500">
+            {tGoogle('loading')}
+          </LoadingPlaceholder>
         )}
 
         {isError && (

@@ -10,6 +10,8 @@
 
 'use client';
 
+import { EmptyAction } from './EmptyAction';
+
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
@@ -44,7 +46,9 @@ export function EmptySearch({ query, onResetFilters, body }: EmptySearchProps) {
           <Button variant="ghost" size="sm" onClick={onResetFilters}>
             {tStates('resetFilters')}
           </Button>
-        ) : undefined
+        ) : (
+          <EmptyAction href="/getting-started" label="gettingStarted" />
+        )
       }
     />
   );

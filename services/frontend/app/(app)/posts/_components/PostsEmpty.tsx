@@ -4,6 +4,8 @@
 // Two flavours: "no posts at all" vs "no match for current search". The
 // search variant uses the shared EmptySearch component so the mono query
 // rendering matches mock-states.jsx.
+import { EmptyAction } from '@/components/states/EmptyAction';
+
 import { FileText } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -30,6 +32,9 @@ export function PostsEmpty({
       <FileText aria-hidden className="mb-3 size-9 text-ink-faint" />
       <p className="text-sm text-ink-mid">{tPosts('emptyState')}</p>
       <p className="mt-1 max-w-xs text-xs text-ink-soft">{tPosts('emptyHint')}</p>
+      <div className="mt-4">
+        <EmptyAction />
+      </div>
     </div>
   );
 }

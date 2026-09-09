@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { EmptyAction } from '@/components/states/EmptyAction';
 import { useLocale, useTranslations } from 'next-intl';
 import { Link2 } from 'lucide-react';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
@@ -27,12 +28,18 @@ import { RequirePermission } from '@/components/permission/RequirePermission';
 import { ConfirmDestructive } from '@/components/design-system/ConfirmDestructive';
 
 interface InvitationsTabProps {
+  onInvite?: () => void;
   businessId: string;
   invitations: PendingInvitation[];
   sessionTokens: Record<string, string>;
 }
 
-export function InvitationsTab({ businessId, invitations, sessionTokens }: InvitationsTabProps) {
+export function InvitationsTab({
+  businessId,
+  invitations,
+  sessionTokens,
+  onInvite,
+}: InvitationsTabProps) {
   const tTeam = useTranslations('team');
   const tCols = useTranslations('team.invitations.cols');
   const tActions = useTranslations('team.invitations.actions');
@@ -70,6 +77,20 @@ export function InvitationsTab({ businessId, invitations, sessionTokens }: Invit
         <div className="px-6 py-12 text-center">
           <h3 className="text-base font-medium text-ink">{tTeam('invitations.empty.title')}</h3>
           <p className="mt-1 text-sm text-ink-mid">{tTeam('invitations.empty.body')}</p>
+          <div className="mt-4">
+            <RequirePermission
+              perm="members.invite"
+              fallback={<EmptyAction href="/getting-started" label="gettingStarted" />}
+            >
+              {onInvite ? (
+                <Button size="sm" onClick={onInvite}>
+                  {tTeam('page.invite')}
+                </Button>
+              ) : (
+                <EmptyAction href="/getting-started" label="gettingStarted" />
+              )}
+            </RequirePermission>
+          </div>
         </div>
       </section>
     );
