@@ -156,7 +156,7 @@ func (t *Turn) buildOrchestratorRequest(ctx context.Context, req TurnRequest, en
 	if t.deps.PlanResolver != nil {
 		tier = t.deps.PlanResolver.Resolve(ctx, business.ID).RateLimitTier
 	}
-	return map[string]interface{}{
+	body := map[string]interface{}{
 		"model":                      req.Model,
 		"message":                    req.Message,
 		"business_id":                business.ID.String(),
@@ -182,6 +182,10 @@ func (t *Turn) buildOrchestratorRequest(ctx context.Context, req TurnRequest, en
 		"project_approval_overrides": enriched.projectOverrides,
 		"locale":                     req.Locale.String(),
 	}
+	if req.PlatformScopeSet {
+		body["selected_platforms"] = req.SelectedPlatforms
+	}
+	return body
 }
 
 // derefString returns the value of p, or "" when nil. The orchestrator

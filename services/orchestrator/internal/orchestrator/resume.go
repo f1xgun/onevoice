@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/imagegen"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // ResumeRequest carries the FRESH state passed to Resume at approval-
@@ -155,12 +156,18 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 			"batch_id", batch.ID,
 		)
 	}
+	activeIntegrations := req.ActiveIntegrations
+	if batch.PlatformScopeSet {
+		activeIntegrations = tools.IntersectSelectedPlatforms(activeIntegrations, batch.SelectedPlatforms)
+	}
 	state := &RunState{
 		Messages:                 snap.Messages,
 		SystemPlatform:           snap.SystemPlatform,
 		SystemBusiness:           snap.SystemBusiness,
 		PDnAllowlist:             snap.PDnAllowlist,
-		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
+		AvailableTools:           o.tools.AvailableForWhitelist(ctx, activeIntegrations, req.WhitelistMode, req.AllowedTools),
+		SelectedPlatforms:        append([]string(nil), batch.SelectedPlatforms...),
+		PlatformScopeSet:         batch.PlatformScopeSet,
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
 		ConversationID:           batch.ConversationID,

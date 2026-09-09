@@ -60,6 +60,27 @@ func newChatProxyNoProject(
 	return NewChatProxyHandler(biz, integ, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orchestratorclient.New(orchURL, nil), nil, nil, 0)
 }
 
+func TestChatProxy_RejectsExplicitEmptyOrInvalidPlatformScope(t *testing.T) {
+	for _, body := range []string{
+		`{"message":"hello","selected_platforms":null}`,
+		`{"message":"hello","selected_platforms":[]}`,
+		`{"message":"hello","selected_platforms":["google_business"]}`,
+	} {
+		businessID := uuid.New()
+		userID := uuid.New()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv", strings.NewReader(body))
+		ctx := chatProxyBizCtx(businessID, userID)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("conversationID", "conv")
+		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+		rr := httptest.NewRecorder()
+
+		(&ChatProxyHandler{}).Chat(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	}
+}
+
 // TestChatProxy_EnrichesContext verifies that business and integration context
 // is properly enriched and forwarded to the orchestrator.
 func TestChatProxy_EnrichesContext(t *testing.T) {

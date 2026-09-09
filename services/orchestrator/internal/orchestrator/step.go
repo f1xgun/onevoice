@@ -46,7 +46,9 @@ type RunState struct {
 	// SystemBusiness is Block 2 (per-business, NEVER carries cache_control — would defeat cross-business reuse).
 	SystemBusiness string
 
-	AvailableTools []llm.ToolDefinition
+	AvailableTools    []llm.ToolDefinition
+	SelectedPlatforms []string
+	PlatformScopeSet  bool
 
 	// PDnAllowlist holds organization profile contacts exempted from outbound
 	// redaction. See redact.go.
@@ -419,15 +421,17 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 		})
 	}
 	return &domain.PendingToolCallBatch{
-		ID:             batchID,
-		ConversationID: state.ConversationID,
-		BusinessID:     state.BusinessID,
-		ProjectID:      state.ProjectID,
-		UserID:         state.UserID,
-		MessageID:      state.MessageID,
-		Calls:          calls,
-		ModelMessages:  msgSnapshot,
-		IterationIdx:   state.Iter,
+		ID:                batchID,
+		ConversationID:    state.ConversationID,
+		BusinessID:        state.BusinessID,
+		ProjectID:         state.ProjectID,
+		UserID:            state.UserID,
+		MessageID:         state.MessageID,
+		SelectedPlatforms: append([]string(nil), state.SelectedPlatforms...),
+		PlatformScopeSet:  state.PlatformScopeSet,
+		Calls:             calls,
+		ModelMessages:     msgSnapshot,
+		IterationIdx:      state.Iter,
 	}
 }
 

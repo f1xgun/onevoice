@@ -540,18 +540,20 @@ type AgentTaskRepository interface {
 // PendingToolCallBatch is the persisted snapshot of a paused multi-tool approval batch.
 // ProjectID is nullable — conversations may not be scoped to any project.
 type PendingToolCallBatch struct {
-	ID             string        `bson:"_id"`
-	ConversationID string        `bson:"conversation_id"`
-	BusinessID     string        `bson:"business_id"`
-	ProjectID      string        `bson:"project_id,omitempty"`
-	UserID         string        `bson:"user_id"`
-	MessageID      string        `bson:"message_id"`
-	Status         string        `bson:"status"` // "preparing" | "pending" | "resolving" | "resolved" | "expired"
-	Calls          []PendingCall `bson:"calls"`
-	ModelMessages  []byte        `bson:"model_messages"` // JSON-serialized []llm.Message snapshot
-	IterationIdx   int           `bson:"iteration_idx"`
-	CreatedAt      time.Time     `bson:"created_at"`
-	UpdatedAt      time.Time     `bson:"updated_at"`
+	ID                string        `bson:"_id"`
+	ConversationID    string        `bson:"conversation_id"`
+	BusinessID        string        `bson:"business_id"`
+	ProjectID         string        `bson:"project_id,omitempty"`
+	UserID            string        `bson:"user_id"`
+	MessageID         string        `bson:"message_id"`
+	SelectedPlatforms []string      `bson:"selected_platforms,omitempty"`
+	PlatformScopeSet  bool          `bson:"platform_scope_set,omitempty"`
+	Status            string        `bson:"status"` // "preparing" | "pending" | "resolving" | "resolved" | "expired"
+	Calls             []PendingCall `bson:"calls"`
+	ModelMessages     []byte        `bson:"model_messages"` // JSON-serialized []llm.Message snapshot
+	IterationIdx      int           `bson:"iteration_idx"`
+	CreatedAt         time.Time     `bson:"created_at"`
+	UpdatedAt         time.Time     `bson:"updated_at"`
 	// omitempty keeps a zero ExpiresAt out of the marshaled doc so preparing
 	// rows carry no expires_at and stay invisible to the TTL sweep until the
 	// promotion UpdateOne sets it explicitly via $set.

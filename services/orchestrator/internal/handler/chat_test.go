@@ -100,6 +100,47 @@ func TestChatHandler_MissingMessage_Returns400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestChatHandler_SelectedPlatformsPresenceAndValidation(t *testing.T) {
+	t.Run("omitted preserves legacy scope", func(t *testing.T) {
+		runner := &captureRunner{}
+		h := handler.NewChatHandler(runner, "model")
+		req := httptest.NewRequest(http.MethodPost, "/chat/conv", bytes.NewBufferString(
+			`{"message":"hello","active_integrations":["telegram","vk"]}`,
+		))
+		w := httptest.NewRecorder()
+		h.Chat(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.False(t, runner.got.PlatformScopeSet)
+	})
+
+	t.Run("present scope is normalized", func(t *testing.T) {
+		runner := &captureRunner{}
+		h := handler.NewChatHandler(runner, "model")
+		req := httptest.NewRequest(http.MethodPost, "/chat/conv", bytes.NewBufferString(
+			`{"message":"hello","selected_platforms":["vk","vk"]}`,
+		))
+		w := httptest.NewRecorder()
+		h.Chat(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, runner.got.PlatformScopeSet)
+		assert.Equal(t, []string{"vk"}, runner.got.SelectedPlatforms)
+	})
+
+	for _, body := range []string{
+		`{"message":"hello","selected_platforms":null}`,
+		`{"message":"hello","selected_platforms":[]}`,
+		`{"message":"hello","selected_platforms":["google_business"]}`,
+	} {
+		runner := &captureRunner{}
+		h := handler.NewChatHandler(runner, "model")
+		req := httptest.NewRequest(http.MethodPost, "/chat/conv", bytes.NewBufferString(body))
+		w := httptest.NewRecorder()
+		h.Chat(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.False(t, runner.got.PlatformScopeSet)
+	}
+}
+
 // TestChatHandler_with_project_context verifies that the project
 // fields on the JSON request body flow into orchestrator.RunRequest exactly
 // as the proxy would populate them.

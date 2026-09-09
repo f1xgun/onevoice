@@ -19,6 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/pkg/ssecounter"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
@@ -61,6 +62,11 @@ type ChatProxyHandler struct {
 
 	// defaultTier labels the SSE concurrency block metric; empty → "free".
 	defaultTier string
+}
+
+type chatTurnRequestEnvelope struct {
+	openapi.ChatTurnRequest
+	SelectedPlatforms json.RawMessage `json:"selected_platforms"`
 }
 
 // Turn exposes the shared chat-turn lifecycle so sibling handlers (HITLHandler.Resume)
@@ -207,24 +213,41 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	if headerBatch == "" {
 		headerBatch = r.URL.Query().Get("batch_id")
 	}
-
-	var body openapi.ChatTurnRequest
+	var envelope chatTurnRequestEnvelope
 	if headerBatch == "" {
 		r.Body = http.MaxBytesReader(w, r.Body, maxChatBodyBytes)
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
+	body := envelope.ChatTurnRequest
+	var selectedPlatforms []string
+	platformScopeSet := envelope.SelectedPlatforms != nil
+	if platformScopeSet {
+		var rawPlatforms []string
+		if err := json.Unmarshal(envelope.SelectedPlatforms, &rawPlatforms); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid selected_platforms")
+			return
+		}
+		var scopeErr error
+		selectedPlatforms, scopeErr = tools.NormalizeSelectedPlatforms(rawPlatforms)
+		if scopeErr != nil {
+			writeJSONError(w, http.StatusBadRequest, scopeErr.Error())
 			return
 		}
 	}
 
 	req := chatturn.TurnRequest{
-		BusinessID:     bc.BusinessID,
-		UserID:         bc.UserID,
-		ConversationID: conversationID,
-		Message:        strDeref(body.Message),
-		Model:          strDeref(body.Model),
-		ResumeBatchID:  headerBatch,
-		Locale:         resolveTurnLocale(r.Context(), body.Locale),
+		BusinessID:        bc.BusinessID,
+		UserID:            bc.UserID,
+		ConversationID:    conversationID,
+		Message:           strDeref(body.Message),
+		Model:             strDeref(body.Model),
+		ResumeBatchID:     headerBatch,
+		Locale:            resolveTurnLocale(r.Context(), body.Locale),
+		SelectedPlatforms: selectedPlatforms,
+		PlatformScopeSet:  platformScopeSet,
 	}
 
 	outcome, err := h.turn.Run(r.Context(), w, req, nil)

@@ -204,7 +204,12 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
                     </button>
                   ))}
                 </div>
-                <GuidedCompose onCompose={sendMessage} disabled={composerDisabled} />
+                <GuidedCompose
+                  onCompose={(instruction, selectedPlatforms) =>
+                    sendMessage(instruction, undefined, { selectedPlatforms })
+                  }
+                  disabled={composerDisabled}
+                />
               </>
             )}
             <SectionHelp section="chat" className="w-full max-w-md" />

@@ -84,6 +84,8 @@ type RunRequest struct {
 	AllowedTools       []string
 	Messages           []llm.Message // conversation history (excluding system)
 	ActiveIntegrations []string
+	SelectedPlatforms  []string
+	PlatformScopeSet   bool
 	Tier               string
 
 	// HITL identity fields — threaded into RunState → batch.* at pause time.
@@ -219,12 +221,18 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 	req.BusinessContext.ImageGen = o.tools.Has(tools.GenerateImage)
 	platform, business, history := prompt.BuildSplit(req.BusinessContext, req.ProjectContext, req.Messages)
 
+	activeIntegrations := req.ActiveIntegrations
+	if req.PlatformScopeSet {
+		activeIntegrations = tools.IntersectSelectedPlatforms(activeIntegrations, req.SelectedPlatforms)
+	}
 	state := &RunState{
 		Messages:                 history,
 		SystemPlatform:           platform,
 		SystemBusiness:           business,
 		PDnAllowlist:             businessContactAllowlist(req.BusinessContext),
-		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
+		AvailableTools:           o.tools.AvailableForWhitelist(ctx, activeIntegrations, req.WhitelistMode, req.AllowedTools),
+		SelectedPlatforms:        req.SelectedPlatforms,
+		PlatformScopeSet:         req.PlatformScopeSet,
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
 		ConversationID:           req.ConversationID,
