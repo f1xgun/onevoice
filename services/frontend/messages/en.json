@@ -534,6 +534,10 @@
       "description": "Chats organized by project — find a task or start a new one.",
       "search": "Search chats, messages and projects",
       "unavailableProject": "Project unavailable",
+      "newProject": "New project",
+      "emptyProject": "No chats in this project yet.",
+      "createProjectChat": "New chat in project \"{name}\"",
+      "openProject": "Open project",
       "creating": "Creating chat…",
       "createFirst": "Start your first chat",
       "emptyDescription": "Ask OneVoice to prepare a post, check reviews or update your business information.",
@@ -1992,7 +1996,9 @@
       "saveErrorRetry": "Please try again. {detail}",
       "deletedSuccess": "Project deleted",
       "save": "Save",
-      "create": "Create project"
+      "create": "Create project",
+      "saving": "Saving…",
+      "creating": "Creating project…"
     },
     "approvalOverrides": {
       "auto": "Automatic",

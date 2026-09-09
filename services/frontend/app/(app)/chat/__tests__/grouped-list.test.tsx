@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   projects: [
     { id: 'summer', name: 'Летняя акция' },
     { id: 'winter', name: 'Зимнее меню' },
+    { id: 'empty', name: 'Пустой проект' },
   ],
   projectsPending: false,
   projectsError: false,
@@ -63,6 +64,11 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   h.permissions = ['content.create', 'content.update', 'content.delete'];
+  h.projects = [
+    { id: 'summer', name: 'Летняя акция' },
+    { id: 'winter', name: 'Зимнее меню' },
+    { id: 'empty', name: 'Пустой проект' },
+  ];
   h.projectsPending = false;
   h.projectsError = false;
   vi.mocked(listConversations).mockResolvedValue(chats);
@@ -82,6 +88,13 @@ it('groups every chat by project and preserves unassigned and unavailable projec
   expect(
     within(screen.getByRole('region', { name: 'Проект недоступен' })).getByText('Старый проект')
   ).toBeVisible();
+  expect(
+    within(screen.getByRole('region', { name: 'Пустой проект' })).getByText(/нет чатов/)
+  ).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Новый проект' })).toHaveAttribute(
+    'href',
+    '/projects/new'
+  );
   expect(screen.getByText('Скидка').tagName).toBe('STRONG');
   await userEvent.click(screen.getByRole('button', { name: /Летняя акция/ }));
   expect(screen.queryByText('Пост об акции')).not.toBeInTheDocument();
@@ -89,6 +102,24 @@ it('groups every chat by project and preserves unassigned and unavailable projec
     'aria-expanded',
     'false'
   );
+});
+
+it('creates the first chat in the selected empty project', async () => {
+  h.post.mockResolvedValue({ data: { id: 'empty-project-chat' } });
+  renderPage();
+
+  const emptyProject = await screen.findByRole('region', { name: 'Пустой проект' });
+  await userEvent.click(
+    within(emptyProject).getByRole('button', { name: 'Новый чат в проекте «Пустой проект»' })
+  );
+
+  await waitFor(() =>
+    expect(h.post).toHaveBeenCalledWith('/conversations', {
+      title: 'Новый чат',
+      projectId: 'empty',
+    })
+  );
+  await waitFor(() => expect(h.push).toHaveBeenCalledWith('/chat/empty-project-chat'));
 });
 
 it('searches project names, chat titles and previews, reveals collapsed results and offers a reset', async () => {
@@ -127,6 +158,7 @@ it('does not flash projectless results while project names load and offers retry
 });
 
 it('creates from the empty CTA and shows progress before the request resolves', async () => {
+  h.projects = [];
   vi.mocked(listConversations).mockResolvedValue([]);
   let resolveCreate!: (value: { data: { id: string } }) => void;
   h.post.mockImplementation(
@@ -155,8 +187,15 @@ it('hides create CTA and row mutation menus when permission is absent while pres
   const view = renderPage();
   expect(await screen.findByText('Время работы')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Новый чат' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Новый проект' })).not.toBeInTheDocument();
+  expect(
+    within(screen.getByRole('region', { name: 'Пустой проект' })).getByRole('link', {
+      name: 'Открыть проект',
+    })
+  ).toHaveAttribute('href', '/projects/empty/chats');
   expect(screen.queryByRole('button', { name: /Меню чата/ })).not.toBeInTheDocument();
   view.unmount();
+  h.projects = [];
   vi.mocked(listConversations).mockResolvedValue([]);
   renderPage();
   expect(await screen.findByText(/Здесь появятся чаты вашей команды/)).toBeVisible();
