@@ -79,8 +79,6 @@ func TestWeeklyValueRecapLoopCancellationReleasesLockAndReturns(t *testing.T) {
 		t.Fatal("weekly recap loop did not join after cancellation")
 	}
 
-	// A new transaction can acquire the same xact lock, proving cancellation
-	// rolled the prior transaction back instead of leaking a session lock.
 	tx, err := pool.Begin(context.Background())
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(context.Background()) }()

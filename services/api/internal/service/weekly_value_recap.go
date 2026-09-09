@@ -7,14 +7,17 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // WeeklyValueRecapMinOperations prevents a quiet week from becoming a discouraging banner.
 const WeeklyValueRecapMinOperations = 2
 
 const weeklyValueRecapOrganizationTimeout = 5 * time.Second
+const recapDaysPerWeek = 7
+const mondayWeekdayOffset = 6
 
 type WeeklyValueRecapService struct {
 	repo   domain.WeeklyValueRecapRepository
@@ -25,11 +28,11 @@ func NewWeeklyValueRecapService(repo domain.WeeklyValueRecapRepository, source d
 	return &WeeklyValueRecapService{repo: repo, source: source}
 }
 
-func PreviousCompletedUTCWeek(now time.Time) (time.Time, time.Time) {
+func PreviousCompletedUTCWeek(now time.Time) (weekStart, weekEnd time.Time) {
 	now = now.UTC()
-	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	daysSinceMonday := (int(now.Weekday()) + mondayWeekdayOffset) % recapDaysPerWeek
 	currentMonday := time.Date(now.Year(), now.Month(), now.Day()-daysSinceMonday, 0, 0, 0, 0, time.UTC)
-	return currentMonday.AddDate(0, 0, -7), currentMonday
+	return currentMonday.AddDate(0, 0, -recapDaysPerWeek), currentMonday
 }
 
 func (s *WeeklyValueRecapService) Latest(ctx context.Context, businessID uuid.UUID, now time.Time) (*domain.WeeklyValueRecap, error) {

@@ -42,25 +42,25 @@ export function WeeklyValueRecap() {
   const businessId = useBusinessStore((s) => s.activeBusinessId);
   const readPermission = usePermission('content.read');
   const [dismissal, setDismissal] = useState<{ key: string; dismissed: boolean } | null>(null);
-  const { data } = useQuery<WeeklyRecap | undefined>({
+  const { data } = useQuery<WeeklyRecap | null>({
     queryKey: QUERY_KEYS.BUSINESS_RECAP(businessId),
     queryFn: () =>
       bizApi(businessId!)
         .get<WeeklyRecap>(BIZ_API_PATHS.RECAP.LATEST)
         .then((response) =>
-          response.status === 204 ? undefined : weeklyRecapSchema.parse(response.data)
+          response.status === 204 ? null : weeklyRecapSchema.parse(response.data)
         ),
     enabled: !!businessId && !!userId && readPermission.allowed,
     retry: false,
   });
 
   const storageKey =
-    data && userId && businessId
+    data && userId && businessId && readPermission.allowed && !readPermission.isError
       ? weeklyRecapDismissKey(userId, businessId, data.weekStart)
       : undefined;
 
   useEffect(() => {
-    if (!storageKey || !businessId) {
+    if (!storageKey || !businessId || !readPermission.allowed || readPermission.isError) {
       setDismissal(null);
       return;
     }
@@ -73,9 +73,17 @@ export function WeeklyValueRecap() {
       shownRecapKeys.add(storageKey);
       trackEvent('value_recap', 'shown', { page: '/business', businessId });
     }
-  }, [businessId, storageKey]);
+  }, [businessId, readPermission.allowed, readPermission.isError, storageKey]);
 
-  if (!data || !storageKey || dismissal?.key !== storageKey || dismissal.dismissed) return null;
+  if (
+    !data ||
+    !readPermission.allowed ||
+    readPermission.isError ||
+    !storageKey ||
+    dismissal?.key !== storageKey ||
+    dismissal.dismissed
+  )
+    return null;
 
   const categories = [
     data.publishedPosts > 0 && t('posts', { count: data.publishedPosts }),

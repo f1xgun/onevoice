@@ -6,9 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 const weeklyValueRecapLockSQL = `SELECT pg_try_advisory_xact_lock(hashtext('weekly_value_recap')::bigint)`

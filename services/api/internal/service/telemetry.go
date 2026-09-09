@@ -175,7 +175,9 @@ func (s *TelemetryService) ingest(ctx context.Context, userID uuid.UUID, busines
 			continue
 		}
 		if e.EventType == "value_recap" {
-			if e.Action != "shown" && e.Action != "dismissed" { continue }
+			if e.Action != "shown" && e.Action != "dismissed" {
+				continue
+			}
 			e.Metadata = nil
 			e.CorrelationID = ""
 		}

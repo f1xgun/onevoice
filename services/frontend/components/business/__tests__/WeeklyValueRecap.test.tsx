@@ -28,23 +28,26 @@ let activeBusinessId = 'biz-1';
 vi.mock('@/lib/stores/business', () => ({
   useBusinessStore: (pick: (s: object) => unknown) => pick({ activeBusinessId }),
 }));
+const permissionState = vi.hoisted(() => ({ allowed: true, isError: false }));
 vi.mock('@/lib/hooks/usePermission', () => ({
-  usePermission: () => ({ allowed: true, isLoading: false, isError: false, refetch: vi.fn() }),
+  usePermission: () => ({ ...permissionState, isLoading: false, refetch: vi.fn() }),
 }));
 
 function renderRecap() {
-  return render(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={client}>
       <WeeklyValueRecap />
     </QueryClientProvider>
   );
+  return { ...view, client };
 }
 
 describe('WeeklyValueRecap', () => {
   beforeEach(() => {
     activeBusinessId = 'biz-1';
+    permissionState.allowed = true;
+    permissionState.isError = false;
     localStorage.clear();
     get.mockReset();
     vi.mocked(trackEvent).mockClear();
@@ -102,10 +105,38 @@ describe('WeeklyValueRecap', () => {
   });
 
   it('renders nothing when the endpoint has no eligible week', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     get.mockResolvedValue({ status: 204, data: '' });
     renderRecap();
     await waitFor(() => expect(get).toHaveBeenCalled());
+    expect(get).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Your week in OneVoice')).not.toBeInTheDocument();
+    expect(consoleError.mock.calls.flat().join(' ')).not.toContain(
+      'Query data cannot be undefined'
+    );
+    consoleError.mockRestore();
+  });
+
+  it('hides cached recap immediately when content.read is revoked', async () => {
+    get.mockResolvedValue({
+      status: 200,
+      data: {
+        weekStart: '2026-08-10T00:00:00Z',
+        weekEnd: '2026-08-17T00:00:00Z',
+        publishedPosts: 2,
+        dispatchedReviewReplies: 0,
+        completedSyncs: 0,
+      },
+    });
+    const view = renderRecap();
+    expect(await screen.findByText('2 posts published')).toBeInTheDocument();
+    permissionState.allowed = false;
+    view.rerender(
+      <QueryClientProvider client={view.client}>
+        <WeeklyValueRecap />
+      </QueryClientProvider>
+    );
+    expect(screen.queryByText('2 posts published')).not.toBeInTheDocument();
   });
 
   it('rejects malformed or client-manipulated low-count responses', async () => {
