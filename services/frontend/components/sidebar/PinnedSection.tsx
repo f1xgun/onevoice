@@ -102,7 +102,7 @@ export function PinnedSection({
                   )}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate">{getDisplayTitle(conv)}</span>
+                    <span className="block truncate dark:text-ink">{getDisplayTitle(conv)}</span>
                     <ConversationPreview preview={conv.preview} />
                   </span>
                 </Link>

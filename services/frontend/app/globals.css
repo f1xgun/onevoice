@@ -38,21 +38,21 @@
   }
   .dark {
     color-scheme: dark;
-    --ov-paper: #202724;
-    --ov-paper-raised: #29332e;
-    --ov-paper-sunken: #35433b;
-    --ov-ink: #f2f3ed;
-    --ov-ink-soft: #b9c3ba;
-    --ov-line: #48564d;
-    --ov-control: #829389;
+    --ov-paper: #17191d;
+    --ov-paper-raised: #202328;
+    --ov-paper-sunken: #2a2e35;
+    --ov-ink: #f1f3f5;
+    --ov-ink-soft: #bec4ce;
+    --ov-line: #424850;
+    --ov-control: #858f9c;
     --ov-brand: #99c6ba;
-    --ov-on-brand: #202724;
+    --ov-on-brand: #17191d;
     --ov-brand-hover: #b3d9cf;
-    --ov-brand-soft: #23453e;
+    --ov-brand-soft: #243d35;
     --ov-success: #b6d3a0;
     --ov-warning: #e6c186;
     --ov-danger: #f1a39a;
-    --ov-on-danger: #202724;
+    --ov-on-danger: #17191d;
     --ov-info: #a7c8eb;
     --ov-overlay: rgb(0 0 0 / 0.64);
     --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.32);
@@ -60,21 +60,21 @@
   @media (prefers-color-scheme: dark) {
     :root:not(.light) {
       color-scheme: dark;
-      --ov-paper: #202724;
-      --ov-paper-raised: #29332e;
-      --ov-paper-sunken: #35433b;
-      --ov-ink: #f2f3ed;
-      --ov-ink-soft: #b9c3ba;
-      --ov-line: #48564d;
-      --ov-control: #829389;
+      --ov-paper: #17191d;
+      --ov-paper-raised: #202328;
+      --ov-paper-sunken: #2a2e35;
+      --ov-ink: #f1f3f5;
+      --ov-ink-soft: #bec4ce;
+      --ov-line: #424850;
+      --ov-control: #858f9c;
       --ov-brand: #99c6ba;
-      --ov-on-brand: #202724;
+      --ov-on-brand: #17191d;
       --ov-brand-hover: #b3d9cf;
-      --ov-brand-soft: #23453e;
+      --ov-brand-soft: #243d35;
       --ov-success: #b6d3a0;
       --ov-warning: #e6c186;
       --ov-danger: #f1a39a;
-      --ov-on-danger: #202724;
+      --ov-on-danger: #17191d;
       --ov-info: #a7c8eb;
       --ov-overlay: rgb(0 0 0 / 0.64);
       --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.32);

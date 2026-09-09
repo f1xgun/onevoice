@@ -180,7 +180,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
       <div
         onScroll={handleScroll}
-        className="min-h-0 flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6 md:scroll-py-8"
+        className="min-h-0 flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6 md:scroll-py-8 dark:bg-paper"
       >
         {isLoading ? (
           <SkeletonChat className="bg-transparent p-0" />

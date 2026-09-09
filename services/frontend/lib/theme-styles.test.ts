@@ -82,11 +82,46 @@ it.each([
       if (target.matches(rule.selector) && values(rule)['text-decoration-line'] === 'underline')
         underline = true;
     });
-    expect(rootValues['--ov-paper']).toBe(dark ? '#202724' : '#f5f4f0');
-    expect(rootValues['--ov-ink']).toBe(dark ? '#f2f3ed' : '#202724');
+    expect(rootValues['--ov-paper']).toBe(dark ? '#17191d' : '#f5f4f0');
+    expect(rootValues['--ov-ink']).toBe(dark ? '#f1f3f5' : '#202724');
     expect(rootValues['color-scheme']).toBe(dark ? 'dark' : 'light');
     expect(underline).toBe(dark);
     target.remove();
     document.documentElement.className = '';
   }
 );
+
+function contrast(first: string, second: string) {
+  function luminance(hex: string) {
+    const channels = [1, 3, 5].map((offset) => {
+      const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  }
+  const a = luminance(first);
+  const b = luminance(second);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+it('keeps dark reading text above 7:1 across page, panel and hover surfaces', () => {
+  let tokens: Record<string, string> = {};
+  postcss.parse(source).walkRules('.dark', (rule) => {
+    tokens = values(rule);
+  });
+  for (const background of ['--ov-paper', '--ov-paper-raised', '--ov-paper-sunken']) {
+    for (const text of ['--ov-ink', '--ov-ink-soft']) {
+      expect(
+        contrast(tokens[text], tokens[background]),
+        `${text} on ${background}`
+      ).toBeGreaterThanOrEqual(7);
+    }
+    expect(contrast(tokens['--ov-control'], tokens[background])).toBeGreaterThanOrEqual(3);
+  }
+  for (const text of ['--ov-ink', '--ov-ink-soft']) {
+    expect(contrast(tokens[text], tokens['--ov-brand-soft'])).toBeGreaterThanOrEqual(4.5);
+  }
+  for (const background of ['--ov-brand', '--ov-brand-hover']) {
+    expect(contrast(tokens['--ov-on-brand'], tokens[background])).toBeGreaterThanOrEqual(4.5);
+  }
+});

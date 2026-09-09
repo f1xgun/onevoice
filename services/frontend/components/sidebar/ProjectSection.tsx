@@ -146,7 +146,7 @@ export function ProjectSection({
                     <Bookmark size={10} className="shrink-0 text-yellow-400" aria-hidden />
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate">{getDisplayTitle(conv)}</span>
+                    <span className="block truncate dark:text-ink">{getDisplayTitle(conv)}</span>
                     <ConversationPreview preview={conv.preview} />
                   </span>
                 </Link>
