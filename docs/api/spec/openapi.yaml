@@ -274,6 +274,8 @@ paths:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1delegation-metrics
   /businesses/{id}/presence-health:
     $ref: paths/presence_health.yaml#/~1businesses~1{id}~1presence-health
+  /businesses/{id}/recap/latest:
+    $ref: paths/weekly_value_recap.yaml#/~1businesses~1{id}~1recap~1latest
   /businesses/{id}/reviews/{reviewID}:
     $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}
   /businesses/{id}/reviews/{reviewID}/reply:
@@ -1899,6 +1901,7 @@ components:
           - button_click
           - activation
           - approval
+          - value_recap
         page:
           type: string
         action:
@@ -1911,6 +1914,39 @@ components:
             type: string
         timestamp:
           type: string
+    WeeklyValueRecap:
+      type: object
+      description: Counts of completed operations for one closed Monday-to-Monday UTC week.
+      required:
+      - id
+      - weekStart
+      - weekEnd
+      - publishedPosts
+      - dispatchedReviewReplies
+      - completedSyncs
+      - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        weekStart:
+          type: string
+          format: date-time
+        weekEnd:
+          type: string
+          format: date-time
+        publishedPosts:
+          type: integer
+          minimum: 0
+        dispatchedReviewReplies:
+          type: integer
+          minimum: 0
+        completedSyncs:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
     InternalTokenResponse:
       type: object
       required:

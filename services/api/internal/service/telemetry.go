@@ -127,7 +127,7 @@ func NewTelemetryService(repo telemetryRepo) *TelemetryService {
 // UI. Server-only event types must use their dedicated service emitters.
 func validClientTelemetryEventType(eventType string) bool {
 	switch eventType {
-	case "page_view", "api_error", "chat_send", "button_click", "activation", "approval":
+	case "page_view", "api_error", "chat_send", "button_click", "activation", "approval", "value_recap":
 		return true
 	default:
 		return false
@@ -173,6 +173,13 @@ func (s *TelemetryService) ingest(ctx context.Context, userID uuid.UUID, busines
 				Metadata: marshalTelemetryMetadata(metadata), CorrelationID: &id,
 			})
 			continue
+		}
+		if e.EventType == "value_recap" {
+			if e.Action != "shown" && e.Action != "dismissed" {
+				continue
+			}
+			e.Metadata = nil
+			e.CorrelationID = ""
 		}
 		// Skip malformed events so empty event_type/action don't pollute the
 		// funnel store (the openapi type marks both required, but a bare

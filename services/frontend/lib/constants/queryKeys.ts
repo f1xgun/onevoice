@@ -36,6 +36,7 @@ export const QUERY_KEYS = {
   BUSINESS_REVIEW_DELEGATION: (bizId: string | null) =>
     ['businesses', bizId, 'reviews', 'delegation-metrics'] as const,
   BUSINESS_TASKS: (bizId: string | null) => ['businesses', bizId, 'tasks'] as const,
+  BUSINESS_RECAP: (bizId: string | null) => ['businesses', bizId, 'recap'] as const,
   // Per-business membership data. Plural-form keys keep them adjacent to
   // the other BUSINESS_* entries in the cache hierarchy so a single
   // `['businesses', bizId]` partial-match invalidation can sweep every

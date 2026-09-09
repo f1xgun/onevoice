@@ -155,6 +155,7 @@ type Services struct {
 	// the active-business fleet. Started as a background worker
 	// (StartPresenceHealthSnapshot).
 	PresenceHealthSnapshot *presencehealth.Service
+	WeeklyValueRecap       *service.WeeklyValueRecapService
 
 	// ConnectionHealth re-probes active Yandex sessions and DMs the owner on a
 	// fresh break. Started as a background worker (StartConnectionHealth).
@@ -192,6 +193,7 @@ type Services struct {
 	// presenceHealthSnapshotCancel stops the weekly presence-health snapshot loop.
 	// nil when the worker is not started (PRESENCE_HEALTH_SNAPSHOT_ENABLED=false).
 	presenceHealthSnapshotCancel context.CancelFunc
+	weeklyValueRecapCancel       context.CancelFunc
 
 	// connectionHealthCancel stops the connection-health loop. nil when the
 	// worker is not started (CONNECTION_HEALTH_ENABLED=false or ConnectionHealth
@@ -230,6 +232,9 @@ func (s *Services) Close() {
 	}
 	if s.presenceHealthSnapshotCancel != nil {
 		s.presenceHealthSnapshotCancel()
+	}
+	if s.weeklyValueRecapCancel != nil {
+		s.weeklyValueRecapCancel()
 	}
 	if s.connectionHealthCancel != nil {
 		s.connectionHealthCancel()
@@ -556,6 +561,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 
 	s.PresenceHealth = service.NewPresenceHealthService(repos.Review, repos.SyncState)
 	s.PresenceHealthSnapshot = presencehealth.New(repos.PresenceHealthSnapshot, s.PresenceHealth, repos.PresenceHealthSnapshot, log)
+	s.WeeklyValueRecap = service.NewWeeklyValueRecapService(repos.WeeklyValueRecap, repos.WeeklyValueRecapSource)
 
 	s.ToolsCache = service.NewToolsRegistryCache(cfg.OrchestratorURL, orchHTTP, toolsCacheTTL)
 	s.HITL = service.NewHITLService(

@@ -2615,5 +2615,14 @@
     "copyright": "© {year} {entityName}",
     "contact": "Contact the data operator: {email}",
     "contactAria": "Email the personal data operator: {email}"
+  },
+  "weeklyRecap": {
+    "title": "Your week in OneVoice",
+    "period": "Completed operations, {from}–{to}",
+    "posts": "{count, plural, one {# post published} other {# posts published}}",
+    "replies": "{count, plural, one {# review reply sent} other {# review replies sent}}",
+    "syncs": "{count, plural, one {# profile sync completed} other {# profile syncs completed}}",
+    "footnote": "Counts show completed operations recorded by OneVoice; they are not a new check of the external platform.",
+    "dismiss": "Dismiss weekly recap"
   }
 }
