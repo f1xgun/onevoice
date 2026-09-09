@@ -137,7 +137,7 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">{tToolGrid('noIntegrations')}</p>
-        <EmptyAction href="/integrations" label="connectChannels" />
+        <EmptyAction href="/integrations" action="connectChannels" />
       </div>
     );
   }

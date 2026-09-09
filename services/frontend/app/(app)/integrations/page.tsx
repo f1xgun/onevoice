@@ -296,7 +296,7 @@ export default function IntegrationsPage() {
         <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
         {!activeBusinessId ? (
           <InlineEmpty
-            action={<EmptyAction href="/business" label="chooseBusiness" />}
+            action={<EmptyAction href="/business" action="chooseBusiness" />}
             className="mb-8 rounded-lg border border-line bg-paper-raised"
           >
             {tIntegrations('page.chooseOrganization')}
@@ -330,7 +330,7 @@ export default function IntegrationsPage() {
         ) : integrations.length === 0 && !canConnect ? (
           <div className="mb-8">
             <InlineEmpty
-              action={<EmptyAction href="/getting-started" label="gettingStarted" />}
+              action={<EmptyAction href="/getting-started" action="gettingStarted" />}
               className="rounded-lg border border-line bg-paper-raised"
             >
               {tIntegrations('page.viewerNoChannels')}

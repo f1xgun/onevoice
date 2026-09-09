@@ -47,7 +47,7 @@ export function EmptySearch({ query, onResetFilters, body }: EmptySearchProps) {
             {tStates('resetFilters')}
           </Button>
         ) : (
-          <EmptyAction href="/getting-started" label="gettingStarted" />
+          <EmptyAction href="/getting-started" action="gettingStarted" />
         )
       }
     />

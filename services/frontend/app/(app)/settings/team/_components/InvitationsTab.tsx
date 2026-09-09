@@ -80,14 +80,14 @@ export function InvitationsTab({
           <div className="mt-4">
             <RequirePermission
               perm="members.invite"
-              fallback={<EmptyAction href="/getting-started" label="gettingStarted" />}
+              fallback={<EmptyAction href="/getting-started" action="gettingStarted" />}
             >
               {onInvite ? (
                 <Button size="sm" onClick={onInvite}>
                   {tTeam('page.invite')}
                 </Button>
               ) : (
-                <EmptyAction href="/getting-started" label="gettingStarted" />
+                <EmptyAction href="/getting-started" action="gettingStarted" />
               )}
             </RequirePermission>
           </div>

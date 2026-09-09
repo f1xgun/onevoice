@@ -150,7 +150,7 @@ export function ProjectApprovalOverrides({
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">{tOverMain('noTools')}</p>
-        <EmptyAction href="/settings/tools" label="gettingStarted" />
+        <EmptyAction href="/settings/tools" action="gettingStarted" />
       </div>
     );
   }
