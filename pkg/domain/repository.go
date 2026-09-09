@@ -551,6 +551,10 @@ type AgentTaskRepository interface {
 	Update(ctx context.Context, task *AgentTask) error
 	GetByID(ctx context.Context, businessID, taskID string) (*AgentTask, error)
 	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
+	// ResolveOriginConversationIDs returns only live conversations owned by
+	// userID in businessID. It resolves the page in one Mongo aggregation and
+	// may prove legacy origins through a unique dispatch approval ID match.
+	ResolveOriginConversationIDs(ctx context.Context, businessID, userID string, tasks []AgentTask) (map[string]string, error)
 	UpdateVerification(ctx context.Context, businessID, taskID string, update AgentTaskVerificationUpdate) error
 	RestartVerification(ctx context.Context, businessID, taskID string) (*AgentTask, error)
 	RecoverStaleVerifications(ctx context.Context, before time.Time) error

@@ -191,7 +191,7 @@ func (t *Turn) Run(
 	defer cancelTaskOps()
 
 	body, _ := json.Marshal(t.buildOrchestratorRequest(ctx, req, enriched))
-	streamErr := t.streamOrchestrator(ctx, taskOpsCtx, w, req.ConversationID, body, nil, enriched.business.ID.String(), state, emit)
+	streamErr := t.streamOrchestrator(ctx, taskOpsCtx, w, req.ConversationID, body, nil, enriched.business.ID.String(), req.UserID.String(), state, emit)
 	if streamErr != nil && state.pauseEvent == nil && state.streamErrCode == "" &&
 		!errors.Is(streamErr, context.Canceled) && strings.Contains(streamErr.Error(), "stream chat") {
 		return OutcomeOrchestratorUnavailable, streamErr

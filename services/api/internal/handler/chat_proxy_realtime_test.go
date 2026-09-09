@@ -80,6 +80,10 @@ func (r *spyAgentTaskRepo) ListByBusinessID(_ context.Context, _ string, _ domai
 	return nil, 0, nil
 }
 
+func (r *spyAgentTaskRepo) ResolveOriginConversationIDs(context.Context, string, string, []domain.AgentTask) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
 func (r *spyAgentTaskRepo) UpdateVerification(context.Context, string, string, domain.AgentTaskVerificationUpdate) error {
 	return nil
 }

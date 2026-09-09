@@ -20,6 +20,7 @@ const tasks: AgentTask[] = [
     displayName: 'Неудачное обновление',
     status: 'error',
     platform: 'vk',
+    originConversationId: 'conversation-42',
     createdAt: '2026-09-09T07:00:00Z',
   },
   {
@@ -56,7 +57,10 @@ it('drills into tasks needing help and provides a safe chat link without replayi
   fireEvent.click(screen.getByRole('button', { name: /Разобрать ошибки/ }));
   expect(screen.getByText('Неудачное обновление')).toBeInTheDocument();
   expect(screen.queryByText('Успешная проверка')).not.toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Открыть чат' })).toHaveAttribute('href', '/chat');
+  expect(screen.getByRole('link', { name: 'Открыть чат' })).toHaveAttribute(
+    'href',
+    '/chat/conversation-42'
+  );
   expect(requests.post).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Все задачи' }));
   expect(screen.getByText('Успешная проверка')).toBeInTheDocument();

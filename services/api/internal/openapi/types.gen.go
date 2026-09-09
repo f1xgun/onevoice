@@ -540,6 +540,9 @@ type AgentTask struct {
 	// Input Free-form per-task input payload.
 	Input *interface{} `json:"input,omitempty"`
 
+	// OriginConversationId Exact originating conversation, present only when it is live and owned by the requesting user.
+	OriginConversationId *string `json:"originConversationId,omitempty"`
+
 	// Output Free-form per-task output payload.
 	Output    *interface{} `json:"output,omitempty"`
 	Platform  string       `json:"platform" validate:"required"`

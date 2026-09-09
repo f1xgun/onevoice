@@ -190,6 +190,10 @@ func EnsureMessageIndexes(ctx context.Context, db *mongo.Database) error {
 			},
 			Options: options.Index().SetName("messages_conversation_role_status_created_desc"),
 		},
+		{
+			Keys:    bson.D{{Key: "business_id", Value: 1}, {Key: "tool_calls.approval_id", Value: 1}},
+			Options: options.Index().SetName("messages_business_tool_approval").SetSparse(true),
+		},
 	}
 	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
 		if mongo.IsDuplicateKeyError(err) {

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -96,6 +97,56 @@ func TestAgentTaskRepository_RecoveryLeavesCurrentOtherInstanceLeaseAlone(t *tes
 }
 
 func ptrTime(value time.Time) *time.Time { return &value }
+
+func TestAgentTaskRepository_ResolveOriginConversationIDsScopesAndFailsClosed(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	repo := NewAgentTaskRepository(db)
+	conversations := []interface{}{
+		bson.M{"_id": "owned", "business_id": "biz", "user_id": "user"},
+		bson.M{"_id": "other-user", "business_id": "biz", "user_id": "other"},
+		bson.M{"_id": "other-business", "business_id": "elsewhere", "user_id": "user"},
+		bson.M{"_id": "legacy-owned", "business_id": "biz", "user_id": "user"},
+	}
+	_, err := db.Collection("conversations").InsertMany(ctx, conversations)
+	require.NoError(t, err)
+	_, err = db.Collection("messages").InsertMany(ctx, []interface{}{
+		bson.M{"_id": "unique", "business_id": "biz", "conversation_id": "legacy-owned", "tool_calls": bson.A{bson.M{"approval_id": "approval-unique"}}},
+		bson.M{"_id": "same-key-other-business", "business_id": "elsewhere", "conversation_id": "other-business", "tool_calls": bson.A{bson.M{"approval_id": "approval-unique"}}},
+		bson.M{"_id": "old-unscoped", "conversation_id": "owned", "tool_calls": bson.A{bson.M{"approval_id": "approval-unique"}}},
+		bson.M{"_id": "ambiguous-1", "business_id": "biz", "conversation_id": "owned", "tool_calls": bson.A{bson.M{"approval_id": "approval-ambiguous"}}},
+		bson.M{"_id": "ambiguous-2", "business_id": "biz", "conversation_id": "legacy-owned", "tool_calls": bson.A{bson.M{"approval_id": "approval-ambiguous"}}},
+	})
+	require.NoError(t, err)
+
+	got, err := repo.ResolveOriginConversationIDs(ctx, "biz", "user", []domain.AgentTask{
+		{ID: "explicit", OriginConversationID: "owned"},
+		{ID: "deleted", OriginConversationID: "deleted"},
+		{ID: "wrong-user", OriginConversationID: "other-user"},
+		{ID: "wrong-business", OriginConversationID: "other-business"},
+		{ID: "legacy", DispatchApprovalID: "approval-unique"},
+		{ID: "ambiguous", DispatchApprovalID: "approval-ambiguous"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"explicit": "owned", "legacy": "legacy-owned"}, got)
+}
+
+func TestAgentTaskRepository_ResolveOriginWithoutApprovalDoesNotQueryMessages(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, db.Collection("messages").Drop(ctx))
+	_, err := db.Collection("origin_query_trap").InsertOne(ctx, bson.M{"x": 1})
+	require.NoError(t, err)
+	require.NoError(t, db.CreateView(ctx, "messages", "origin_query_trap", mongo.Pipeline{
+		bson.D{{Key: "$project", Value: bson.M{"boom": bson.M{"$divide": bson.A{1, 0}}}}},
+	}))
+	_, err = db.Collection("conversations").InsertOne(ctx, bson.M{"_id": "owned", "business_id": "biz", "user_id": "user"})
+	require.NoError(t, err)
+	repo := NewAgentTaskRepository(db)
+	got, err := repo.ResolveOriginConversationIDs(ctx, "biz", "user", []domain.AgentTask{{ID: "explicit", OriginConversationID: "owned"}})
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"explicit": "owned"}, got)
+}
 
 // TestAgentTaskRepository_Update_DoneClearsError proves a retried task that
 // succeeds no longer carries its prior failure: transitioning to "done" unsets

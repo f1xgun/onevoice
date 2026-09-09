@@ -24,7 +24,17 @@ export interface HumanError {
 
 export function explainError(task: AgentTask): HumanError {
   const platform = task.platform;
-  const chatCTA = { labelKey: 'openChat', href: '/chat' };
+  const chatCTA = task.originConversationId
+    ? { labelKey: 'openChat', href: `/chat/${encodeURIComponent(task.originConversationId)}` }
+    : undefined;
+  const isProfileSync = task.type.startsWith('sync_');
+  const fallbackCTA = isProfileSync
+    ? { labelKey: 'openProfile', href: API_PATHS.BUSINESS.ROOT }
+    : { labelKey: 'openIntegrations', href: API_PATHS.INTEGRATIONS.ROOT };
+  const contextual = (base: string) =>
+    chatCTA
+      ? { summaryKey: base, cta: chatCTA }
+      : { summaryKey: `${base}${isProfileSync ? 'Sync' : 'NoOrigin'}`, cta: fallbackCTA };
 
   switch (task.errorCode) {
     case 'integration_token_invalid': {
@@ -36,17 +46,17 @@ export function explainError(task: AgentTask): HumanError {
       return { summaryKey, cta: { labelKey, href } };
     }
     case 'rate_limit_exceeded':
-      return { summaryKey: 'rateLimit', cta: chatCTA, willAutoRetry: false };
+      return { ...contextual('rateLimit'), willAutoRetry: false };
     case 'transient':
-      return { summaryKey: 'transient', cta: chatCTA, willAutoRetry: false };
+      return { ...contextual('transient'), willAutoRetry: false };
     case 'channel_not_found':
       return {
         summaryKey: 'notFound',
         cta: { labelKey: 'openIntegrations', href: API_PATHS.INTEGRATIONS.ROOT },
       };
     case 'media_too_large':
-      return { summaryKey: 'media', cta: chatCTA };
+      return contextual('media');
     default:
-      return { summaryKey: 'fallback', cta: chatCTA, willAutoRetry: false };
+      return { ...contextual('fallback'), willAutoRetry: false };
   }
 }

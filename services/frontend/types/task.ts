@@ -27,6 +27,8 @@ export interface AgentTask {
    * omit it and fall through to the calm summary on the Tasks page.
    */
   errorCode?: ErrorCode;
+  /** Exact live conversation origin, disclosed only to its owner. */
+  originConversationId?: string;
   verificationStatus?:
     | 'pending'
     | 'running'

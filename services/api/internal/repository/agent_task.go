@@ -244,3 +244,113 @@ func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID s
 
 	return tasks, int(total), nil
 }
+
+func (r *agentTaskRepository) ResolveOriginConversationIDs(ctx context.Context, businessID, userID string, tasks []domain.AgentTask) (map[string]string, error) {
+	resolved := make(map[string]string)
+	if len(tasks) == 0 {
+		return resolved, nil
+	}
+
+	explicitIDs := make([]string, 0, len(tasks))
+	approvalTasks := make(map[string][]string)
+	for _, task := range tasks {
+		if task.OriginConversationID != "" {
+			explicitIDs = append(explicitIDs, task.OriginConversationID)
+		}
+		if task.OriginConversationID == "" && task.DispatchApprovalID != "" {
+			approvalTasks[task.DispatchApprovalID] = append(approvalTasks[task.DispatchApprovalID], task.ID)
+		}
+	}
+
+	conversations := r.collection.Database().Collection("conversations")
+	findOwned := func(ids []string) (map[string]struct{}, error) {
+		owned := make(map[string]struct{})
+		if len(ids) == 0 {
+			return owned, nil
+		}
+		cur, err := conversations.Find(ctx, bson.M{"_id": bson.M{"$in": ids}, "business_id": businessID, "user_id": userID}, options.Find().SetProjection(bson.M{"_id": 1}))
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = cur.Close(ctx) }()
+		for cur.Next(ctx) {
+			var row struct {
+				ID string `bson:"_id"`
+			}
+			if err := cur.Decode(&row); err != nil {
+				return nil, err
+			}
+			owned[row.ID] = struct{}{}
+		}
+		return owned, cur.Err()
+	}
+	owned, err := findOwned(explicitIDs)
+	if err != nil {
+		return nil, fmt.Errorf("find owned task origins: %w", err)
+	}
+	for _, task := range tasks {
+		if _, ok := owned[task.OriginConversationID]; ok {
+			resolved[task.ID] = task.OriginConversationID
+		}
+	}
+	if len(approvalTasks) == 0 {
+		return resolved, nil
+	}
+
+	approvals := make([]string, 0, len(approvalTasks))
+	for id := range approvalTasks {
+		approvals = append(approvals, id)
+	}
+	type messageOrigin struct {
+		ConversationID string            `bson:"conversation_id"`
+		ToolCalls      []domain.ToolCall `bson:"tool_calls"`
+	}
+	cur, err := r.collection.Database().Collection("messages").Find(ctx,
+		bson.M{"business_id": businessID, "tool_calls.approval_id": bson.M{"$in": approvals}},
+		options.Find().SetProjection(bson.M{"conversation_id": 1, "tool_calls.approval_id": 1}))
+	if err != nil {
+		return nil, fmt.Errorf("find legacy task origins: %w", err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	candidates := make(map[string][]string)
+	for cur.Next(ctx) {
+		var msg messageOrigin
+		if err := cur.Decode(&msg); err != nil {
+			return nil, fmt.Errorf("decode legacy task origin: %w", err)
+		}
+		seen := make(map[string]struct{})
+		for _, call := range msg.ToolCalls {
+			if _, wanted := approvalTasks[call.ApprovalID]; wanted {
+				seen[call.ApprovalID] = struct{}{}
+			}
+		}
+		for approval := range seen {
+			candidates[approval] = append(candidates[approval], msg.ConversationID)
+		}
+	}
+	if err := cur.Err(); err != nil {
+		return nil, fmt.Errorf("iterate legacy task origins: %w", err)
+	}
+	legacyIDs := make([]string, 0, len(candidates))
+	for _, ids := range candidates {
+		if len(ids) == 1 {
+			legacyIDs = append(legacyIDs, ids[0])
+		}
+	}
+	ownedLegacy, err := findOwned(legacyIDs)
+	if err != nil {
+		return nil, fmt.Errorf("validate legacy task origins: %w", err)
+	}
+	for approval, ids := range candidates {
+		if len(ids) != 1 {
+			continue
+		}
+		if _, ok := ownedLegacy[ids[0]]; !ok {
+			continue
+		}
+		for _, taskID := range approvalTasks[approval] {
+			resolved[taskID] = ids[0]
+		}
+	}
+	return resolved, nil
+}

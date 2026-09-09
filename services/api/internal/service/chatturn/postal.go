@@ -109,9 +109,11 @@ var postingTools = map[string]postingToolInfo{
 // idMap is per-stream state owned by Run (carried on the streamState) — passed
 // in so a Turn instance can be reused across requests without per-stream
 // fields on the receiver.
-func (t *Turn) onToolCall(
+func (t *Turn) onToolCallWithOrigin(
 	ctx context.Context,
 	businessID string,
+	conversationID string,
+	userID string,
 	toolCallID string,
 	toolName string,
 	toolDisplayName string,
@@ -133,15 +135,17 @@ func (t *Turn) onToolCall(
 	}
 	now := time.Now()
 	task := &domain.AgentTask{
-		BusinessID:         businessID,
-		Type:               toolName[sep+2:],
-		Platform:           toolName[:sep],
-		DisplayName:        toolDisplayName,
-		DisplayNameKey:     toolDisplayNameKey,
-		Status:             "running",
-		Input:              toolArgs,
-		DispatchApprovalID: approvalID,
-		StartedAt:          &now,
+		BusinessID:           businessID,
+		Type:                 toolName[sep+2:],
+		Platform:             toolName[:sep],
+		DisplayName:          toolDisplayName,
+		DisplayNameKey:       toolDisplayNameKey,
+		Status:               "running",
+		Input:                toolArgs,
+		DispatchApprovalID:   approvalID,
+		OriginConversationID: conversationID,
+		OriginUserID:         userID,
+		StartedAt:            &now,
 	}
 	expected, target, verificationStatus := t.chatVerificationIntent(ctx, businessID, toolName, toolArgs)
 	task.VerificationExpected, task.VerificationTarget = expected, target
@@ -160,6 +164,13 @@ func (t *Turn) onToolCall(
 	if t.deps.TaskHub != nil {
 		t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
 	}
+}
+
+// onToolCall is retained for focused postal tests and non-request callers.
+// Request paths use onToolCallWithOrigin with the ownership already validated
+// at the chat boundary.
+func (t *Turn) onToolCall(ctx context.Context, businessID, toolCallID, toolName, toolDisplayName, toolDisplayNameKey string, toolArgs map[string]interface{}, approvalID string, idMap map[string]string) {
+	t.onToolCallWithOrigin(ctx, businessID, "", "", toolCallID, toolName, toolDisplayName, toolDisplayNameKey, toolArgs, approvalID, idMap)
 }
 
 // stampReviewDispatch persists the approved dispatch key ("<batch_id>-<call_id>")

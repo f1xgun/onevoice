@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { Loader2 } from 'lucide-react';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Form } from '@/components/ui/form';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -79,8 +80,21 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
           {canSubmit && (
-            <Button type="submit" disabled={submitting}>
-              {isEdit ? tForm('save') : tForm('create')}
+            <Button type="submit" disabled={submitting} aria-busy={submitting}>
+              {submitting && (
+                <Loader2
+                  aria-hidden
+                  size={16}
+                  className="mr-2 animate-spin motion-reduce:animate-none"
+                />
+              )}
+              {submitting
+                ? isEdit
+                  ? tForm('saving')
+                  : tForm('creating')
+                : isEdit
+                  ? tForm('save')
+                  : tForm('create')}
             </Button>
           )}
           <Button

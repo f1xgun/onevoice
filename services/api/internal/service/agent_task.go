@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
@@ -126,6 +127,20 @@ func (s *agentTaskService) List(ctx context.Context, businessID uuid.UUID, filte
 		return nil, 0, fmt.Errorf("list agent tasks: %w", err)
 	}
 
+	bc, ok := authz.BusinessContextFromCtx(ctx)
+	if !ok || bc.BusinessID != businessID {
+		for i := range tasks {
+			tasks[i].ResolvedConversationID = ""
+		}
+		return tasks, total, nil
+	}
+	origins, err := s.repo.ResolveOriginConversationIDs(ctx, businessID.String(), bc.UserID.String(), tasks)
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolve agent task origins: %w", err)
+	}
+	for i := range tasks {
+		tasks[i].ResolvedConversationID = origins[tasks[i].ID]
+	}
 	return tasks, total, nil
 }
 

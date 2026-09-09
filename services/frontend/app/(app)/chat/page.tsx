@@ -2,12 +2,14 @@
 
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   ChevronDown,
   ChevronRight,
   FolderOpen,
+  FolderPlus,
   Loader2,
   MessageCircle,
   Plus,
@@ -72,11 +74,14 @@ export default function ChatListPage() {
   });
 
   const { mutate: createConversation, isPending } = useMutation({
-    mutationFn: (businessId: string) =>
+    mutationFn: ({ businessId, projectId }: { businessId: string; projectId?: string }) =>
       bizApi(businessId)
-        .post<Conversation>(BIZ_API_PATHS.CONVERSATIONS.ROOT, { title: tChat('newConversation') })
+        .post<Conversation>(BIZ_API_PATHS.CONVERSATIONS.ROOT, {
+          title: tChat('newConversation'),
+          ...(projectId ? { projectId } : {}),
+        })
         .then((r) => r.data),
-    onSuccess: (conv: Conversation, businessId) => {
+    onSuccess: (conv: Conversation, { businessId }) => {
       trackClick('create_conversation', undefined, businessId);
       queryClient.invalidateQueries({
         queryKey: conversationsQueryKey(businessId),
@@ -140,11 +145,15 @@ export default function ChatListPage() {
     onError: () => toast.error(tCommon('connectionError')),
   });
 
-  const projectNames = new Map(
-    (projectsQuery.data ?? []).map((project) => [project.id, project.name])
-  );
+  const projects = projectsQuery.data ?? [];
+  const projectNames = new Map(projects.map((project) => [project.id, project.name]));
   const query = search.trim().toLocaleLowerCase();
   const groups = new Map<string, { name: string; conversations: Conversation[] }>();
+  for (const project of projects) {
+    if (!query || project.name.toLocaleLowerCase().includes(query)) {
+      groups.set(project.id, { name: project.name, conversations: [] });
+    }
+  }
   for (const conv of conversations) {
     const id = conv.projectId || 'none';
     const name = conv.projectId
@@ -165,13 +174,15 @@ export default function ChatListPage() {
     if (b === 'none') return 1;
     return first.name.localeCompare(second.name);
   });
-  function handleCreate() {
-    if (activeBusinessId && canCreate && !isPending) createConversation(activeBusinessId);
+  function handleCreate(projectId?: string) {
+    if (activeBusinessId && canCreate && !isPending) {
+      createConversation({ businessId: activeBusinessId, projectId });
+    }
   }
   function renderCreateButton(empty = false) {
     return (
       <Button
-        onClick={handleCreate}
+        onClick={() => handleCreate()}
         disabled={isPending || !activeBusinessId}
         aria-busy={isPending}
       >
@@ -192,7 +203,17 @@ export default function ChatListPage() {
           <h1 className="text-page-title">{tChat('heading')}</h1>
           <p className="mt-1 text-meta text-ink-soft">{tList('description')}</p>
         </div>
-        {canCreate && renderCreateButton()}
+        {canCreate && (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="min-h-11">
+              <Link href="/projects/new">
+                <FolderPlus aria-hidden size={16} className="mr-2" />
+                {tList('newProject')}
+              </Link>
+            </Button>
+            {renderCreateButton()}
+          </div>
+        )}
       </div>
       {createPermission.isError && <ListLoadError onRetry={createPermission.refetch} />}
       {isLoading || projectsQuery.isPending ? (
@@ -204,7 +225,7 @@ export default function ChatListPage() {
             void projectsQuery.refetch();
           }}
         />
-      ) : conversations.length === 0 ? (
+      ) : conversations.length === 0 && projects.length === 0 ? (
         <div
           role="status"
           className="flex flex-col items-center justify-center gap-4 rounded-lg border border-line bg-paper-raised px-4 py-12 text-center"
@@ -299,6 +320,36 @@ export default function ChatListPage() {
                           onRegenerateTitle={() => regenerateTitle(conv.id)}
                         />
                       ))}
+                      {group.conversations.length === 0 && projectNames.has(id) && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+                          <p className="text-meta text-ink-soft">{tList('emptyProject')}</p>
+                          {canCreate ? (
+                            <Button
+                              variant="outline"
+                              className="min-h-11"
+                              disabled={isPending || !activeBusinessId}
+                              aria-busy={isPending}
+                              aria-label={tList('createProjectChat', { name: group.name })}
+                              onClick={() => handleCreate(id)}
+                            >
+                              {isPending ? (
+                                <Loader2
+                                  aria-hidden
+                                  size={16}
+                                  className="mr-2 animate-spin motion-reduce:animate-none"
+                                />
+                              ) : (
+                                <Plus aria-hidden size={16} className="mr-2" />
+                              )}
+                              {isPending ? tList('creating') : tChat('newConversation')}
+                            </Button>
+                          ) : (
+                            <Button asChild variant="outline" className="min-h-11">
+                              <Link href={`/projects/${id}/chats`}>{tList('openProject')}</Link>
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </section>

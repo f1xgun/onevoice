@@ -6,6 +6,8 @@ import type { ReactNode } from 'react';
 import { ProjectForm } from '../ProjectForm';
 import type { Project } from '@/types/project';
 
+const h = vi.hoisted(() => ({ projectPost: vi.fn() }));
+
 // Mock next/navigation to avoid router context.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
@@ -18,6 +20,18 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/hooks/usePermission', () => ({
   usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (select: (state: { activeBusinessId: string }) => unknown) =>
+    select({ activeBusinessId: 'business' }),
+}));
+
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: () => ({
+    get: vi.fn().mockResolvedValue({ data: [] }),
+    post: h.projectPost,
+  }),
 }));
 
 // Mock axios-based API client: integrations endpoint + project CRUD.
@@ -76,6 +90,19 @@ describe('ProjectForm', () => {
     expect(screen.getByLabelText('Название')).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Создать проект' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Удалить проект' })).not.toBeInTheDocument();
+  });
+
+  it('shows immediate busy wording while project creation is pending', async () => {
+    h.projectPost.mockReturnValue(new Promise(() => {}));
+    renderForm();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText('Название'), 'Новый проект');
+    await user.click(screen.getByRole('button', { name: 'Создать проект' }));
+
+    const busy = await screen.findByRole('button', { name: 'Создаём проект…' });
+    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute('aria-busy', 'true');
   });
 
   it('renders pre-filled fields in edit mode with a delete button', () => {

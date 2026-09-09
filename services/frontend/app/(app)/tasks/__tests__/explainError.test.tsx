@@ -52,16 +52,19 @@ describe('explainError', () => {
     expect(out.cta?.href).toBe('/integrations?reconnect=google_business');
   });
 
-  it('rate_limit_exceeded returns rateLimit and does NOT promise auto-retry', () => {
-    const out = explainError(task({ errorCode: 'rate_limit_exceeded' }));
+  it('uses the exact resolved conversation for a chat-origin task', () => {
+    const out = explainError(
+      task({ errorCode: 'rate_limit_exceeded', originConversationId: 'conv/one' })
+    );
     expect(out.summaryKey).toBe('rateLimit');
     expect(out.willAutoRetry).toBe(false);
-    expect(out.cta).toEqual({ labelKey: 'openChat', href: '/chat' });
+    expect(out.cta).toEqual({ labelKey: 'openChat', href: '/chat/conv%2Fone' });
   });
 
   it('transient returns transient and does NOT promise auto-retry', () => {
-    const out = explainError(task({ errorCode: 'transient' }));
-    expect(out.summaryKey).toBe('transient');
+    const out = explainError(task({ errorCode: 'transient', type: 'sync_description' }));
+    expect(out.summaryKey).toBe('transientSync');
+    expect(out.cta).toEqual({ labelKey: 'openProfile', href: '/business' });
     expect(out.willAutoRetry).toBe(false);
   });
 
@@ -72,22 +75,22 @@ describe('explainError', () => {
     expect(out.cta?.href).toBe('/integrations');
   });
 
-  it('media_too_large offers chat to revise the image without promising a retry', () => {
+  it('legacy tasks without a proven origin point to channel diagnostics', () => {
     const out = explainError(task({ errorCode: 'media_too_large' }));
-    expect(out.summaryKey).toBe('media');
-    expect(out.cta).toEqual({ labelKey: 'openChat', href: '/chat' });
+    expect(out.summaryKey).toBe('mediaNoOrigin');
+    expect(out.cta).toEqual({ labelKey: 'openIntegrations', href: '/integrations' });
     expect(out.willAutoRetry).toBeFalsy();
   });
 
   it('undefined errorCode (historical row) returns fallback without auto-retry', () => {
     const out = explainError(task({ errorCode: undefined }));
-    expect(out.summaryKey).toBe('fallback');
+    expect(out.summaryKey).toBe('fallbackNoOrigin');
     expect(out.willAutoRetry).toBe(false);
   });
 
   it('unknown code (forward-compat) returns fallback without auto-retry', () => {
     const out = explainError(task({ errorCode: 'never_emitted_code' as never }));
-    expect(out.summaryKey).toBe('fallback');
+    expect(out.summaryKey).toBe('fallbackNoOrigin');
     expect(out.willAutoRetry).toBe(false);
   });
 });

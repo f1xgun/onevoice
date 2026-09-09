@@ -82,6 +82,13 @@ func TestListTasks_Success(t *testing.T) {
 	assert.Equal(t, 2, resp.Total)
 }
 
+func TestDomainAgentTaskToOpenAPI_EmitsOnlyACLResolvedOrigin(t *testing.T) {
+	raw := domainAgentTaskToOpenAPI(domain.AgentTask{OriginConversationID: "private-raw"})
+	require.Nil(t, raw.OriginConversationId)
+	resolved := domainAgentTaskToOpenAPI(domain.AgentTask{OriginConversationID: "private-raw", ResolvedConversationID: "visible"})
+	require.Equal(t, "visible", *resolved.OriginConversationId)
+}
+
 func TestListTasks_WithFilters(t *testing.T) {
 	businessID := uuid.New()
 	userID := uuid.New()
