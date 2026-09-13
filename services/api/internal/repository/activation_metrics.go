@@ -38,21 +38,26 @@ func NewActivationRepository(pool pgxPool) *ActivationRepository {
 
 // recentActivationQuery counts, over non-deleted users created at or after
 // `since`, the total (signups) and the subset that own at least one non-deleted
-// business with an active, non-deleted integration (activated). The active
-// status literal is bound as $2 (domain.IntegrationStatusActive), never
-// interpolated into the SQL.
+// business with an active, non-deleted integration (activated). Ownership is
+// resolved through the canonical RBAC membership table; businesses.user_id was
+// removed by the RBAC cleanup migration. Status and role values are bound,
+// never interpolated into the SQL.
 const recentActivationQuery = `
 SELECT
     COUNT(*) AS signups,
     COUNT(*) FILTER (WHERE EXISTS (
         SELECT 1
-        FROM businesses b
+        FROM business_members bm
+        JOIN businesses b
+          ON b.id = bm.business_id
+         AND b.deleted_at IS NULL
         JOIN integrations i
           ON i.business_id = b.id
          AND i.deleted_at IS NULL
          AND i.status = $2
-        WHERE b.user_id = u.id
-          AND b.deleted_at IS NULL
+        WHERE bm.user_id = u.id
+          AND bm.role_id = $3
+          AND bm.status = $4
     )) AS activated
 FROM users u
 WHERE u.deleted_at IS NULL
@@ -63,7 +68,8 @@ WHERE u.deleted_at IS NULL
 // zero-valued ActivationStats (no error).
 func (r *ActivationRepository) RecentActivation(ctx context.Context, since time.Time) (ActivationStats, error) {
 	var stats ActivationStats
-	if err := r.pool.QueryRow(ctx, recentActivationQuery, since, domain.IntegrationStatusActive).
+	if err := r.pool.QueryRow(ctx, recentActivationQuery, since, domain.IntegrationStatusActive,
+		domain.SystemRoleOwnerID, "active").
 		Scan(&stats.Signups, &stats.Activated); err != nil {
 		return ActivationStats{}, fmt.Errorf("query activation funnel: %w", err)
 	}
