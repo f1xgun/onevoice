@@ -33,8 +33,10 @@ mongorestore --uri="$SCRATCH_MONGO_URI" --gzip --archive="$MONGO_ARCHIVE" --drop
 echo "PG sanity: SELECT 1"
 psql "$SCRATCH_PG_DSN" -tAc 'SELECT 1' | grep -qE '^1$'
 
-echo "Mongo sanity: ping"
-mongosh "$SCRATCH_MONGO_URI" --quiet --eval 'db.runCommand({ping:1}).ok' \
-    | grep -qE '^1$'
+echo "Mongo sanity: serverStatus"
+# The operator backup image ships the MongoDB Database Tools, including
+# mongostat, but not the separate mongosh package. One bounded mongostat row
+# proves that the restored server answers an authenticated serverStatus read.
+mongostat --uri="$SCRATCH_MONGO_URI" --rowcount=1 --noheaders >/dev/null
 
 echo "restore.sh OK"

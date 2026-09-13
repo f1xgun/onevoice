@@ -149,6 +149,11 @@ window. Required GitHub Actions secrets:
 | `YC_S3_ACCESS_KEY_DRILL` | Service-account static S3 key for the drill bucket |
 | `YC_S3_SECRET_KEY_DRILL` | Pair of the above |
 
+The workflow fails before installing or building anything when one of these
+secrets is absent. It builds `scripts/backup/Dockerfile` and runs `restore.sh`
+inside that exact image, so the weekly check covers the same Restic,
+PostgreSQL, and MongoDB tools used by the operator's monthly drill.
+
 The drill bucket is seeded by an offline weekly sync from the production bucket
 (operator runs `restic copy --repo prod --repo2 drill` monthly). This keeps the
 test bucket small and avoids exposing production KMS credentials in CI — the
