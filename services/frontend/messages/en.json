@@ -2180,7 +2180,19 @@
         "calmBody": "Nothing slips through: AI prepares drafts, you sip coffee and approve with one click."
       },
       "emailExists": "A user with this email already exists",
-      "genericError": "Sign-up failed. Check your details."
+      "genericError": "Sign-up failed. Check your details.",
+      "closedBeta": {
+        "invitedDescription": "Use the email address that received your invitation. Access is enabled for that address; you can connect your organization after registering.",
+        "eyebrow": "Closed beta",
+        "title": "We onboard organizations in small groups.",
+        "description": "This gives our team time to help with setup and fix issues quickly.",
+        "body": "Join the waitlist. When your cohort opens, we'll enable access for your email and send you a registration link.",
+        "waitlistCta": "Apply for access",
+        "haveInvite": "Already received an invitation?",
+        "inviteCta": "Create your account",
+        "haveAccount": "Already registered?",
+        "loginCta": "Log in"
+      }
     },
     "shell": {
       "wordmark": "OneVoice",
@@ -2740,7 +2752,10 @@
       "disabledHint": "Check both consents to continue"
     },
     "errors": {
-      "consentRequired": "We've updated our documents — please reload the page and confirm the new consent versions."
+      "consentRequired": "We've updated our documents — please reload the page and confirm the new consent versions.",
+      "inviteRequired": "Access has not been enabled for this email yet. Apply or wait for an invitation to the next cohort.",
+      "gateUnavailable": "We couldn't check your invitation right now. Please try registering again in a few minutes.",
+      "joinWaitlist": "Apply for early access"
     },
     "noscript": "Enable JavaScript to register."
   },

@@ -95,6 +95,24 @@ describe('landing entry', () => {
       ).toBeVisible();
     }
   );
+  it.each(['ru', 'en'] as const)(
+    'forces waitlist entry points when account registration is invite-only in %s',
+    (locale) => {
+      (globalThis as unknown as { __setTestLocale: (locale: 'ru' | 'en') => void }).__setTestLocale(
+        locale
+      );
+      vi.stubEnv('LANDING_ENTRY_MODE', 'open');
+      vi.stubEnv('REGISTRATION_MODE', 'invite_only');
+
+      const { container } = render(<LandingPage />);
+
+      expect(container.querySelectorAll('a[href="/register"]')).toHaveLength(0);
+      expect(container.querySelector('#hero a[data-cta="hero-waitlist"]')).toHaveAttribute(
+        'href',
+        '#waitlist'
+      );
+    }
+  );
   it.each([
     { locale: 'ru', copy: ru },
     { locale: 'en', copy: en },

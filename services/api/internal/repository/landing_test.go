@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/pashagolub/pgxmock/v4"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,6 +27,45 @@ func TestLanding_InsertWaitlist_DedupSuffix(t *testing.T) {
 		Consent: true,
 	})
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestLanding_HasRegistrationAccess(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		email   string
+		allowed bool
+	}{
+		{name: "granted", email: " Owner@Cafe.RU ", allowed: true},
+		{name: "not granted", email: "other@example.org", allowed: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock, err := pgxmock.NewPool()
+			require.NoError(t, err)
+			t.Cleanup(func() { mock.Close() })
+			mock.ExpectQuery(`SELECT EXISTS .* FROM waitlist_signups .* email = \$1 .* consent = TRUE .* access_granted_at IS NOT NULL`).
+				WithArgs(strings.ToLower(strings.TrimSpace(tc.email))).
+				WillReturnRows(mock.NewRows([]string{"exists"}).AddRow(tc.allowed))
+
+			allowed, err := NewLandingRepository(mock).HasRegistrationAccess(context.Background(), tc.email)
+
+			require.NoError(t, err)
+			require.Equal(t, tc.allowed, allowed)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestLanding_HasRegistrationAccess_QueryFailure(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(func() { mock.Close() })
+	mock.ExpectQuery(`SELECT EXISTS`).WithArgs("owner@example.org").WillReturnError(assert.AnError)
+
+	allowed, err := NewLandingRepository(mock).HasRegistrationAccess(context.Background(), "owner@example.org")
+
+	require.ErrorContains(t, err, "registration access lookup")
+	require.False(t, allowed)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -136,7 +136,10 @@ Open `.env` and fill in **every blank required field**. The file is the single s
 Set `APP_ENV=production` for any real deployment: it switches on the fail-closed
 gates (LEGAL\_\* validation, LLM data-residency, mandatory internal mTLS and
 orchestrator secret). The production overlay refuses to start without `APP_ENV`
-and `PUBLIC_URL`.
+and `PUBLIC_URL`. Set `REGISTRATION_MODE=invite_only` in the deployment env file
+for a cohort rollout. Both Compose files and `.env.example` default to this
+closed mode, including a base-only deployment; an explicit `open` overrides the
+default. API and frontend must receive the same mode.
 
 ### Required values you MUST generate
 
@@ -468,11 +471,15 @@ prove browser CSP enforcement for complete user flows.
 
 ### Landing entry deploy checklist
 
-- [ ] Verify `LANDING_ENTRY_MODE` (default `hybrid`), legal entity details, weekly
-      onboarding quota and rollback readiness using the
+- [ ] Apply PostgreSQL migration `000045_waitlist_access_grants` before deploying
+      this API version or granting access. It only adds the nullable grant column;
+      it does not grant existing waitlist entries access.
+- [ ] Verify `REGISTRATION_MODE` (`invite_only` by default in both Compose modes),
+      `LANDING_ENTRY_MODE`, legal entity details, weekly onboarding quota and
+      rollback readiness using the
       [founder runbook](runbook-founder-manual-actions.md#гибридный-вход-на-лендинге).
-      Apply mode changes with the existing frontend image and updated runtime
-      environment; no rebuild. See [frontend configuration](frontend-config.md)
+      Apply registration mode changes to API and frontend together with the
+      existing images; no rebuild. See [frontend configuration](frontend-config.md)
       for the distinction between a process restart and Compose recreation.
 
 ### Canonical-email pre-migration check

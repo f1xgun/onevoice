@@ -38,6 +38,13 @@ type UserService interface {
 	UpdateName(ctx context.Context, userID uuid.UUID, name string) error
 }
 
+// RegistrationAccessGate is the persistence seam used by closed-beta mode.
+// Implementations must return one opaque boolean for missing, unconsented, and
+// not-yet-approved waitlist rows so the handler exposes no list status detail.
+type RegistrationAccessGate interface {
+	HasRegistrationAccess(ctx context.Context, email string) (bool, error)
+}
+
 // ConsentDiffer powers the /auth/me requiresReconsent field. nil-safe.
 type ConsentDiffer interface {
 	DiffAgainstCurrent(ctx context.Context, userID uuid.UUID) (*service.RequiresReconsentInfo, error)
@@ -58,8 +65,10 @@ type AuthHandler struct {
 	emailVerificationService EmailVerificationServiceAPI
 	// meUserExtraGetter fetches the user including soft-deleted state so /auth/me
 	// continues to render the deletion-grace banner. nil → fall back to GetByID.
-	meUserExtraGetter func(ctx context.Context, userID uuid.UUID) (*domain.User, error)
-	consents          ConsentDiffer
+	meUserExtraGetter      func(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	consents               ConsentDiffer
+	registrationGate       RegistrationAccessGate
+	inviteOnlyRegistration bool
 
 	// Brute-force / credential-stuffing defense. Both may be nil — Login
 	// degrades to no-lockout / no-captcha in environments without Redis
@@ -67,6 +76,15 @@ type AuthHandler struct {
 	lock            *lockout.Lockout
 	captcha         service.SmartCaptchaVerifier
 	captchaFailOpen bool
+}
+
+// WithInviteOnlyRegistration enables the closed-beta gate. Leaving it unset
+// keeps registration open, which is the local-development default. A nil gate
+// after enabling this mode fails closed instead of silently reopening signup.
+func (h *AuthHandler) WithInviteOnlyRegistration(gate RegistrationAccessGate) *AuthHandler {
+	h.inviteOnlyRegistration = true
+	h.registrationGate = gate
+	return h
 }
 
 // PasswordResetServiceAPI is the AuthHandler's view of PasswordResetService.
@@ -221,6 +239,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	email := string(req.Email)
+
+	if !h.requireRegistrationAccess(w, r, email) {
+		return
+	}
 
 	var missing []string
 	if strDeref(req.Consents.Tos) != legalconfig.TOSVersion {
@@ -250,7 +273,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			{Slug: string(legalconfig.PolicyPDN), Version: strDeref(req.Consents.Pdn)},
 		},
 	}
-	email := string(req.Email)
 	_, err := h.userService.RegisterWithContext(r.Context(), email, req.Password, regCtx)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
@@ -280,6 +302,30 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		User:        userToOpenAPI(user),
 		AccessToken: accessToken,
 	})
+}
+
+// requireRegistrationAccess protects every pre-verification email assignment:
+// otherwise an unverified signup could move an approved email to an arbitrary
+// address and free the approved address for another signup.
+func (h *AuthHandler) requireRegistrationAccess(w http.ResponseWriter, r *http.Request, email string) bool {
+	if !h.inviteOnlyRegistration {
+		return true
+	}
+	if h.registrationGate == nil {
+		writeJSONCodeError(w, http.StatusServiceUnavailable, ErrCodeRegistrationGateUnavailable)
+		return false
+	}
+	allowed, err := h.registrationGate.HasRegistrationAccess(r.Context(), domain.NormalizeEmail(email))
+	if err != nil {
+		slog.ErrorContext(r.Context(), "registration access lookup failed", "error", err)
+		writeJSONCodeError(w, http.StatusServiceUnavailable, ErrCodeRegistrationGateUnavailable)
+		return false
+	}
+	if !allowed {
+		writeJSONCodeError(w, http.StatusForbidden, ErrCodeRegistrationInviteRequired)
+		return false
+	}
+	return true
 }
 
 // Login layered defense: lockout middleware short-circuits TierLocked
@@ -775,6 +821,9 @@ func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) 
 	}
 
 	newEmail := string(req.NewEmail)
+	if !h.requireRegistrationAccess(w, r, newEmail) {
+		return
+	}
 	oldEmail, err := h.emailVerificationService.ChangeEmailBeforeVerify(r.Context(), userID, newEmail)
 	if err != nil {
 		switch {

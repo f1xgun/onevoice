@@ -110,6 +110,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	cfg := &config.Config{
 		JWTSecret:          jwtSecret,
 		EncryptionKey:      encKey,
+		RegistrationMode:   config.RegistrationModeOpen,
 		CORSAllowedOrigins: []string{"http://localhost:3000"},
 		RateLimitRegister:  100,
 		RateLimitLogin:     100,

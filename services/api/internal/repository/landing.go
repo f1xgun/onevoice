@@ -9,6 +9,8 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // WaitlistSignupRow is one closed-beta signup to insert. Email is stored
@@ -61,6 +63,27 @@ func (r *LandingRepository) InsertWaitlist(ctx context.Context, row WaitlistSign
 		return fmt.Errorf("waitlist_signups insert: %w", err)
 	}
 	return nil
+}
+
+// HasRegistrationAccess reports whether the normalized email belongs to a
+// consented waitlist signup whose closed-beta access has been granted. The
+// single boolean result deliberately does not distinguish missing, unconsented,
+// and not-yet-granted rows.
+func (r *LandingRepository) HasRegistrationAccess(ctx context.Context, email string) (bool, error) {
+	normalizedEmail := domain.NormalizeEmail(email)
+	var allowed bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM waitlist_signups
+			WHERE email = $1
+			  AND consent = TRUE
+			  AND access_granted_at IS NOT NULL
+		)`, normalizedEmail).Scan(&allowed)
+	if err != nil {
+		return false, fmt.Errorf("waitlist registration access lookup: %w", err)
+	}
+	return allowed, nil
 }
 
 // InsertChannelVote records one fake-door vote. A nil Note is stored as SQL

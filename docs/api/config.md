@@ -74,8 +74,16 @@ Defaults sized for free-beta single-pod / ~10–20 concurrent chats; operators r
 
 | Field | Env var | Default | Semantic |
 |---|---|---|---|
+| `RegistrationMode` | `REGISTRATION_MODE` | `open` outside production; `invite_only` in production | `invite_only` permits account creation only for consented waitlist emails with `access_granted_at`. Unknown values abort API startup. |
 | `JWTSecret` | `JWT_SECRET` | (required) | Token signing key. Must be ≥ `auth.JWTSecretMinLen` chars. |
 | `EncryptionKey` | `ENCRYPTION_KEY` | (required) | At-rest encryption for OAuth tokens. Must be exactly `crypto.AES256KeyLen` bytes. |
+
+`RegistrationMode` defaults above describe a standalone API process. Both Compose
+files and `.env.example` set `invite_only` by default for API and frontend, even
+for base-only deployments. An explicit `REGISTRATION_MODE=open` overrides that
+default. Recreate both services when changing it; `docker compose restart` does
+not import an edited `.env`. See [frontend configuration](../frontend-config.md)
+and the [grant/revoke workflow](../runbook-founder-manual-actions.md#гибридный-вход-на-лендинге).
 
 ### OAuth credentials
 

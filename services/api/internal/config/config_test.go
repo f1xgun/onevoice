@@ -102,6 +102,52 @@ func TestLoad_GracefulDisable_NoLLMEnv(t *testing.T) {
 	assert.Empty(t, cfg.SelfHostedEndpoints)
 }
 
+func TestLoad_RegistrationMode(t *testing.T) {
+	t.Run("development defaults open", func(t *testing.T) {
+		minTestEnv(t)
+		t.Setenv("APP_ENV", "development")
+		t.Setenv("REGISTRATION_MODE", "")
+
+		cfg, err := config.Load()
+
+		require.NoError(t, err)
+		assert.Equal(t, config.RegistrationModeOpen, cfg.RegistrationMode)
+	})
+
+	t.Run("production defaults invite only", func(t *testing.T) {
+		minTestEnv(t)
+		setValidLegal(t)
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("REGISTRATION_MODE", "")
+
+		cfg, err := config.Load()
+
+		require.NoError(t, err)
+		assert.Equal(t, config.RegistrationModeInviteOnly, cfg.RegistrationMode)
+	})
+
+	t.Run("explicit open overrides production default", func(t *testing.T) {
+		minTestEnv(t)
+		setValidLegal(t)
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("REGISTRATION_MODE", " OPEN ")
+
+		cfg, err := config.Load()
+
+		require.NoError(t, err)
+		assert.Equal(t, config.RegistrationModeOpen, cfg.RegistrationMode)
+	})
+
+	t.Run("unknown value fails loud", func(t *testing.T) {
+		minTestEnv(t)
+		t.Setenv("REGISTRATION_MODE", "closed")
+
+		_, err := config.Load()
+
+		require.ErrorContains(t, err, "REGISTRATION_MODE")
+	})
+}
+
 func TestLoad_ProviderKeys(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")

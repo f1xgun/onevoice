@@ -50,6 +50,15 @@ func init() {
 // them aggregated in *router.Handlers ready for router.Setup. See
 // docs/api/wire-handlers.md for the construction order + setter rationale.
 func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*router.Handlers, error) {
+	// Only a validated, explicit mode may reach the handler. Do not silently
+	// open registration if a caller bypasses config.Load or omits the store.
+	if cfg == nil || (cfg.RegistrationMode != config.RegistrationModeOpen && cfg.RegistrationMode != config.RegistrationModeInviteOnly) {
+		return nil, fmt.Errorf("wire: registration mode must be open or invite_only")
+	}
+	if cfg.RegistrationMode == config.RegistrationModeInviteOnly && (repos == nil || repos.Landing == nil) {
+		return nil, fmt.Errorf("wire: invite-only registration requires landing repository")
+	}
+
 	oauthHandler := oauth.NewOAuthHandler(svcs.OAuth, svcs.Integration, svcs.Business, oauth.OAuthConfig{
 		VKClientID:             cfg.VKClientID,
 		VKClientSecret:         cfg.VKClientSecret,
@@ -121,6 +130,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		authHandler.SetMeUserExtraGetter(func(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 			return repos.UserResetExt.GetByIDIncludingDeleted(ctx, userID)
 		})
+	}
+	if cfg.RegistrationMode == config.RegistrationModeInviteOnly {
+		authHandler.WithInviteOnlyRegistration(service.NewRegistrationAccessService(repos.Landing))
 	}
 	authHandler.WithLockout(svcs.Lockout, svcs.SmartCaptcha, cfg.SmartCaptchaFailOpen)
 	businessHandler, err := handler.NewBusinessHandler(svcs.Business, svcs.PlatformSync, svcs.ObjectStorage)

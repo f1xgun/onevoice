@@ -37,6 +37,17 @@ type MockUserService struct {
 	mock.Mock
 }
 
+type stubRegistrationAccessGate struct {
+	allowed bool
+	err     error
+	email   string
+}
+
+func (g *stubRegistrationAccessGate) HasRegistrationAccess(_ context.Context, email string) (bool, error) {
+	g.email = email
+	return g.allowed, g.err
+}
+
 func (m *MockUserService) Register(ctx context.Context, email, password string) (*domain.User, error) {
 	args := m.Called(ctx, email, password)
 	if args.Get(0) == nil {
@@ -282,6 +293,65 @@ func TestRegister(t *testing.T) {
 			mockService.AssertExpectations(t)
 		})
 	}
+}
+
+func TestRegister_InviteOnlyGate(t *testing.T) {
+	requestBody := `{"email":"owner@example.org","name":"Test User","password":"password123",` + registerConsentsJSON(legalconfig.PDNVersion) + `}`
+
+	t.Run("rejects email without a grant before user creation", func(t *testing.T) {
+		mockService := new(MockUserService)
+		gate := &stubRegistrationAccessGate{}
+		h, err := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
+		require.NoError(t, err)
+		h.WithInviteOnlyRegistration(gate)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(requestBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.Register(w, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
+		require.JSONEq(t, `{"code":"registration_invite_required"}`, w.Body.String())
+		require.Equal(t, "owner@example.org", gate.email)
+		mockService.AssertNotCalled(t, "RegisterWithContext")
+	})
+
+	t.Run("fails closed when the grant store is unavailable", func(t *testing.T) {
+		mockService := new(MockUserService)
+		gate := &stubRegistrationAccessGate{err: errors.New("database detail")}
+		h, err := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
+		require.NoError(t, err)
+		h.WithInviteOnlyRegistration(gate)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(requestBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.Register(w, req)
+
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+		require.JSONEq(t, `{"code":"registration_gate_unavailable"}`, w.Body.String())
+		require.NotContains(t, w.Body.String(), "database")
+		mockService.AssertNotCalled(t, "RegisterWithContext")
+	})
+
+	t.Run("allows an approved email", func(t *testing.T) {
+		mockService := new(MockUserService)
+		user := &domain.User{ID: uuid.New(), Email: "owner@example.org"}
+		mockService.On("RegisterWithContext", mock.Anything, "owner@example.org", "password123", mock.AnythingOfType("service.RegistrationContext")).Return(user, nil)
+		mockService.On("Login", mock.Anything, "owner@example.org", "password123").Return(user, "access", "refresh", nil)
+		gate := &stubRegistrationAccessGate{allowed: true}
+		h, err := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
+		require.NoError(t, err)
+		h.WithInviteOnlyRegistration(gate)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(strings.ReplaceAll(requestBody, "owner@example.org", "  Owner@Example.ORG  ")))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.Register(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		mockService.AssertExpectations(t)
+	})
 }
 
 func TestLogin(t *testing.T) {
