@@ -251,6 +251,10 @@ services:
       # (LEGAL_* validation, LLM residency, internal mTLS, orchestrator secret).
       # Without it the api boots as development whatever .env says.
       APP_ENV: ${APP_ENV:-development}
+      # Default closed even when production runs with only this base file.
+      # Set REGISTRATION_MODE=open explicitly for unrestricted local signup.
+      # The frontend must receive the identical value below.
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
       PORT: 8080
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-}
       POSTGRES_HOST: postgres
@@ -776,6 +780,7 @@ services:
     environment:
       - NODE_ENV=production
       - LANDING_ENTRY_MODE=${LANDING_ENTRY_MODE:-hybrid}
+      - REGISTRATION_MODE=${REGISTRATION_MODE:-invite_only}
     depends_on:
       - api
     networks:

@@ -164,6 +164,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:?APP_ENV must be set to production for a production deploy}
       PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL must be set to the public https origin (e.g. https://app.example.com)}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/health/live"]
       interval: 15s
@@ -187,6 +188,7 @@ services:
   frontend:
     environment:
       - LANDING_ENTRY_MODE=${LANDING_ENTRY_MODE:-hybrid}
+      - REGISTRATION_MODE=${REGISTRATION_MODE:-invite_only}
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3000/"]
       interval: 30s

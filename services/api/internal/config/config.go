@@ -36,6 +36,14 @@ const (
 	defaultSSEMaxPerUser   = 3
 )
 
+// RegistrationMode controls whether anybody can create an account or only
+// operator-approved waitlist emails can do so. Production defaults fail closed;
+// development stays open for local and automated flows.
+const (
+	RegistrationModeOpen       = "open"
+	RegistrationModeInviteOnly = "invite_only"
+)
+
 // Chat-history fetch limit defaults. The number of prior messages loaded into
 // the LLM context for a chat turn. maxMessageHistoryLimit caps the operator
 // override so an over-large value can't blow up the prompt size / per-turn cost.
@@ -76,6 +84,9 @@ type Config struct {
 	// gates; any other value, including empty, is treated as dev/non-prod).
 	// Compare via IsProduction rather than reading the field directly.
 	AppEnv string
+	// RegistrationMode is open or invite_only. In invite_only mode the auth
+	// handler checks the waitlist access grant before creating a user.
+	RegistrationMode string
 	// AllowTransborderLLM, when true, records that the operator has a filed
 	// legal basis for cross-border personal-data transfer and lifts the
 	// production LLM residency gate (hosted providers outside the RF perimeter
@@ -360,24 +371,33 @@ func Load() (*Config, error) {
 
 	appEnv := os.Getenv("APP_ENV")
 	publicURL := getEnv("PUBLIC_URL", defaultPublicURL)
+	defaultRegistrationMode := RegistrationModeOpen
+	if isProductionEnv(appEnv) {
+		defaultRegistrationMode = RegistrationModeInviteOnly
+	}
+	registrationMode := strings.ToLower(strings.TrimSpace(getEnv("REGISTRATION_MODE", defaultRegistrationMode)))
+	if registrationMode != RegistrationModeOpen && registrationMode != RegistrationModeInviteOnly {
+		return nil, fmt.Errorf("REGISTRATION_MODE must be %q or %q, got %q", RegistrationModeOpen, RegistrationModeInviteOnly, registrationMode)
+	}
 
 	cfg := &Config{
-		AppEnv:        appEnv,
-		Port:          getEnv("PORT", "8080"),
-		PostgresHost:  getEnv("POSTGRES_HOST", "localhost"),
-		PostgresPort:  getEnv("POSTGRES_PORT", "5432"),
-		PostgresUser:  getEnv("POSTGRES_USER", "postgres"),
-		PostgresPass:  getEnv("POSTGRES_PASSWORD", ""),
-		PostgresDB:    getEnv("POSTGRES_DB", "onevoice"),
-		MongoURI:      getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		MongoDB:       getEnv("MONGO_DB", "onevoice"),
-		RedisHost:     getEnv("REDIS_HOST", "localhost"),
-		RedisPort:     getEnv("REDIS_PORT", "6379"),
-		RedisPassword: os.Getenv("REDIS_PASSWORD"),
-		JWTSecret:     getEnv("JWT_SECRET", ""),
-		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
-		A2APayloadKey: os.Getenv("A2A_PAYLOAD_KEY"),
-		SecureCookies: secureCookiesDefault(publicURL),
+		AppEnv:           appEnv,
+		RegistrationMode: registrationMode,
+		Port:             getEnv("PORT", "8080"),
+		PostgresHost:     getEnv("POSTGRES_HOST", "localhost"),
+		PostgresPort:     getEnv("POSTGRES_PORT", "5432"),
+		PostgresUser:     getEnv("POSTGRES_USER", "postgres"),
+		PostgresPass:     getEnv("POSTGRES_PASSWORD", ""),
+		PostgresDB:       getEnv("POSTGRES_DB", "onevoice"),
+		MongoURI:         getEnv("MONGO_URI", "mongodb://localhost:27017"),
+		MongoDB:          getEnv("MONGO_DB", "onevoice"),
+		RedisHost:        getEnv("REDIS_HOST", "localhost"),
+		RedisPort:        getEnv("REDIS_PORT", "6379"),
+		RedisPassword:    os.Getenv("REDIS_PASSWORD"),
+		JWTSecret:        getEnv("JWT_SECRET", ""),
+		EncryptionKey:    getEnv("ENCRYPTION_KEY", ""),
+		A2APayloadKey:    os.Getenv("A2A_PAYLOAD_KEY"),
+		SecureCookies:    secureCookiesDefault(publicURL),
 
 		VKClientID:                 os.Getenv("VK_CLIENT_ID"),
 		VKClientSecret:             os.Getenv("VK_CLIENT_SECRET"),

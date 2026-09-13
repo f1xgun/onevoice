@@ -12,6 +12,7 @@ import { CONTACT_HREF, TELEGRAM_CHANNEL_URL } from '@/lib/constants/landing';
 import { LandingInteractions } from '@/components/landing/LandingInteractions';
 import { parseLandingEntryMode, pricingCta } from '@/lib/landing-entry';
 import type { LandingEntryProps } from '@/lib/landing-entry';
+import { parseRegistrationMode } from '@/lib/registration-mode';
 import { legalDocHref } from '@/lib/legal/routes';
 
 const NAV_HREFS = ['#features', '#channels', '#pricing'] as const;
@@ -19,7 +20,11 @@ const NAV_HREFS = ['#features', '#channels', '#pricing'] as const;
 export const dynamic = 'force-dynamic';
 
 export default function LandingPage() {
-  const mode = parseLandingEntryMode(process.env.LANDING_ENTRY_MODE);
+  const registrationMode = parseRegistrationMode(process.env.REGISTRATION_MODE);
+  const mode =
+    registrationMode === 'invite_only'
+      ? 'waitlist_only'
+      : parseLandingEntryMode(process.env.LANDING_ENTRY_MODE);
   return (
     <div
       data-ov-motion

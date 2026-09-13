@@ -113,18 +113,97 @@
 ## Гибридный вход на лендинге
 
 - [ ] Проверить реальные реквизиты юрлица и `UNISENDER_API_KEY` в защищённой конфигурации.
-- [ ] Начать с `LANDING_ENTRY_MODE=hybrid`; квота — не более 10 новых организаций в неделю.
-- [ ] Читать `waitlist` и `channel_votes`, согласовывать подключение каналов с организациями.
-- [ ] Пересмотр через 3 недели или на 20-й регистрации: `activation_rate_7d ≥ 35%` → `open`,
-      `< 15%` → `waitlist_only`; между порогами сохранить `hybrid`.
+- [ ] Начать с `REGISTRATION_MODE=invite_only`. Этот режим принудительно переводит
+      лендинг в `waitlist_only`; квота — не более 10 новых организаций в неделю.
+- [ ] Читать `waitlist_signups` и `channel_votes`, согласовывать подключение каналов
+      с организациями. Доступ выдавать только заявителям, подтвердившим обработку
+      персональных данных.
+- [ ] Применить миграцию `000045_waitlist_access_grants` до выкладки новой API и
+      выдачи первого доступа. Она не выдаёт доступ существующим заявкам.
+- [ ] Выбрать следующую когорту. Квота — ручное операционное ограничение, API её
+      не считает: перед выдачей сверить журнал приглашений за неделю. Один grant
+      разрешает регистрацию email, а не ограничивает число организаций аккаунта.
+
+  ```sql
+  SELECT w.email, w.created_at
+  FROM waitlist_signups AS w
+  WHERE w.consent = TRUE AND w.access_granted_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM users AS u WHERE u.email = w.email)
+  ORDER BY w.created_at, w.email
+  LIMIT 10;
+  ```
+
+- [ ] Выдать доступ одному выбранному email в интерактивной сессии `psql`.
+      Использовать тот же env-файл и Compose-слои, что у развёрнутого проекта:
+
+  ```sh
+  docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml \
+    exec postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d onevoice
+  ```
+
+  Ввод через `\prompt` создаёт переменную `email`; `:'email'` экранирует её как
+  SQL-литерал. Не подставлять email конкатенацией или заменой текста в SQL.
+
+  ```psql
+  \prompt 'Email выбранного участника: ' email
+  BEGIN;
+  UPDATE waitlist_signups AS w
+  SET access_granted_at = CURRENT_TIMESTAMP
+  WHERE w.email = lower(btrim(:'email'))
+    AND w.consent = TRUE
+    AND w.access_granted_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM users AS u WHERE u.email = w.email)
+  RETURNING w.email, w.access_granted_at;
+  ```
+
+  Проверить, что возвращена ровно одна строка и выбранный email. Только затем
+  выполнить `COMMIT;`; при нуле строк, ошибке или несовпадении — `ROLLBACK;` и
+  выяснить причину. Повторный grant не меняет дату уже выданного доступа.
+  После commit записать email, время, оператора и причину в закрытый журнал ручных
+  действий вне Git. Затем отправить `${PUBLIC_URL}/register?invited=1`:
+  `PUBLIC_URL` уже содержит `https://`, второй префикс добавлять не нужно.
+  Ссылка только показывает форму; API проверяет grant для введённого email.
+  Получатель должен регистрироваться именно с приглашённым адресом.
+
+- [ ] Для отзыва ещё не использованного места открыть такую же сессию и выполнить:
+
+  ```psql
+  \prompt 'Email для отзыва доступа: ' email
+  BEGIN;
+  UPDATE waitlist_signups AS w
+  SET access_granted_at = NULL
+  WHERE w.email = lower(btrim(:'email'))
+    AND w.access_granted_at IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM users AS u WHERE u.email = w.email)
+  RETURNING w.email;
+  ```
+
+  При одной ожидаемой строке выполнить `COMMIT;` и записать отзыв в тот же журнал;
+  иначе `ROLLBACK;` и проверить, не использовано ли приглашение. Отзыв grant не
+  удаляет аккаунт, не завершает его сессии и не запрещает вход. Уже начатая
+  регистрация может завершиться одновременно с отзывом: после commit проверить
+  наличие аккаунта. Для остановки существующего аккаунта нужен отдельный
+  предусмотренный продуктом процесс; не удалять пользователя вручную через SQL.
+
+- [ ] Новый участник команды проходит тот же beta gate: сначала подаёт заявку
+      в waitlist и получает grant на свой email, затем регистрируется и принимает
+      приглашение в организацию. Business invite сам по себе не выдаёт beta-доступ;
+      это сознательное ограничение пилота. Уже зарегистрированному участнику
+      повторный grant для входа или принятия приглашения не нужен.
+- [ ] Пересмотр через 3 недели или после 20 приглашений: `activation_rate_7d ≥ 35%`
+      и пройдены launch-readiness проверки → рассмотреть `REGISTRATION_MODE=open`;
+      `< 15%` → сохранить `invite_only` и уточнить onboarding.
       RPM-01 должен быть исправлен и проверен до использования этой метрики.
 - [ ] Стоп-краны: более 25 активных Free, более 600 ₽ на организацию в месяц,
       более 90 минут поддержки в день два дня подряд.
-- [ ] При стоп-кране rollback: `LANDING_ENTRY_MODE=waitlist_only` и перезапуск frontend
-      с обновлённым окружением без rebuild. Для Compose изменение `.env` требует
-      пересоздания frontend с прежним образом: обычный `restart` сохраняет старое
-      окружение. Порядок и проверка — [frontend config](frontend-config.md).
-      Проверить отсутствие `/register` на лендинге; существующие аккаунты сохраняются.
+- [ ] При стоп-кране rollback: `REGISTRATION_MODE=invite_only` и пересоздание API и
+      frontend с обновлённым окружением без rebuild. Обычный `restart` сохраняет
+      старое окружение. Порядок и проверка — [frontend config](frontend-config.md).
+      Проверить отсутствие публичных ссылок `/register`, HTTP 403
+      `registration_invite_required` для email без grant и рабочий вход существующих
+      аккаунтов. Уже выданные grants продолжают разрешать регистрацию; для остановки
+      выдачи новых мест прекратить выдавать grants, а неиспользованные отзывать
+      по процедуре выше. Это не мгновенная блокировка всех приглашённых.
 
 ## Canonical-email collisions before upgrade
 

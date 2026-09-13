@@ -135,7 +135,9 @@
       (TOS / Privacy / PDN) in the same transaction, enqueues the
       verification email, then auto-logs the user in (same as
       /auth/login). 400 `consent_required` when any of the three
-      submitted versions disagrees with the build's currentVersion.
+      submitted versions disagrees with the build's currentVersion. When
+      `REGISTRATION_MODE=invite_only`, the normalized email must belong to a
+      consented waitlist row with an access grant.
     tags:
     - auth
     security: []
@@ -168,6 +170,18 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Closed-beta access has not been granted for this email (`registration_invite_required`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '503':
+        description: The closed-beta access store is temporarily unavailable (`registration_gate_unavailable`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
       '500':
         description: Registration or auto-login failure.
         content:
@@ -296,7 +310,10 @@
     description: |
       Only allowed while `email_verified=false`; otherwise 403
       `email_already_verified`. On success the old verification token
-      is invalidated and a new one is mailed.
+      is invalidated and a new one is mailed. When
+      `REGISTRATION_MODE=invite_only`, the normalized new email must also
+      have a consented waitlist access grant; this prevents changing an
+      approved registration to an unapproved address.
     tags:
     - auth
     requestBody:
@@ -321,13 +338,19 @@
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
       '403':
-        description: Already verified (`email_already_verified`).
+        description: Already verified (`email_already_verified`) or the new email has no closed-beta access grant (`registration_invite_required`).
         content:
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
       '409':
         description: New email taken (`email_taken`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '503':
+        description: The closed-beta access store is temporarily unavailable (`registration_gate_unavailable`).
         content:
           application/json:
             schema:

@@ -91,14 +91,16 @@ const (
 	ErrCodeCaptchaInvalid  = "captcha_invalid"
 
 	// Internal-error codes for the auth handler family.
-	ErrCodeRegisterInternal       = "register_internal"        // Register, post-create
-	ErrCodeAutoLoginFailed        = "auto_login_failed"        // Register, auto-login
-	ErrCodeRefreshInternal        = "refresh_internal"         // RefreshToken
-	ErrCodeLogoutInternal         = "logout_internal"          // Logout
-	ErrCodeGetUserInternal        = "get_user_internal"        // Me
-	ErrCodeChangePasswordInternal = "change_password_internal" // ChangePassword
-	ErrCodeUpdateLocaleInternal   = "update_locale_internal"   // UpdatePreferredLocale
-	ErrCodeUpdateProfileInternal  = "update_profile_internal"  // UpdateProfile
+	ErrCodeRegistrationInviteRequired  = "registration_invite_required"
+	ErrCodeRegistrationGateUnavailable = "registration_gate_unavailable"
+	ErrCodeRegisterInternal            = "register_internal"        // Register, post-create
+	ErrCodeAutoLoginFailed             = "auto_login_failed"        // Register, auto-login
+	ErrCodeRefreshInternal             = "refresh_internal"         // RefreshToken
+	ErrCodeLogoutInternal              = "logout_internal"          // Logout
+	ErrCodeGetUserInternal             = "get_user_internal"        // Me
+	ErrCodeChangePasswordInternal      = "change_password_internal" // ChangePassword
+	ErrCodeUpdateLocaleInternal        = "update_locale_internal"   // UpdatePreferredLocale
+	ErrCodeUpdateProfileInternal       = "update_profile_internal"  // UpdateProfile
 )
 
 // writeJSONCodeError is defined in auth.go. It emits a {"code":"<code>"}
