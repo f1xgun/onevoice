@@ -16,7 +16,9 @@ RUN apk add --no-cache \
 # Install Yandex Cloud CLI (statically built, no apk package).
 # Pin to a specific version for reproducibility; bump on operator review.
 ARG YC_VERSION=0.130.0
-RUN curl -fsSL "https://storage.yandexcloud.net/yandexcloud-yc/release/${YC_VERSION}/linux/amd64/yc" \
+RUN curl --fail --silent --show-error --location \
+        --retry 5 --retry-all-errors --retry-delay 2 \
+        "https://storage.yandexcloud.net/yandexcloud-yc/release/${YC_VERSION}/linux/amd64/yc" \
         -o /usr/local/bin/yc \
     && chmod 0755 /usr/local/bin/yc
 

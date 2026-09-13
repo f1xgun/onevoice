@@ -201,17 +201,24 @@ services:
         YC_VERSION: "0.130.0"
     container_name: onevoice-backup
     environment:
-      PG_DSN: "${BACKUP_PG_DSN}"
-      MONGO_URI: "${BACKUP_MONGO_URI}"
+      PG_DSN_FILE: /run/secrets/backup_pg_dsn
+      MONGO_URI_FILE: /run/secrets/backup_mongo_uri
       RESTIC_REPOSITORY: "${RESTIC_REPOSITORY:?RESTIC_REPOSITORY required}"
-      RESTIC_PASSWORD_CIPHERTEXT: "${RESTIC_PASSWORD_CIPHERTEXT:?KMS-encrypted RESTIC_PASSWORD required}"
+      RESTIC_PASSWORD_CIPHERTEXT_FILE: /run/secrets/backup_restic_ciphertext
       RESTIC_PASSWORD_KMS_KEY_ID: "${RESTIC_PASSWORD_KMS_KEY_ID:?KMS key id required}"
-      YC_SA_JSON_CREDENTIALS: "${YC_SA_JSON_CREDENTIALS:?Yandex Cloud service-account JSON required}"
+      YC_SA_JSON_CREDENTIALS_FILE: /run/secrets/backup_yc_sa_json
       YC_BACKUP_BUCKET: "${YC_BACKUP_BUCKET:-onevoice-backups}"
-      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
-      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+      AWS_ACCESS_KEY_ID_FILE: /run/secrets/backup_s3_access_key
+      AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/backup_s3_secret_key
       AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-ru-central1}"
       PUSHGATEWAY_URL: "${PUSHGATEWAY_URL:-http://pushgateway:9091}"
+    secrets:
+      - backup_pg_dsn
+      - backup_mongo_uri
+      - backup_restic_ciphertext
+      - backup_yc_sa_json
+      - backup_s3_access_key
+      - backup_s3_secret_key
     restart: unless-stopped
     networks:
       - onevoice-network
@@ -232,3 +239,17 @@ volumes:
 networks:
   onevoice-network:
     driver: bridge
+
+secrets:
+  backup_pg_dsn:
+    file: "${BACKUP_PG_DSN_FILE:?Path to backup PostgreSQL DSN secret required}"
+  backup_mongo_uri:
+    file: "${BACKUP_MONGO_URI_FILE:?Path to backup MongoDB URI secret required}"
+  backup_restic_ciphertext:
+    file: "${RESTIC_PASSWORD_CIPHERTEXT_FILE:?Path to KMS ciphertext secret required}"
+  backup_yc_sa_json:
+    file: "${BACKUP_YC_SA_JSON_CREDENTIALS_FILE:?Path to backup service-account JSON required}"
+  backup_s3_access_key:
+    file: "${BACKUP_AWS_ACCESS_KEY_ID_FILE:?Path to backup Object Storage access key required}"
+  backup_s3_secret_key:
+    file: "${BACKUP_AWS_SECRET_ACCESS_KEY_FILE:?Path to backup Object Storage secret key required}"

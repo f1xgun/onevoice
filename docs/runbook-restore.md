@@ -13,11 +13,10 @@ Run on a host with `yc` CLI installed and authenticated to the right Yandex Clou
    ```bash
    yc storage bucket create --name onevoice-backups --default-storage-class STANDARD
    ```
-2. Set the 30-day lifecycle policy on the `daily/` prefix (defense-in-depth — restic forget enforces the same retention):
-   ```bash
-   yc storage bucket update --name onevoice-backups \
-       --lifecycle-rule '{"id":"daily-30d","filter":{"prefix":"daily/"},"status":"Enabled","expiration":{"days":30}}'
-   ```
+2. Do not apply an Object Storage expiration policy to the repository. Restic
+   stores shared encrypted packs under its own internal prefixes, so deleting
+   objects by age can corrupt snapshots that still reference them. The daily
+   job enforces retention with `restic forget --prune`.
 3. Create the KMS symmetric key:
    ```bash
    yc kms symmetric-key create --name onevoice-restic --default-algorithm aes-256
@@ -30,7 +29,8 @@ Run on a host with `yc` CLI installed and authenticated to the right Yandex Clou
        --id "$RESTIC_PASSWORD_KMS_KEY_ID" \
        --plaintext-file - --ciphertext-file - \
        | base64 > restic.enc.b64
-   # Save restic.enc.b64 contents into .env.prod as RESTIC_PASSWORD_CIPHERTEXT.
+   # Save restic.enc.b64 at the path named by
+   # RESTIC_PASSWORD_CIPHERTEXT_FILE (mode 0600).
    # KEEP $RESTIC_PW in your password manager — disaster recovery if KMS is unreachable (see §5).
    ```
 
@@ -40,14 +40,22 @@ Run on a host with `yc` CLI installed and authenticated to the right Yandex Clou
    `RESTIC_PASSWORD` in the §5 disaster-recovery procedure. Regression
    guarded by `.github/workflows/backup-restore-drill.yml::entrypoint-roundtrip`
    (Phase 23-07 / WR-04).
-5. Create the service account + KMS-decrypt role binding + key:
+5. Create the dedicated service account, bind it only to this KMS key, and
+   create its IAM and Object Storage credentials:
    ```bash
    yc iam service-account create --name onevoice-backup
-   yc resource-manager folder add-access-binding <folder-id> \
+   yc kms symmetric-key add-access-binding --id "$RESTIC_PASSWORD_KMS_KEY_ID" \
        --role kms.keys.encrypterDecrypter \
        --service-account-name onevoice-backup
    yc iam key create --service-account-name onevoice-backup --output sa.json
-   # Paste sa.json contents (single-line JSON) into .env.prod as YC_SA_JSON_CREDENTIALS.
+   # Store sa.json at the path named by BACKUP_YC_SA_JSON_CREDENTIALS_FILE
+   # (mode 0600). Do not reuse the API's
+   # YC_SA_JSON_CREDENTIALS: the backup account has narrower permissions.
+   yc iam access-key create --service-account-name onevoice-backup
+   # Save the returned key id and secret at the paths named by
+   # BACKUP_AWS_ACCESS_KEY_ID_FILE and BACKUP_AWS_SECRET_ACCESS_KEY_FILE
+   # (mode 0600). Grant this account read/write only on the backup bucket;
+   # do not grant folder-wide storage.editor.
    ```
 6. Initialize the restic repository ONCE from a one-shot container:
    ```bash

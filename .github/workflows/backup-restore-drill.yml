@@ -106,60 +106,50 @@ jobs:
       - name: Bash syntax check (entrypoint.sh)
         run: bash -n scripts/backup/entrypoint.sh
 
-      - name: Assert no base64 decoder in entrypoint.sh decode path
+      - name: Assert pinned YC CLI ciphertext contract
         run: |
           set -euo pipefail
-          if grep -nE 'base64 -d|\| *base64 *-d' scripts/backup/entrypoint.sh; then
-            echo "::error file=scripts/backup/entrypoint.sh::Regression: base64 decoder reintroduced in the decode pipeline. yc kms decrypt --plaintext-file /dev/stdout writes raw bytes; double-decoding produces a value that fails operator-side disaster recovery." >&2
+          if grep -n -- '--ciphertext-base64' scripts/backup/entrypoint.sh; then
+            echo "::error file=scripts/backup/entrypoint.sh::yc 0.130.0 does not support --ciphertext-base64." >&2
             exit 1
           fi
+          grep -q -- '--ciphertext-file' scripts/backup/entrypoint.sh
 
-      - name: Round-trip equality test (openssl AES-256-CBC stand-in for Yandex KMS)
+      - name: Entrypoint ciphertext and plaintext round-trip
         run: |
           set -euo pipefail
-
-          # Mirror the runbook's plaintext format: an `openssl rand -base64 32`
-          # printable string. This is the exact shape the operator stores in
-          # the password manager.
-          ORIGINAL="$(openssl rand -base64 32)"
-
-          # Encrypt with a known passphrase (KMS stand-in). pbkdf2 avoids the
-          # legacy-KDF deprecation warning that would otherwise pollute stderr.
-          CIPHERTEXT_B64="$(printf '%s' "$ORIGINAL" \
-            | openssl enc -aes-256-cbc -pbkdf2 -salt -pass pass:wr04-test \
-            | base64 -w0)"
-
-          # Reproduce the entrypoint.sh capture shape EXACTLY: a single command
-          # substitution, no extra decode step layered on top of the decrypt
-          # output. The "decrypt" here is openssl decrypt; the production
-          # version is `yc kms symmetric-crypto decrypt --plaintext-file
-          # /dev/stdout`. Both write raw plaintext to stdout when given a
-          # /dev/stdout-style target.
-          DECRYPTED="$(printf '%s' "$CIPHERTEXT_B64" \
-            | base64 -d \
-            | openssl enc -aes-256-cbc -pbkdf2 -d -pass pass:wr04-test)"
-
-          if [ "$ORIGINAL" != "$DECRYPTED" ]; then
-            echo "::error::Round-trip mismatch — entrypoint.sh decode pipeline corrupted bytes." >&2
-            echo "expected: $ORIGINAL" >&2
-            echo "got:      $DECRYPTED" >&2
-            exit 1
-          fi
-          echo "round-trip OK: $ORIGINAL == $DECRYPTED"
-
-      - name: Regression-fail test (proves the test catches the base64 double-decode bug)
-        run: |
+          fake_bin="$(mktemp -d)"
+          trap 'rm -rf "$fake_bin"' EXIT
+          cat > "$fake_bin/yc" <<'SH'
+          #!/usr/bin/env bash
           set -euo pipefail
-          # Sanity check: applying an extra base64 decode to a printable
-          # base64 string (the exact bug described) MUST corrupt the
-          # value — i.e. NOT equal the original. If this passes, the test
-          # framework is broken and the round-trip above is meaningless.
-          ORIGINAL="$(openssl rand -base64 32)"
-          CORRUPTED="$(printf '%s' "$ORIGINAL" | base64 -d 2>/dev/null \
-            | od -An -tx1 | tr -d ' \n' || true)"
-          ORIG_HEX="$(printf '%s' "$ORIGINAL" | od -An -tx1 | tr -d ' \n')"
-          if [ "$ORIG_HEX" = "$CORRUPTED" ]; then
-            echo "::error::Sanity check failed: extra base64 decode did not corrupt the value, meaning the round-trip test cannot detect the regression." >&2
-            exit 1
-          fi
-          echo "sanity check OK: the broken pipeline would have produced a different value"
+          if [ "$1 $2" = "config set" ]; then exit 0; fi
+          shift 3
+          ciphertext_file=""
+          plaintext_file=""
+          while [ "$#" -gt 0 ]; do
+            case "$1" in
+              --id) shift 2 ;;
+              --ciphertext-file) ciphertext_file="$2"; shift 2 ;;
+              --plaintext-file) plaintext_file="$2"; shift 2 ;;
+              *) echo "unsupported fake-yc argument: $1" >&2; exit 2 ;;
+            esac
+          done
+          test -s "$ciphertext_file"
+          cat "$ciphertext_file" > "$plaintext_file"
+          SH
+          chmod +x "$fake_bin/yc"
+
+          original="$(openssl rand -base64 32 | tr -d '\n')"
+          ciphertext_b64="$(printf '%s' "$original" | base64 -w0)"
+          sudo env PATH="$fake_bin:$PATH" \
+          EXPECTED_RESTIC_PASSWORD="$original" \
+          YC_SA_JSON_CREDENTIALS='{}' \
+          RESTIC_PASSWORD_KMS_KEY_ID=test-key \
+          RESTIC_PASSWORD_CIPHERTEXT="$ciphertext_b64" \
+          RESTIC_REPOSITORY=test-repository \
+          PG_DSN=test-pg \
+          MONGO_URI=test-mongo \
+          PUSHGATEWAY_URL=test-pushgateway \
+          scripts/backup/entrypoint.sh bash -lc \
+            '. /etc/profile.d/restic.sh; test "$RESTIC_PASSWORD" = "$EXPECTED_RESTIC_PASSWORD"; rm -f /etc/profile.d/restic.sh /root/.config/yandex-cloud/credentials.json'
