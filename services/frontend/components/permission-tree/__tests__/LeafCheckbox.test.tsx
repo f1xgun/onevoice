@@ -15,7 +15,6 @@ function renderLeaf(props: Partial<React.ComponentProps<typeof LeafCheckbox>> = 
     <TooltipProvider delayDuration={0}>
       <LeafCheckbox
         leafName="business.update"
-        description="Редактировать профиль"
         checked={false}
         disabled={false}
         actorHas
@@ -60,18 +59,19 @@ describe('LeafCheckbox', () => {
     expect(li.className).not.toContain('opacity-60');
   });
 
-  it('enabled leaf — tooltip trigger aria-label exposes the description', () => {
-    renderLeaf({ description: 'Редактировать название' });
-    expect(screen.getByLabelText('Редактировать название')).toBeInTheDocument();
+  it('enabled leaf — checkbox uses the readable description', () => {
+    renderLeaf({ leafName: 'business.update' });
+    expect(screen.getByLabelText('Редактировать профиль организации')).toBeInTheDocument();
   });
 
-  it('disabled leaf — tooltip trigger aria-label is «У вас нет этого права»', () => {
+  it('disabled leaf — explains why it cannot be changed', () => {
     renderLeaf({ disabled: true, actorHas: false });
-    expect(screen.getByLabelText('У вас нет этого права')).toBeInTheDocument();
+    expect(screen.getByText('У вас нет этого права')).toBeInTheDocument();
   });
 
-  it('renders the permission key as the leaf label (catalog-driven, never hardcoded)', () => {
-    renderLeaf({ leafName: 'novel.action' });
-    expect(screen.getByText('novel.action')).toBeInTheDocument();
+  it('renders the readable description and no permission key', () => {
+    renderLeaf({ leafName: 'business.update' });
+    expect(screen.getByText('Редактировать профиль организации')).toBeInTheDocument();
+    expect(screen.queryByText('business.update')).not.toBeInTheDocument();
   });
 });

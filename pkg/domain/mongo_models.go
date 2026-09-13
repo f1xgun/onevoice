@@ -184,6 +184,7 @@ type AgentTask struct {
 	VerificationUpdatedAt  *time.Time        `json:"-" bson:"verification_updated_at,omitempty"`
 	StartedAt              *time.Time        `json:"startedAt,omitempty" bson:"started_at,omitempty"`
 	CompletedAt            *time.Time        `json:"completedAt,omitempty" bson:"completed_at,omitempty"`
+	DismissedAt            *time.Time        `json:"-" bson:"dismissed_at,omitempty"`
 	CreatedAt              time.Time         `json:"createdAt" bson:"created_at"`
 }
 

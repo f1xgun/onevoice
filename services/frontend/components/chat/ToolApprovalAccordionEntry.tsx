@@ -9,12 +9,13 @@ import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { cn } from '@/lib/utils';
 import { approvalKind } from '@/lib/approvalTelemetry';
 import { useApprovalImpressions } from '@/hooks/useApprovalImpressions';
-import { PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
+import { getPlatform, usePlatformFullLabels } from '@/lib/platforms';
 import type { ApprovalAction, PendingApprovalCall } from '@/types/chat';
 
 import { ToolApprovalArgsForm } from './ToolApprovalArgsForm';
 import { ToolApprovalToggleGroup } from './ToolApprovalToggleGroup';
 import { REJECT_REASON_MAX_LEN } from './toolApprovalConstants';
+import { useToolDisplayName } from './useToolDisplayName';
 
 type Decision = ApprovalAction | 'undecided';
 
@@ -53,6 +54,7 @@ export function ToolApprovalAccordionEntry({
   onSetRejectReason,
 }: ToolApprovalAccordionEntryProps) {
   const t = useTranslations('chat.toolApproval');
+  const platformLabels = usePlatformFullLabels();
   useApprovalImpressions(
     `${batchId}-${call.callId}`,
     approvalKind(call.toolName),
@@ -71,7 +73,8 @@ export function ToolApprovalAccordionEntry({
   }, [draft.decision]);
 
   const platform = getPlatform(call.toolName);
-  const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
+  const platformLabel = platformLabels[platform] ?? t('unknownPlatform');
+  const actionName = useToolDisplayName(call.toolName);
 
   const counterOver = draft.rejectReason.length > REJECT_REASON_MAX_LEN;
   const triggerLabel = open ? t('triggerCollapse') : t('triggerExpand');
@@ -89,22 +92,20 @@ export function ToolApprovalAccordionEntry({
       <Collapsible open={open} onOpenChange={setOpen}>
         <div className="flex flex-wrap items-center gap-2 px-3 py-2">
           <CollapsibleTrigger
-            aria-label={`${call.toolName} — ${triggerLabel}`}
+            aria-label={`${actionName} — ${triggerLabel}`}
             className="inline-flex min-h-11 min-w-11 items-center justify-center text-ink"
           >
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </CollapsibleTrigger>
           <span className="rounded bg-paper-sunken px-2 py-1 text-meta font-medium text-ink">
-            {label}
+            {platformLabel}
           </span>
-          <span className="min-w-0 break-all font-mono text-technical text-ink-soft">
-            {call.toolName}
-          </span>
+          <span className="min-w-0 text-sm font-medium text-ink">{actionName}</span>
         </div>
 
         <div className="px-3 pb-3">
           <ToolApprovalToggleGroup
-            toolName={call.toolName}
+            actionName={actionName}
             decision={draft.decision}
             disabled={disabled}
             onSelect={onSelectDecision}

@@ -13,7 +13,6 @@ import {
 } from '@/components/design-system/AppSheet';
 import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 
-const JSON_INDENT = 2;
 const LOCALE = localeToIntlTag(DEFAULT_LOCALE);
 
 interface Props {
@@ -55,7 +54,9 @@ export function AuditDetailPanel({ item, onClose }: Props) {
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle>
-            {isKnownAuditAction(item.action) ? tActions(actionToI18nKey(item.action)) : item.action}
+            {isKnownAuditAction(item.action)
+              ? tActions(actionToI18nKey(item.action))
+              : tActions('audit.actions.unknown')}
           </SheetTitle>
           <SheetDescription>{new Date(item.created_at).toLocaleString(LOCALE)}</SheetDescription>
         </SheetHeader>
@@ -69,17 +70,8 @@ export function AuditDetailPanel({ item, onClose }: Props) {
           <div>
             <div className="text-ink-soft">{tPanel('resource')}</div>
             <div className="text-ink">
-              {isKnownResource(item.resource) ? tResources(item.resource) : item.resource}
+              {isKnownResource(item.resource) ? tResources(item.resource) : tPanel('otherResource')}
             </div>
-          </div>
-          <div>
-            <div className="mb-1 text-ink-soft">{tPanel('rawDetails')}</div>
-            <pre
-              data-testid="panel-raw-json"
-              className="overflow-auto rounded-md bg-paper-sunken p-2 font-mono text-xs text-ink"
-            >
-              {JSON.stringify(item.details, null, JSON_INDENT)}
-            </pre>
           </div>
         </div>
       </SheetContent>

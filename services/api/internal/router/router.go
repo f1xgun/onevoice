@@ -361,6 +361,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/tasks", handlers.AgentTask.ListTasks)
 				r.Get("/tasks/stream", handlers.AgentTask.StreamTasks)
 				r.With(writeLimit).Post("/tasks/{taskId}/retry", handlers.AgentTask.RetryTask)
+				r.With(writeLimit).Delete("/tasks/{taskId}", handlers.AgentTask.DismissTask)
 				r.With(writeLimit).Post("/tasks/{taskId}/rerun", handlers.AgentTask.RerunVerification)
 
 				if handlers.Members != nil {

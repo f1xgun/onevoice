@@ -38,7 +38,7 @@ function renderTable(items: AuditLogDTO[]) {
 }
 
 describe('AuditTable actor + action labels', () => {
-  it('renders a readable label for token_decrypted (no raw key) and "Система" actor', () => {
+  it('renders a readable label for connection use and the system actor', () => {
     renderTable([
       makeRow({
         id: 'r-decrypt',
@@ -49,15 +49,15 @@ describe('AuditTable actor + action labels', () => {
       }),
     ]);
 
-    expect(screen.getByText('Доступ к токену интеграции')).toBeInTheDocument();
+    expect(screen.getByText('Подключение площадки использовано')).toBeInTheDocument();
     expect(screen.queryByText(/audit\.actions\./)).not.toBeInTheDocument();
     expect(screen.getByText('Система')).toBeInTheDocument();
   });
 
-  it('renders an unknown action as its raw stable wire value', () => {
+  it('renders an unknown action with a safe generic label', () => {
     renderTable([makeRow({ id: 'future', action: 'future.action' })]);
-    expect(screen.getByText('future.action')).toBeInTheDocument();
-    expect(screen.queryByText('audit.actions.future_action')).not.toBeInTheDocument();
+    expect(screen.getByText('Событие OneVoice')).toBeInTheDocument();
+    expect(screen.queryByText('future.action')).not.toBeInTheDocument();
   });
 
   it('shows the editable display name when present', () => {

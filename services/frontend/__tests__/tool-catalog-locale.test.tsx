@@ -52,7 +52,7 @@ describe('tool catalog locale', () => {
     expect(screen.getByText('Future action')).toBeInTheDocument();
     expect(screen.getByText('Future description')).toBeInTheDocument();
     expect(
-      screen.getByRole('radiogroup', { name: 'Approval mode for Future action' })
+      screen.getByRole('radiogroup', { name: 'Confirmation rule for Future action' })
     ).toBeInTheDocument();
   });
 });

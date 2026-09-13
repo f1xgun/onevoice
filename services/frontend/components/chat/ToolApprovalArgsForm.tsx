@@ -13,6 +13,23 @@ import { evaluateEditGate } from './toolApprovalGate';
 
 type Translator = ReturnType<typeof useTranslations>;
 
+const FIELD_LABEL_KEYS: Record<string, string> = {
+  text: 'text',
+  caption: 'caption',
+  description: 'description',
+  hours: 'hours',
+  body: 'text',
+  message: 'text',
+  content: 'text',
+  photo_url: 'photo_url',
+  publish_date: 'publish_date',
+  phone: 'phone',
+  website: 'website',
+  category: 'category',
+  review_name: 'review_name',
+  count: 'count',
+};
+
 // Keys whose typical content is multi-paragraph copy — render as <Textarea>
 // instead of a single-line <Input>. Inferred from the orchestrator's tool
 // registrations (wire/tools_*.go); operators write product copy, captions,
@@ -25,6 +42,26 @@ const LONG_TEXT_KEYS = new Set([
   'body',
   'message',
   'content',
+]);
+
+// Only content a person can meaningfully review is shown. Routing identifiers,
+// internal formatting flags and unknown fields stay in the signed approval
+// payload but never leak into the customer UI.
+const USER_FACING_FIELD_KEYS = new Set([
+  'text',
+  'caption',
+  'description',
+  'hours',
+  'body',
+  'message',
+  'content',
+  'photo_url',
+  'publish_date',
+  'phone',
+  'website',
+  'category',
+  'review_name',
+  'count',
 ]);
 
 // String length at which an otherwise-short key (not in LONG_TEXT_KEYS) still
@@ -90,12 +127,14 @@ export const ToolApprovalArgsForm = memo(function ToolApprovalArgsForm({
   const t = useTranslations('chat.toolApproval');
   const idPrefix = useId();
 
-  const argKeys = Object.keys(args);
+  const editableSet = new Set(editableFields);
+  const argKeys = Object.keys(args).filter(
+    (key) => USER_FACING_FIELD_KEYS.has(key) || editableSet.has(key)
+  );
   if (argKeys.length === 0) {
     return <p className="text-xs text-muted-foreground">{t('noArgs')}</p>;
   }
 
-  const editableSet = new Set(editableFields);
   const rows: FieldRow[] = argKeys.map((key) => ({
     key,
     label: resolveLabel(t, key),
@@ -394,7 +433,7 @@ function ReadOnlyValue({ value, t, depth = 0 }: ReadOnlyValueProps): ReactNode {
   if (typeof value === 'number') return String(value);
 
   if (depth >= READ_ONLY_MAX_DEPTH) {
-    return <code className="text-xs text-ink-mid">{safeStringify(value)}</code>;
+    return t('additionalData');
   }
 
   if (Array.isArray(value)) {
@@ -427,20 +466,13 @@ function ReadOnlyValue({ value, t, depth = 0 }: ReadOnlyValueProps): ReactNode {
     );
   }
 
-  return String(value);
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+  return t('additionalData');
 }
 
 function resolveLabel(t: Translator, key: string): string {
-  if (t.has(`fields.${key}`)) return t(`fields.${key}`);
-  return t('fieldFallback', { key });
+  const labelKey = FIELD_LABEL_KEYS[key];
+  if (labelKey) return t(`fields.${labelKey}`);
+  return t('fieldFallback');
 }
 
 function commitEdit(

@@ -9,27 +9,25 @@ describe('WhitelistRadio', () => {
     render(<WhitelistRadio value="inherit" onChange={() => {}} />);
 
     expect(screen.getByText('Как в настройках организации')).toBeInTheDocument();
-    expect(screen.getByText('Все инструменты')).toBeInTheDocument();
+    expect(screen.getByText('Все действия')).toBeInTheDocument();
     expect(screen.getByText('Выбранные')).toBeInTheDocument();
     expect(screen.getByText('Никаких')).toBeInTheDocument();
 
+    expect(screen.getByText('Использовать общие правила организации.')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Использовать настройки организации (по умолчанию доступны все инструменты).'
+        'OneVoice может выполнять любые доступные действия на подключённых площадках.'
       )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Любой инструмент активной интеграции доступен ИИ.')
     ).toBeInTheDocument();
     expect(screen.getByText('Разрешить только отмеченные ниже.')).toBeInTheDocument();
     expect(
-      screen.getByText('ИИ может отвечать, но не будет выполнять действия.')
+      screen.getByText('OneVoice может отвечать в чате, но не будет ничего менять на площадках.')
     ).toBeInTheDocument();
   });
 
   it.each<[string, WhitelistMode]>([
     ['Как в настройках организации', 'inherit'],
-    ['Все инструменты', 'all'],
+    ['Все действия', 'all'],
     ['Выбранные', 'explicit'],
     ['Никаких', 'none'],
   ])('clicking %s fires onChange with "%s"', async (label, expected) => {

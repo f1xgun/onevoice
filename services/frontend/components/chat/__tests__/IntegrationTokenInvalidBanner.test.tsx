@@ -6,9 +6,9 @@ import { IntegrationTokenInvalidBanner } from '../IntegrationTokenInvalidBanner'
 declare const __setTestLocale: (locale: 'ru' | 'en') => void;
 
 describe('IntegrationTokenInvalidBanner', () => {
-  it('renders tokenTelegram summary copy for platform=telegram', () => {
+  it('explains lost Telegram access without exposing credentials', () => {
     render(<IntegrationTokenInvalidBanner platform="telegram" />);
-    expect(screen.getByText(/Telegram больше не принимает наш токен/i)).toBeInTheDocument();
+    expect(screen.getByText(/OneVoice потерял доступ к Telegram/i)).toBeInTheDocument();
   });
 
   it('renders tokenVk summary copy for platform=vk', () => {
@@ -16,9 +16,9 @@ describe('IntegrationTokenInvalidBanner', () => {
     expect(screen.getByText(/доступ к сообществу ВКонтакте истёк/i)).toBeInTheDocument();
   });
 
-  it('renders tokenGeneric summary copy for other platforms', () => {
+  it('explains lost access for other platforms', () => {
     render(<IntegrationTokenInvalidBanner platform="yandex_business" />);
-    expect(screen.getByText(/Доступ к платформе истёк/i)).toBeInTheDocument();
+    expect(screen.getByText(/OneVoice потерял доступ к площадке/i)).toBeInTheDocument();
   });
 
   it('CTA href equals /integrations?reconnect={platform} for telegram', () => {

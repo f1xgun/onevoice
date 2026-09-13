@@ -10,7 +10,7 @@ function renderGroup(
   const onSelect = vi.fn();
   const utils = render(
     <ToolApprovalToggleGroup
-      toolName="telegram__send_channel_post"
+      actionName="Отправить пост"
       decision="undecided"
       onSelect={onSelect}
       {...overrides}
@@ -81,19 +81,19 @@ describe('ToolApprovalToggleGroup', () => {
     }
   });
 
-  it('R) aria-label on every button contains the toolName', () => {
-    renderGroup({ toolName: 'telegram__send_channel_post' });
+  it('R) aria-label on every button contains the readable action name', () => {
+    renderGroup({ actionName: 'Отправить пост' });
     expect(screen.getByRole('button', { name: /Одобрить/ })).toHaveAttribute(
       'aria-label',
-      'Одобрить telegram__send_channel_post'
+      'Одобрить Отправить пост'
     );
     expect(screen.getByRole('button', { name: /Изменить/ })).toHaveAttribute(
       'aria-label',
-      'Изменить telegram__send_channel_post'
+      'Изменить Отправить пост'
     );
     expect(screen.getByRole('button', { name: /Отклонить/ })).toHaveAttribute(
       'aria-label',
-      'Отклонить telegram__send_channel_post'
+      'Отклонить Отправить пост'
     );
   });
 
@@ -109,8 +109,8 @@ describe('ToolApprovalToggleGroup', () => {
 
   it('T) Space keyboard activation fires onSelect with the focused action', async () => {
     const user = userEvent.setup();
-    const { onSelect } = renderGroup({ toolName: 'foo' });
-    const approveBtn = screen.getByRole('button', { name: /Одобрить foo/ });
+    const { onSelect } = renderGroup({ actionName: 'Публикация' });
+    const approveBtn = screen.getByRole('button', { name: /Одобрить Публикация/ });
     approveBtn.focus();
     await user.keyboard(' ');
     expect(onSelect).toHaveBeenCalledWith('approve');

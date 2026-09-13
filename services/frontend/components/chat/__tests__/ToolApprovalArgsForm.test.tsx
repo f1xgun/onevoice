@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ToolApprovalArgsForm } from '../ToolApprovalArgsForm';
 
 // Locked-section heading copy from messages/ru.json. Hard-coded here so a
 // drift in the catalog without intent gets caught.
-const LOCKED_HEADING = 'Зафиксировано';
+const LOCKED_HEADING = 'Выбрано автоматически';
 const EDITABLE_HEADING = 'Можно изменить';
 
 describe('ToolApprovalArgsForm — boolean editable field', () => {
@@ -22,7 +22,7 @@ describe('ToolApprovalArgsForm — boolean editable field', () => {
         onEdit={onEdit}
       />
     );
-    const sw = screen.getByRole('switch', { name: /silent/i });
+    const sw = screen.getByRole('switch', { name: /Дополнительные данные/i });
     expect(sw).toBeInTheDocument();
     expect(sw).toBeChecked();
   });
@@ -40,7 +40,7 @@ describe('ToolApprovalArgsForm — boolean editable field', () => {
         onEdit={onEdit}
       />
     );
-    await user.click(screen.getByRole('switch', { name: /silent/i }));
+    await user.click(screen.getByRole('switch', { name: /Дополнительные данные/i }));
     expect(onEdit).toHaveBeenCalledWith('silent', true);
   });
 
@@ -55,7 +55,7 @@ describe('ToolApprovalArgsForm — boolean editable field', () => {
         onEdit={vi.fn()}
       />
     );
-    expect(screen.getByRole('switch', { name: /silent/i })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: /Дополнительные данные/i })).toBeDisabled();
   });
 });
 
@@ -178,7 +178,7 @@ describe('ToolApprovalArgsForm — label resolution', () => {
     expect(screen.getByText('Текст')).toBeInTheDocument();
   });
 
-  it('falls back to the "Параметр «key»" template for unknown keys', () => {
+  it('hides unknown read-only keys and values', () => {
     render(
       <ToolApprovalArgsForm
         args={{ definitely_unknown_key: 'value' }}
@@ -190,11 +190,13 @@ describe('ToolApprovalArgsForm — label resolution', () => {
       />
     );
     expect(screen.queryByText('definitely_unknown_key')).not.toBeInTheDocument();
+    expect(screen.queryByText('value')).not.toBeInTheDocument();
+    expect(screen.getByText('Для этого действия дополнительных данных нет.')).toBeInTheDocument();
   });
 });
 
-describe('ToolApprovalArgsForm — locked nested values', () => {
-  it('renders a nested object as a labelled inner <dl> rather than a JSON one-liner', () => {
+describe('ToolApprovalArgsForm — hidden internal values', () => {
+  it('does not render nested routing data or JSON', () => {
     render(
       <ToolApprovalArgsForm
         args={{
@@ -208,15 +210,14 @@ describe('ToolApprovalArgsForm — locked nested values', () => {
         onEdit={vi.fn()}
       />
     );
-    expect(screen.getByText(LOCKED_HEADING)).toBeInTheDocument();
-    expect(screen.getByText('Текст')).toBeInTheDocument();
-    expect(screen.getByText('inner')).toBeInTheDocument();
-    expect(screen.getByText('Количество')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.queryByText(LOCKED_HEADING)).not.toBeInTheDocument();
+    expect(screen.queryByText('inner')).not.toBeInTheDocument();
+    expect(screen.queryByText('tg-1')).not.toBeInTheDocument();
     expect(screen.queryByText(/^\{.+\}$/)).not.toBeInTheDocument();
+    expect(screen.getByText('Для этого действия дополнительных данных нет.')).toBeInTheDocument();
   });
 
-  it('renders an array of primitives as a bulleted list', () => {
+  it('does not render unknown arrays', () => {
     render(
       <ToolApprovalArgsForm
         args={{ tags: ['news', 'promo'] }}
@@ -227,14 +228,11 @@ describe('ToolApprovalArgsForm — locked nested values', () => {
         onEdit={vi.fn()}
       />
     );
-    const list = screen.getByRole('list');
-    const items = within(list).getAllByRole('listitem');
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent('news');
-    expect(items[1]).toHaveTextContent('promo');
+    expect(screen.queryByText('news')).not.toBeInTheDocument();
+    expect(screen.queryByText('promo')).not.toBeInTheDocument();
   });
 
-  it('renders booleans with the localized Да/Нет label in read-only mode', () => {
+  it('does not render unknown read-only flags', () => {
     render(
       <ToolApprovalArgsForm
         args={{ silent: true, public: false }}
@@ -245,8 +243,8 @@ describe('ToolApprovalArgsForm — locked nested values', () => {
         onEdit={vi.fn()}
       />
     );
-    expect(screen.getByText('Да')).toBeInTheDocument();
-    expect(screen.getByText('Нет')).toBeInTheDocument();
+    expect(screen.queryByText('Да')).not.toBeInTheDocument();
+    expect(screen.queryByText('Нет')).not.toBeInTheDocument();
   });
 });
 
@@ -262,7 +260,7 @@ describe('ToolApprovalArgsForm — empty args + editable sections', () => {
         onEdit={vi.fn()}
       />
     );
-    expect(screen.getByText('У этого действия нет параметров.')).toBeInTheDocument();
+    expect(screen.getByText('Для этого действия дополнительных данных нет.')).toBeInTheDocument();
   });
 
   it('renders the editable section heading only when there are editable rows', () => {

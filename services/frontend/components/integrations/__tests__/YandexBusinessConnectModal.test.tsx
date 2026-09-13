@@ -65,7 +65,7 @@ describe('YandexBusinessConnectModal — method routing', () => {
     await waitFor(() =>
       expect(apiGet).toHaveBeenCalledWith('/integrations/yandex_business/delegated-config')
     );
-    expect(await screen.findByText(/Дайте OneVoice доступ/)).toBeInTheDocument();
+    expect(await screen.findByText(/Добавьте представителя OneVoice/)).toBeInTheDocument();
     expect(screen.getByText('onevoice-rep')).toBeInTheDocument();
     expect(screen.queryByText('Зачем нужны cookies?')).not.toBeInTheDocument();
   });
@@ -75,7 +75,7 @@ describe('YandexBusinessConnectModal — method routing', () => {
     renderModal();
     expect(await screen.findByText(/Подключение Яндекс.Бизнеса готовится/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Подключить$/ })).toBeDisabled();
-    expect(screen.getByText(/Мы не запрашиваем пароли и cookies/)).toBeInTheDocument();
+    expect(screen.getByText(/Подключение можно в любой момент отменить/)).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByText(/Cookie-Editor|Подключить через cookies/)).not.toBeInTheDocument();
     expect(apiPost).not.toHaveBeenCalled();
@@ -84,9 +84,9 @@ describe('YandexBusinessConnectModal — method routing', () => {
   it('never offers cookie or extension entry points when available', async () => {
     configAvailable();
     renderModal();
-    await screen.findByText(/Дайте OneVoice доступ/);
+    await screen.findByText(/Добавьте представителя OneVoice/);
     expect(screen.queryByText(/Cookie-Editor|Подключить через cookies/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Мы не запрашиваем пароли и cookies/)).toBeInTheDocument();
+    expect(screen.getByText(/Подключение можно в любой момент отменить/)).toBeInTheDocument();
   });
 
   it('shows config verification errors inline without retrying', async () => {
@@ -109,7 +109,7 @@ describe('YandexBusinessConnectModal — delegated connect', () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
 
-    await screen.findByText(/Дайте OneVoice доступ/);
+    await screen.findByText(/Добавьте представителя OneVoice/);
     await user.type(
       screen.getByLabelText('Ссылка на вашу организацию в Яндекс.Картах'),
       'https://yandex.ru/maps/org/kafe/114697172504/'
@@ -138,7 +138,7 @@ describe('YandexBusinessConnectModal — delegated connect', () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
 
-    await screen.findByText(/Дайте OneVoice доступ/);
+    await screen.findByText(/Добавьте представителя OneVoice/);
     await user.type(
       screen.getByLabelText('Ссылка на вашу организацию в Яндекс.Картах'),
       '114697172504'

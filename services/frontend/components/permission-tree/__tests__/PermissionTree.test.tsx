@@ -86,15 +86,15 @@ describe('PermissionTree', () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     renderTree();
     await waitFor(() => {
-      expect(screen.getByText('business.read')).toBeInTheDocument();
-      expect(screen.getByText('business.update')).toBeInTheDocument();
-      expect(screen.getByText('roles.read')).toBeInTheDocument();
-      expect(screen.getByText('roles.create')).toBeInTheDocument();
-      expect(screen.getByText('roles.update')).toBeInTheDocument();
+      expect(screen.getByText('Видеть профиль организации')).toBeInTheDocument();
+      expect(screen.getByText('Редактировать профиль организации')).toBeInTheDocument();
+      expect(screen.getByText('Видеть роли и права')).toBeInTheDocument();
+      expect(screen.getByText('Создавать роли')).toBeInTheDocument();
+      expect(screen.getByText('Редактировать роли')).toBeInTheDocument();
     });
   });
 
-  it('is purely catalog-driven — arbitrary perm names render', async () => {
+  it('renders a safe group fallback and the catalog description for future permissions', async () => {
     mockedGetCatalog.mockResolvedValue([
       {
         resource: 'imaginary',
@@ -103,7 +103,9 @@ describe('PermissionTree', () => {
     ]);
     renderTree({ actorPermissions: new Set(['imaginary.action']) });
     await waitFor(() => {
-      expect(screen.getByText('imaginary.action')).toBeInTheDocument();
+      expect(screen.getByText('Другие возможности')).toBeInTheDocument();
+      expect(screen.getByText('Другая возможность')).toBeInTheDocument();
+      expect(screen.queryByText('imaginary.action')).not.toBeInTheDocument();
     });
   });
 
@@ -111,8 +113,10 @@ describe('PermissionTree', () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     const onChange = vi.fn();
     renderTree({ onChange });
-    await waitFor(() => expect(screen.getByText('business.read')).toBeInTheDocument());
-    await userEvent.setup().click(screen.getByRole('checkbox', { name: 'business.read' }));
+    await waitFor(() => expect(screen.getByText('Видеть профиль организации')).toBeInTheDocument());
+    await userEvent
+      .setup()
+      .click(screen.getByRole('checkbox', { name: 'Видеть профиль организации' }));
     expect(onChange).toHaveBeenCalledWith(['business.read']);
   });
 
@@ -123,19 +127,19 @@ describe('PermissionTree', () => {
       onChange,
       actorPermissions: new Set(['roles.read', 'roles.update']), // partial
     });
-    await waitFor(() => expect(screen.getByText('roles.read')).toBeInTheDocument());
-    await userEvent.setup().click(screen.getByRole('checkbox', { name: 'roles' }));
+    await waitFor(() => expect(screen.getByText('Видеть роли и права')).toBeInTheDocument());
+    await userEvent.setup().click(screen.getByRole('checkbox', { name: 'Роли и доступ' }));
     expect(onChange).toHaveBeenCalledTimes(1);
     const next = onChange.mock.calls[0][0] as string[];
     expect([...next].sort()).toEqual(['roles.read', 'roles.update'].sort());
   });
 
-  it('disabled leaf renders «У вас нет этого права» tooltip aria-label', async () => {
+  it('disabled leaf explains that the actor cannot grant it', async () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     renderTree({
       actorPermissions: new Set(['business.read', 'business.update', 'roles.read', 'roles.update']),
     });
-    await waitFor(() => expect(screen.getByText('roles.create')).toBeInTheDocument());
-    expect(screen.getByLabelText('У вас нет этого права')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Создавать роли')).toBeInTheDocument());
+    expect(screen.getByText('У вас нет этого права')).toBeInTheDocument();
   });
 });

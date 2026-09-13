@@ -55,7 +55,7 @@ describe('resolveErrorToRussian', () => {
 
   it('maps body.reason === "policy_revoked" on a non-403 status → policy-revoked toast', () => {
     expect(resolveErrorToRussian(400, { reason: 'policy_revoked', detail: 'tool denied' })).toBe(
-      'Отказано: инструмент запрещён текущей политикой'
+      'Действие запрещено правилами организации'
     );
   });
 

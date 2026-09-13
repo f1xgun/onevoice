@@ -29,6 +29,8 @@ type stubAgentTaskRepo struct {
 	domain.AgentTaskRepository
 	task       *domain.AgentTask
 	updates    []domain.AgentTask
+	dismissed  bool
+	dismissErr error
 	restartErr error
 }
 
@@ -47,6 +49,17 @@ func (s *stubAgentTaskRepo) Update(_ context.Context, task *domain.AgentTask) er
 	s.task.Error = task.Error
 	s.task.ErrorCode = task.ErrorCode
 	s.task.CompletedAt = task.CompletedAt
+	return nil
+}
+
+func (s *stubAgentTaskRepo) Dismiss(_ context.Context, businessID, taskID string) error {
+	if s.task == nil || s.task.BusinessID != businessID || s.task.ID != taskID {
+		return domain.ErrAgentTaskNotFound
+	}
+	if s.dismissErr != nil {
+		return s.dismissErr
+	}
+	s.dismissed = true
 	return nil
 }
 
@@ -336,6 +349,43 @@ func TestRetry_NonFailedTaskRejected(t *testing.T) {
 	_, err := svc.Retry(context.Background(), biz, "task-1")
 	require.ErrorIs(t, err, domain.ErrAgentTaskNotFailed)
 	require.Zero(t, nc.execs)
+}
+
+func TestDismiss_FailedTask(t *testing.T) {
+	biz := uuid.New()
+	repo := &stubAgentTaskRepo{task: failedTask(biz, "transient")}
+	svc := &agentTaskService{repo: repo}
+
+	require.NoError(t, svc.Dismiss(context.Background(), biz, "task-1"))
+	require.True(t, repo.dismissed)
+}
+
+func TestDismiss_NonFailedTaskRejected(t *testing.T) {
+	biz := uuid.New()
+	task := failedTask(biz, "transient")
+	task.Status = "done"
+	repo := &stubAgentTaskRepo{task: task}
+	svc := &agentTaskService{repo: repo}
+
+	err := svc.Dismiss(context.Background(), biz, "task-1")
+	require.ErrorIs(t, err, domain.ErrAgentTaskNotFailed)
+	require.False(t, repo.dismissed)
+}
+
+func TestDismissedTaskCannotBeActedOnAgain(t *testing.T) {
+	biz := uuid.New()
+	now := time.Now()
+	task := failedTask(biz, "transient")
+	task.DismissedAt = &now
+	repo := &stubAgentTaskRepo{task: task}
+	svc := &agentTaskService{repo: repo}
+
+	err := svc.Dismiss(context.Background(), biz, task.ID)
+	require.ErrorIs(t, err, domain.ErrAgentTaskNotFound)
+	require.False(t, repo.dismissed)
+
+	_, err = svc.Retry(context.Background(), biz, task.ID)
+	require.ErrorIs(t, err, domain.ErrAgentTaskNotFound)
 }
 
 // TestRetry_UnknownTaskRejected asserts an unknown / cross-business task id

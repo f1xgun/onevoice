@@ -9,6 +9,16 @@ import type { PermissionGroup } from '@/lib/schemas';
 
 import { LeafCheckbox } from './LeafCheckbox';
 
+const KNOWN_GROUPS = new Set([
+  'business',
+  'members',
+  'roles',
+  'integrations',
+  'content',
+  'billing',
+  'audit',
+]);
+
 export type GroupTriState = 'checked' | 'unchecked' | 'indeterminate';
 
 export interface GroupRowProps {
@@ -90,6 +100,8 @@ export function GroupRow({
   const t = useTranslations('roles.permissionTree');
   const state = computeGroupState(group, valueSet, actorPermissions);
   const selectedCount = group.permissions.filter((p) => valueSet.has(p.name)).length;
+  const groupKey = `groups.${group.resource}`;
+  const groupLabel = KNOWN_GROUPS.has(group.resource) ? t(groupKey) : t('groups.other');
 
   return (
     <Collapsible defaultOpen className="group/trigger" data-resource={group.resource}>
@@ -97,12 +109,12 @@ export function GroupRow({
         <Checkbox
           checked={state === 'indeterminate' ? 'indeterminate' : state === 'checked'}
           disabled={disabled}
-          aria-label={group.resource}
+          aria-label={groupLabel}
           onCheckedChange={() => handleGroupToggle(group, state, value, actorPermissions, onChange)}
         />
         <CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left text-ink hover:text-ink-mid">
           <ChevronDown className="h-4 w-4 transition-transform duration-150 group-data-[state=closed]/trigger:-rotate-90" />
-          <span className="font-medium capitalize">{group.resource}</span>
+          <span className="font-medium">{groupLabel}</span>
           <span className="ml-auto font-mono text-xs text-ink-soft" aria-hidden>
             {t('groupCount', { selected: selectedCount, total: group.permissions.length })}
           </span>
@@ -117,7 +129,6 @@ export function GroupRow({
               <LeafCheckbox
                 key={leaf.name}
                 leafName={leaf.name}
-                description={leaf.description}
                 checked={leafChecked}
                 disabled={disabled || !actorHas}
                 actorHas={actorHas}

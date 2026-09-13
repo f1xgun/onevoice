@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { ToolNeedsHelpCard } from '../ToolNeedsHelpCard';
 
 describe('ToolNeedsHelpCard', () => {
-  it('renders mono tool name, message, and the "нужна помощь" pill', () => {
+  it('renders the message and help state without the internal identifier', () => {
     render(
       <ToolNeedsHelpCard
         toolName="review.draft_reply"
@@ -13,7 +13,7 @@ describe('ToolNeedsHelpCard', () => {
         onHelp={() => undefined}
       />
     );
-    expect(screen.getByText('review.draft_reply')).toBeInTheDocument();
+    expect(screen.queryByText('review.draft_reply')).not.toBeInTheDocument();
     expect(screen.getByText(/Не уверена, как ответить/)).toBeInTheDocument();
     expect(screen.getByText('нужна помощь')).toBeInTheDocument();
   });

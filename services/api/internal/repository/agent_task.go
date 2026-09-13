@@ -184,6 +184,26 @@ func (r *agentTaskRepository) GetByID(ctx context.Context, businessID, taskID st
 	return &task, nil
 }
 
+func (r *agentTaskRepository) Dismiss(ctx context.Context, businessID, taskID string) error {
+	result, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{
+			"_id":          taskID,
+			"business_id":  businessID,
+			"status":       domain.AgentTaskStatusError,
+			"dismissed_at": bson.M{"$exists": false},
+		},
+		bson.M{"$set": bson.M{"dismissed_at": time.Now().UTC()}},
+	)
+	if err != nil {
+		return fmt.Errorf("dismiss agent task: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return domain.ErrAgentTaskNotFound
+	}
+	return nil
+}
+
 // EnsureAgentTaskIndexes creates the agent_tasks collection's compound index
 // idempotently at API startup. {business_id, created_at} serves ListByBusinessID
 // (filter business_id, sort created_at desc) and prefixes its CountDocuments;
@@ -211,7 +231,7 @@ func EnsureAgentTaskIndexes(ctx context.Context, db *mongo.Database) error {
 func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID string, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
 	tasks := make([]domain.AgentTask, 0)
 
-	f := bson.M{"business_id": businessID}
+	f := bson.M{"business_id": businessID, "dismissed_at": bson.M{"$exists": false}}
 	if filter.Platform != "" {
 		f["platform"] = filter.Platform
 	}

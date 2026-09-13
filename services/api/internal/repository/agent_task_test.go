@@ -48,6 +48,44 @@ func TestAgentTaskRepository_Update_StampsErrorCode(t *testing.T) {
 	assert.Equal(t, "integration_token_invalid", fetched.ErrorCode)
 }
 
+func TestAgentTaskRepository_DismissFailedTaskExcludesItFromList(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewAgentTaskRepository(db)
+	ctx := context.Background()
+
+	failed := &domain.AgentTask{BusinessID: "biz-dismiss", Type: "publish", Status: domain.AgentTaskStatusError, Platform: "vk"}
+	done := &domain.AgentTask{BusinessID: "biz-dismiss", Type: "publish", Status: "done", Platform: "vk"}
+	require.NoError(t, repo.Create(ctx, failed))
+	require.NoError(t, repo.Create(ctx, done))
+	require.NoError(t, repo.Dismiss(ctx, failed.BusinessID, failed.ID))
+
+	tasks, total, err := repo.ListByBusinessID(ctx, failed.BusinessID, domain.TaskFilter{Limit: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Len(t, tasks, 1)
+	require.Equal(t, done.ID, tasks[0].ID)
+
+	stored, err := repo.GetByID(ctx, failed.BusinessID, failed.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.DismissedAt, "dismissal keeps the audit record and timestamps it")
+}
+
+func TestAgentTaskRepository_DismissScopesBusinessAndFailedStatus(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewAgentTaskRepository(db)
+	ctx := context.Background()
+
+	done := &domain.AgentTask{BusinessID: "biz-dismiss", Type: "publish", Status: "done", Platform: "vk"}
+	require.NoError(t, repo.Create(ctx, done))
+	require.ErrorIs(t, repo.Dismiss(ctx, "other-business", done.ID), domain.ErrAgentTaskNotFound)
+	require.ErrorIs(t, repo.Dismiss(ctx, done.BusinessID, done.ID), domain.ErrAgentTaskNotFound)
+
+	failed := &domain.AgentTask{BusinessID: "biz-dismiss", Type: "publish", Status: domain.AgentTaskStatusError, Platform: "vk"}
+	require.NoError(t, repo.Create(ctx, failed))
+	require.NoError(t, repo.Dismiss(ctx, failed.BusinessID, failed.ID))
+	require.ErrorIs(t, repo.Dismiss(ctx, failed.BusinessID, failed.ID), domain.ErrAgentTaskNotFound)
+}
+
 func TestAgentTaskRepository_RestartVerificationCASAllowsOneRerun(t *testing.T) {
 	db := setupMongoTestDB(t)
 	repo := NewAgentTaskRepository(db)
