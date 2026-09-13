@@ -21,9 +21,10 @@ import (
 
 // mockAgentTaskService implements AgentTaskService for tests.
 type mockAgentTaskService struct {
-	listFn  func(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
-	retryFn func(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
-	rerunFn func(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+	listFn    func(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
+	retryFn   func(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+	dismissFn func(ctx context.Context, businessID uuid.UUID, taskID string) error
+	rerunFn   func(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
 }
 
 func (m *mockAgentTaskService) RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error) {
@@ -39,6 +40,13 @@ func (m *mockAgentTaskService) List(ctx context.Context, businessID uuid.UUID, f
 
 func (m *mockAgentTaskService) Retry(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error) {
 	return m.retryFn(ctx, businessID, taskID)
+}
+
+func (m *mockAgentTaskService) Dismiss(ctx context.Context, businessID uuid.UUID, taskID string) error {
+	if m.dismissFn == nil {
+		return domain.ErrAgentTaskNotFound
+	}
+	return m.dismissFn(ctx, businessID, taskID)
 }
 
 // agentTaskBizCtx seeds a BusinessContext with PermContentRead for agent task handler tests.
@@ -276,6 +284,61 @@ func TestRetryTask_PermanentReason(t *testing.T) {
 
 	assert.Equal(t, http.StatusConflict, rr.Code)
 	assert.Contains(t, rr.Body.String(), string(service.RetryReasonPermanent))
+}
+
+func TestDismissTask_HidesFailedTask(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	called := false
+	svc := &mockAgentTaskService{dismissFn: func(_ context.Context, bid uuid.UUID, taskID string) error {
+		called = true
+		assert.Equal(t, businessID, bid)
+		assert.Equal(t, "task-1", taskID)
+		return nil
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/tasks/task-1", http.NoBody)
+	req = req.WithContext(retryTaskCtx(businessID, userID, "task-1", authz.PermContentUpdate))
+	rr := httptest.NewRecorder()
+	h.DismissTask(rr, req)
+
+	assert.True(t, called)
+	assert.Equal(t, http.StatusNoContent, rr.Code)
+}
+
+func TestDismissTask_RequiresWritePermission(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{dismissFn: func(context.Context, uuid.UUID, string) error {
+		t.Fatal("service must not be called without write permission")
+		return nil
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/tasks/task-1", http.NoBody)
+	req = req.WithContext(retryTaskCtx(businessID, userID, "task-1", authz.PermContentRead))
+	rr := httptest.NewRecorder()
+	h.DismissTask(rr, req)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+func TestDismissTask_RejectsNonFailedTask(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	svc := &mockAgentTaskService{dismissFn: func(context.Context, uuid.UUID, string) error {
+		return domain.ErrAgentTaskNotFailed
+	}}
+	h, _ := NewAgentTaskHandler(svc, taskhub.New())
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/tasks/task-1", http.NoBody)
+	req = req.WithContext(retryTaskCtx(businessID, userID, "task-1", authz.PermContentUpdate))
+	rr := httptest.NewRecorder()
+	h.DismissTask(rr, req)
+
+	assert.Equal(t, http.StatusConflict, rr.Code)
+	assert.Contains(t, rr.Body.String(), "task_not_failed")
 }
 
 func TestRerunVerification_ReadPermissionQueuesReadback(t *testing.T) {

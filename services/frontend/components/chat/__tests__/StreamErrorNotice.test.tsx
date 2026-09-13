@@ -28,14 +28,12 @@ describe('StreamErrorNotice', () => {
       screen.getByText('Что-то пошло не так. Попробуйте ещё раз чуть позже.')
     ).toBeInTheDocument();
     expect(screen.queryByText(/\[Error:/)).not.toBeInTheDocument();
-    const raw = screen.getByText('max iterations (10) reached');
-    expect(raw.closest('details')).not.toBeNull();
+    expect(screen.queryByText('max iterations (10) reached')).not.toBeInTheDocument();
   });
 
-  it('keeps the raw detail behind a diagnostics affordance, not as the headline', () => {
+  it('never renders raw diagnostic detail', () => {
     render(<StreamErrorNotice code="internal_error" detail="openrouter 500: upstream exploded" />);
-    expect(screen.getByText('Подробности')).toBeInTheDocument();
-    const detail = screen.getByText('openrouter 500: upstream exploded');
-    expect(detail.closest('details')).not.toBeNull();
+    expect(screen.queryByText('Подробности')).not.toBeInTheDocument();
+    expect(screen.queryByText('openrouter 500: upstream exploded')).not.toBeInTheDocument();
   });
 });

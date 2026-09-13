@@ -246,7 +246,56 @@
     },
     "permissionTree": {
       "disabledTooltip": "You don't have this permission",
-      "groupCount": "{selected} / {total}"
+      "groupCount": "{selected} / {total}",
+      "unknownPermission": "Other capability",
+      "permissions": {
+        "business": {
+          "read": "View the organization profile",
+          "update": "Edit the organization profile",
+          "delete": "Delete the organization",
+          "transfer_ownership": "Transfer organization ownership"
+        },
+        "members": {
+          "read": "View members and their roles",
+          "invite": "Invite members",
+          "remove": "Remove members",
+          "update_role": "Change member roles"
+        },
+        "roles": {
+          "read": "View roles and access",
+          "create": "Create roles",
+          "update": "Edit roles",
+          "delete": "Delete roles"
+        },
+        "integrations": {
+          "read": "View connected platforms",
+          "connect": "Connect platforms",
+          "disconnect": "Disconnect platforms"
+        },
+        "content": {
+          "read": "View posts, reviews, chats, and tasks",
+          "create": "Create posts, replies, and tasks",
+          "update": "Edit posts, replies, and tasks",
+          "delete": "Delete posts, replies, and tasks"
+        },
+        "billing": {
+          "read": "View plan and usage",
+          "update": "Change the plan and payment method"
+        },
+        "audit": {
+          "read": "View the activity log"
+        }
+      },
+      "groups": {
+        "business": "Organization",
+        "members": "Team",
+        "roles": "Roles and access",
+        "integrations": "Connected platforms",
+        "content": "Posts, reviews, and tasks",
+        "billing": "Plan and billing",
+        "audit": "Activity log",
+        "other": "Other capabilities"
+      }
     },
     "errors": {
       "cannotGrantUnowned": "You can't grant permissions you don't have. Uncheck the grayed-out boxes.",
@@ -287,7 +336,7 @@
       "resumeStream": "Couldn't resume — reload the page",
       "alreadyHandled": "Error: this action was already handled",
       "outOfScope": "Denied: this action is outside what you can do for your organization",
-      "policyRevoked": "Denied: this tool is blocked by current policy",
+      "policyRevoked": "The action is blocked by your organization's rules",
       "account_locked": "Account temporarily locked.",
       "captcha_required": "Please complete the captcha check.",
       "captcha_invalid": "Captcha check failed. Please try again.",
@@ -329,8 +378,8 @@
     "maxChars": "Maximum {count, plural, one {# character} other {# characters}}",
     "businessCategoryRequired": "Pick a category",
     "projectNameRequired": "Enter a project name.",
-    "projectSystemPromptMax": "System prompt is too long (max {max, plural, one {# character} other {# characters}}).",
-    "projectAllowedToolsRequired": "Pick at least one tool, or switch the mode to \"None\".",
+    "projectSystemPromptMax": "Instructions are too long (max {max, plural, one {# character} other {# characters}}).",
+    "projectAllowedToolsRequired": "Pick at least one action, or switch the mode to \"None\".",
     "consentRequired": "Required for registration",
     "feedbackMessageRequired": "Enter a message"
   },
@@ -429,10 +478,10 @@
       "rejectedBadge": "Rejected by user",
       "rejectedReason": "Reason: {reason}",
       "rejectedByPolicyBadge": "Blocked by policy",
-      "policyForbiddenReason": "This tool isn't allowed by the current role or organization policy",
-      "policyRevokedReason": "Tool access was revoked by policy during execution",
+      "policyForbiddenReason": "This action isn't available for your role or is blocked by your organization's rules",
+      "policyRevokedReason": "Your organization's rules changed while the action was running",
       "expiredBadge": "Expired",
-      "editedTooltip": "Arguments edited by user",
+      "editedTooltip": "Details changed by user",
       "nothingFound": "Nothing found",
       "sent": "Sent",
       "gotCount": "Received: {count}",
@@ -475,22 +524,24 @@
       "contextAction": "Add context"
     },
     "toolApproval": {
-      "argsHeading": "Arguments",
+      "argsHeading": "What will happen",
       "editableSectionHeading": "Editable",
-      "lockedSectionHeading": "Locked",
-      "lockedHint": "These values can't be edited — they're filled in automatically.",
-      "noEditableFields": "This action has no editable parameters.",
-      "noArgs": "This action has no parameters.",
+      "lockedSectionHeading": "Selected automatically",
+      "lockedHint": "OneVoice will fill in these details.",
+      "noEditableFields": "There is nothing to change here — OneVoice has prepared the action.",
+      "noArgs": "This action has no additional details.",
       "rejectPlaceholder": "Reason (optional)",
       "rejectAriaLabel": "Reason for rejection",
       "triggerExpand": "expand",
       "triggerCollapse": "collapse",
       "booleanYes": "Yes",
       "booleanNo": "No",
-      "fieldFallback": "Parameter \"{key}\"",
+      "fieldFallback": "Additional details",
+      "additionalData": "Additional details",
+      "unknownPlatform": "Connected platform",
       "card": {
         "titleWithCount": "Awaiting confirmation ({count})",
-        "subtitle": "Review the arguments before running",
+        "subtitle": "Review what OneVoice is about to do",
         "submitIdle": "Confirm",
         "submitLoading": "Sending…",
         "submitHelper": "Pick an action for every task",
@@ -512,18 +563,18 @@
         "caption": "Caption",
         "description": "Description",
         "hours": "Business hours",
-        "channel_id": "Channel ID",
-        "chat_id": "Chat ID",
-        "message_id": "Message ID",
-        "photo_url": "Image URL",
-        "group_id": "Community ID",
+        "channel_id": "Channel",
+        "chat_id": "Chat",
+        "message_id": "Message",
+        "photo_url": "Image",
+        "group_id": "Community",
         "publish_date": "Publish date",
-        "post_id": "Post ID",
-        "comment_id": "Comment ID",
+        "post_id": "Post",
+        "comment_id": "Comment",
         "phone": "Phone",
         "website": "Website",
         "category": "Category",
-        "review_id": "Review ID",
+        "review_id": "Review",
         "review_name": "Reviewer name",
         "count": "Count",
         "limit": "Limit",
@@ -613,7 +664,9 @@
   },
   "tasks": {
     "title": "What's been done",
-    "subtitle": "Assistant actions and their status. View tasks that need help to see the next step.",
+    "subtitle": "Assistant actions and their status. You can retry a failed action or remove it from the list.",
+    "unknownAction": "OneVoice action",
+    "unknownPlatform": "Connected channel",
     "status": {
       "pending": "Scheduled",
       "running": "In progress",
@@ -655,8 +708,8 @@
     },
     "errors": {
       "tokenVk": "Looks like access to the VK community expired. This happens once every couple of weeks — you'll need to reconnect the channel, takes about a minute.",
-      "tokenTelegram": "Telegram no longer accepts our token — the bot may have been removed from the channel. You'll need to reconnect it.",
-      "tokenGeneric": "Access to the platform expired. Reconnect the channel so we can keep going.",
+      "tokenTelegram": "OneVoice lost access to Telegram — the bot may have been removed from the channel. Reconnect it to continue.",
+      "tokenGeneric": "OneVoice lost access to the platform. Reconnect the channel to continue.",
       "reconnectVk": "Reconnect VK",
       "reconnectTelegram": "Reconnect Telegram",
       "reconnectYandex": "Reconnect Yandex.Business",
@@ -685,7 +738,13 @@
       "filterLabel": "Task filter",
       "viewCompleted": "View completed",
       "viewInProgress": "View in progress",
-      "viewNeedsHelp": "Review failed actions"
+      "viewNeedsHelp": "Review failed actions",
+      "retry": "Retry",
+      "retrying": "Retrying…",
+      "retryFailed": "The action could not be retried. Try again later.",
+      "remove": "Remove from list",
+      "removing": "Removing…",
+      "removeFailed": "The task could not be removed. Try again."
     }
   },
   "agentTasks": {
@@ -1140,7 +1199,7 @@
     "telegramStep1Item2": "Go to channel settings → Administrators",
     "telegramStep1Item3Prefix": "Add the bot",
     "telegramStep1Item4": "Grant the bot permission to post messages",
-    "telegramStep2IntroBefore": "Enter your channel's ID or username (for example,",
+    "telegramStep2IntroBefore": "Enter your channel's @name (for example,",
     "telegramStep2IntroOr": "or",
     "telegramStep2IntroAfter": "):",
     "telegramStep2Placeholder": "@channel or -100…",
@@ -1162,7 +1221,7 @@
       "channelDisconnected": "Channel disconnected",
       "disconnectFailed": "Couldn't disconnect",
       "googleAuthFailed": "Couldn't open Google sign-in",
-      "vkAuthFailed": "Couldn't open VK sign-in. Try pasting a token manually instead.",
+      "vkAuthFailed": "Couldn't open VK. Try again later.",
       "viewerNoChannels": "No channels connected yet. Ask an organization admin to connect channels."
     },
     "platformCard": {
@@ -1193,8 +1252,8 @@
         "active": "Connected",
         "inactive": "Disconnected",
         "error": "Error",
-        "pending_cookies": "Awaiting input",
-        "token_expired": "Token expired"
+        "pending_cookies": "Awaiting connection",
+        "token_expired": "Reconnect needed"
       },
       "health": {
         "brokenLabel": "Needs attention",
@@ -1202,8 +1261,8 @@
         "reason": {
           "tg_not_admin": "The bot is no longer a channel admin — posting is paused. Make the bot an admin again and reconnect.",
           "tg_no_post_rights": "The bot can't post messages — grant that permission in the channel settings.",
-          "vk_wall_scope_missing": "The community key lost the \"Wall\" permission — recreate the key with that checkbox enabled.",
-          "vk_token_invalid": "The community key is no longer valid — reconnect VK.",
+          "vk_wall_scope_missing": "OneVoice can no longer publish to the community — reconnect VK.",
+          "vk_token_invalid": "Access to the community ended — reconnect VK.",
           "yandex_session_expired": "Access to Yandex.Business expired — reconnect the organization, it takes about two minutes."
         }
       },
@@ -1340,7 +1399,7 @@
       "connectFailed": "Couldn't connect",
       "connectedToast": "Connected: {name}",
       "delegated": {
-        "intro": "Give OneVoice access to your organization on Yandex — no passwords or cookies. You add our representative to the «Access» section, and we handle the connection.",
+        "intro": "Add the OneVoice representative in your organization's Yandex Access section, and we'll finish the connection.",
         "step1": "Open Yandex.Business and go to the «Access» section of your organization.",
         "step2": "Add an employee with the login shown below and the «Administrator» or «Manager» role.",
         "repLoginLabel": "OneVoice representative login",
@@ -1366,7 +1425,7 @@
         "verifyFailed": "Could not verify access. Try again later."
       },
       "preparing": "Yandex.Business connection is being prepared: access delegation will be available in the coming days.",
-      "security": "We never ask for passwords or cookies. Revoke access in one click in your Yandex account.",
+      "security": "You can end the connection at any time in your Yandex account.",
       "configFailed": "Could not load connection settings. Try opening this dialog later."
     },
     "googleLocation": {
@@ -1381,27 +1440,27 @@
       "loading": "Loading locations…"
     },
     "whitelistWarning": {
-      "title": "New integration won't be added to projects with their own tool list",
-      "body": "These projects use their own list of allowed tools and don't include {platform} tools: {names}. Open a project to add them.",
+      "title": "The new platform is not available in some projects yet",
+      "body": "These projects use their own action lists without {platform}: {names}. Open a project to add the actions you need.",
       "dismissAria": "Got it",
       "closeAria": "Dismiss warning"
     },
     "oauthErrors": {
       "alreadyConnected": "This integration is already connected to another organization",
-      "missingParams": "Couldn't sign in: missing parameters",
+      "missingParams": "Couldn't sign in. Try connecting the platform again.",
       "invalidState": "Couldn't sign in: session expired",
-      "tokenExchange": "Couldn't exchange the token",
+      "tokenExchange": "Couldn't confirm sign-in. Try again.",
       "connectFailed": "Couldn't connect",
-      "noCommunityToken": "Couldn't get the community token",
+      "noCommunityToken": "Couldn't access the community.",
       "internal": "Something went wrong. Please try again.",
-      "noRefreshToken": "Google didn't return a refresh token. Try connecting again.",
+      "noRefreshToken": "Google didn't confirm ongoing access. Try connecting again.",
       "noLocations": "This Google account has no business locations.",
       "emailVerificationRequired": "Verify your email first to connect channels.",
       "accountPendingDeletion": "Your account is pending deletion. Restore it to connect channels.",
-      "fallback": "Couldn't connect: {error}"
+      "fallback": "Couldn't connect the platform. Try again."
     },
     "telegramErrors": {
-      "channelNotFound": "Channel not found. Check its @name or ID and add the bot as an administrator with permission to post.",
+      "channelNotFound": "Channel not found. Check its name and add the bot as an administrator with permission to post.",
       "adminRequired": "Add the bot as a channel administrator with permission to post, then reconnect.",
       "noAccess": "Channel access denied. Check your permissions and add the bot as an administrator with permission to post.",
       "unreachable": "Could not reach Telegram. Try later — bot access has not been checked.",
@@ -1732,7 +1791,7 @@
       "steps": {
         "0": {
           "title": "Connect",
-          "body": "Telegram, VK, Yandex.Business — one link at a time. No API keys, no fiddly settings."
+          "body": "Connect Telegram, VK, and Yandex Business step by step inside OneVoice."
         },
         "1": {
           "title": "Tell us",
@@ -1972,32 +2031,32 @@
       "sectionLabel": "Project chats",
       "empty": {
         "title": "No chats in this project yet",
-        "body": "Start the first one — it'll inherit this project's system prompt and allowed tools."
+        "body": "Start the first chat — OneVoice will follow this project's instructions and rules."
       }
     },
     "form": {
       "tabBasics": "Basics",
-      "tabPrompt": "Prompt",
-      "tabTools": "Tools",
+      "tabPrompt": "Instructions",
+      "tabTools": "Actions",
       "tabQuickActions": "Quick actions",
       "name": "Name",
       "namePlaceholder": "For example: Reviews",
       "description": "Description",
       "descriptionPlaceholder": "Short description — who this project is for.",
       "optional": "(optional)",
-      "systemPrompt": "System prompt",
-      "systemPromptPlaceholder": "You're a review assistant. Reply politely and to the point…",
-      "systemPromptDescription": "Describes the AI's role and limits. Added to the organization context with every message.",
+      "systemPrompt": "How OneVoice should work",
+      "systemPromptPlaceholder": "Reply to reviews politely and to the point…",
+      "systemPromptDescription": "Set the tone, rules, and limits for every chat in this project.",
       "promptCounter": "{current} / {max} characters",
-      "tools": "Available tools",
+      "tools": "Available actions",
       "toolsDescription": "Which actions are allowed at all in this project.",
-      "toolsList": "Tool list",
-      "approval": "Tool approval",
-      "approvalDescription": "Which actions the AI runs on its own, and which need your approval. \"Use organization default\" — apply the organization-wide approval mode from settings.",
-      "loadingTools": "Loading tool list…",
+      "toolsList": "Action list",
+      "approval": "Action confirmation",
+      "approvalDescription": "Choose what OneVoice can do on its own and what it should ask you about first. Organization settings provide the shared rules.",
+      "loadingTools": "Loading actions…",
       "quickActions": "Quick actions",
-      "quickActionsDescription": "Prompt buttons that appear above the input in a new chat.",
-      "creationFooter": "You can set the system prompt, available tools, and quick actions after the project is created.",
+      "quickActionsDescription": "Suggested action buttons that appear above the input in a new chat.",
+      "creationFooter": "You can set instructions, available actions, and quick buttons after creating the project.",
       "cancel": "Cancel",
       "saveSuccess": "Project saved",
       "deleteProject": "Delete project",
@@ -2014,7 +2073,7 @@
       "manual": "Ask every time",
       "inherit": "Use organization default",
       "businessTag": "Organization: {label}",
-      "noTools": "No tools require approval — everything runs automatically.",
+      "noTools": "No actions require confirmation — everything runs automatically.",
       "businessDefault": {
         "auto": "Automatic",
         "manual": "Ask every time"
@@ -2024,11 +2083,11 @@
       "options": {
         "inherit": {
           "label": "Use organization default",
-          "helper": "Use the organization's settings (every available tool by default)."
+          "helper": "Use the organization's shared rules."
         },
         "all": {
-          "label": "All tools",
-          "helper": "Any tool from an active integration is available to the AI."
+          "label": "All actions",
+          "helper": "OneVoice can perform any available action on connected platforms."
         },
         "explicit": {
           "label": "Selected",
@@ -2036,7 +2095,7 @@
         },
         "none": {
           "label": "None",
-          "helper": "The AI can reply but won't take any actions."
+          "helper": "OneVoice can reply in chat but will not change anything on a platform."
         }
       }
     },
@@ -2048,8 +2107,8 @@
       "deleteAria": "Delete quick action {index}"
     },
     "toolCheckboxes": {
-      "noIntegrations": "No active integrations — no tools available either.",
-      "loading": "Loading tool list…"
+      "noIntegrations": "Connect a platform first to see available actions.",
+      "loading": "Loading actions…"
     },
     "deleteDialog": {
       "cancel": "Cancel",
@@ -2070,7 +2129,7 @@
       "title": "New project",
       "sub": "Give the project a name — we'll set up the rest later.",
       "createdToast": "Project \"{name}\" created",
-      "createdDescription": "Now you can set up the prompt and tools."
+      "createdDescription": "Now you can set up instructions and available actions."
     }
   },
   "auth": {
@@ -2266,7 +2325,7 @@
     },
     "nav": {
       "profile": "Profile",
-      "tools": "Tools",
+      "tools": "Actions",
       "team": "Team",
       "roles": "Roles",
       "billing": "Plan",
@@ -2277,22 +2336,22 @@
     },
     "tools": {
       "title": "What the AI is allowed to do",
-      "sub": "OneVoice runs some actions on its own and asks first for others. Blocked tools can't be enabled from here.",
+      "sub": "OneVoice runs some actions on its own and asks you first for others.",
       "save": "Save",
       "saving": "Saving…",
       "unsavedChanges": "You have unsaved changes. Click \"Save\" to apply them.",
-      "loadError": "Couldn't load the tool list. Refresh the page or try again later.",
-      "noTools": "No configurable tools.",
+      "loadError": "Couldn't load the action list. Refresh the page or try again later.",
+      "noTools": "No actions can be configured.",
       "platform": "Platform",
-      "toolsCount": "{count, plural, one {# tool} other {# tools}}",
+      "toolsCount": "{count, plural, one {# action} other {# actions}}",
       "saveSuccess": "Settings saved",
       "saveError": "Couldn't save",
       "saveRetry": "Please try again."
     },
     "toolApproval": {
       "blocked": "Blocked",
-      "blockedHint": "This tool can't be enabled from settings",
-      "modeAriaLabel": "Approval mode for {label}",
+      "blockedHint": "This action isn't available for your role",
+      "modeAriaLabel": "Confirmation rule for {label}",
       "modes": {
         "manual": "Ask every time",
         "auto": "Automatic"
@@ -2381,7 +2440,7 @@
       "categoryBusiness": "Organization",
       "categoryProject": "Projects",
       "categoryRpa": "Listing actions",
-      "categoryPlatform": "Platform actions",
+      "categoryPlatform": "Actions on connected platforms",
       "categoryReview": "Review automation",
       "categoryHitl": "Approvals",
       "actionLabel": "Action",
@@ -2414,7 +2473,7 @@
     "panel": {
       "actor": "Author",
       "resource": "Object",
-      "rawDetails": "Details (JSON)"
+      "otherResource": "Other"
     },
     "resources": {
       "role": "Role",
@@ -2426,13 +2485,15 @@
       "project": "Project",
       "policy": "Policy",
       "review": "Review",
-      "conversation": "Conversation"
+      "conversation": "Conversation",
+      "other": "Other"
     },
     "errors": {
       "loadFailed": "Couldn't load the log. Please try again later.",
       "forbidden": "Your role doesn't have access to the activity log."
     },
     "actions": {
+      "unknown": "OneVoice event",
       "rbac_role_granted": "Role assigned",
       "rbac_member_removed": "Member removed",
       "rbac_role_created": "Custom role created",
@@ -2459,11 +2520,11 @@
       "auth_consent_policy_version_bumped": "Consent policy version updated",
       "integration_connected": "Integration connected",
       "integration_disconnected": "Integration disconnected",
-      "integration_token_rotated": "Integration token updated",
-      "integration_token_decrypted": "Integration token accessed",
-      "integration_token_expired": "Integration token expired",
+      "integration_token_rotated": "Platform access updated",
+      "integration_token_decrypted": "Platform connection used",
+      "integration_token_expired": "Platform reconnection needed",
       "integration_metadata_updated": "Integration details updated",
-      "integration_external_id_updated": "Integration identifier updated",
+      "integration_external_id_updated": "Platform connection updated",
       "integration_deleted": "Integration deleted",
       "business_created": "Organization created",
       "business_updated": "Organization updated",
@@ -2478,7 +2539,7 @@
       "account_deletion_canceled": "Account deletion canceled",
       "account_sole_owner_blocked": "Deletion blocked: sole owner",
       "account_user_self_deleted": "Account deleted",
-      "rpa_scope_violation": "RPA scope violation",
+      "rpa_scope_violation": "Platform action stopped",
       "rpa_review_replied": "Review reply published",
       "rpa_post_published": "Post published",
       "rpa_photo_uploaded": "Photo uploaded",

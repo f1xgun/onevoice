@@ -1,4 +1,3 @@
-import { hasLayoutBrowser, withLayoutPage } from '@/test-utils/browser-layout';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,14 +19,8 @@ vi.mock('@/lib/stores/business', () => ({
 }));
 
 const apiGet = vi.fn();
-const apiPost = vi.fn();
 vi.mock('@/lib/api/business-api', () => ({
-  bizApi: () => ({
-    get: (...args: unknown[]) => apiGet(...args),
-    post: (...args: unknown[]) => apiPost(...args),
-    put: vi.fn(),
-    delete: vi.fn(),
-  }),
+  bizApi: () => ({ get: (...args: unknown[]) => apiGet(...args) }),
 }));
 
 function Wrapper({ client, children }: { client: QueryClient; children: ReactNode }) {
@@ -36,27 +29,19 @@ function Wrapper({ client, children }: { client: QueryClient; children: ReactNod
 
 function renderModal(onClose = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const utils = render(
+  render(
     <Wrapper client={client}>
-      <VKCommunityModal open={true} onClose={onClose} />
+      <VKCommunityModal open onClose={onClose} />
     </Wrapper>
   );
-  return { ...utils, onClose };
+  return { onClose };
 }
 
-// The paste UI now lives inside a collapsed <details> "or paste a token
-// manually" affordance. Expand it before interacting with the textarea.
-async function expandPaste(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByText('или вставить ключ вручную'));
-}
-
-describe('VKCommunityModal — Authorize with VK (primary path)', () => {
+describe('VKCommunityModal', () => {
   const originalLocation = window.location;
 
   beforeEach(() => {
     apiGet.mockReset();
-    apiPost.mockReset();
-    vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
     Object.defineProperty(window, 'location', {
       configurable: true,
@@ -73,14 +58,13 @@ describe('VKCommunityModal — Authorize with VK (primary path)', () => {
     });
   });
 
-  it('GETs vk.authUrl and redirects window.location.href to the returned url', async () => {
+  it('opens the familiar VK sign-in flow', async () => {
     apiGet.mockResolvedValueOnce({
       data: { url: 'https://oauth.vk.com/authorize?client_id=1&state=abc' },
     });
-    const user = userEvent.setup();
     renderModal();
 
-    await user.click(screen.getByRole('button', { name: 'Войти через ВКонтакте' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Войти через ВКонтакте' }));
 
     await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/integrations/vk/auth-url'));
     await waitFor(() =>
@@ -88,158 +72,22 @@ describe('VKCommunityModal — Authorize with VK (primary path)', () => {
     );
   });
 
-  it('on auth-url failure toasts vkAuthFailed and keeps the paste fallback reachable', async () => {
-    apiGet.mockRejectedValueOnce(new Error('vk oauth unconfigured'));
-    const user = userEvent.setup();
+  it('shows a plain connection error without credential or protocol instructions', async () => {
+    apiGet.mockRejectedValueOnce(new Error('oauth_not_configured'));
     renderModal();
 
-    await user.click(screen.getByRole('button', { name: 'Войти через ВКонтакте' }));
-
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(
-        'Не получилось открыть авторизацию ВКонтакте. Попробуйте вставить ключ вручную.'
-      )
-    );
-    expect(window.location.href).toBe('');
-    expect(screen.getByLabelText('Ключ доступа сообщества')).toBeInTheDocument();
-  });
-});
-
-describe('VKCommunityModal — paste flow (fallback)', () => {
-  beforeEach(() => {
-    apiGet.mockReset();
-    apiPost.mockReset();
-    vi.mocked(toast.success).mockReset();
-    vi.mocked(toast.error).mockReset();
-  });
-
-  it('renders the title and the inline instructions', async () => {
-    const user = userEvent.setup();
-    renderModal();
-    expect(screen.getByText('Подключить сообщество ВКонтакте')).toBeInTheDocument();
-    await expandPaste(user);
-    expect(screen.getByText(/Где взять ключ/)).toBeInTheDocument();
-    expect(screen.getByText(/Не выбирайте приложение/)).toBeInTheDocument();
-  });
-
-  it('disables Submit when the textarea is empty or whitespace-only', async () => {
-    const user = userEvent.setup();
-    renderModal();
-    await expandPaste(user);
-    const submit = screen.getByRole('button', { name: /^Подключить$/ });
-    expect(submit).toBeDisabled();
-
-    const textarea = screen.getByLabelText('Ключ доступа сообщества');
-    await user.type(textarea, '   ');
-    expect(submit).toBeDisabled();
-
-    await user.type(textarea, 'vk1.a.test');
-    expect(submit).not.toBeDisabled();
-  });
-
-  it('POSTs the trimmed token to /integrations/vk/connect on submit', async () => {
-    apiPost.mockResolvedValueOnce({ data: { id: 'int-1', externalId: '236912172' } });
-    const user = userEvent.setup();
-    const { onClose } = renderModal();
-    await expandPaste(user);
-
-    const textarea = screen.getByLabelText('Ключ доступа сообщества');
-    await user.type(textarea, '   vk1.a.SOME_TOKEN   ');
-    await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
-
-    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
-    expect(apiPost).toHaveBeenCalledWith('/integrations/vk/connect', {
-      access_token: 'vk1.a.SOME_TOKEN',
-    });
-    expect(toast.success).toHaveBeenCalledWith('Сообщество VK подключено');
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  it('surfaces API error messages via toast and keeps the modal open', async () => {
-    apiPost.mockRejectedValueOnce({
-      response: {
-        data: {
-          error:
-            'токену не хватает прав на «Стену» — пересоздайте ключ в админке сообщества с галочкой «Стена»',
-        },
-      },
-    });
-    const user = userEvent.setup();
-    const { onClose } = renderModal();
-    await expandPaste(user);
-
-    await user.type(screen.getByLabelText('Ключ доступа сообщества'), 'vk1.a.SOME');
-    await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    const msg = vi.mocked(toast.error).mock.calls[0]?.[0];
-    expect(String(msg)).toContain('Стен');
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it('falls back to a generic error when the API response carries no message', async () => {
-    apiPost.mockRejectedValueOnce(new Error('network'));
-    const user = userEvent.setup();
-    renderModal();
-    await expandPaste(user);
-
-    await user.type(screen.getByLabelText('Ключ доступа сообщества'), 'vk1.a.X');
-    await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Войти через ВКонтакте' }));
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('Не удалось подключить сообщество')
     );
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ключ доступа|токен|API/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps cancellation reachable', async () => {
+    const { onClose } = renderModal();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });
-
-it('keeps expanded token content in an internal scroller with reachable dismissal', async () => {
-  const user = userEvent.setup();
-  const { onClose } = renderModal();
-  await expandPaste(user);
-  const dialog = screen.getByRole('dialog');
-  expect(dialog).toHaveClass('max-h-[calc(100dvh-2rem)]', 'overflow-hidden');
-  const details = dialog.querySelector('details')!;
-  expect(details).toHaveAttribute('open');
-  expect(details.parentElement?.parentElement).toHaveClass('min-h-0', 'overflow-y-auto');
-  const cancel = screen.getByRole('button', { name: 'Отмена' });
-  expect(details.parentElement).not.toContainElement(cancel);
-  expect(screen.getByRole('button', { name: 'Закрыть', exact: true })).toHaveAccessibleName();
-  await user.click(cancel);
-  expect(onClose).toHaveBeenCalledOnce();
-});
-
-it.skipIf(!hasLayoutBrowser).each(['ru', 'en'] as const)(
-  'keeps the expanded %s token form reachable when the keyboard shrinks the viewport',
-  async (locale) => {
-    globalThis.__setTestLocale(locale);
-    renderModal();
-    const details = screen.getByRole('dialog').querySelector('details')!;
-    await userEvent.setup().click(details.querySelector('summary')!);
-    const dialog = screen.getByRole('dialog');
-    await withLayoutPage(dialog.outerHTML, { width: 375, height: 667 }, async (page) => {
-      await page.locator('textarea').focus();
-      await page.setViewportSize({ width: 375, height: 360 });
-      const box = await page.getByRole('dialog').boundingBox();
-      expect(box!.y).toBeGreaterThanOrEqual(0);
-      expect(box!.y + box!.height).toBeLessThanOrEqual(360);
-      const scroller = page.locator('details').locator('../..');
-      const sizes = await scroller.evaluate((element) => ({
-        height: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-      }));
-      expect(sizes.scrollHeight).toBeGreaterThan(sizes.height);
-      await page.locator('textarea').scrollIntoViewIfNeeded();
-      const input = await page.locator('textarea').boundingBox();
-      expect(input!.y).toBeGreaterThanOrEqual(box!.y);
-      expect(input!.y + input!.height).toBeLessThanOrEqual(360);
-      const cancel = page.getByRole('button', {
-        name: locale === 'ru' ? 'Отмена' : 'Cancel',
-        exact: true,
-      });
-      const cancelBox = await cancel.boundingBox();
-      expect(cancelBox!.y).toBeGreaterThanOrEqual(0);
-      expect(cancelBox!.y + cancelBox!.height).toBeLessThanOrEqual(360);
-    });
-  },
-  15000
-);

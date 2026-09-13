@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 
 export interface ToolNeedsHelpCardProps {
-  /** Mono tool name — e.g. `review.draft_reply`. */
+  /** Internal action identifier used by callers. Never rendered. */
   toolName: string;
   /**
    * Plain-Russian explanation of WHY the agent stopped. Brand voice:
@@ -25,7 +25,6 @@ export interface ToolNeedsHelpCardProps {
 }
 
 export function ToolNeedsHelpCard({
-  toolName,
   message,
   onHelp,
   onProvideContext,
@@ -47,10 +46,9 @@ export function ToolNeedsHelpCard({
     >
       <div className="mb-2 flex flex-wrap items-center gap-2.5">
         <CircleHelp aria-hidden className="h-5 w-5 shrink-0 text-warning" />
-        <span className="min-w-0 break-all font-mono text-technical text-ink">{toolName}</span>
         <span
           className={cn(
-            'ml-auto inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium',
+            'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium',
             'bg-warning-soft text-[var(--ov-warning-ink)]'
           )}
         >

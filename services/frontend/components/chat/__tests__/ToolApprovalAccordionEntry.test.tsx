@@ -41,45 +41,41 @@ function renderEntry(overrides: Partial<ToolApprovalAccordionEntryProps> = {}) {
 }
 
 describe('ToolApprovalAccordionEntry — header + decision toggle', () => {
-  it('renders the platform badge (TG) and the monospaced tool name', () => {
+  it('renders readable platform and action names without the internal identifier', () => {
     renderEntry({ call: singleCallBatch.calls[0]! });
-    expect(screen.getByText('TG')).toBeInTheDocument();
-    expect(screen.getByText('telegram__send_channel_post')).toBeInTheDocument();
+    expect(screen.getByText('Telegram')).toBeInTheDocument();
+    expect(screen.getByText('Отправить пост')).toBeInTheDocument();
+    expect(screen.queryByText('telegram__send_channel_post')).not.toBeInTheDocument();
   });
 
-  it('each toggle button aria-label includes the tool name', () => {
+  it('each toggle button aria-label includes the readable action name', () => {
     renderEntry({ call: singleCallBatch.calls[0]! });
-    expect(
-      screen.getByRole('button', { name: /Одобрить telegram__send_channel_post/ })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Изменить telegram__send_channel_post/ })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Отклонить telegram__send_channel_post/ })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Одобрить Отправить пост/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Изменить Отправить пост/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Отклонить Отправить пост/ })).toBeInTheDocument();
   });
 
   it('starts expanded so the content to be approved is visible without a click', () => {
     renderEntry({ call: singleCallBatch.calls[0]! });
-    expect(screen.getByLabelText(/telegram__send_channel_post — свернуть/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Отправить пост — свернуть/)).toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
   });
 
   it('Space on the collapsible trigger toggles the body when the trigger is focusable', async () => {
     const user = userEvent.setup();
     renderEntry({ call: singleCallBatch.calls[0]! });
-    const trigger = screen.getByLabelText(/telegram__send_channel_post — свернуть/);
+    const trigger = screen.getByLabelText(/Отправить пост — свернуть/);
     trigger.focus();
     await user.keyboard(' ');
-    expect(screen.getByLabelText(/telegram__send_channel_post — развернуть/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Отправить пост — развернуть/)).toBeInTheDocument();
   });
 
-  it('platform badge renders VK for a vk__ tool', () => {
+  it('uses a readable fallback for an unknown action', () => {
     const vkCall = threeCallBatch.calls[1]!;
     renderEntry({ call: vkCall });
-    expect(screen.getByText('VK')).toBeInTheDocument();
-    expect(screen.getByText('vk__create_post')).toBeInTheDocument();
+    expect(screen.getByText('ВКонтакте')).toBeInTheDocument();
+    expect(screen.getByText('Действие на площадке')).toBeInTheDocument();
+    expect(screen.queryByText('vk__create_post')).not.toBeInTheDocument();
   });
 
   it('clicking Approve fires onSelectDecision with "approve"', async () => {
@@ -104,7 +100,7 @@ describe('ToolApprovalAccordionEntry — header + decision toggle', () => {
       call: singleCallBatch.calls[0]!,
       draft: makeDraft({ decision: 'edit' }),
     });
-    expect(screen.getByLabelText(/telegram__send_channel_post — свернуть/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Отправить пост — свернуть/)).toBeInTheDocument();
   });
 });
 
@@ -150,16 +146,16 @@ describe('ToolApprovalAccordionEntry — reject textarea + counter', () => {
 });
 
 describe('ToolApprovalAccordionEntry — args form (read-only modes)', () => {
-  it('shows the Аргументы heading and a labelled row for each arg (publish tool starts expanded)', () => {
+  it('shows action details and hides routing identifiers', () => {
     renderEntry({
       call: singleCallBatch.calls[0]!, // args: { chat_id: 123, text: 'hello' }
       draft: makeDraft({ decision: 'undecided' }),
     });
-    expect(screen.getByText('Аргументы')).toBeInTheDocument();
+    expect(screen.getByText('Что произойдёт')).toBeInTheDocument();
     expect(screen.getByText('Текст')).toBeInTheDocument();
-    expect(screen.getByText('ID чата')).toBeInTheDocument();
+    expect(screen.queryByText('ID чата')).not.toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
-    expect(screen.getByText('123')).toBeInTheDocument();
+    expect(screen.queryByText('123')).not.toBeInTheDocument();
   });
 
   it('renders args read-only when decision is approve (publish tool starts expanded)', () => {
@@ -179,7 +175,7 @@ describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
       call: singleCallBatch.calls[0]!, // editableFields: ['text', 'parse_mode']
       draft: makeDraft({ decision: 'edit' }),
     });
-    expect(screen.getByText('Аргументы')).toBeInTheDocument();
+    expect(screen.getByText('Что произойдёт')).toBeInTheDocument();
     const textarea = screen.getByLabelText('Текст') as HTMLTextAreaElement;
     expect(textarea).toBeInTheDocument();
     expect(textarea.value).toBe('hello');
@@ -191,10 +187,8 @@ describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
       draft: makeDraft({ decision: 'edit' }),
     });
     expect(screen.getByText('Можно изменить')).toBeInTheDocument();
-    expect(screen.getByText('Зафиксировано')).toBeInTheDocument();
-    expect(screen.getByText(/Эти значения нельзя редактировать/)).toBeInTheDocument();
-    expect(screen.getByText('ID чата')).toBeInTheDocument();
-    expect(screen.queryByLabelText('ID чата')).not.toBeInTheDocument();
+    expect(screen.queryByText('Выбрано автоматически')).not.toBeInTheDocument();
+    expect(screen.queryByText('ID чата')).not.toBeInTheDocument();
   });
 
   it('typing into the editable textarea fires onEditArg with the new value', async () => {
@@ -218,9 +212,8 @@ describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
       call: noEditableFieldsBatch.calls[0]!,
       draft: makeDraft({ decision: 'edit' }),
     });
-    expect(screen.getByText('У этого действия нет редактируемых параметров.')).toBeInTheDocument();
-    expect(screen.getByText('Зафиксировано')).toBeInTheDocument();
-    expect(screen.getByText('ID чата')).toBeInTheDocument();
-    expect(screen.getByText('ID сообщения')).toBeInTheDocument();
+    expect(screen.getByText('Для этого действия дополнительных данных нет.')).toBeInTheDocument();
+    expect(screen.queryByText('ID чата')).not.toBeInTheDocument();
+    expect(screen.queryByText('ID сообщения')).not.toBeInTheDocument();
   });
 });

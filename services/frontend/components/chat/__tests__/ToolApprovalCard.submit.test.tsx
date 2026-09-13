@@ -11,7 +11,7 @@ describe('ToolApprovalCard — premature Submit and atomic payload shape', () =>
     const onSubmit = vi.fn();
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: /Одобрить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Одобрить Отправить пост/ }));
 
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
 
@@ -37,7 +37,7 @@ describe('ToolApprovalCard — premature Submit and atomic payload shape', () =>
       expect(e.className).toContain('ring-warning');
     }
 
-    await user.click(screen.getByRole('button', { name: /Одобрить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Одобрить Отправить пост/ }));
     entries = document.querySelectorAll<HTMLElement>('[data-approval-call]');
     expect(entries[0]!.className).not.toContain('ring-warning');
     expect(onSubmit).not.toHaveBeenCalled();
@@ -48,11 +48,9 @@ describe('ToolApprovalCard — premature Submit and atomic payload shape', () =>
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: /Одобрить telegram__send_channel_post/ }));
-    await user.click(screen.getByRole('button', { name: /Изменить vk__create_post/ }));
-    await user.click(
-      screen.getByRole('button', { name: /Отклонить yandex_business__reply_review/ })
-    );
+    await user.click(screen.getByRole('button', { name: /Одобрить Отправить пост/ }));
+    await user.click(screen.getByRole('button', { name: /Изменить Действие на площадке/ }));
+    await user.click(screen.getByRole('button', { name: /Отклонить Ответить на отзыв Яндекса/ }));
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);

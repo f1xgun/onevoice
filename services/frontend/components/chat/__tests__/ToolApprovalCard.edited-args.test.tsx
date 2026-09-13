@@ -67,7 +67,7 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
   it('mounting ToolApprovalCard with a nested-args batch and picking Edit does not mount any nested-editable controls beyond what the whitelist allows', async () => {
     const user = userEvent.setup();
     render(<ToolApprovalCard batch={nestedArgsBatch} onSubmit={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: /Изменить tool_with_nested_args/ }));
+    await user.click(screen.getByRole('button', { name: /Изменить Действие на площадке/ }));
     expect(screen.getByLabelText('Текст')).toBeInTheDocument();
     expect(screen.queryByLabelText(/meta/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/author/i)).not.toBeInTheDocument();
@@ -78,7 +78,7 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ToolApprovalCard batch={singleCallBatch} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: /Изменить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Изменить Отправить пост/ }));
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);

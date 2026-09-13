@@ -161,7 +161,7 @@ describe('ToolsPageClient — /settings/tools', () => {
     expect(forbiddenRow).not.toBeNull();
     expect(screen.getByText('Запрещено')).toBeInTheDocument();
     expect(
-      screen.queryByLabelText(`Режим одобрения для Ответить на отзыв Google`)
+      screen.queryByLabelText(`Правило подтверждения для Ответить на отзыв Google`)
     ).not.toBeInTheDocument();
   });
 
@@ -173,7 +173,7 @@ describe('ToolsPageClient — /settings/tools', () => {
     expect(saveBtn).toBeDisabled();
 
     const radiogroup = await screen.findByRole('radiogroup', {
-      name: `Режим одобрения для Отправить пост`,
+      name: `Правило подтверждения для Отправить пост`,
     });
     const samBtn = within(radiogroup).getByRole('radio', { name: 'Автоматически' });
     within(radiogroup).getByRole('radio', { checked: true }).focus();
@@ -195,7 +195,7 @@ describe('ToolsPageClient — /settings/tools', () => {
     });
 
     const radiogroup = screen.getByRole('radiogroup', {
-      name: `Режим одобрения для Отправить пост`,
+      name: `Правило подтверждения для Отправить пост`,
     });
     await userEvent.click(within(radiogroup).getByRole('radio', { name: 'Автоматически' }));
 

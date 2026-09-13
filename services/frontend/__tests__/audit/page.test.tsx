@@ -99,7 +99,8 @@ describe('AuditPage', () => {
       expect(screen.getByTestId('panel-actor')).toBeInTheDocument();
     });
     expect(screen.getByTestId('panel-actor')).toHaveTextContent('alice@example.com');
-    expect(screen.getByTestId('panel-raw-json')).toHaveTextContent('target_user_id');
+    expect(screen.queryByText('target_user_id')).not.toBeInTheDocument();
+    expect(screen.queryByText('r-9')).not.toBeInTheDocument();
   });
 
   it('prefers the actor display name over the email when present', async () => {
@@ -128,7 +129,7 @@ describe('AuditPage', () => {
     expect(row).not.toHaveTextContent('alice@example.com');
   });
 
-  it('falls back to the raw resource string for an unmapped resource', async () => {
+  it('uses a safe generic label for an unmapped resource', async () => {
     apiGet.mockResolvedValue({
       data: {
         items: [
@@ -150,7 +151,8 @@ describe('AuditPage', () => {
     });
     renderPage();
     const row = await screen.findByTestId('audit-row-u-9');
-    expect(row).toHaveTextContent('mystery_widget');
+    expect(row).toHaveTextContent('Другое');
+    expect(row).not.toHaveTextContent('mystery_widget');
   });
 
   it('renders failed-login actor as "Неизвестен ({email})"', async () => {

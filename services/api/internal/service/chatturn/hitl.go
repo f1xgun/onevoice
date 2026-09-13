@@ -48,8 +48,12 @@ const (
 	gateRejectInProgress
 )
 
-// sseEventError is the SSE event-type string for the inline-error path.
-const sseEventError = "error"
+const (
+	// sseEventError is the SSE event-type string for the inline-error path.
+	sseEventError = "error"
+	// pendingBatchStatusResuming marks a batch whose approved continuation is in flight.
+	pendingBatchStatusResuming = "resuming"
+)
 
 // gateOnRequest selects an action from the conversation's active message + pending batches.
 // See docs/services/chatturn-hitl.md.
@@ -70,7 +74,7 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 		var resolving, pending *domain.PendingToolCallBatch
 		for _, b := range batches {
 			switch b.Status {
-			case "resolving", "resuming":
+			case "resolving", pendingBatchStatusResuming:
 				// "resuming" is an in-flight resolve/resume just like "resolving":
 				// a POST /chat/{id}/resume already claimed the batch and is
 				// streaming the post-approval continuation (up to streamBudget).

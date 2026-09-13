@@ -11,14 +11,14 @@ describe('ToolApprovalCard — two-step reject flow', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ToolApprovalCard batch={singleCallBatch} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: /Отклонить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Отклонить Отправить пост/ }));
     const textarea = await screen.findByPlaceholderText('Причина (необязательно)');
     expect(textarea).toBeInTheDocument();
 
     await user.type(textarea, 'слишком рано');
     expect(textarea).toHaveValue('слишком рано');
 
-    await user.click(screen.getByRole('button', { name: /Одобрить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Одобрить Отправить пост/ }));
     expect(screen.queryByPlaceholderText('Причина (необязательно)')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
@@ -27,7 +27,7 @@ describe('ToolApprovalCard — two-step reject flow', () => {
     expect(decisions[0]).toEqual({ id: 'call-single-1', action: 'approve' });
     expect('reject_reason' in decisions[0]).toBe(false);
 
-    await user.click(screen.getByRole('button', { name: /Отклонить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Отклонить Отправить пост/ }));
     const reopened = screen.getByPlaceholderText('Причина (необязательно)');
     expect(reopened).toHaveValue('');
   });
@@ -37,7 +37,7 @@ describe('ToolApprovalCard — two-step reject flow', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ToolApprovalCard batch={singleCallBatch} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: /Отклонить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Отклонить Отправить пост/ }));
     const textarea = screen.getByPlaceholderText('Причина (необязательно)');
 
     const initialCounter = screen.getByText('0 / 500');
@@ -55,7 +55,7 @@ describe('ToolApprovalCard — two-step reject flow', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ToolApprovalCard batch={singleCallBatch} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: /Отклонить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Отклонить Отправить пост/ }));
     const textarea = screen.getByPlaceholderText('Причина (необязательно)');
     await user.type(textarea, 'not now');
 

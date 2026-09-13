@@ -9,6 +9,7 @@ import { usePlatformFullLabels, getPlatform } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToolDisplayName } from './useToolDisplayName';
 
 // System/policy rejections carry one of these rejectReason codes (emitted by
 // the orchestrator). They get a distinct "blocked by policy" badge + a readable
@@ -22,8 +23,7 @@ const POLICY_REJECT_REASON_KEYS: Record<string, string> = {
 
 // Typed tool-error classifiers (pkg/a2a.CodedError → tool_result.code) → their
 // i18n key under chat.toolCard.errorSummary. The headline is always localized;
-// the raw `tool.error` string is relegated to the expandable details. Unknown
-// or missing codes resolve to the generic `errorFallback` line.
+// unknown or missing codes resolve to the generic `errorFallback` line.
 const TOOL_ERROR_SUMMARY_KEYS: Record<ErrorCode, string> = {
   integration_token_invalid: 'errorTokenInvalid',
   rate_limit_exceeded: 'errorRateLimit',
@@ -38,7 +38,6 @@ function toolErrorSummaryKey(code: ErrorCode | undefined): string {
 
 export function ToolCard({ tool }: { tool: ToolCall }) {
   const tCard = useTranslations('chat.toolCard');
-  const tToolNames = useTranslations('agentTasks.displayName');
   const platform = getPlatform(tool.name);
   const labels = usePlatformFullLabels();
   const label = labels[platform] ?? tCard('unknownPlatform');
@@ -49,17 +48,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
     ? POLICY_REJECT_REASON_KEYS[tool.rejectReason]
     : undefined;
 
-  const displayName = (() => {
-    const [toolPlatform, action] = tool.name.split('__');
-    const derivedKey = action ? `tools.${toolPlatform}.${action}.name` : undefined;
-    for (const key of [tool.displayNameKey, derivedKey]) {
-      if (!key || !tToolNames.has(key)) continue;
-      const resolved = tToolNames(key);
-      if (resolved && resolved !== key && resolved !== `agentTasks.displayName.${key}`)
-        return resolved;
-    }
-    return tCard('unknownAction');
-  })();
+  const displayName = useToolDisplayName(tool.name, tool.displayNameKey);
 
   const toolNameClasses = cn(
     'min-w-0 break-words text-meta',
@@ -145,12 +134,6 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
       {tool.error && (
         <div className="text-xs text-[var(--ov-danger)]">
           <p>{tCard(toolErrorSummaryKey(tool.code))}</p>
-          <details className="mt-0.5">
-            <summary className="cursor-pointer text-ink-soft">{tCard('errorDetailsLabel')}</summary>
-            <p className="mt-0.5 whitespace-pre-wrap break-words font-mono text-ink-soft">
-              {tool.error}
-            </p>
-          </details>
         </div>
       )}
       {tool.status === 'rejected' && tool.rejectReason && (

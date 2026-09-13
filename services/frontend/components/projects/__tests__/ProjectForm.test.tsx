@@ -126,14 +126,12 @@ describe('ProjectForm', () => {
     renderForm({ ...sampleProject, whitelistMode: 'all', allowedTools: [] });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('tab', { name: 'Инструменты' }));
+    await user.click(screen.getByRole('tab', { name: 'Действия' }));
     await user.click(screen.getByText('Выбранные'));
     await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 
     expect(
-      await screen.findByText(
-        'Выберите хотя бы один инструмент или переключите режим на «Никаких».'
-      )
+      await screen.findByText('Выберите хотя бы одно действие или переключите режим на «Никаких».')
     ).toBeInTheDocument();
   });
 
@@ -141,8 +139,8 @@ describe('ProjectForm', () => {
     renderForm(sampleProject);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('tab', { name: 'Промпт' }));
-    const textarea = screen.getByLabelText('Системный промпт') as HTMLTextAreaElement;
+    await user.click(screen.getByRole('tab', { name: 'Инструкции' }));
+    const textarea = screen.getByLabelText('Как OneVoice должен работать') as HTMLTextAreaElement;
     const tooLong = 'a'.repeat(4001);
     fireEvent.change(textarea, { target: { value: tooLong } });
 
@@ -150,7 +148,7 @@ describe('ProjectForm', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Системный промпт слишком длинный (максимум 4000 символов).')
+        screen.getByText('Инструкция слишком длинная (максимум 4000 символов).')
       ).toBeInTheDocument();
     });
   });

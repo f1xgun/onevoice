@@ -24,7 +24,7 @@ describe('ToolApprovalCard — card structure and gates', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Ожидает подтверждения (3)' })
     ).toBeInTheDocument();
-    expect(screen.getByText('Проверьте аргументы перед выполнением')).toBeInTheDocument();
+    expect(screen.getByText('Проверьте, что OneVoice собирается сделать')).toBeInTheDocument();
   });
 
   it('W) Submit button is aria-disabled initially when any call is undecided', () => {

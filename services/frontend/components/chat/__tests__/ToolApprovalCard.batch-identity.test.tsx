@@ -30,15 +30,11 @@ describe('ToolApprovalCard — staged drafts survive a same-batchId object swap'
     const { rerender } = render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
 
     // Stage decisions: approve c1, reject c2 with a reason, approve c3.
-    await user.click(
-      screen.getByRole('button', { name: /^Одобрить telegram__send_channel_post/u })
-    );
-    await user.click(screen.getByRole('button', { name: /^Отклонить vk__create_post/u }));
+    await user.click(screen.getByRole('button', { name: /^Одобрить Отправить пост/u }));
+    await user.click(screen.getByRole('button', { name: /^Отклонить Действие на площадке/u }));
     const reasonBox = await screen.findByPlaceholderText('Причина (необязательно)');
     await user.type(reasonBox, 'нужна правка');
-    await user.click(
-      screen.getByRole('button', { name: /^Одобрить yandex_business__reply_review/u })
-    );
+    await user.click(screen.getByRole('button', { name: /^Одобрить Ответить на отзыв Яндекса/u }));
 
     // Every call now has a decision → Submit is enabled.
     const submit = screen.getByRole('button', { name: /^Подтвердить$/ });
@@ -53,13 +49,13 @@ describe('ToolApprovalCard — staged drafts survive a same-batchId object swap'
       'false'
     );
     expect(screen.getByDisplayValue('нужна правка')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /^Одобрить telegram__send_channel_post/u })
-    ).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: /^Отклонить vk__create_post/u })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^Одобрить Отправить пост/u })).toHaveAttribute(
       'aria-pressed',
       'true'
     );
+    expect(
+      screen.getByRole('button', { name: /^Отклонить Действие на площадке/u })
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 });
 
@@ -67,7 +63,7 @@ it('keeps edited text visible and blocks decisions when server arguments change'
   const user = userEvent.setup();
   const submit = vi.fn();
   const { rerender } = render(<ToolApprovalCard batch={threeCallBatch} onSubmit={submit} />);
-  await user.click(screen.getByRole('button', { name: /^Изменить telegram__send_channel_post/u }));
+  await user.click(screen.getByRole('button', { name: /^Изменить Отправить пост/u }));
   const textbox = screen.getAllByRole('textbox')[0];
   await user.clear(textbox);
   await user.type(textbox, 'Моя правка');

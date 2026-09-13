@@ -86,6 +86,7 @@ type AgentTaskService interface {
 	// the LLM, reusing the same HITL dedupe path so a call that actually landed
 	// is not executed twice. It returns the task with its refreshed outcome.
 	Retry(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+	Dismiss(ctx context.Context, businessID uuid.UUID, taskID string) error
 	RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
 }
 
@@ -160,6 +161,9 @@ func (s *agentTaskService) Retry(ctx context.Context, businessID uuid.UUID, task
 	if err != nil {
 		return nil, fmt.Errorf("get agent task: %w", err)
 	}
+	if task.DismissedAt != nil {
+		return nil, domain.ErrAgentTaskNotFound
+	}
 
 	if task.Status != taskStatusError {
 		return nil, domain.ErrAgentTaskNotFailed
@@ -190,6 +194,29 @@ func (s *agentTaskService) Retry(ctx context.Context, businessID uuid.UUID, task
 	return fresh, persistErr
 }
 
+// Dismiss hides a failed task from the owner's active history while retaining
+// the underlying record for audit and support.
+func (s *agentTaskService) Dismiss(ctx context.Context, businessID uuid.UUID, taskID string) error {
+	if err := s.gateBusiness(ctx, businessID); err != nil {
+		return err
+	}
+
+	task, err := s.repo.GetByID(ctx, businessID.String(), taskID)
+	if err != nil {
+		return fmt.Errorf("get agent task: %w", err)
+	}
+	if task.DismissedAt != nil {
+		return domain.ErrAgentTaskNotFound
+	}
+	if task.Status != taskStatusError {
+		return domain.ErrAgentTaskNotFailed
+	}
+	if err := s.repo.Dismiss(ctx, businessID.String(), taskID); err != nil {
+		return fmt.Errorf("dismiss agent task: %w", err)
+	}
+	return nil
+}
+
 func (s *agentTaskService) RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error) {
 	if err := s.gateBusiness(ctx, businessID); err != nil {
 		return nil, err
@@ -198,7 +225,10 @@ func (s *agentTaskService) RerunVerification(ctx context.Context, businessID uui
 	if err != nil {
 		return nil, fmt.Errorf("get agent task: %w", err)
 	}
-	if task.Status != "done" || len(task.VerificationExpected) == 0 || task.VerificationTarget == "" || task.VerificationStatus == domain.VerificationUnsupported {
+	if task.DismissedAt != nil {
+		return nil, domain.ErrAgentTaskNotFound
+	}
+	if task.Status != domain.AgentTaskStatusDone || len(task.VerificationExpected) == 0 || task.VerificationTarget == "" || task.VerificationStatus == domain.VerificationUnsupported {
 		return nil, ErrVerificationUnavailable
 	}
 	if task.VerificationStatus == domain.VerificationPending || task.VerificationStatus == domain.VerificationRunning {
@@ -369,7 +399,7 @@ func (s *agentTaskService) persistRetryOutcome(ctx context.Context, task *domain
 	update := &domain.AgentTask{
 		ID:          task.ID,
 		BusinessID:  task.BusinessID,
-		Status:      "done",
+		Status:      domain.AgentTaskStatusDone,
 		CompletedAt: &now,
 	}
 	if dispatchErr != nil {

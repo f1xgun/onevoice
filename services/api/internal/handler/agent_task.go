@@ -33,6 +33,7 @@ const streamHeartbeatInterval = 20 * time.Second
 type AgentTaskService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
 	Retry(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
+	Dismiss(ctx context.Context, businessID uuid.UUID, taskID string) error
 	RerunVerification(ctx context.Context, businessID uuid.UUID, taskID string) (*domain.AgentTask, error)
 }
 
@@ -226,6 +227,36 @@ func (h *AgentTaskHandler) RetryTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, domainAgentTaskToOpenAPI(*task))
+}
+
+// DismissTask removes a failed task from the active list without deleting its
+// audit record. It does not repeat or reverse the external action.
+func (h *AgentTaskHandler) DismissTask(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "DismissTask", authz.PermContentUpdate)
+	if !ok {
+		return
+	}
+
+	taskID := chi.URLParam(r, "taskId")
+	if taskID == "" {
+		writeJSONError(w, http.StatusBadRequest, "task id required")
+		return
+	}
+
+	if err := h.agentTaskService.Dismiss(r.Context(), bc.BusinessID, taskID); err != nil {
+		switch {
+		case errors.Is(err, domain.ErrAgentTaskNotFound), errors.Is(err, domain.ErrBusinessNotFound):
+			writeJSONError(w, http.StatusNotFound, "task not found")
+		case errors.Is(err, domain.ErrAgentTaskNotFailed):
+			writeJSONCodeError(w, http.StatusConflict, "task_not_failed")
+		default:
+			slog.Error("failed to dismiss task", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // writeRetryError maps a Retry service error to the matching HTTP status.

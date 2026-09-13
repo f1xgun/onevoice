@@ -139,6 +139,8 @@ export const BIZ_API_PATHS = {
   TASKS: {
     ROOT: '/tasks',
     STREAM: '/tasks/stream',
+    BY_ID: (taskId: string) => `/tasks/${taskId}`,
+    RETRY: (taskId: string) => `/tasks/${taskId}/retry`,
     RERUN: (taskId: string) => `/tasks/${taskId}/rerun`,
   },
   TOOLS: {

@@ -141,10 +141,12 @@ export function AuditTable({
                 </td>
                 <td className="py-2 pr-4">{actorLabel(it, tFilters)}</td>
                 <td className="py-2 pr-4">
-                  {isKnownAuditAction(it.action) ? tActions(actionToI18nKey(it.action)) : it.action}
+                  {isKnownAuditAction(it.action)
+                    ? tActions(actionToI18nKey(it.action))
+                    : tActions('audit.actions.unknown')}
                 </td>
                 <td className="py-2 pr-4">
-                  {isKnownResource(it.resource) ? tResources(it.resource) : it.resource}
+                  {isKnownResource(it.resource) ? tResources(it.resource) : tResources('other')}
                 </td>
               </tr>
             ))}

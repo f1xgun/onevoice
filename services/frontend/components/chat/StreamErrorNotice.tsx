@@ -6,7 +6,8 @@
 // machine-readable code (chat.streamError.*). The raw orchestrator detail is
 // surfaced only inside an expandable diagnostics affordance — never as the
 // primary user-facing text. An unknown / missing code resolves to the generic
-// localized fallback.
+// localized fallback. Diagnostic text remains available to telemetry and is
+// never rendered in the customer UI.
 
 import { AlertTriangle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -19,7 +20,7 @@ export interface StreamErrorNoticeProps {
   detail?: string;
 }
 
-export function StreamErrorNotice({ code, detail }: StreamErrorNoticeProps) {
+export function StreamErrorNotice({ code }: StreamErrorNoticeProps) {
   const t = useTranslations('chat.streamError');
   const summary = t(chatErrorKey(code));
 
@@ -35,17 +36,7 @@ export function StreamErrorNotice({ code, detail }: StreamErrorNoticeProps) {
         className="mt-0.5 shrink-0 text-[var(--ov-danger)]"
         aria-hidden="true"
       />
-      <div className="min-w-0 flex-1">
-        <p>{summary}</p>
-        {detail && (
-          <details className="mt-1">
-            <summary className="cursor-pointer text-xs text-ink-soft">{t('detailsLabel')}</summary>
-            <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-ink-soft">
-              {detail}
-            </p>
-          </details>
-        )}
-      </div>
+      <p className="min-w-0 flex-1">{summary}</p>
     </div>
   );
 }

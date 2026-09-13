@@ -104,7 +104,7 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
     );
     const region = await screen.findByRole('region', { name: /Ожидает подтверждения/ });
     expect(region).toBeInTheDocument();
-    expect(screen.getByText('Проверьте аргументы перед выполнением')).toBeInTheDocument();
+    expect(screen.getByText('Проверьте, что OneVoice собирается сделать')).toBeInTheDocument();
   });
 
   it('Invariant 9: composer input + Send button are HTML-disabled while pendingApproval is non-null', async () => {
@@ -174,7 +174,10 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
       fetchMock.mockClear();
       fireEvent.click(
         within(card).getByRole('button', {
-          name: approvalCopy.actions.editAria.replace('{toolName}', call.toolName),
+          name: approvalCopy.actions.editAria.replace(
+            '{toolName}',
+            copy.agentTasks.displayName.tools.telegram.send_channel_post.name
+          ),
         })
       );
       const textField = within(card).getByRole('textbox', { name: approvalCopy.fields.text });

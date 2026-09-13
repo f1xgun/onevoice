@@ -272,7 +272,7 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
 
     const region = await screen.findByRole('region', { name: /Ожидает подтверждения/ });
     expect(region).toBeInTheDocument();
-    expect(screen.getByText('Проверьте аргументы перед выполнением')).toBeInTheDocument();
+    expect(screen.getByText('Проверьте, что OneVoice собирается сделать')).toBeInTheDocument();
   });
 
   it('does not render ToolApprovalCard via ChatWindow when pendingApprovals is empty (negative)', async () => {
@@ -544,7 +544,7 @@ describe('useConversationFlow.resolveApproval — error branches', () => {
       await result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
     });
 
-    expect(toast.error).toHaveBeenCalledWith('Отказано: инструмент запрещён текущей политикой');
+    expect(toast.error).toHaveBeenCalledWith('Действие запрещено правилами организации');
     expect(result.current.pendingApproval).not.toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

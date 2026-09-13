@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { AgentTask } from '@/types/task';
 import TasksPage from '../page';
 
-const requests = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const requests = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn() }));
 vi.mock('@/lib/hooks/usePermission', () => ({
   usePermission: () => ({ allowed: true, isLoading: false, isError: false }),
 }));
@@ -20,6 +20,7 @@ const tasks: AgentTask[] = [
     displayName: 'Неудачное обновление',
     status: 'error',
     platform: 'vk',
+    errorCode: 'transient',
     originConversationId: 'conversation-42',
     createdAt: '2026-09-09T07:00:00Z',
   },
@@ -29,7 +30,7 @@ const tasks: AgentTask[] = [
     type: 'read',
     displayName: 'Успешная проверка',
     status: 'done',
-    platform: 'telegram',
+    platform: 'yandex_business',
     createdAt: '2026-09-09T07:00:00Z',
     verificationStatus: 'mismatch',
     verificationCanRerun: true,
@@ -49,6 +50,26 @@ function renderPage() {
 beforeEach(() => {
   requests.get.mockReset().mockResolvedValue({ data: tasks });
   requests.post.mockReset().mockResolvedValue({ data: {} });
+  requests.delete.mockReset().mockResolvedValue({ data: {} });
+});
+
+it('localizes platform names and gives failed tasks explicit retry and removal actions', async () => {
+  let resolveDelete!: (value: { data: object }) => void;
+  requests.delete.mockReturnValue(
+    new Promise((resolve) => {
+      resolveDelete = resolve;
+    })
+  );
+  renderPage();
+
+  expect((await screen.findAllByText('Яндекс.Бизнес')).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+  await waitFor(() => expect(requests.post).toHaveBeenCalledWith('/tasks/error/retry'));
+
+  fireEvent.click(screen.getByRole('button', { name: 'Убрать из списка' }));
+  await waitFor(() => expect(screen.queryByText('Неудачное обновление')).not.toBeInTheDocument());
+  expect(requests.delete).toHaveBeenCalledWith('/tasks/error');
+  await act(async () => resolveDelete({ data: {} }));
 });
 
 it('drills into tasks needing help and provides a safe chat link without replaying an action', async () => {

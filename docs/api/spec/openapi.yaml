@@ -300,6 +300,10 @@ paths:
     $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks
   /businesses/{id}/tasks/stream:
     $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1stream
+  /businesses/{id}/tasks/{taskId}:
+    $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1{taskId}
+  /businesses/{id}/tasks/{taskId}/retry:
+    $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1{taskId}~1retry
   /businesses/{id}/tasks/{taskId}/rerun:
     $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1{taskId}~1rerun
   /businesses/{id}/search:

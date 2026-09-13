@@ -15,21 +15,21 @@ function makeDone(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe('ToolCard — edited', () => {
-  it("ZZ: done + wasEdited === true exposes a Pencil with aria-label 'Аргументы изменены пользователем'", () => {
+  it("ZZ: done + wasEdited === true exposes a Pencil with aria-label 'Детали изменены пользователем'", () => {
     render(<ToolCard tool={makeDone({ wasEdited: true })} />);
-    const label = screen.getByLabelText('Аргументы изменены пользователем');
+    const label = screen.getByLabelText('Детали изменены пользователем');
     expect(label).toBeInTheDocument();
   });
 
   it('ZZ bis: tooltip-wrapped Pencil preserves the existing green check for a done + edited tool', () => {
     render(<ToolCard tool={makeDone({ wasEdited: true })} />);
     expect(screen.getByLabelText('Готово')).toBeInTheDocument();
-    expect(screen.getByLabelText('Аргументы изменены пользователем')).toBeInTheDocument();
+    expect(screen.getByLabelText('Детали изменены пользователем')).toBeInTheDocument();
   });
 
   it('AAA: done + !wasEdited renders no Pencil icon / edited label', () => {
     render(<ToolCard tool={makeDone({ wasEdited: false })} />);
-    expect(screen.queryByLabelText('Аргументы изменены пользователем')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Детали изменены пользователем')).not.toBeInTheDocument();
   });
 
   it('BBB: distinguishes pending, confirmed, failed and unknown outcomes', () => {
@@ -69,7 +69,8 @@ describe('ToolCard — edited', () => {
       />
     );
     expect(screen.getByLabelText('Ошибка')).toBeInTheDocument();
-    expect(screen.getByText('boom')).toBeInTheDocument();
+    expect(screen.getByText(/Не удалось выполнить действие/)).toBeInTheDocument();
+    expect(screen.queryByText('boom')).not.toBeInTheDocument();
 
     rerender(
       <ToolCard

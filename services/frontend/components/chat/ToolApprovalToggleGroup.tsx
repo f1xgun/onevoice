@@ -15,8 +15,8 @@ const ACTIVE_VARIANTS: Record<ApprovalAction, ActiveVariant> = {
 };
 
 export interface ToolApprovalToggleGroupProps {
-  /** Used in aria-label for every button — mandatory for screen readers. */
-  toolName: string;
+  /** Readable action name used in accessible labels. */
+  actionName: string;
   /** Current draft decision; 'undecided' renders all three buttons inactive. */
   decision: ApprovalAction | 'undecided';
   /** When true, propagates `disabled` to every button (resolve-in-flight UX). */
@@ -29,7 +29,7 @@ interface ToggleBtnProps {
   action: ApprovalAction;
   active: boolean;
   disabled?: boolean;
-  toolName: string;
+  actionName: string;
   icon: typeof Check;
   onClick: () => void;
 }
@@ -43,7 +43,7 @@ const ARIA_LABEL_KEYS: Record<ApprovalAction, 'approveAria' | 'editAria' | 'reje
   reject: 'rejectAria',
 };
 
-function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: ToggleBtnProps) {
+function ToggleBtn({ action, active, disabled, actionName, icon: Icon, onClick }: ToggleBtnProps) {
   const tActions = useTranslations('chat.toolApproval.actions');
   const variant = active ? ACTIVE_VARIANTS[action] : 'outline';
   return (
@@ -52,7 +52,7 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
       size="sm"
       disabled={disabled}
       aria-pressed={active}
-      aria-label={tActions(ARIA_LABEL_KEYS[action], { toolName })}
+      aria-label={tActions(ARIA_LABEL_KEYS[action], { toolName: actionName })}
       onClick={onClick}
       className={cn('h-8 px-3', active && 'ring-2 ring-ring')}
     >
@@ -70,7 +70,7 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
  * "buttons with aria-pressed", not RadioGroup. Parent owns the `decision`.
  */
 export function ToolApprovalToggleGroup({
-  toolName,
+  actionName,
   decision,
   disabled,
   onSelect,
@@ -79,14 +79,14 @@ export function ToolApprovalToggleGroup({
   return (
     <div
       role="group"
-      aria-label={tActions('groupAria', { toolName })}
+      aria-label={tActions('groupAria', { toolName: actionName })}
       className="flex flex-wrap gap-2"
     >
       <ToggleBtn
         action="approve"
         active={decision === 'approve'}
         disabled={disabled}
-        toolName={toolName}
+        actionName={actionName}
         icon={Check}
         onClick={() => onSelect('approve')}
       />
@@ -94,7 +94,7 @@ export function ToolApprovalToggleGroup({
         action="edit"
         active={decision === 'edit'}
         disabled={disabled}
-        toolName={toolName}
+        actionName={actionName}
         icon={Pencil}
         onClick={() => onSelect('edit')}
       />
@@ -102,7 +102,7 @@ export function ToolApprovalToggleGroup({
         action="reject"
         active={decision === 'reject'}
         disabled={disabled}
-        toolName={toolName}
+        actionName={actionName}
         icon={X}
         onClick={() => onSelect('reject')}
       />

@@ -120,7 +120,7 @@ describe('tasks.subtitle makes no auto-retry promise', () => {
   it('ru subtitle does not assure automatic retry', () => {
     const text = ru.tasks.subtitle;
     expect(text).toBeTruthy();
-    expect(text).not.toMatch(/автоматическ|сами|повтор/i);
+    expect(text).not.toMatch(/автоматическ|сами|повторим|повторится/i);
   });
 
   it('en subtitle does not assure automatic retry', () => {

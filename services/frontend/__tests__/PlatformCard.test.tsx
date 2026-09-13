@@ -161,14 +161,14 @@ describe('<PlatformCard /> token_expired status', () => {
     globalThis.__setTestLocale('ru');
   });
 
-  it('renders the localized token-expired badge for a token_expired channel', () => {
+  it('renders a localized reconnect badge for a channel that needs renewed access', () => {
     render(
       <Wrapper>
         <PlatformCard {...baseProps} platform="telegram" integrations={[tokenExpiredIntegration]} />
       </Wrapper>
     );
 
-    expect(screen.getByText('Токен истёк')).toBeInTheDocument();
+    expect(screen.getByText('Нужно переподключить')).toBeInTheDocument();
   });
 
   it('renders a Reconnect link pointing at ?reconnect={platform}', () => {

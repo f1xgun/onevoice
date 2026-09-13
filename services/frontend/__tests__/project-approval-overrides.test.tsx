@@ -135,6 +135,6 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
       />
     );
 
-    expect(screen.getByText(/Нет инструментов, требующих одобрения/)).toBeInTheDocument();
+    expect(screen.getByText(/Нет действий, требующих подтверждения/)).toBeInTheDocument();
   });
 });

@@ -75,7 +75,7 @@ describe('ToolApprovalCard — Invariant 4: tool_name is never written into the 
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ToolApprovalCard batch={singleCallBatch} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: /Изменить telegram__send_channel_post/ }));
+    await user.click(screen.getByRole('button', { name: /Изменить Отправить пост/ }));
     await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const serialized = JSON.stringify(onSubmit.mock.calls[0]![0]);

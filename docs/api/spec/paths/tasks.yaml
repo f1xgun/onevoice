@@ -85,6 +85,74 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/tasks/{taskId}:
+  delete:
+    operationId: dismissAgentTask
+    summary: Remove a failed task from the active task history while retaining its audit record.
+    tags: [tasks]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: taskId
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '204':
+        description: Task removed from the active task history.
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business or task not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: The task is not failed and cannot be dismissed.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/tasks/{taskId}/retry:
+  post:
+    operationId: retryAgentTask
+    summary: Retry a failed task when its error is safe to retry.
+    tags: [tasks]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: taskId
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '200':
+        description: Retry completed and the refreshed task is returned.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AgentTask
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business or task not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: The task is not failed or its error requires another recovery action.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 /businesses/{id}/tasks/{taskId}/rerun:
   post:
     operationId: rerunAgentTaskVerification

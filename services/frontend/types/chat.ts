@@ -70,8 +70,8 @@ export interface Message {
    */
   errorCode?: ChatErrorCode;
   /**
-   * Raw orchestrator-supplied error text. Kept ONLY for an optional diagnostics
-   * affordance — never rendered as the primary user-facing message.
+   * Raw orchestrator-supplied error text retained in memory for telemetry.
+   * Customer-facing components must never render it.
    */
   errorDetail?: string;
 }

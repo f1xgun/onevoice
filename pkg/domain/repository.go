@@ -551,6 +551,7 @@ type AgentTaskRepository interface {
 	Update(ctx context.Context, task *AgentTask) error
 	GetByID(ctx context.Context, businessID, taskID string) (*AgentTask, error)
 	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
+	Dismiss(ctx context.Context, businessID, taskID string) error
 	// ResolveOriginConversationIDs returns only live conversations owned by
 	// userID in businessID. It resolves the page in one Mongo aggregation and
 	// may prove legacy origins through a unique dispatch approval ID match.
