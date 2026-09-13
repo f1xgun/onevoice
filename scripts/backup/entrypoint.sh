@@ -6,6 +6,25 @@
 # 152-ФЗ Art. 19 §2(2) KMS-managed key.
 set -euo pipefail
 
+load_secret() {
+    local variable=$1
+    local file_variable=$2
+    local file=${!file_variable:-}
+
+    if [ -z "${!variable:-}" ] && [ -n "$file" ]; then
+        test -r "$file" || { echo "$file_variable is not readable" >&2; exit 8; }
+        printf -v "$variable" '%s' "$(cat -- "$file")"
+        export "$variable"
+    fi
+}
+
+load_secret YC_SA_JSON_CREDENTIALS YC_SA_JSON_CREDENTIALS_FILE
+load_secret RESTIC_PASSWORD_CIPHERTEXT RESTIC_PASSWORD_CIPHERTEXT_FILE
+load_secret PG_DSN PG_DSN_FILE
+load_secret MONGO_URI MONGO_URI_FILE
+load_secret AWS_ACCESS_KEY_ID AWS_ACCESS_KEY_ID_FILE
+load_secret AWS_SECRET_ACCESS_KEY AWS_SECRET_ACCESS_KEY_FILE
+
 : "${YC_SA_JSON_CREDENTIALS:?Service-account JSON required (mount as env or file)}"
 : "${RESTIC_PASSWORD_KMS_KEY_ID:?KMS key id required}"
 : "${RESTIC_PASSWORD_CIPHERTEXT:?KMS-encrypted restic password (base64) required}"
@@ -30,10 +49,20 @@ yc config set service-account-key /root/.config/yandex-cloud/credentials.json
 # disaster-recovery time. Regression-guarded by
 # .github/workflows/backup-restore-drill.yml. DO NOT add `| base64 ...`
 # to this pipeline.
+# yc 0.130.0 accepts ciphertext only as a binary file. The host stores that
+# binary ciphertext as base64 so it remains safe in a single-line env value.
+# Decode the ciphertext before invoking yc; never decode yc's plaintext output.
+CIPHERTEXT_FILE=$(mktemp)
+trap 'rm -f "$CIPHERTEXT_FILE"' EXIT
+printf '%s' "$RESTIC_PASSWORD_CIPHERTEXT" | base64 -d > "$CIPHERTEXT_FILE"
+test -s "$CIPHERTEXT_FILE" || { echo "KMS ciphertext decoded to an empty file"; exit 9; }
+
 DECRYPTED=$(yc kms symmetric-crypto decrypt \
     --id "$RESTIC_PASSWORD_KMS_KEY_ID" \
-    --ciphertext-base64 "$RESTIC_PASSWORD_CIPHERTEXT" \
+    --ciphertext-file "$CIPHERTEXT_FILE" \
     --plaintext-file /dev/stdout 2>/dev/null)
+rm -f "$CIPHERTEXT_FILE"
+trap - EXIT
 test -n "$DECRYPTED" || { echo "KMS decrypt produced empty plaintext"; exit 10; }
 
 # BusyBox crond runs jobs in a clean shell; export-style env passing via
@@ -54,5 +83,8 @@ chmod 600 /etc/profile.d/restic.sh
 # Drop secrets from the environment before exec'ing crond. The decrypted
 # password lives only in /etc/profile.d/restic.sh from here on.
 unset RESTIC_PASSWORD_CIPHERTEXT YC_SA_JSON_CREDENTIALS
+unset PG_DSN MONGO_URI AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+unset RESTIC_PASSWORD_CIPHERTEXT_FILE YC_SA_JSON_CREDENTIALS_FILE
+unset PG_DSN_FILE MONGO_URI_FILE AWS_ACCESS_KEY_ID_FILE AWS_SECRET_ACCESS_KEY_FILE
 
 exec "$@"

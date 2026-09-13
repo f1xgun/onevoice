@@ -7,7 +7,8 @@ Defensive baseline for the whole codebase. Anything marked **MUST** is non-negot
 ## Secret Handling
 
 - **MUST never** log secrets: tokens, passwords, API keys, full JWTs, OAuth refresh tokens, cookies. Enforced by code review; `gosec` catches obvious cases.
-- All secrets come from environment variables. `.env.example` documents them; `.env` is `.gitignore`'d.
+- Secrets come from environment variables or read-only container secret mounts.
+  `.env.example` documents both; `.env` and `.secrets/` are `.gitignore`'d.
 - OAuth tokens stored in the DB are encrypted with AES-256-GCM (`pkg/crypto`). Encryption keys live in `ENCRYPTION_KEY` env var, not in the DB.
 - Key rotation: plan for it — tokens should be re-encryptable with a new key without downtime.
 
