@@ -119,7 +119,7 @@ RTO regression).
 
 | Date       | Snapshot ID | RTO (min) | Result | Operator | Notes |
 |------------|-------------|-----------|--------|----------|-------|
-| YYYY-MM-DD | abc123      |        12 | OK     | ops      |       |
+| 2026-09-13 | d2e4ba5c    |      0.07 | OK     | f1xgun   | Production snapshot; PostgreSQL 30 tables / 6,104 rows and MongoDB 8 collections / 368 documents matched exactly after isolated restore. |
 
 ## §5 Disaster recovery: KMS unreachable
 
