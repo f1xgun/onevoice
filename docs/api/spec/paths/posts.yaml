@@ -48,6 +48,37 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  post:
+    operationId: scheduleTelegramPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [platform, externalId, content, scheduledAt]
+            properties:
+              platform: {type: string, enum: [telegram]}
+              externalId: {type: string}
+              content: {type: string}
+              mediaUrls:
+                type: array
+                maxItems: 1
+                items: {type: string}
+              scheduledAt: {type: string, format: date-time}
+    responses:
+      '201':
+        description: OneVoice-held Telegram schedule created; no external post is sent yet.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '400': {description: Invalid schedule body.}
+      '403': {description: Missing content.create permission or target not owned.}
+      '409': {description: Past time or connected target unavailable.}
 /businesses/{id}/posts/{postID}:
   get:
     operationId: getPost
@@ -94,9 +125,9 @@
         application/json:
           schema:
             type: object
-            required: [content]
             properties:
               content: {type: string}
+              scheduledAt: {type: string, format: date-time, description: Only an unclaimed OneVoice-held Telegram schedule can be rescheduled.}
     responses:
       '200':
         description: Updated existing post; inspect status and platform error for the platform outcome. Uncertain outcomes must not be retried automatically.

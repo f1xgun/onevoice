@@ -340,6 +340,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(writeLimit).Post("/reviews/{id}/reply/retry", handlers.Review.RetryReviewReply)
 
 				r.Get("/posts", handlers.Post.ListPosts)
+				r.With(writeLimit).Post("/posts", handlers.Post.SchedulePost)
 				r.Get("/posts/{id}", handlers.Post.GetPost)
 				r.With(writeLimit).Patch("/posts/{id}", handlers.Post.EditPost)
 				r.With(writeLimit).Delete("/posts/{id}", handlers.Post.DeletePost)

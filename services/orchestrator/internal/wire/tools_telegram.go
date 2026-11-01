@@ -14,11 +14,10 @@ import (
 func telegramTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
 		{
-			DisplayName:        "Изменить пост",
-			DisplayNameKey:     "tools.telegram.edit_channel_post.name",
-			UserDescriptionKey: "tools.telegram.edit_channel_post.description",
-			UserDescription:    "Изменяет текст опубликованного поста, сохраняя фото.",
-			DescriptionEn:      "Edits published post text while retaining its photos. Set is_caption=true for a media caption; an empty caption removes it.",
+			DisplayName:     "Изменить пост",
+			DisplayNameKey:  "tools.telegram.edit_channel_post.name",
+			UserDescription: "Изменяет текст опубликованного поста, сохраняя фото.",
+			DescriptionEn:   "Edits published post text while retaining its photos. Set is_caption=true for a media caption; an empty caption removes it.",
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name: tools.TelegramEditChannelPost, Description: "Изменяет текст опубликованного поста, сохраняя фото.",
 				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
@@ -32,11 +31,10 @@ func telegramTools() []toolregistry.ToolSpec {
 			EditableFields: []string{"text"},
 		},
 		{
-			DisplayName:        "Удалить пост",
-			DisplayNameKey:     "tools.telegram.delete_channel_post.name",
-			UserDescriptionKey: "tools.telegram.delete_channel_post.description",
-			UserDescription:    "Удаляет опубликованный пост.",
-			DescriptionEn:      "Deletes a published post. Telegram may reject deletion after 48 hours.",
+			DisplayName:     "Удалить пост",
+			DisplayNameKey:  "tools.telegram.delete_channel_post.name",
+			UserDescription: "Удаляет опубликованный пост.",
+			DescriptionEn:   "Deletes a published post. Telegram may reject deletion after 48 hours.",
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name: tools.TelegramDeleteChannelPost, Description: "Удаляет опубликованный пост.",
 				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{

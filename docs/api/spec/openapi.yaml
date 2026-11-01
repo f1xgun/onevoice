@@ -2288,9 +2288,6 @@ components:
       - description
       - userDescription
       properties:
-        userDescriptionKey:
-          type: string
-          description: Translation catalog key for the user-facing tool description.
         name:
           type: string
         displayName:
@@ -3433,9 +3430,6 @@ components:
       - description
       - userDescription
       properties:
-        userDescriptionKey:
-          type: string
-          description: Translation catalog key for the user-facing tool description.
         name:
           type: string
         displayName:

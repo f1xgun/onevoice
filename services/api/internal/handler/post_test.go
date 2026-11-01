@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -21,9 +22,11 @@ import (
 
 // mockPostService implements PostService for tests.
 type mockPostService struct {
-	mutateFn  func(context.Context, uuid.UUID, string, string, *string) (*domain.Post, error)
-	listFn    func(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
-	getByIDFn func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
+	scheduleFn   func(context.Context, uuid.UUID, string, string, []string, time.Time) (*domain.Post, error)
+	rescheduleFn func(context.Context, uuid.UUID, string, *time.Time, *string) (*domain.Post, error)
+	mutateFn     func(context.Context, uuid.UUID, string, string, *string) (*domain.Post, error)
+	listFn       func(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
+	getByIDFn    func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
 }
 
 func (m *mockPostService) List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error) {
@@ -255,4 +258,11 @@ func TestPostMutationHTTPContracts(t *testing.T) {
 			require.Equal(t, tc.want == http.StatusOK, called)
 		})
 	}
+}
+
+func (m *mockPostService) Schedule(ctx context.Context, business uuid.UUID, target, content string, media []string, at time.Time) (*domain.Post, error) {
+	return m.scheduleFn(ctx, business, target, content, media, at)
+}
+func (m *mockPostService) Reschedule(ctx context.Context, business uuid.UUID, id string, at *time.Time, content *string) (*domain.Post, error) {
+	return m.rescheduleFn(ctx, business, id, at, content)
 }

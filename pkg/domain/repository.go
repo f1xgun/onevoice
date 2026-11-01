@@ -540,6 +540,8 @@ type ReviewDelegationWeek struct {
 
 // PostRepository persists platform posts.
 type PostRepository interface {
+	ClaimDue(ctx context.Context, now time.Time) (*Post, error)
+	UpdateScheduled(ctx context.Context, businessID, id string, at *time.Time, content *string, status string) (bool, error)
 	ReconcileMutation(ctx context.Context, businessID, platform, externalID, postID, status string, content *string) error
 	ClaimOperation(ctx context.Context, businessID, id, previousStatus, operationID string) (bool, error)
 	CompleteOperation(ctx context.Context, post *Post, operationID string) error

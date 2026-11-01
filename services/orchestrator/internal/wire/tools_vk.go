@@ -14,11 +14,10 @@ import (
 func vkTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
 		{
-			DisplayName:        "Изменить пост",
-			DisplayNameKey:     "tools.vk.edit_post.name",
-			UserDescriptionKey: "tools.vk.edit_post.description",
-			UserDescription:    "Изменяет текст опубликованного поста, сохраняя фото.",
-			DescriptionEn:      "Edits published post text while retaining its photos.",
+			DisplayName:     "Изменить пост",
+			DisplayNameKey:  "tools.vk.edit_post.name",
+			UserDescription: "Изменяет текст опубликованного поста, сохраняя фото.",
+			DescriptionEn:   "Edits published post text while retaining its photos.",
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name: tools.VKEditPost, Description: "Изменяет текст опубликованного поста, сохраняя фото.",
 				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
@@ -31,11 +30,10 @@ func vkTools() []toolregistry.ToolSpec {
 			EditableFields: []string{"text"},
 		},
 		{
-			DisplayName:        "Удалить пост",
-			DisplayNameKey:     "tools.vk.delete_post.name",
-			UserDescriptionKey: "tools.vk.delete_post.description",
-			UserDescription:    "Удаляет опубликованный пост.",
-			DescriptionEn:      "Deletes a published post.",
+			DisplayName:     "Удалить пост",
+			DisplayNameKey:  "tools.vk.delete_post.name",
+			UserDescription: "Удаляет опубликованный пост.",
+			DescriptionEn:   "Deletes a published post.",
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name: tools.VKDeletePost, Description: "Удаляет опубликованный пост.",
 				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{

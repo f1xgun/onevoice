@@ -75,9 +75,9 @@ func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message
 		business = appendProjectBlock(business, proj, tag)
 	}
 	if tag == language.English {
-		business += draftingRulesEn
+		business += draftingRulesEn + telegramSchedulingRulesEn
 	} else {
-		business += draftingRulesRu
+		business += draftingRulesRu + telegramSchedulingRulesRu
 	}
 	msgs = make([]llm.Message, 0, len(history))
 	msgs = append(msgs, history...)

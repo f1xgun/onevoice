@@ -26,13 +26,12 @@ package domain
 // disambiguation rules). UserDescription is the end-user-facing copy shown
 // in /settings/tools — guaranteed to never reference other tool names.
 type ToolEntry struct {
-	UserDescriptionKey string    `json:"userDescriptionKey,omitempty"`
-	Name               string    `json:"name"`
-	DisplayName        string    `json:"displayName"`
-	DisplayNameKey     string    `json:"displayNameKey,omitempty"`
-	Platform           string    `json:"platform"`
-	Floor              ToolFloor `json:"floor"`
-	EditableFields     []string  `json:"editableFields"`
-	Description        string    `json:"description"`     // LLM-facing.
-	UserDescription    string    `json:"userDescription"` // end-user-facing copy for settings UI.
+	Name            string    `json:"name"`
+	DisplayName     string    `json:"displayName"`
+	DisplayNameKey  string    `json:"displayNameKey,omitempty"`
+	Platform        string    `json:"platform"`
+	Floor           ToolFloor `json:"floor"`
+	EditableFields  []string  `json:"editableFields"`
+	Description     string    `json:"description"`     // LLM-facing.
+	UserDescription string    `json:"userDescription"` // end-user-facing copy for settings UI.
 }

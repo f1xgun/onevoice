@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -25,6 +26,8 @@ const (
 
 // PostService defines the interface for post operations.
 type PostService interface {
+	Schedule(ctx context.Context, businessID uuid.UUID, externalID, content string, mediaURLs []string, at time.Time) (*domain.Post, error)
+	Reschedule(ctx context.Context, businessID uuid.UUID, id string, at *time.Time, content *string) (*domain.Post, error)
 	Mutate(ctx context.Context, businessID uuid.UUID, id, action string, content *string) (*domain.Post, error)
 	List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
@@ -186,19 +189,28 @@ func (h *PostHandler) mutatePost(w http.ResponseWriter, r *http.Request, action 
 		return
 	}
 	var content *string
+	var scheduledAt *time.Time
 	if action == "edit" {
 		var body struct {
-			Content *string `json:"content"`
+			Content     *string    `json:"content"`
+			ScheduledAt *time.Time `json:"scheduledAt"`
 		}
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPostMutationBody))
 		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&body); err != nil || body.Content == nil {
+		if err := decoder.Decode(&body); err != nil || (body.Content == nil && body.ScheduledAt == nil) {
 			writeJSONError(w, http.StatusBadRequest, "content is required")
 			return
 		}
 		content = body.Content
+		scheduledAt = body.ScheduledAt
 	}
-	post, err := h.postService.Mutate(r.Context(), bc.BusinessID, chi.URLParam(r, "id"), action, content)
+	var post *domain.Post
+	var err error
+	if scheduledAt != nil {
+		post, err = h.postService.Reschedule(r.Context(), bc.BusinessID, chi.URLParam(r, "id"), scheduledAt, content)
+	} else {
+		post, err = h.postService.Mutate(r.Context(), bc.BusinessID, chi.URLParam(r, "id"), action, content)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrPostNotFound):

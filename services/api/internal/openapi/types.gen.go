@@ -506,6 +506,11 @@ const (
 	ListAuditLogsParamsCategoryRpa         ListAuditLogsParamsCategory = "rpa"
 )
 
+// Defines values for ScheduleTelegramPostJSONBodyPlatform.
+const (
+	Telegram ScheduleTelegramPostJSONBodyPlatform = "telegram"
+)
+
 // Defines values for ListReviewsParamsReplyStatus.
 const (
 	Error   ListReviewsParamsReplyStatus = "error"
@@ -2009,9 +2014,6 @@ type ToolEntry struct {
 	Name            string         `json:"name" validate:"required"`
 	Platform        string         `json:"platform" validate:"required"`
 	UserDescription string         `json:"userDescription" validate:"required"`
-
-	// UserDescriptionKey Translation catalog key for the user-facing tool description.
-	UserDescriptionKey *string `json:"userDescriptionKey,omitempty"`
 }
 
 // ToolEntryFloor defines model for ToolEntry.Floor.
@@ -2043,9 +2045,6 @@ type ToolRegistryEntry struct {
 	Name            string    `json:"name" validate:"required"`
 	Platform        string    `json:"platform" validate:"required"`
 	UserDescription string    `json:"userDescription" validate:"required"`
-
-	// UserDescriptionKey Translation catalog key for the user-facing tool description.
-	UserDescriptionKey *string `json:"userDescriptionKey,omitempty"`
 }
 
 // UpdateBusinessRequest defines model for UpdateBusinessRequest.
@@ -2420,9 +2419,24 @@ type ListPostsParams struct {
 	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ScheduleTelegramPostJSONBody defines parameters for ScheduleTelegramPost.
+type ScheduleTelegramPostJSONBody struct {
+	Content     string                               `json:"content" validate:"required"`
+	ExternalId  string                               `json:"externalId" validate:"required"`
+	MediaUrls   *[]string                            `json:"mediaUrls,omitempty"`
+	Platform    ScheduleTelegramPostJSONBodyPlatform `json:"platform" validate:"required,oneof=telegram"`
+	ScheduledAt time.Time                            `json:"scheduledAt" validate:"required"`
+}
+
+// ScheduleTelegramPostJSONBodyPlatform defines parameters for ScheduleTelegramPost.
+type ScheduleTelegramPostJSONBodyPlatform string
+
 // EditPublishedPostJSONBody defines parameters for EditPublishedPost.
 type EditPublishedPostJSONBody struct {
-	Content string `json:"content" validate:"required"`
+	Content *string `json:"content,omitempty"`
+
+	// ScheduledAt Only an unclaimed OneVoice-held Telegram schedule can be rescheduled.
+	ScheduledAt *time.Time `json:"scheduledAt,omitempty"`
 }
 
 // GetPresenceHealthParams defines parameters for GetPresenceHealth.
@@ -2640,6 +2654,9 @@ type UpdateMemberRoleJSONRequestBody = UpdateMemberRoleRequest
 
 // UpdateBusinessOwnerBriefJSONRequestBody defines body for UpdateBusinessOwnerBrief for application/json ContentType.
 type UpdateBusinessOwnerBriefJSONRequestBody = UpdateOwnerBriefRequest
+
+// ScheduleTelegramPostJSONRequestBody defines body for ScheduleTelegramPost for application/json ContentType.
+type ScheduleTelegramPostJSONRequestBody ScheduleTelegramPostJSONBody
 
 // EditPublishedPostJSONRequestBody defines body for EditPublishedPost for application/json ContentType.
 type EditPublishedPostJSONRequestBody EditPublishedPostJSONBody

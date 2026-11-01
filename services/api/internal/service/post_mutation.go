@@ -51,6 +51,13 @@ func (s *postService) Mutate(ctx context.Context, businessID uuid.UUID, id, acti
 	if err != nil {
 		return nil, err
 	}
+	if post.Status == postStatusScheduled && (action == actionEdit || action == postActionDelete) {
+		status := postStatusScheduled
+		if action == postActionDelete {
+			status = postStatusCanceled
+		}
+		return s.updateScheduled(ctx, post, nil, content, status)
+	}
 	if s.dispatch == nil {
 		return nil, fmt.Errorf("%w: platform dispatch is unavailable", domain.ErrPostConflict)
 	}
@@ -102,9 +109,9 @@ func (s *postService) Mutate(ctx context.Context, businessID uuid.UUID, id, acti
 	if dispatchErr != nil {
 		result.Error = dispatchErr.Error()
 		rejected, _ := receipt.Result["mutation_rejected"].(bool)
-		if code := a2a.CodeOf(dispatchErr); (!rejected || action == postActionRetry) && (code == "" || code == "transient") {
-			post.Status = "uncertain"
-			result.Status = "uncertain"
+		if code := a2a.CodeOf(dispatchErr); (!rejected || action == postActionRetry) && (code == "" || code == postOutcomeTransient) {
+			post.Status = postStatusUncertain
+			result.Status = postStatusUncertain
 		}
 	} else {
 		result.Error = ""

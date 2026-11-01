@@ -20,11 +20,6 @@ func TestPostMutationToolsRequireManualApproval(t *testing.T) {
 			require.True(t, registry.Has(name))
 			key := "tools." + strings.ReplaceAll(name, "__", ".")
 			require.Equal(t, key+".name", registry.DisplayNameKey(name))
-			for _, entry := range registry.AllEntries() {
-				if entry.Name == name {
-					require.Equal(t, key+".description", entry.UserDescriptionKey)
-				}
-			}
 			require.Equal(t, domain.ToolFloorManual, registry.Floor(name))
 			for _, field := range registry.EditableFields(name) {
 				require.Equal(t, "text", field, "approval edits cannot retarget a post")
