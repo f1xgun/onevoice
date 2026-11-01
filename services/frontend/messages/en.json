@@ -1604,6 +1604,15 @@
     }
   },
   "nav": {
+    "waiting": "Waiting for your word",
+    "instructions": "Instructions",
+    "location": "Location profile",
+    "platforms": "Platforms",
+    "rules": "Rules",
+    "team": "Team",
+    "plan": "Plan",
+    "account": "Account",
+    "data": "Data and activity",
     "chat": "Chat",
     "integrations": "Integrations",
     "business": "Organization profile",

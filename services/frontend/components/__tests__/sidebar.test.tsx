@@ -73,7 +73,7 @@ async function renderAndOpenDrawer(pathname: string) {
   return result;
 }
 
-describe('Sidebar — projects subtree visibility (preserved on mobile drawer)', () => {
+describe('Sidebar — approved mobile navigation', () => {
   beforeEach(() => {
     pathnameRef.current = '/chat';
   });
@@ -114,40 +114,25 @@ describe('Sidebar — projects subtree visibility (preserved on mobile drawer)',
     expect(screen.queryByRole('link', { name: /\+ Новый проект/ })).not.toBeInTheDocument();
   });
 
-  it('renders projects subtree on /chat/:id (drawer open)', async () => {
-    await renderAndOpenDrawer('/chat/69e486f230986d87c50887cc');
-    expect(screen.getByText('Без проекта')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
-  });
-
-  it('renders projects subtree on /projects/new (drawer open)', async () => {
-    await renderAndOpenDrawer('/projects/new');
-    expect(screen.getByText('Без проекта')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
-  });
-
-  it('renders projects subtree on /projects/:id (drawer open)', async () => {
-    await renderAndOpenDrawer('/projects/55f5dafe-2cc0-4540-9783-9b831b248ea0');
-    expect(screen.getByText('Без проекта')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
-  });
-
-  it('renders projects subtree on /projects/:id/chats (drawer open)', async () => {
-    await renderAndOpenDrawer('/projects/55f5dafe-2cc0-4540-9783-9b831b248ea0/chats');
-    expect(screen.getByText('Без проекта')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
-  });
-
-  it('hides projects subtree on /integrations (drawer open — guard against over-widening the gate)', async () => {
-    await renderAndOpenDrawer('/integrations');
-    expect(screen.queryByText('Без проекта')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /\+ Новый проект/ })).not.toBeInTheDocument();
-  });
+  it.each(['/chat/id', '/projects/new', '/projects/id', '/projects/id/chats', '/integrations'])(
+    'keeps the same destinations without a project pane on %s',
+    async (pathname) => {
+      await renderAndOpenDrawer(pathname);
+      expect(screen.queryByTestId('project-pane')).not.toBeInTheDocument();
+      expect(screen.queryByText('Без проекта')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Поручения' })).toHaveAttribute('href', '/chat');
+      expect(screen.getByRole('link', { name: 'Ждет вашего слова' })).toHaveAttribute(
+        'href',
+        '/tasks'
+      );
+      expect(screen.getByRole('dialog')).toHaveClass('w-full', 'max-w-none');
+    }
+  );
 });
 
 describe.each([
-  ['ru', 'Открыть боковое меню', 'Профиль организации'],
-  ['en', 'Open side menu', 'Organization profile'],
+  ['ru', 'Открыть боковое меню', 'Карточка точки'],
+  ['en', 'Open side menu', 'Location profile'],
 ] as const)('mobile organization navigation in %s', (locale, menuName, organizationName) => {
   it.skipIf(!hasLayoutBrowser)(
     'keeps the menu trigger and organization link within 320 CSS pixels',
@@ -191,6 +176,7 @@ describe.each([
     const user = userEvent.setup();
     const trigger = screen.getByRole('button', { name: menuName });
     await user.tab();
+    trigger.focus();
     expect(trigger).toHaveFocus();
     await user.keyboard('{Enter}');
     const link = screen.getByRole('link', { name: organizationName, exact: true });

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { loginRedirectPath } from '@/lib/postAuthRedirect';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -15,7 +14,6 @@ import { trackEvent } from '@/lib/telemetry';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Sidebar } from '@/components/sidebar';
 import { NavRail } from '@/components/sidebar/NavRail';
-import { ProjectPane } from '@/components/sidebar/ProjectPane';
 import { BusinessRequiredGuard } from '@/components/BusinessRequiredGuard';
 import { WeeklyValueRecap } from '@/components/business/WeeklyValueRecap';
 import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
@@ -35,16 +33,11 @@ import { DeletionGraceBanner } from '@/components/account/DeletionGraceBanner';
 import { ReConsentModal } from '@/components/legal/ReConsentModal';
 import type { ReactNode } from 'react';
 
-// Module-level event-name singleton: any input/element listening for this
-// CustomEvent will focus itself. Decouples the layout (broadcaster) from
-// the SearchBar (consumer) — consumers can mount/unmount as the route
-// changes without re-binding the global keyboard listener.
 const SIDEBAR_FOCUS_EVENT = 'onevoice:sidebar-search-focus';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const tSidebar = useTranslations('sidebar');
   const tSession = useTranslations('auth.session');
   const { setAuth } = useAuthStore();
   const [ready, setReady] = useState(false);
@@ -131,8 +124,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return null;
   }
 
-  const showProjectPane = pathname.startsWith('/chat/') || pathname.startsWith('/projects');
-
   const user = useAuthStore.getState().user;
   const requiresEmailVerification =
     user?.requiresEmailVerification === true || user?.emailVerified === false;
@@ -145,44 +136,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         {isDesktop ? (
           <div className="ov-app flex h-dvh">
             <NavRail />
-            <PanelGroup
-              direction="horizontal"
-              autoSaveId="onevoice:sidebar-width"
-              className="flex-1"
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="flex min-w-0 flex-1 scroll-pb-28 scroll-pt-20 flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink md:scroll-py-8"
             >
-              {showProjectPane && (
-                <>
-                  <Panel
-                    id="project-pane"
-                    order={1}
-                    defaultSize={22}
-                    minSize={12}
-                    maxSize={35}
-                    className="motion-reduce:transition-none"
-                  >
-                    <ProjectPane />
-                  </Panel>
-                  <PanelResizeHandle
-                    id="project-pane-handle"
-                    aria-label={tSidebar('resizeAria')}
-                    aria-orientation="vertical"
-                    className="h-full w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
-                  />
-                </>
-              )}
-              <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-                <main
-                  id="main-content"
-                  tabIndex={-1}
-                  className="flex h-full scroll-pb-28 scroll-pt-20 flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink md:scroll-py-8"
-                >
-                  <DeletionGraceBanner />
-                  <VerificationBanner />
-                  <WeeklyValueRecap />
-                  <div className="min-h-0 flex-1">{children}</div>
-                </main>
-              </Panel>
-            </PanelGroup>
+              <DeletionGraceBanner />
+              <VerificationBanner />
+              <WeeklyValueRecap />
+              <div className="min-h-0 flex-1">{children}</div>
+            </main>
           </div>
         ) : (
           <div className="ov-app flex h-dvh flex-col">
