@@ -811,6 +811,14 @@
           "reply_to_comment": {
             "name": "Reply to comment",
             "description": "Replies to a comment on a Telegram channel post."
+          },
+          "edit_channel_post": {
+            "name": "Edit post",
+            "description": "Changes the text or photo caption of a published post."
+          },
+          "delete_channel_post": {
+            "name": "Delete post",
+            "description": "Deletes a published channel post."
           }
         },
         "vk": {
@@ -849,6 +857,14 @@
           "get_wall_posts": {
             "name": "Load wall posts",
             "description": "Loads posts from the VK community wall."
+          },
+          "edit_post": {
+            "name": "Edit post",
+            "description": "Changes published post text while preserving its photos."
+          },
+          "delete_post": {
+            "name": "Delete post",
+            "description": "Deletes a published community post."
           }
         },
         "yandex_business": {
