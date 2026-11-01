@@ -26,11 +26,11 @@ describe('SaveTemplateDialog', () => {
     render(<SaveTemplateDialog businessId="business-a" source="post" sourceId="post-a" />, {
       wrapper: Wrapper,
     });
-    const opener = screen.getByRole('button', { name: 'Сохранить как шаблон' });
+    const opener = screen.getByRole('button', { name: 'Сохранить как повод' });
     expect(opener).toHaveClass('min-h-[var(--ov-button-sm-h)]');
     await user.click(opener);
     expect(screen.getByText(/сотрудники этой организации/)).toBeInTheDocument();
-    const name = screen.getByRole('textbox', { name: 'Название шаблона' });
+    const name = screen.getByRole('textbox', { name: 'Название повода' });
     await user.type(name, 'Публикация недели');
     await user.click(screen.getByRole('button', { name: 'Сохранить' }));
     await waitFor(() =>
@@ -46,13 +46,13 @@ describe('SaveTemplateDialog', () => {
       <SaveTemplateDialog businessId="business-a" source="review" sourceId="review-a" />,
       { wrapper: Wrapper }
     );
-    await user.click(screen.getByRole('button', { name: 'Сохранить как шаблон' }));
-    await user.type(screen.getByRole('textbox', { name: 'Название шаблона' }), 'Старый источник');
+    await user.click(screen.getByRole('button', { name: 'Сохранить как повод' }));
+    await user.type(screen.getByRole('textbox', { name: 'Название повода' }), 'Старый источник');
     view.rerender(
       <SaveTemplateDialog businessId="business-a" source="review" sourceId="review-b" />
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: 'Сохранить как шаблон' }));
-    expect(screen.getByRole('textbox', { name: 'Название шаблона' })).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Сохранить как повод' }));
+    expect(screen.getByRole('textbox', { name: 'Название повода' })).toHaveValue('');
   });
 });
