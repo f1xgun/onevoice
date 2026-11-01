@@ -591,6 +591,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		orchClient,
 	)
 	s.HITL.SetApprovalTelemetry(s.Telemetry)
+	s.HITL.SetAttachmentStorage(s.ObjectStorage)
 
 	if h.Redis != nil {
 		s.Lockout = lockout.New(h.Redis, lockout.Config{

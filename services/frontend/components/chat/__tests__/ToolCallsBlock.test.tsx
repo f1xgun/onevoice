@@ -17,13 +17,31 @@ it.each(['ru', 'en'] as const)(
       status: status as ToolCall['status'],
     }));
     render(<ToolCallsBlock toolCalls={calls} />);
-    const toggle = screen.getByRole('button');
-    expect(toggle).toHaveTextContent(locale === 'ru' ? 'Выполнено 1 из 4' : 'Completed 1 of 4');
-    await userEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(locale === 'ru' ? 'Готово' : 'Done')).toBeVisible();
     expect(
       screen.getByLabelText(locale === 'ru' ? 'Исход неизвестен' : 'Outcome unknown')
     ).toBeVisible();
     expect(screen.queryByText(locale === 'ru' ? 'Отправлено' : 'Sent')).not.toBeInTheDocument();
   }
 );
+
+it('folds successful read calls while keeping mutation outcomes visible', async () => {
+  const calls: ToolCall[] = [
+    {
+      id: 'read',
+      name: 'telegram__get_comments',
+      args: {},
+      result: { comments: [] },
+      status: 'done',
+    },
+    { id: 'write', name: 'telegram__send_channel_post', args: {}, status: 'aborted' },
+  ];
+  render(<ToolCallsBlock toolCalls={calls} />);
+  const toggle = screen.getByRole('button');
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByLabelText('Исход неизвестен')).toBeVisible();
+  await userEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByText('Ничего не нашлось')).toBeInTheDocument();
+});

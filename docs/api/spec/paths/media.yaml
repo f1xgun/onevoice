@@ -1,0 +1,30 @@
+/businesses/{id}/media:
+  post:
+    operationId: uploadBusinessMedia
+    summary: Upload one JPG, PNG or WebP image up to 5 MB. Requires content.create.
+    description: Stores a fresh random media key; never updates the business logo.
+    tags: [businesses]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file:
+                type: string
+                format: binary
+    responses:
+      '201':
+        description: The uploaded image attachment, ready to include in a fresh chat turn.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/MessageAttachment
+      '400': {description: Missing, oversized or unsupported image.}
+      '403': {description: No content.create access.}
+      '404': {description: Business not found.}
+      '503': {description: Storage unavailable.}

@@ -3,17 +3,24 @@ import type { KeyboardEvent, UIEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { Message } from '@/types/chat';
+import type { Attachment, Message } from '@/types/chat';
 
 const FOLLOW_THRESHOLD_PX = 80;
 const IME_KEY_CODE = 229;
-const composerSchema = z.object({ message: z.string() });
+const composerSchema = z.object({
+  message: z.string(),
+  attachment: z.custom<Attachment>().optional(),
+});
 
 interface ChatComposerOptions {
   messages: Message[];
   initialPrompt?: string;
   disabled: boolean;
-  sendMessage: (text: string, onAccepted?: () => void) => Promise<void>;
+  sendMessage: (
+    text: string,
+    onAccepted?: () => void,
+    options?: { attachments?: Attachment[] }
+  ) => Promise<void>;
 }
 
 export function useChatComposer({
@@ -28,6 +35,7 @@ export function useChatComposer({
     defaultValues: { message: initialPrompt },
   });
   const input = watch('message');
+  const attachment = watch('attachment');
   const followingRef = useRef(true);
   const sendingRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -41,7 +49,12 @@ export function useChatComposer({
     if (!text || disabled || sendingRef.current) return;
     sendingRef.current = true;
     try {
-      await sendMessage(text, () => setValue('message', ''));
+      const accepted = () => {
+        setValue('message', '');
+        setValue('attachment', undefined);
+      };
+      if (attachment) await sendMessage(text, accepted, { attachments: [attachment] });
+      else await sendMessage(text, accepted);
     } finally {
       sendingRef.current = false;
     }
@@ -70,6 +83,8 @@ export function useChatComposer({
 
   return {
     composerId,
+    attachment,
+    setAttachment: (photo: Attachment | undefined) => setValue('attachment', photo),
     register,
     input,
     bottomRef,

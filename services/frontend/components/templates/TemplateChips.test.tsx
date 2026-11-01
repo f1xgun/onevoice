@@ -71,13 +71,13 @@ describe('TemplateChips', () => {
   it('labels the library editor and explains placeholder syntax', async () => {
     const user = userEvent.setup();
     renderChips();
-    await user.click(await screen.findByRole('button', { name: 'Шаблоны (1)' }));
-    const dialog = screen.getByRole('dialog', { name: 'Библиотека шаблонов организации' });
+    await user.click(await screen.findByRole('button', { name: 'Поводы (1)' }));
+    const dialog = screen.getByRole('dialog', { name: 'Библиотека поводов организации' });
     expect(within(dialog).getByText(/Создавайте тексты публикаций/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole('button', { name: 'Новый шаблон' }));
-    expect(within(dialog).getByRole('textbox', { name: 'Название шаблона' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('combobox', { name: 'Тип шаблона' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('textbox', { name: 'Текст шаблона' })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Новый повод' }));
+    expect(within(dialog).getByRole('textbox', { name: 'Название повода' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox', { name: 'Тип повода' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('textbox', { name: 'Текст повода' })).toBeInTheDocument();
     expect(
       within(dialog).getByRole('textbox', { name: 'Объявленные переменные' })
     ).toBeInTheDocument();
@@ -136,9 +136,9 @@ describe('TemplateChips', () => {
     const user = userEvent.setup();
     renderChips({ disabled: true });
     expect(await screen.findByRole('button', { name: 'Приветствие' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Шаблоны (1)' }));
+    await user.click(screen.getByRole('button', { name: 'Поводы (1)' }));
     expect(
-      screen.getByRole('dialog', { name: 'Библиотека шаблонов организации' })
+      screen.getByRole('dialog', { name: 'Библиотека поводов организации' })
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Приветствие' })).toBeDisabled();
   });
@@ -150,17 +150,14 @@ describe('TemplateChips', () => {
     const updatePending = deferred<{ data: typeof template }>();
     putMock.mockReturnValue(updatePending.promise);
     renderChips();
-    await user.click(await screen.findByRole('button', { name: 'Шаблоны (1)' }));
-    const dialog = screen.getByRole('dialog', { name: 'Библиотека шаблонов организации' });
-    await user.click(within(dialog).getByRole('button', { name: 'Новый шаблон' }));
+    await user.click(await screen.findByRole('button', { name: 'Поводы (1)' }));
+    const dialog = screen.getByRole('dialog', { name: 'Библиотека поводов организации' });
+    await user.click(within(dialog).getByRole('button', { name: 'Новый повод' }));
     await user.type(
-      within(dialog).getByRole('textbox', { name: 'Название шаблона' }),
+      within(dialog).getByRole('textbox', { name: 'Название повода' }),
       'Без переменных'
     );
-    await user.type(
-      within(dialog).getByRole('textbox', { name: 'Текст шаблона' }),
-      'Готовый текст'
-    );
+    await user.type(within(dialog).getByRole('textbox', { name: 'Текст повода' }), 'Готовый текст');
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
     await waitFor(() =>
       expect(postMock).toHaveBeenCalledWith(
@@ -169,12 +166,12 @@ describe('TemplateChips', () => {
       )
     );
     await user.click(within(dialog).getByRole('button', { name: 'Изменить' }));
-    const name = within(dialog).getByRole('textbox', { name: 'Название шаблона' });
+    const name = within(dialog).getByRole('textbox', { name: 'Название повода' });
     await user.clear(name);
     await user.type(name, 'Обновлённый');
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
     expect(name).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Новый шаблон' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Новый повод' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: 'Изменить' })).toBeDisabled();
     updatePending.resolve({ data: { ...template, name: 'Обновлённый' } });
     await waitFor(() => expect(putMock).toHaveBeenCalled());
@@ -183,4 +180,17 @@ describe('TemplateChips', () => {
       expect(deleteMock).toHaveBeenCalledWith(`/content-templates/${TEMPLATE_ID}`)
     );
   });
+});
+it('offers three editable start tiles when no saved occasions exist, with custom management still reachable', async () => {
+  postMock.mockClear();
+  getMock.mockResolvedValue({ data: [] });
+  const { onPrefill } = renderChips({ variant: 'occasions' });
+  const tile = await screen.findByRole('button', { name: /Изменились часы/ });
+  expect(screen.getByRole('button', { name: /Ответить на отзывы/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Мои поводы' })).toBeVisible();
+  await userEvent.click(tile);
+  expect(onPrefill).toHaveBeenCalledWith(
+    'Помоги изменить часы работы и подготовить объявление для клиентов.'
+  );
+  expect(postMock).not.toHaveBeenCalled();
 });

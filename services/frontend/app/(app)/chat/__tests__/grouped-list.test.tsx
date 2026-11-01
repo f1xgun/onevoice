@@ -1,203 +1,171 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { useBusinessStore } from '@/lib/stores/business';
 import ChatListPage from '../page';
-import { listConversations } from '@/lib/conversations';
-import { bizApi } from '@/lib/api/business-api';
 
 const h = vi.hoisted(() => ({
-  permissions: ['content.create', 'content.update', 'content.delete'],
-  projects: [
-    { id: 'summer', name: 'Летняя акция' },
-    { id: 'winter', name: 'Зимнее меню' },
-    { id: 'empty', name: 'Пустой проект' },
-  ],
-  projectsPending: false,
-  projectsError: false,
-  retryProjects: vi.fn(),
+  create: vi.fn(),
+  list: vi.fn(),
+  send: vi.fn(),
   push: vi.fn(),
-  post: vi.fn(),
+  allowed: true,
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: h.push }) }));
+vi.mock('@/lib/conversations', () => ({ listConversations: h.list, createConversation: h.create }));
 vi.mock('@/lib/hooks/usePermission', () => ({
-  usePermission: (permission: string) => ({ allowed: h.permissions.includes(permission) }),
+  usePermission: () => ({ allowed: h.allowed, isError: false }),
 }));
-vi.mock('@/lib/stores/business', () => ({
-  useBusinessStore: (select: (state: { activeBusinessId: string }) => unknown) =>
-    select({ activeBusinessId: 'business' }),
+vi.mock('@/hooks/useConversationFlow', () => ({
+  useConversationFlow: () => ({ messages: [], isStreaming: false, sendMessage: h.send }),
 }));
-vi.mock('@/lib/conversations', () => ({ listConversations: vi.fn() }));
-vi.mock('@/lib/api/business-api', () => ({ bizApi: vi.fn() }));
-vi.mock('@/lib/telemetry', () => ({ trackClick: vi.fn() }));
-vi.mock('@/hooks/useProjects', () => ({
-  useProjectsQuery: () => ({
-    data: h.projects,
-    isPending: h.projectsPending,
-    isError: h.projectsError,
-    refetch: h.retryProjects,
-  }),
+vi.mock('@/components/templates/TemplateChips', () => ({
+  TemplateChips: ({ onPrefill }: { onPrefill: (text: string) => void }) => (
+    <button onClick={() => onPrefill('Editable occasion')}>Новинка в меню</button>
+  ),
 }));
-
-const chats = [
-  { id: 'unassigned', title: 'Время работы', projectId: null, preview: 'Открываемся в десять' },
-  { id: 'summer-chat', title: 'Пост об акции', projectId: 'summer', preview: '**Скидка** на кофе' },
-  { id: 'winter-chat', title: 'Обновить меню', projectId: 'winter', preview: 'Добавим какао' },
-  { id: 'orphan-chat', title: 'Старый проект', projectId: 'missing', preview: '' },
-].map((chat) => ({
-  ...chat,
-  userId: 'user',
-  businessId: 'business',
-  createdAt: '2026-09-08T12:00:00Z',
-  updatedAt: '2026-09-08T12:00:00Z',
+vi.mock('@/components/chat/ChatPhotoInput', () => ({
+  ChatPhotoInput: ({ onChange }: { onChange: (photo: unknown) => void }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onChange({
+          type: 'image',
+          url: '/media/photo.png',
+          name: 'Photo.png',
+          mimeType: 'image/png',
+        })
+      }
+    >
+      Фото
+    </button>
+  ),
 }));
-function renderPage() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+function show() {
   return render(
-    <QueryClientProvider client={client}>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
       <ChatListPage />
     </QueryClientProvider>
   );
 }
 beforeEach(() => {
-  vi.clearAllMocks();
-  h.permissions = ['content.create', 'content.update', 'content.delete'];
-  h.projects = [
-    { id: 'summer', name: 'Летняя акция' },
-    { id: 'winter', name: 'Зимнее меню' },
-    { id: 'empty', name: 'Пустой проект' },
-  ];
-  h.projectsPending = false;
-  h.projectsError = false;
-  vi.mocked(listConversations).mockResolvedValue(chats);
-  vi.mocked(bizApi).mockReturnValue({ post: h.post } as unknown as ReturnType<typeof bizApi>);
+  useBusinessStore.setState({ activeBusinessId: 'business' });
+  h.allowed = true;
+  h.push.mockReset();
+  h.create.mockReset().mockResolvedValue({ id: 'created' });
+  h.list.mockReset().mockResolvedValue([]);
+  h.send.mockReset().mockImplementation(async (_text, accepted) => accepted?.());
+  window.history.replaceState({}, '', '/chat');
 });
-
-it('groups every chat by project and preserves unassigned and unavailable project buckets', async () => {
-  renderPage();
-  const unassigned = await screen.findByRole('region', { name: 'Без проекта' });
-  expect(within(unassigned).getByText('Время работы')).toBeVisible();
-  expect(
-    within(screen.getByRole('region', { name: 'Летняя акция' })).getByText('Пост об акции')
-  ).toBeVisible();
-  expect(
-    within(screen.getByRole('region', { name: 'Зимнее меню' })).getByText('Обновить меню')
-  ).toBeVisible();
-  expect(
-    within(screen.getByRole('region', { name: 'Проект недоступен' })).getByText('Старый проект')
-  ).toBeVisible();
-  expect(
-    within(screen.getByRole('region', { name: 'Пустой проект' })).getByText(/нет чатов/)
-  ).toBeVisible();
-  expect(screen.getByRole('link', { name: 'Новый проект' })).toHaveAttribute(
-    'href',
-    '/projects/new'
-  );
-  expect(screen.getByText('Скидка').tagName).toBe('STRONG');
-  await userEvent.click(screen.getByRole('button', { name: /Летняя акция/ }));
-  expect(screen.queryByText('Пост об акции')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Летняя акция/ })).toHaveAttribute(
-    'aria-expanded',
-    'false'
-  );
+it('keeps New/Repeat post text editable without creating an empty conversation on visit or refresh', async () => {
+  window.history.replaceState({}, '', '/chat?prompt=Prepared+post&businessId=business');
+  const page = show();
+  await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('Prepared post'));
+  page.unmount();
+  show();
+  await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('Prepared post'));
+  expect(h.create).not.toHaveBeenCalled();
+  expect(h.send).not.toHaveBeenCalled();
 });
-
-it('creates the first chat in the selected empty project', async () => {
-  h.post.mockResolvedValue({ data: { id: 'empty-project-chat' } });
-  renderPage();
-
-  const emptyProject = await screen.findByRole('region', { name: 'Пустой проект' });
-  await userEvent.click(
-    within(emptyProject).getByRole('button', { name: 'Новый чат в проекте «Пустой проект»' })
-  );
-
-  await waitFor(() =>
-    expect(h.post).toHaveBeenCalledWith('/conversations', {
-      title: 'Новый чат',
-      projectId: 'empty',
+it('creates and sends exactly once only after explicit Send, including a separately uploaded photo', async () => {
+  show();
+  fireEvent.click(screen.getByRole('button', { name: 'Новинка в меню' }));
+  expect(h.create).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Фото' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Поручить' }));
+  await waitFor(() => expect(h.send).toHaveBeenCalledTimes(1));
+  expect(h.create).toHaveBeenCalledTimes(1);
+  expect(h.send).toHaveBeenCalledWith('Editable occasion', expect.any(Function), {
+    conversationId: 'created',
+    attachments: [
+      { type: 'image', url: '/media/photo.png', name: 'Photo.png', mimeType: 'image/png' },
+    ],
+  });
+  expect(h.push).toHaveBeenCalledWith('/chat/created');
+});
+it('does not send or navigate when the business changes during conversation creation', async () => {
+  let finish!: (value: { id: string }) => void;
+  h.create.mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
     })
   );
-  await waitFor(() => expect(h.push).toHaveBeenCalledWith('/chat/empty-project-chat'));
-});
-
-it('searches project names, chat titles and previews, reveals collapsed results and offers a reset', async () => {
-  renderPage();
-  const search = await screen.findByRole('searchbox');
-  await userEvent.click(screen.getByRole('button', { name: /Летняя акция/ }));
-  await userEvent.type(search, 'летняя');
-  expect(screen.getByText('Пост об акции')).toBeVisible();
-  expect(screen.queryByText('Обновить меню')).not.toBeInTheDocument();
-  await userEvent.clear(search);
-  await userEvent.type(search, 'какао');
-  expect(screen.getByText('Обновить меню')).toBeVisible();
-  await userEvent.clear(search);
-  await userEvent.type(search, 'время');
-  expect(screen.getByText('Время работы')).toBeVisible();
-  await userEvent.clear(search);
-  await userEvent.type(search, 'неизвестное');
-  await userEvent.click(screen.getByRole('button', { name: 'Сбросить поиск' }));
-  expect(search).toHaveValue('');
-  expect(screen.getByText('Обновить меню')).toBeVisible();
-});
-
-it('does not flash projectless results while project names load and offers retry after a project failure', async () => {
-  h.projectsPending = true;
-  const view = renderPage();
-  await act(async () => {});
-  expect(screen.queryByText('Проект недоступен')).not.toBeInTheDocument();
-  expect(screen.queryByText('Время работы')).not.toBeInTheDocument();
-  view.unmount();
-  h.projectsPending = false;
-  h.projectsError = true;
-  renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: 'Повторить' }));
-  expect(h.retryProjects).toHaveBeenCalledTimes(1);
-  expect(screen.queryByText('Нет чатов')).not.toBeInTheDocument();
-});
-
-it('creates from the empty CTA and shows progress before the request resolves', async () => {
-  h.projects = [];
-  vi.mocked(listConversations).mockResolvedValue([]);
-  let resolveCreate!: (value: { data: { id: string } }) => void;
-  h.post.mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        resolveCreate = resolve;
-      })
-  );
-  renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: 'Начать первый чат' }));
-  await waitFor(() =>
-    expect(screen.getAllByRole('button', { name: 'Создаём чат…' })).toHaveLength(2)
-  );
-  for (const button of screen.getAllByRole('button', { name: 'Создаём чат…' })) {
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('aria-busy', 'true');
-  }
+  show();
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Old business text' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Поручить' }));
+  await waitFor(() => expect(h.create).toHaveBeenCalledOnce());
+  await act(async () => {
+    useBusinessStore.setState({ activeBusinessId: 'other' });
+    finish({ id: 'old' });
+  });
+  expect(h.send).not.toHaveBeenCalled();
   expect(h.push).not.toHaveBeenCalled();
-  await act(async () => resolveCreate({ data: { id: 'new-chat' } }));
-  await waitFor(() => expect(h.push).toHaveBeenCalledWith('/chat/new-chat'));
-  expect(h.post).toHaveBeenCalledTimes(1);
+});
+it('reuses the created conversation on an explicit retry and preserves the instruction', async () => {
+  h.send.mockResolvedValue(undefined);
+  show();
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Keep this instruction' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Поручить' }));
+  await waitFor(() => expect(h.send).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Поручить' })).toBeEnabled());
+  expect(screen.getByRole('textbox')).toHaveValue('Keep this instruction');
+  fireEvent.click(screen.getByRole('button', { name: 'Поручить' }));
+  await waitFor(() => expect(h.send).toHaveBeenCalledTimes(2));
+  expect(h.create).toHaveBeenCalledOnce();
+});
+it('keeps history available without create permission and never creates project folders', async () => {
+  h.allowed = false;
+  h.list.mockResolvedValue([
+    {
+      id: 'old',
+      title: 'Earlier instruction',
+      titleStatus: 'manual',
+      preview: 'Published on the platform',
+      createdAt: '2026-10-30T08:00:00Z',
+      projectId: 'legacy',
+    },
+  ]);
+  show();
+  expect(await screen.findByRole('link', { name: /Earlier instruction/ })).toHaveAttribute(
+    'href',
+    '/chat/old'
+  );
+  expect(screen.getByRole('textbox')).toBeDisabled();
+  expect(screen.queryByText('Без проекта')).not.toBeInTheDocument();
+  expect(h.create).not.toHaveBeenCalled();
+});
+it('retains retryable history errors', async () => {
+  h.list.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([]);
+  show();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось');
+  fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+  expect(await screen.findByText(/Пока нет поручений/)).toBeInTheDocument();
+  cleanup();
 });
 
-it('hides create CTA and row mutation menus when permission is absent while preserving read access', async () => {
-  h.permissions = [];
-  const view = renderPage();
-  expect(await screen.findByText('Время работы')).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Новый чат' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: 'Новый проект' })).not.toBeInTheDocument();
+it('hides empty legacy rows and cleans an untitled instruction preview without inventing its content', async () => {
+  h.list.mockResolvedValue([
+    {
+      id: 'empty',
+      title: 'Новый чат',
+      titleStatus: 'auto_pending',
+      createdAt: '2026-10-30T08:00:00Z',
+      lastMessageAt: '2026-10-30T08:00:00Z',
+    },
+    {
+      id: 'real',
+      title: '',
+      titleStatus: 'auto_pending',
+      preview: '**Done**: [original words](https://example.org)',
+      createdAt: '2026-10-30T08:00:00Z',
+    },
+  ]);
+  show();
   expect(
-    within(screen.getByRole('region', { name: 'Пустой проект' })).getByRole('link', {
-      name: 'Открыть проект',
-    })
-  ).toHaveAttribute('href', '/projects/empty/chats');
-  expect(screen.queryByRole('button', { name: /Меню чата/ })).not.toBeInTheDocument();
-  view.unmount();
-  h.projects = [];
-  vi.mocked(listConversations).mockResolvedValue([]);
-  renderPage();
-  expect(await screen.findByText(/Здесь появятся чаты вашей команды/)).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Начать первый чат' })).not.toBeInTheDocument();
+    await screen.findByRole('link', { name: /Поручение Done: original words/ })
+  ).toHaveAttribute('href', '/chat/real');
+  expect(screen.queryByRole('link', { name: /Новый чат/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/\*\*Done/)).not.toBeInTheDocument();
 });

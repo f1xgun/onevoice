@@ -23,6 +23,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
+	"github.com/f1xgun/onevoice/services/api/internal/storage"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -49,8 +50,9 @@ const maxChatBodyBytes = 1 << 20
 // that constructs the handler via struct literal; loadHistory reads it
 // directly so the test does not need a fully-wired *chatturn.Turn.
 type ChatProxyHandler struct {
-	turn        *chatturn.Turn
-	messageRepo domain.MessageRepository
+	attachmentStorage storage.Uploader
+	turn              *chatturn.Turn
+	messageRepo       domain.MessageRepository
 
 	// historyLimit caps how many prior messages loadHistory fetches. Mirrors
 	// the value threaded into chatturn.Deps so the legacy struct-literal test
@@ -222,6 +224,21 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	body := envelope.ChatTurnRequest
+	var attachments []domain.Attachment
+	if headerBatch == "" {
+		if err := validate.Struct(body); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if body.Attachments != nil {
+			var err error
+			attachments, err = h.validateAttachments(bc.BusinessID, *body.Attachments)
+			if err != nil {
+				writeJSONError(w, http.StatusBadRequest, "invalid_attachment")
+				return
+			}
+		}
+	}
 	var selectedPlatforms []string
 	platformScopeSet := envelope.SelectedPlatforms != nil
 	if platformScopeSet {
@@ -243,6 +260,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		UserID:            bc.UserID,
 		ConversationID:    conversationID,
 		Message:           strDeref(body.Message),
+		Attachments:       attachments,
 		Model:             strDeref(body.Model),
 		ResumeBatchID:     headerBatch,
 		Locale:            resolveTurnLocale(r.Context(), body.Locale),

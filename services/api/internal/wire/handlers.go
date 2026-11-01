@@ -214,6 +214,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	// Forward the per-business rate-limit tier to the orchestrator (replaces the
 	// legacy hardcoded empty tier). Set on the shared Turn so HITLHandler.Resume,
 	// which reuses chatProxyHandler.Turn(), sees it too.
+	chatProxyHandler.SetAttachmentStorage(svcs.ObjectStorage, cfg.PublicURL)
 	chatProxyHandler.Turn().SetPlanResolver(svcs.PlanResolver)
 	chatProxyHandler.Turn().SetVerification(svcs.TaskVerification)
 	chatProxyHandler.Turn().SetApprovalTelemetry(svcs.Telemetry)

@@ -97,6 +97,7 @@ interface TemplateChipsProps {
   disabled: boolean;
   currentInput: string;
   onPrefill: (content: string) => void;
+  variant?: 'chips' | 'occasions';
 }
 
 export function TemplateChips({
@@ -105,8 +106,10 @@ export function TemplateChips({
   disabled,
   currentInput,
   onPrefill,
+  variant = 'chips',
 }: TemplateChipsProps) {
   const t = useTranslations('contentTemplates');
+  const tInstructions = useTranslations('chat.instructions');
   const editorId = useId();
   const read = usePermission('content.read');
   const create = usePermission('content.create');
@@ -294,16 +297,46 @@ export function TemplateChips({
   if (!read.allowed || !query.isSuccess) return null;
   return (
     <>
-      <div className="flex flex-wrap gap-2" aria-label={t('chipsLabel')}>
+      <div
+        className={
+          variant === 'occasions' ? 'grid grid-cols-2 gap-2 md:grid-cols-3' : 'flex flex-wrap gap-2'
+        }
+        aria-label={t('chipsLabel')}
+      >
+        {variant === 'occasions' &&
+          templates.length === 0 &&
+          ['post', 'hours', 'reviews'].map((key) => (
+            <button
+              type="button"
+              key={key}
+              disabled={disabled}
+              onClick={() => onPrefill(tInstructions(`starts.${key}.prompt`))}
+              className="min-h-24 rounded-inner bg-background p-3.5 text-left text-ink hover:bg-btn2 disabled:opacity-50"
+            >
+              <span className="block font-semibold">{tInstructions(`starts.${key}.title`)}</span>
+              <span className="mt-1 block text-[15px] font-normal leading-[22px] text-ink-soft">
+                {tInstructions(`starts.${key}.hint`)}
+              </span>
+            </button>
+          ))}
         {templates.slice(0, MAX_VISIBLE_CHIPS).map((template) => (
           <button
             key={template.id}
             type="button"
             disabled={disabled || renderMutation.isPending}
             onClick={() => choose(template)}
-            className="text-brand-ink min-h-11 max-w-48 truncate rounded-full border border-brand-soft bg-brand-soft px-3 py-1.5 text-sm transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-50"
+            className={
+              variant === 'occasions'
+                ? 'min-h-20 rounded-inner bg-background p-3.5 text-left text-base font-semibold text-ink hover:bg-btn2 disabled:opacity-50'
+                : 'text-brand-ink min-h-11 max-w-48 truncate rounded-full border border-brand-soft bg-brand-soft px-3 py-1.5 text-sm transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-50'
+            }
           >
             {template.name}
+            {variant === 'occasions' && template.placeholders.length === 0 && (
+              <span className="mt-1 line-clamp-2 block text-[15px] font-normal leading-[22px] text-ink-soft">
+                {template.body}
+              </span>
+            )}
           </button>
         ))}
         <button
@@ -311,7 +344,9 @@ export function TemplateChips({
           onClick={() => setLibraryOpen(true)}
           className="min-h-11 rounded-full border border-line px-3 py-1.5 text-sm text-ink-mid hover:bg-paper-sunken"
         >
-          {t('manage', { count: templates.length })}
+          {variant === 'occasions'
+            ? tInstructions('manageOccasions')
+            : t('manage', { count: templates.length })}
         </button>
       </div>
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>

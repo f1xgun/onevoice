@@ -7,6 +7,7 @@ import type { ErrorCode, ToolCall } from '@/types/chat';
 import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { usePlatformFullLabels, getPlatform } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
+import { isTrustedImageSrc, safeExternalHref } from '@/lib/trustedImage';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToolDisplayName } from './useToolDisplayName';
@@ -42,6 +43,11 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   const labels = usePlatformFullLabels();
   const label = labels[platform] ?? tCard('unknownPlatform');
 
+  const preview = [tool.args.text, tool.args.caption, tool.args.content, tool.args.message].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0
+  );
+  const resultLink =
+    typeof tool.result?.url === 'string' ? safeExternalHref(tool.result.url) : undefined;
   const decisionUnavailable = tool.rejectReason === 'decision_unavailable';
 
   const policyReasonKey = tool.rejectReason
@@ -79,9 +85,12 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
           </Badge>
         )}
         {tool.status === 'done' && (
-          <Badge tone="success" aria-label={tCard('done')}>
+          <Badge
+            tone="success"
+            aria-label={tool.result?.status === 'scheduled' ? tCard('scheduled') : tCard('done')}
+          >
             <Check aria-hidden className="h-4 w-4" />
-            {tCard('done')}
+            {tool.result?.status === 'scheduled' ? tCard('scheduled') : tCard('done')}
           </Badge>
         )}
         {tool.status === 'done' && tool.wasEdited && (
@@ -128,6 +137,34 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
         )}
         {tool.status === 'expired' && <Badge tone="warning">{tCard('expiredBadge')}</Badge>}
       </div>
+      {typeof tool.args.photo_url === 'string' && isTrustedImageSrc(tool.args.photo_url) && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={tool.args.photo_url}
+          alt={displayName}
+          className="max-h-72 max-w-full rounded-inner object-contain"
+        />
+      )}
+      {preview && (
+        <p className="whitespace-pre-wrap break-words rounded-inner bg-paper-sunken p-4 text-base leading-[26px] text-ink">
+          {preview}
+        </p>
+      )}
+      {tool.status === 'done' && resultLink && (
+        <a
+          href={resultLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block min-h-11 py-2.5 text-sm text-brand underline"
+        >
+          {tCard('openResult')}
+        </a>
+      )}
+      {tool.result?.status === 'scheduled' && typeof tool.result.scheduled_at === 'string' && (
+        <p className="text-sm text-ink-soft">
+          {tCard('scheduledFor', { time: new Date(tool.result.scheduled_at).toLocaleString() })}
+        </p>
+      )}
       {tool.status === 'done' && tool.result && summarizeResult(tCard, tool.name, tool.result) && (
         <p className="text-xs text-ink-soft">{summarizeResult(tCard, tool.name, tool.result)}</p>
       )}

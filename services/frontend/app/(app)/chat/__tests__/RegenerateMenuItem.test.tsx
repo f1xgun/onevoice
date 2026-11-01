@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import type { ReactNode } from 'react';
+import type * as ConversationHooks from '@/hooks/useConversations';
 
+import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
 import { ConversationItem } from '@/components/chat/ConversationItem';
 
 // "Обновить заголовок" menu item:
@@ -45,7 +47,8 @@ vi.mock('@/hooks/useProjects', () => ({
   useProjectsQuery: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }),
 }));
 
-vi.mock('@/hooks/useConversations', () => ({
+vi.mock('@/hooks/useConversations', async () => ({
+  ...(await vi.importActual<typeof ConversationHooks>('@/hooks/useConversations')),
   useMoveConversation: () => ({ mutate: vi.fn() }),
   conversationsQueryKey: (bizId: string) => ['businesses', bizId, 'conversations'] as const,
 }));
@@ -188,11 +191,14 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
       },
     });
 
-    const ChatListPage = (await import('../page')).default;
     const user = userEvent.setup();
     render(
       <Wrapper>
-        <ChatListPage />
+        <ChatRowMenu
+          conversation={{ ...baseAuto, title: 'Some auto title' }}
+          pinned={false}
+          trigger={<button>{'Some auto title'}</button>}
+        />
       </Wrapper>
     );
 
@@ -240,11 +246,14 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
       },
     });
 
-    const ChatListPage = (await import('../page')).default;
     const user = userEvent.setup();
     render(
       <Wrapper>
-        <ChatListPage />
+        <ChatRowMenu
+          conversation={{ ...baseAuto, title: 'Another auto title' }}
+          pinned={false}
+          trigger={<button>{'Another auto title'}</button>}
+        />
       </Wrapper>
     );
 
@@ -277,7 +286,7 @@ it('shows a recoverable history error instead of an empty history', async () => 
   );
   expect(await screen.findByRole('button', { name: 'Повторить' })).toBeInTheDocument();
   expect(screen.queryByText('Нет чатов')).not.toBeInTheDocument();
-  bizApiGet.mockResolvedValue({ data: [baseAuto] });
+  bizApiGet.mockResolvedValue({ data: [{ ...baseAuto, preview: 'A real instruction' }] });
   await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
   expect(await screen.findByText(baseAuto.title)).toBeInTheDocument();
 });

@@ -277,3 +277,19 @@ describe('ToolApprovalArgsForm — empty args + editable sections', () => {
     expect(screen.getByText(EDITABLE_HEADING)).toBeInTheDocument();
   });
 });
+
+it('shows an owned photo preview instead of an editable raw service URL', () => {
+  render(
+    <ToolApprovalArgsForm
+      args={{ photo_url: '/media/photo.png' }}
+      editedArgs={{}}
+      editableFields={['photo_url']}
+      editable
+      disabled={false}
+      onEdit={vi.fn()}
+    />
+  );
+  expect(screen.getByRole('img')).toHaveAttribute('src', '/media/photo.png');
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(screen.queryByText('/media/photo.png')).not.toBeInTheDocument();
+});

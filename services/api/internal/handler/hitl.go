@@ -292,6 +292,8 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 	}
 
 	switch {
+	case errors.Is(err, service.ErrHITLInvalidPhotoURL):
+		writeJSONError(w, http.StatusBadRequest, "photo_url must be an uploaded image owned by this business")
 	case errors.Is(err, service.ErrHITLBatchNotFound):
 		writeJSONError(w, http.StatusNotFound, "batch not found")
 	case errors.Is(err, service.ErrHITLForbidden):

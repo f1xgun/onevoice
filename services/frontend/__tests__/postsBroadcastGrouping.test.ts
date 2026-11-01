@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { mergeBroadcastGroups } from '@/app/(app)/posts/_helpers';
+import { mergeBroadcastGroups, postLocalDay } from '@/app/(app)/posts/_helpers';
 import type { Post } from '@/types/post';
 
 function post(overrides: Partial<Post> & { id: string }): Post {
@@ -137,4 +137,17 @@ describe('mergeBroadcastGroups', () => {
     expect(rows[0].platformResults?.vk.error).toBe('boom');
     expect(rows[0].broadcastChannels).toHaveLength(2);
   });
+});
+
+it('groups a scheduled post by the same local date used for its displayed time', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'Europe/Moscow';
+  try {
+    const queued = post({ id: 'queued', scheduledAt: '2026-10-31T21:30:00Z' });
+    expect(postLocalDay(queued)).toBe('2026-11-01');
+    expect(new Date(queued.scheduledAt!).getHours()).toBe(0);
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
 });

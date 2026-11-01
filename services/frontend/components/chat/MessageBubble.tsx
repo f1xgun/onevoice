@@ -53,10 +53,31 @@ export function MessageBubble({ message }: { message: Message }) {
 
   if (isUser) {
     return (
-      <div data-message-id={message.id} className="mx-auto mb-6 w-full max-w-[66ch]">
+      <div data-message-id={message.id} className="mb-7 ml-auto w-full max-w-[440px]">
         <div className="min-w-0 whitespace-pre-wrap break-words rounded-md bg-paper-sunken px-4 py-3 text-reading text-ink">
           <p className="mb-2 text-meta font-medium">{tWindow('authorOwner')}</p>
           {message.content}
+          {message.attachments?.map((attachment) =>
+            isTrustedImageSrc(attachment.url) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={attachment.url}
+                src={attachment.url}
+                alt={attachment.name}
+                className="mt-3 max-h-72 max-w-full rounded-inner object-contain"
+              />
+            ) : safeExternalHref(attachment.url) ? (
+              <a
+                key={attachment.url}
+                href={attachment.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 block text-brand underline"
+              >
+                {attachment.name}
+              </a>
+            ) : null
+          )}
         </div>
       </div>
     );
@@ -67,7 +88,7 @@ export function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div data-message-id={message.id} className="mx-auto mb-6 w-full min-w-0 max-w-[66ch]">
+    <div data-message-id={message.id} className="mx-auto mb-7 w-full min-w-0 max-w-[760px]">
       <p className="mb-2 text-meta font-medium">{tWindow('authorAssistant')}</p>
       <div className="min-w-0">
         {!isDoneEmpty && (
