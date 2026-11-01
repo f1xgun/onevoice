@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -11,6 +11,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { cn } from '@/lib/utils';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import type { Business } from '@/types/business';
 import { useBusinessList, type BusinessSummary } from '@/lib/hooks/useBusinessList';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
@@ -43,6 +47,15 @@ export function BusinessSwitcher() {
   const [announceName, setAnnounceName] = useState<string | null>(null);
   const { containerRef, onKeyDown } = useRovingTabIndex(businesses.length);
 
+  const { data: profile } = useQuery<Business>({
+    queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get<Business>(BIZ_API_PATHS.BUSINESS.ROOT)
+        .then((r) => r.data),
+    enabled: !!activeBusinessId,
+    staleTime: 30_000,
+  });
   const active = businesses.find((b) => b.id === activeBusinessId);
   const initials = active ? active.name.slice(0, 2).toUpperCase() : '';
 
@@ -71,19 +84,21 @@ export function BusinessSwitcher() {
         title={triggerAria}
         disabled={isLoading}
         className={cn(
-          'mb-2 flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-2 text-meta font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          active
-            ? 'bg-paper-sunken text-ink hover:bg-paper-raised'
-            : 'bg-paper-sunken text-ink-soft hover:text-ink'
+          'mb-4 flex min-h-11 w-full items-center gap-2.5 rounded-inner px-2.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
         )}
       >
         <span
           aria-hidden
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-control"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-inner bg-brand text-brand-foreground"
         >
           {active ? initials : <Plus size={18} />}
         </span>
-        <span className="min-w-0 break-words text-left">{triggerAria}</span>
+        <span className="min-w-0 break-words text-left">
+          <span className="block font-semibold">{active?.name || triggerAria}</span>
+          {profile?.address && (
+            <span className="block text-sm font-normal text-ink-soft">{profile.address}</span>
+          )}
+        </span>
       </PopoverTrigger>
       <PopoverContent
         side="right"

@@ -1,7 +1,7 @@
 const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace }) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -9,6 +9,10 @@ import type { ReactNode } from 'react';
 
 vi.mock('@/lib/stores/business', () => ({
   useBusinessStore: vi.fn(),
+}));
+
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: () => ({ get: () => Promise.resolve({ data: { address: 'ул. Бажова, 68' } }) }),
 }));
 
 vi.mock('@/lib/hooks/useBusinessList', () => ({
@@ -184,7 +188,16 @@ it('explains the organization initials with a visible and accessible name', () =
   arrange({ active: 'org', businesses: [{ id: 'org', name: 'Coffee place', role: 'owner' }] });
   render(wrap(<BusinessSwitcher />));
   const trigger = screen.getByRole('button', { name: /Coffee place/ });
-  expect(trigger).toHaveTextContent(trigger.getAttribute('aria-label')!);
+  expect(trigger).toHaveTextContent('Coffee place');
+  expect(trigger).toHaveAccessibleName('Coffee place, переключить организацию');
   expect(trigger).toHaveAttribute('title', trigger.getAttribute('aria-label'));
   expect(trigger.querySelector('[aria-hidden]')).toHaveTextContent('CO');
+});
+
+it('shows the active location address from its existing business profile', async () => {
+  arrange({ active: 'org', businesses: [{ id: 'org', name: 'Coffee place', role: 'owner' }] });
+  render(wrap(<BusinessSwitcher />));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Coffee place/ })).toHaveTextContent('ул. Бажова, 68')
+  );
 });

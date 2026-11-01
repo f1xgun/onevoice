@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -7,12 +7,7 @@ import { Sidebar } from '@/components/sidebar';
 import type { Project } from '@/types/project';
 import type { Conversation } from '@/lib/conversations';
 
-// mobile drawer auto-close behavior.
-//
-// LOCKED CONTRACT:
-//   - Drawer auto-closes on chat-row select.
-//   - Drawer STAYS OPEN on project-header expand/collapse.
-//   - Drawer STAYS OPEN on pin/rename/delete context-menu actions.
+// The shared mobile navigation closes after selecting a destination.
 
 // ----- Mocks -----
 
@@ -127,60 +122,27 @@ describe('mobile drawer', () => {
     pathnameValue = '/chat/c-1';
   });
 
-  it('auto-closes when a chat row is clicked', async () => {
+  it.each(['Поручения', 'Посты', 'Отзывы', 'Карточка точки', 'Площадки', 'Настройки'])(
+    'auto-closes when %s is selected',
+    async (name) => {
+      const user = userEvent.setup();
+      render(<Sidebar />, { wrapper: Wrapper });
+      await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      await user.click(screen.getByRole('link', { name, exact: true }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    }
+  );
+
+  it('offers the nested settings destinations and closes after selecting one', async () => {
+    pathnameValue = '/settings/team';
     const user = userEvent.setup();
     render(<Sidebar />, { wrapper: Wrapper });
-
     await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText('Первый чат')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('link', { name: /Первый чат/ }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).toBeNull();
-    });
-  });
-
-  it('stays open when the project header expand/collapse button is clicked', async () => {
-    const user = userEvent.setup();
-    render(<Sidebar />, { wrapper: Wrapper });
-
-    await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(within(screen.getByTestId('project-pane')).getByText('Отзывы')).toBeInTheDocument();
-    });
-
-    const collapseBtn = screen.getByRole('button', { name: /Свернуть «Отзывы»/ });
-    await user.click(collapseBtn);
-
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-  });
-
-  it('stays open when the per-row context menu is opened', async () => {
-    const user = userEvent.setup();
-    const { container } = render(<Sidebar />, { wrapper: Wrapper });
-
-    await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText('Первый чат')).toBeInTheDocument();
-    });
-
-    const menuTriggers = screen.getAllByRole('button', { name: /Меню чата/ });
-    await user.click(menuTriggers[0]);
-
-    const dialog = container.ownerDocument.querySelector('[role="dialog"]');
-    expect(dialog).not.toBeNull();
-    expect(screen.getByRole('menu')).toBeInTheDocument();
+    for (const name of ['Правила', 'Команда', 'Тариф', 'Аккаунт', 'Данные и журнал']) {
+      expect(screen.getByRole('link', { name, exact: true })).toBeInTheDocument();
+    }
+    await user.click(screen.getByRole('link', { name: 'Правила', exact: true }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

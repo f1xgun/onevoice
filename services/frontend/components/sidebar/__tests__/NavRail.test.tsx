@@ -5,9 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { api } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
-import { useBusinessStore } from '@/lib/stores/business';
-import responses from '@/test/fixtures/channel-responses.json';
 
 import { NavRail } from '../NavRail';
 
@@ -65,161 +62,102 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+const destinations = [
+  ['Ждет вашего слова', '/tasks'],
+  ['Поручения', '/chat'],
+  ['Посты', '/posts'],
+  ['Отзывы', '/reviews'],
+  ['Карточка точки', '/business'],
+  ['Площадки', '/integrations'],
+  ['Настройки', '/settings'],
+];
+
 describe('NavRail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    pushMock.mockReset();
-    logoutMock.mockReset();
     usePathnameMock.mockReturnValue('/chat');
   });
 
-  it('renders all 7 nav links from existing navItems set', () => {
-    render(
-      <Wrapper>
-        <NavRail />
-      </Wrapper>
-    );
-    const labels = [
-      'Чат',
-      'Интеграции',
-      'Профиль организации',
-      'Отзывы',
-      'Посты',
-      'Задачи',
-      'Настройки',
-    ];
-    for (const label of labels) {
-      expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
+  it('renders the seven approved destinations without icons or project and task labels', () => {
+    render(<NavRail />, { wrapper: Wrapper });
+    for (const [label, href] of destinations) {
+      const link = screen.getByRole('link', { name: label, exact: true });
+      expect(link).toHaveAttribute('href', href);
+      expect(link.querySelector('svg')).toBeNull();
     }
+    expect(screen.getByTestId('nav-rail')).toHaveClass('w-[232px]');
+    expect(screen.queryByRole('link', { name: 'Задачи' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'С чего начать' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('integration-status')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-pane')).not.toBeInTheDocument();
   });
 
-  it('renders the getting-started entry linking to /getting-started', () => {
-    render(
-      <Wrapper>
-        <NavRail />
-      </Wrapper>
+  it.each([
+    ['/chat/conversation-id', 'Поручения'],
+    ['/integrations', 'Площадки'],
+    ['/settings/team', 'Команда'],
+    ['/settings', 'Настройки'],
+    ['/settings/roles', 'Команда'],
+    ['/settings/roles/new', 'Команда'],
+    ['/settings/account', 'Аккаунт'],
+    ['/settings/audit', 'Данные и журнал'],
+  ])('marks one active destination on %s', (pathname, label) => {
+    usePathnameMock.mockReturnValue(pathname);
+    const { container } = render(<NavRail />, { wrapper: Wrapper });
+    expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: label, exact: true })).toHaveAttribute(
+      'aria-current',
+      'page'
     );
-    const link = screen.getByRole('link', { name: 'С чего начать' });
-    expect(link).toHaveAttribute('href', '/getting-started');
   });
 
-  it('does NOT render the project-tree subtree (UnassignedBucket / ProjectSection / + Новый проект)', () => {
-    usePathnameMock.mockReturnValue('/chat');
-    render(
-      <Wrapper>
-        <NavRail />
-      </Wrapper>
-    );
-    expect(screen.queryByText('Без проекта')).toBeNull();
-    expect(screen.queryByText('+ Новый проект')).toBeNull();
+  it('nests settings destinations and preserves the billing permission gate', () => {
+    usePathnameMock.mockReturnValue('/settings/team');
+    render(<NavRail />, { wrapper: Wrapper });
+    for (const label of ['Правила', 'Команда', 'Аккаунт', 'Данные и журнал']) {
+      expect(screen.getByRole('link', { name: label, exact: true })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('link', { name: 'Тариф' })).not.toBeInTheDocument();
   });
 
-  it('renders a labelled desktop navigation', () => {
-    const { container } = render(
-      <Wrapper>
-        <NavRail />
-      </Wrapper>
-    );
-    const rail = container.querySelector('[data-testid="nav-rail"]');
-    expect(rail).not.toBeNull();
-    expect(screen.getByRole('link', { name: 'Интеграции' })).toHaveTextContent('Интеграции');
-  });
-
-  it('marks the active route with the Linen indicator (ink text + ochre left bar)', () => {
-    usePathnameMock.mockReturnValue('/integrations');
-    render(
-      <Wrapper>
-        <NavRail />
-      </Wrapper>
-    );
-    const active = screen.getByRole('link', { name: 'Интеграции' });
-    expect(active).toHaveAttribute('aria-current', 'page');
-    expect(active.className).toMatch(/\btext-ink\b/);
-    expect(active.querySelector('span.bg-brand')).not.toBeNull();
-  });
-
-  it('logout button revokes the server session via POST /auth/logout then clears local state', async () => {
+  it('keeps appearance, language, feedback and server logout reachable under the user', async () => {
     const clearSpy = vi.spyOn(queryClient, 'clear');
-    render(
-      <Wrapper>
-        <NavRail />
-      </Wrapper>
-    );
+    render(<NavRail />, { wrapper: Wrapper });
     const user = userEvent.setup();
-    const logoutBtn = screen.getByRole('button', { name: 'Выйти' });
-    await user.click(logoutBtn);
+    await user.click(screen.getByText('X', { exact: true }));
+    expect(screen.getByRole('button', { name: 'Language' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Обратная связь' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Выйти' }));
     expect(api.post).toHaveBeenCalledWith('/auth/logout');
     expect(clearSpy).toHaveBeenCalled();
     expect(logoutMock).toHaveBeenCalled();
+    expect(pushMock).toHaveBeenCalledWith('/login');
+  });
+
+  it('closes the mobile menu when a destination is activated by keyboard', async () => {
+    const onNavigate = vi.fn();
+    render(<NavRail expanded onNavigate={onNavigate} />, { wrapper: Wrapper });
+    const link = screen.getByRole('link', { name: 'Площадки' });
+    link.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onNavigate).toHaveBeenCalledOnce();
   });
 });
 
-it('shows text labels and supports keyboard navigation in the mobile menu', async () => {
-  const onNavigate = vi.fn();
-  render(
-    <Wrapper>
-      <NavRail expanded onNavigate={onNavigate} />
-    </Wrapper>
-  );
-  const link = screen.getByRole('link', { name: 'Интеграции' });
-  expect(link).toHaveTextContent('Интеграции');
-  expect(screen.getByTestId('nav-rail')).toHaveClass('w-full', 'h-auto');
-  link.focus();
-  await userEvent.keyboard('{Enter}');
-  expect(onNavigate).toHaveBeenCalledOnce();
-});
-
 it.each([
-  ['/chat/conversation-id', 'Чат'],
-  ['/settings/team', 'Настройки'],
-  ['/integrations', 'Интеграции'],
-])('matches the direct URL %s to one labelled active section', (pathname, label) => {
-  usePathnameMock.mockReturnValue(pathname);
-  const { container } = render(
-    <Wrapper>
-      <NavRail />
-    </Wrapper>
-  );
-  expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-  expect(screen.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
-});
-
-it('names the home link and every footer control before activation', () => {
-  render(
-    <Wrapper>
-      <NavRail />
-    </Wrapper>
-  );
-  const home = screen.getByRole('link', { name: /OneVoice/ });
-  expect(home).toHaveTextContent('OneVoice');
-  expect(home).toHaveAttribute('title', home.getAttribute('aria-label'));
-  for (const button of screen.getAllByRole('button')) {
-    expect(button).toHaveAccessibleName();
-  }
-  expect(screen.getByRole('button', { name: 'Выйти' })).toHaveTextContent('Выйти');
-  expect(screen.getByRole('button', { name: 'Language' })).toBeVisible();
-});
-
-it('shows a confirmed channel failure even when another channel on the platform is active', () => {
-  const client = makeClient();
-  client.setQueryDefaults(QUERY_KEYS.BUSINESS_INTEGRATIONS('org'), { staleTime: Infinity });
-  client.setQueryData(QUERY_KEYS.BUSINESS_INTEGRATIONS('org'), [
-    ...responses.active.body,
-    ...responses.tokenExpired.body,
-  ]);
-  useBusinessStore.getState().setActive('org');
-  const { unmount } = render(
-    <QueryClientProvider client={client}>
-      <NavRail />
-    </QueryClientProvider>
-  );
-  try {
-    expect(screen.getByTestId('integration-status')).toHaveTextContent(
-      'Telegram: Ошибка подключения — откройте «Интеграции»'
+  ['ru', 'Аккаунт'],
+  ['en', 'Account'],
+] as const)(
+  'keeps account settings available in %s without organization permissions',
+  (locale, label) => {
+    (globalThis as unknown as { __setTestLocale: (locale: string) => void }).__setTestLocale(
+      locale
     );
-  } finally {
-    unmount();
-    useBusinessStore.getState().clear();
-    client.clear();
+    usePathnameMock.mockReturnValue('/settings/account');
+    render(<NavRail />, { wrapper: Wrapper });
+    expect(screen.getByRole('link', { name: label, exact: true })).toHaveAttribute(
+      'href',
+      '/settings/account'
+    );
   }
-});
+);
