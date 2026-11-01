@@ -150,3 +150,7 @@ function broadcastStatus(channels: BroadcastChannelResult[]): string {
   if (failed === channels.length) return 'error';
   return 'partial';
 }
+
+export function postLocalDay(post: Post): string {
+  return format(new Date(post.scheduledAt ?? post.publishedAt ?? post.createdAt), 'yyyy-MM-dd');
+}

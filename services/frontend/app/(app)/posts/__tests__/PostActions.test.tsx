@@ -152,3 +152,49 @@ it('shows the pending permission check before presenting actions', () => {
   expect(screen.getByRole('status')).toHaveTextContent('Загрузка');
   expect(screen.queryByRole('button', { name: /Удалить —|Исправить —/ })).not.toBeInTheDocument();
 });
+it('reschedules a queued Telegram post with the same persisted id', async () => {
+  const date = new Date(Date.now() + 86_400_000);
+  const scheduled = {
+    ...published,
+    status: 'scheduled',
+    scheduledAt: date.toISOString(),
+    platformResults: {
+      telegram: { ...published.platformResults!.telegram, postId: '', status: 'scheduled' },
+    },
+  };
+  show([scheduled]);
+  fireEvent.click(screen.getByRole('button', { name: 'Исправить текст и время' }));
+  const next = new Date(Date.now() + 172_800_000);
+  const local = new Date(next.getTime() - next.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+  fireEvent.change(screen.getByLabelText('Когда публиковать'), { target: { value: local } });
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить на площадке' }));
+  await waitFor(() =>
+    expect(state.patch).toHaveBeenCalledWith('/posts/published', {
+      content: 'Original',
+      scheduledAt: new Date(local).toISOString(),
+    })
+  );
+});
+it('requires owner confirmation to cancel a queued post', async () => {
+  const scheduled = {
+    ...published,
+    status: 'scheduled',
+    scheduledAt: '2099-01-01T12:00:00Z',
+    platformResults: {
+      telegram: { ...published.platformResults!.telegram, postId: '', status: 'scheduled' },
+    },
+  };
+  show([scheduled]);
+  fireEvent.click(screen.getByRole('button', { name: 'Снять с публикации', exact: true }));
+  expect(state.remove).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog')).toHaveTextContent('Пост не будет отправлен');
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Снять с публикации',
+      exact: true,
+    })
+  );
+  await waitFor(() => expect(state.remove).toHaveBeenCalledWith('/posts/published'));
+});
