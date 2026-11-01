@@ -38,7 +38,7 @@ type PasswordInput = {
   confirmPassword: string;
 };
 
-export default function SettingsPage() {
+export default function AccountSettingsPage() {
   const tSettings = useTranslations('settings.page');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const tDelete = useTranslations('account.deletion');

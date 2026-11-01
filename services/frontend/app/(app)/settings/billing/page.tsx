@@ -149,6 +149,7 @@ function LoadingCards() {
 
 export default function BillingPage() {
   const t = useTranslations('settings.billing');
+  const tV2 = useTranslations('settings.v2');
   const businessID = useBusinessStore((s) => s.activeBusinessId);
   const { data, isLoading, isSuccess, error } = useBillingSummary(businessID);
 
@@ -163,7 +164,7 @@ export default function BillingPage() {
       perm={BILLING_READ}
       fallback={
         <div className="px-4 pb-10 pt-6 sm:px-12 sm:pb-16">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">{tV2('billing')}</h1>
           <p className="mt-4 rounded-md border border-line bg-paper-sunken p-3 text-ink">
             {t('errors.forbidden')}
           </p>
@@ -172,7 +173,7 @@ export default function BillingPage() {
     >
       <section className="mx-auto max-w-[816px] space-y-title-gap px-gutter pb-10 pt-5 md:px-gutter-desktop">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">{tV2('billing')}</h1>
         </header>
 
         {errorMessage ? (

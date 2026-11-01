@@ -2617,7 +2617,7 @@
   },
   "sidebar": {
     "menuLabel": "Side menu",
-    "menuDescription": "App navigation and project list",
+    "menuDescription": "App sections and account settings",
     "wordmark": "OneVoice",
     "pinned": "Pinned",
     "moreCount": "…and {count} more",

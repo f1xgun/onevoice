@@ -2617,7 +2617,7 @@
   },
   "sidebar": {
     "menuLabel": "Боковое меню",
-    "menuDescription": "Навигация по приложению и список проектов",
+    "menuDescription": "Разделы приложения и настройки аккаунта",
     "wordmark": "OneVoice",
     "pinned": "Закреплённые",
     "moreCount": "…и ещё {count}",
