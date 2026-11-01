@@ -119,12 +119,13 @@ function ApprovalDraft({ batch: incomingBatch, onSubmit }: ToolApprovalCardProps
   const tCard = useTranslations('chat.toolApproval.card');
   const [drafts, dispatch] = useReducer(draftReducer, batch, initialDrafts);
   const [submitting, setSubmitting] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const submittingRef = useRef(false);
 
   const allDecided = drafts.every((d) => d.decision !== 'undecided');
 
   async function handleSubmit() {
-    if (submittingRef.current || changed) return;
+    if (submittingRef.current || changed || photoUploading) return;
     const undecided = drafts.filter((d) => d.decision === 'undecided');
     if (undecided.length > 0) {
       dispatch({
@@ -171,7 +172,7 @@ function ApprovalDraft({ batch: incomingBatch, onSubmit }: ToolApprovalCardProps
     <DraftSurface
       role="region"
       aria-labelledby="approval-card-title"
-      className="mx-auto max-w-[66ch]"
+      className="mx-auto max-w-[760px] bg-background p-0"
     >
       <div className="p-4">
         <h2 id="approval-card-title" className="text-document-title">
@@ -208,8 +209,9 @@ function ApprovalDraft({ batch: incomingBatch, onSubmit }: ToolApprovalCardProps
               call={call}
               batchId={batch.batchId}
               draft={entryDraft}
-              disabled={submitting || changed}
+              disabled={submitting || changed || photoUploading}
               amberHighlighted={draft.amberHighlighted}
+              onUploadingChange={setPhotoUploading}
               onSelectDecision={(action) =>
                 dispatch({ type: 'select', callId: call.callId, decision: action })
               }
@@ -234,8 +236,8 @@ function ApprovalDraft({ batch: incomingBatch, onSubmit }: ToolApprovalCardProps
               <span className="inline-flex">
                 <Button
                   onClick={handleSubmit}
-                  disabled={submitting || changed}
-                  aria-disabled={!allDecided || submitting || changed}
+                  disabled={submitting || changed || photoUploading}
+                  aria-disabled={!allDecided || submitting || changed || photoUploading}
                   aria-describedby={!allDecided ? 'approval-card-submit-helper' : undefined}
                 >
                   {submitting && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}

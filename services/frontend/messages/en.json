@@ -420,7 +420,9 @@
       "readOnlyHint": "You don't have permission to send messages in this organization",
       "authorOwner": "You",
       "authorAssistant": "OneVoice",
-      "sendHint": "Enter for a new line. Ctrl/Cmd+Enter to send your instruction."
+      "sendHint": "Enter for a new line. Ctrl/Cmd+Enter to send your instruction.",
+      "instructionsBack": "← Instructions",
+      "removePhoto": "Remove photo"
     },
     "header": {
       "menuAria": "Chat menu",
@@ -501,7 +503,10 @@
       "decisionUnavailableBadge": "Approval needed",
       "decisionUnavailableReason": "Decision not found — please approve again",
       "unknownAction": "Platform action",
-      "unknownPlatform": "Platform"
+      "unknownPlatform": "Platform",
+      "openResult": "Open on platform",
+      "scheduled": "Scheduled",
+      "scheduledFor": "Scheduled for {time}"
     },
     "streamError": {
       "streamInterrupted": "The response ended before completion. Try sending your instruction again.",
@@ -580,6 +585,15 @@
         "count": "Count",
         "limit": "Limit",
         "parse_mode": "Text formatting"
+      },
+      "time": {
+        "label": "When",
+        "title": "When to publish",
+        "description": "Publishing happens only after your confirmation.",
+        "now": "Immediately after your approval",
+        "choose": "Choose date and time",
+        "invalid": "Choose a valid future time",
+        "save": "Done"
       }
     },
     "list": {
@@ -598,6 +612,41 @@
       "clearSearch": "Clear search",
       "count": "{count, plural, one {# chat} other {# chats}}",
       "deleting": "Deleting…"
+    },
+    "instructions": {
+      "title": "Instructions",
+      "what": "What needs doing?",
+      "placeholder": "For example: we open at 11 tomorrow, prepare a post for Telegram and VK",
+      "occasions": "Or start with an occasion",
+      "send": "Send instruction",
+      "newTitle": "New instruction",
+      "loading": "Loading instructions…",
+      "empty": "No instructions yet. Tell us what needs doing — we will prepare the text for your review.",
+      "noOutcome": "No outcome yet",
+      "sendError": "The instruction could not be sent. Please try again.",
+      "photo": "Photo",
+      "uploading": "Uploading…",
+      "uploadError": "The photo could not be uploaded. Choose JPG, PNG or WebP up to 5 MB and try again.",
+      "removePhoto": "Remove photo",
+      "starts": {
+        "post": {
+          "title": "Post",
+          "hint": "Prepare text for your platforms",
+          "prompt": "Prepare a new post for our platforms. Ask what it should cover."
+        },
+        "hours": {
+          "title": "Hours changed",
+          "hint": "Location profile and a post",
+          "prompt": "Help update our opening hours and prepare an announcement for customers."
+        },
+        "reviews": {
+          "title": "Reply to reviews",
+          "hint": "Draft replies to unanswered reviews",
+          "prompt": "Check unanswered reviews and prepare replies for review."
+        }
+      },
+      "manageOccasions": "My occasions",
+      "genericTitle": "Instruction"
     }
   },
   "posts": {

@@ -1,11 +1,13 @@
 'use client';
 
 import { Fragment, memo, useId, useState, type ReactNode } from 'react';
+import { format } from 'date-fns';
 import { Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
+import { isTrustedImageSrc, safeExternalHref } from '@/lib/trustedImage';
 import { Switch } from '@/components/ui/switch';
 import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
 
@@ -129,7 +131,7 @@ export const ToolApprovalArgsForm = memo(function ToolApprovalArgsForm({
 
   const editableSet = new Set(editableFields);
   const argKeys = Object.keys(args).filter(
-    (key) => USER_FACING_FIELD_KEYS.has(key) || editableSet.has(key)
+    (key) => key !== 'scheduled_at' && (USER_FACING_FIELD_KEYS.has(key) || editableSet.has(key))
   );
   if (argKeys.length === 0) {
     return <p className="text-xs text-muted-foreground">{t('noArgs')}</p>;
@@ -222,9 +224,35 @@ function EditableField({
   editableFields,
   onEdit,
 }: EditableFieldProps) {
+  const t = useTranslations('chat.toolApproval');
   const id = `${idPrefix}-${row.key}`;
   const value = row.value;
 
+  if (row.key === 'photo_url')
+    return (
+      <dl>
+        <ReadOnlyRow row={row} t={t} />
+      </dl>
+    );
+  if (row.key === 'publish_date' && typeof value === 'number') {
+    const date = new Date(value * 1000);
+    return (
+      <label className="block text-sm">
+        {row.label}
+        <Input
+          type="datetime-local"
+          aria-label={row.label}
+          disabled={disabled}
+          value={Number.isFinite(date.getTime()) ? format(date, "yyyy-MM-dd'T'HH:mm") : ''}
+          onChange={(event) => {
+            const next = new Date(event.target.value);
+            if (Number.isFinite(next.getTime()) && next.getTime() > Date.now())
+              commitEdit(row.key, Math.floor(next.getTime() / 1000), editableFields, onEdit);
+          }}
+        />
+      </label>
+    );
+  }
   if (typeof value === 'boolean') {
     return (
       <EditableBooleanField
@@ -413,8 +441,38 @@ function ReadOnlyRow({ row, t }: ReadOnlyRowProps) {
   return (
     <>
       <dt className="text-sm font-medium text-ink-mid">{row.label}</dt>
-      <dd className="min-w-0 whitespace-pre-line break-words text-reading text-ink">
-        <ReadOnlyValue value={row.value} t={t} />
+      <dd
+        className={
+          LONG_TEXT_KEYS.has(row.key)
+            ? 'min-w-0 whitespace-pre-wrap break-words rounded-inner bg-paper-sunken p-4 text-base leading-[26px] text-ink sm:col-span-2'
+            : 'min-w-0 whitespace-pre-line break-words text-reading text-ink'
+        }
+      >
+        {row.key === 'publish_date' && typeof row.value === 'number' ? (
+          new Date(row.value * 1000).toLocaleString()
+        ) : row.key === 'photo_url' && typeof row.value === 'string' ? (
+          isTrustedImageSrc(row.value) ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={row.value}
+              alt={row.label}
+              className="max-h-72 max-w-full rounded-inner object-contain"
+            />
+          ) : safeExternalHref(row.value) ? (
+            <a
+              href={row.value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-brand underline"
+            >
+              {row.label}
+            </a>
+          ) : (
+            <span>—</span>
+          )
+        ) : (
+          <ReadOnlyValue value={row.value} t={t} />
+        )}
       </dd>
     </>
   );

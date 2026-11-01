@@ -58,11 +58,19 @@ export type ChatErrorCode =
   | 'orchestrator_unavailable'
   | 'stream_interrupted';
 
+export interface Attachment {
+  type: 'image';
+  url: string;
+  mimeType: string;
+  name: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   toolCalls?: ToolCall[];
+  attachments?: Attachment[];
   status?: 'streaming' | 'done';
   /**
    * Machine-readable code stamped when the turn ended on a stream-level error
