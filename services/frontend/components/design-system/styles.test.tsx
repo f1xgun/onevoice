@@ -140,7 +140,7 @@ describe('compiled Tailwind button and field cascade', () => {
           ] as const) {
             await page.emulateMedia({ colorScheme: scheme });
             await page.locator('html').evaluate((html, value) => {
-              html.className = value;
+              html.setAttribute('class', value);
             }, theme);
             expect(
               await page.locator('body').evaluate((body) => getComputedStyle(body).backgroundColor)
