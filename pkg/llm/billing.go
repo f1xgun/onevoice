@@ -123,6 +123,19 @@ type MonthlyUsageSummary struct {
 	// Images is the count of rows whose provider is the image-generation
 	// provider ("openai-image").
 	Images int `json:"images"`
+	// Units counts actual consume/overage credits, excluding unmetered legacy rows.
+	Units MonthlyUsageUnits `json:"units"`
+}
+
+// MonthlyUsageUnits groups metered invocations by known provider type. It does
+// not count completed replies or posts: usage logs do not retain task intent.
+// Custom or unknown providers remain Other rather than guessing their purpose.
+// Total includes both allowance consumption and metered overage.
+type MonthlyUsageUnits struct {
+	Total  int `json:"total"`
+	Text   int `json:"text"`
+	Images int `json:"images"`
+	Other  int `json:"other"`
 }
 
 // ImageProvider is the usage_logs.provider value stamped on image-generation

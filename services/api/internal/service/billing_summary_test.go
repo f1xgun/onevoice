@@ -41,7 +41,7 @@ func (f fakeSummaryBilling) GetDailySpend(_ context.Context, _ uuid.UUID, _ time
 func TestBillingSummaryService_AssemblesAllBlocks(t *testing.T) {
 	svc := NewBillingSummaryService(
 		fakeSummaryResolver{plan: planresolver.Plan{Code: "pro", Name: "Pro", MonthlyCredits: 2000, DailyLLMUSDCap: 50}},
-		fakeSummaryBilling{balance: 1500, summary: llm.MonthlyUsageSummary{Actions: 12, SpendUSD: 3.75, Images: 2}, daily: 4.2},
+		fakeSummaryBilling{balance: 1500, summary: llm.MonthlyUsageSummary{Actions: 12, SpendUSD: 3.75, Images: 2, Units: llm.MonthlyUsageUnits{Total: 9, Text: 6, Images: 2, Other: 1}}, daily: 4.2},
 	)
 
 	got, err := svc.Summary(context.Background(), uuid.New())
@@ -59,6 +59,7 @@ func TestBillingSummaryService_AssemblesAllBlocks(t *testing.T) {
 	require.Equal(t, 12, got.UsageThisMonth.Actions)
 	require.InDelta(t, 3.75, got.UsageThisMonth.SpendUSD, 1e-9)
 	require.Equal(t, 2, got.UsageThisMonth.Images)
+	require.Equal(t, llm.MonthlyUsageUnits{Total: 9, Text: 6, Images: 2, Other: 1}, got.UsageThisMonth.Units)
 
 	require.InDelta(t, 4.2, got.DailySpend.TodayUSD, 1e-9)
 	require.InDelta(t, 50.0, got.DailySpend.CapUSD, 1e-9)

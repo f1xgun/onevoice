@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -40,6 +41,7 @@ func TestBillingHandler_Summary_HappyPath(t *testing.T) {
 	biz := uuid.New()
 	summary := service.BillingSummary{}
 	summary.Plan.Code = "pro"
+	summary.UsageThisMonth.Units = llm.MonthlyUsageUnits{Total: 9, Text: 6, Images: 2, Other: 1}
 	stub := &fakeBillingSummarizer{summary: summary}
 	h := NewBillingHandler(stub)
 
@@ -55,6 +57,8 @@ func TestBillingHandler_Summary_HappyPath(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	plan := body["plan"].(map[string]any)
 	require.Equal(t, "pro", plan["code"])
+	usage := body["usage_this_month"].(map[string]any)
+	require.Equal(t, map[string]any{"total": float64(9), "text": float64(6), "images": float64(2), "other": float64(1)}, usage["units"])
 }
 
 func TestBillingHandler_Summary_ForbiddenWithoutPermission(t *testing.T) {

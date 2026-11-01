@@ -174,7 +174,13 @@ func (r *billingRepository) GetCreditBalance(ctx context.Context, businessID uui
 }
 
 // GetMonthlyUsageSummary aggregates a business's usage_logs over the UTC
-// calendar month (year, month) into action count, total spend, and image count.
+// calendar month (year, month) into raw activity/spend and metered unit totals.
+// Only linked consume/overage ledger entries contribute units; a historic
+// unmetered row contributes activity/spend but no charged units. Aggregate the
+// ledger before joining so multiple entries cannot inflate raw activity/spend.
+// Zero-cost invocations still consume units when metered. Failed invocations
+// that never persisted a charge contribute none. Classification uses only known
+// provider types; usage_logs has no reply/post intent metadata.
 // The window is half-open [firstOfMonth, firstOfNextMonth) in UTC — same
 // wall-clock-deterministic boundary style as GetDailySpend so a caller in any
 // time zone lands on the UTC month it asked for. The composite index
@@ -189,7 +195,14 @@ func (r *billingRepository) GetMonthlyUsageSummary(ctx context.Context, business
 			"COALESCE(SUM(provider_cost_usd + commission_usd), 0)",
 		).
 		Column("COUNT(*) FILTER (WHERE provider = ?)", llm.ImageProvider).
+		Column("COALESCE(SUM(metered.units), 0)").
+		Column("COALESCE(SUM(metered.units) FILTER (WHERE provider IN (?, ?, ?)), 0)", "openai", "anthropic", "openrouter").
+		Column("COALESCE(SUM(metered.units) FILTER (WHERE provider = ?), 0)", llm.ImageProvider).
+		Column("COALESCE(SUM(metered.units) FILTER (WHERE provider NOT IN (?, ?, ?, ?)), 0)", "openai", "anthropic", "openrouter", llm.ImageProvider).
 		From("usage_logs").
+		LeftJoin(`(SELECT usage_log_id, SUM(-delta_credits + overage_credits) AS units
+			FROM credit_ledger WHERE business_id = ? AND reason IN ('consume', 'overage')
+			GROUP BY usage_log_id) metered ON metered.usage_log_id = usage_logs.id`, businessID).
 		Where(squirrel.Eq{"business_id": businessID}).
 		Where(squirrel.GtOrEq{"created_at": start}).
 		Where(squirrel.Lt{"created_at": next}).
@@ -199,7 +212,10 @@ func (r *billingRepository) GetMonthlyUsageSummary(ctx context.Context, business
 	}
 
 	var summary llm.MonthlyUsageSummary
-	if err := r.pool.QueryRow(ctx, sql, args...).Scan(&summary.Actions, &summary.SpendUSD, &summary.Images); err != nil {
+	if err := r.pool.QueryRow(ctx, sql, args...).Scan(
+		&summary.Actions, &summary.SpendUSD, &summary.Images,
+		&summary.Units.Total, &summary.Units.Text, &summary.Units.Images, &summary.Units.Other,
+	); err != nil {
 		return llm.MonthlyUsageSummary{}, fmt.Errorf("GetMonthlyUsageSummary: exec: %w", err)
 	}
 	return summary, nil

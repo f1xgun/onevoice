@@ -15,6 +15,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 
@@ -279,25 +280,44 @@ func TestBillingRepository_GetCreditBalance_LatestBalance(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// Test 10 — GetMonthlyUsageSummary aggregates over the UTC month window and
-// counts image-provider rows via FILTER. The image-provider FILTER placeholder
-// binds first ($1), then the WHERE args.
+// Monthly unit totals use metered credits, separately from raw activity and spend.
 func TestBillingRepository_GetMonthlyUsageSummary_Success(t *testing.T) {
-	mock, repo := newBillingRepoMock(t)
-	businessID := uuid.New()
-	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	next := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
-
-	mock.ExpectQuery(`COUNT\(\*\) FILTER \(WHERE provider = \$1\) FROM usage_logs WHERE`).
-		WithArgs(llm.ImageProvider, businessID.String(), start, next).
-		WillReturnRows(pgxmock.NewRows([]string{"count", "sum", "images"}).AddRow(12, 3.75, 2))
-
-	got, err := repo.GetMonthlyUsageSummary(context.Background(), businessID, 2026, 7)
-	require.NoError(t, err)
-	require.Equal(t, 12, got.Actions)
-	require.InDelta(t, 3.75, got.SpendUSD, 1e-9)
-	require.Equal(t, 2, got.Images)
-	require.NoError(t, mock.ExpectationsWereMet())
+	for _, tc := range []struct {
+		name            string
+		actions, images int
+		spend           float64
+		units           llm.MonthlyUsageUnits
+	}{
+		{name: "metered and legacy activity", actions: 12, images: 3, spend: 3.75,
+			units: llm.MonthlyUsageUnits{Total: 9, Text: 6, Images: 2, Other: 1}},
+		{name: "empty month"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock, repo := newBillingRepoMock(t)
+			businessID := uuid.New()
+			start := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+			next := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+			query := `SELECT COUNT(*), COALESCE(SUM(provider_cost_usd + commission_usd), 0),
+				COUNT(*) FILTER (WHERE provider = $1), COALESCE(SUM(metered.units), 0),
+				COALESCE(SUM(metered.units) FILTER (WHERE provider IN ($2, $3, $4)), 0),
+				COALESCE(SUM(metered.units) FILTER (WHERE provider = $5), 0),
+				COALESCE(SUM(metered.units) FILTER (WHERE provider NOT IN ($6, $7, $8, $9)), 0)
+				FROM usage_logs LEFT JOIN (SELECT usage_log_id, SUM(-delta_credits + overage_credits) AS units
+					FROM credit_ledger WHERE business_id = $10 AND reason IN ('consume', 'overage')
+					GROUP BY usage_log_id) metered ON metered.usage_log_id = usage_logs.id
+				WHERE business_id = $11 AND created_at >= $12 AND created_at < $13`
+			mock.ExpectQuery(regexp.QuoteMeta(query)).
+				WithArgs(llm.ImageProvider, "openai", "anthropic", "openrouter", llm.ImageProvider,
+					"openai", "anthropic", "openrouter", llm.ImageProvider, businessID, businessID.String(), start, next).
+				WillReturnRows(pgxmock.NewRows([]string{"actions", "spend", "images", "units", "text_units", "image_units", "other_units"}).
+					AddRow(tc.actions, tc.spend, tc.images, tc.units.Total, tc.units.Text, tc.units.Images, tc.units.Other))
+			got, err := repo.GetMonthlyUsageSummary(context.Background(), businessID, 2026, 12)
+			require.NoError(t, err)
+			require.Equal(t, llm.MonthlyUsageSummary{Actions: tc.actions, SpendUSD: tc.spend, Images: tc.images, Units: tc.units}, got)
+			require.Equal(t, got.Units.Total, got.Units.Text+got.Units.Images+got.Units.Other)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 // GetUserBalance is a legacy user-keyed stub retained for the interface
