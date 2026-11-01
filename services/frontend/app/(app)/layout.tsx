@@ -118,7 +118,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   if (sessionError) {
     return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="ov-app flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-sm text-ink-mid">{tSession('refreshFailed')}</p>
         <Button type="button" onClick={() => setSessionAttempt((n) => n + 1)}>
           {tSession('retry')}
@@ -143,7 +143,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <>
         <PermissionsCacheGuard />
         {isDesktop ? (
-          <div className="flex h-dvh">
+          <div className="ov-app flex h-dvh">
             <NavRail />
             <PanelGroup
               direction="horizontal"
@@ -185,7 +185,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </PanelGroup>
           </div>
         ) : (
-          <div className="flex h-dvh flex-col">
+          <div className="ov-app flex h-dvh flex-col">
             <Sidebar />
             <main
               id="main-content"

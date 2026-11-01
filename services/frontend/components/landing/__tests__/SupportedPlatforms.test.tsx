@@ -48,6 +48,9 @@ describe('landing platform availability', () => {
           .getByRole('heading', { name: copy.platforms[id].display })
           .closest('li')!;
         expect(within(row).getByText(copy.platformStatus[key])).toBeVisible();
+        const logo = row.querySelector('img');
+        expect(logo).toHaveAttribute('src', expect.stringContaining('/platforms/'));
+        expect(logo?.getAttribute('src')).not.toContain('-brand.svg');
       }
     }
   );

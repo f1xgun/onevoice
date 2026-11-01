@@ -71,7 +71,9 @@ it.each([
   const { container } = render(<ToolCard tool={makePending({ name })} />);
   expect(screen.getByText(action)).toBeVisible();
   expect(screen.getByText(platform)).toBeVisible();
-  expect(container.querySelector('img[src*="/platforms/"]')).not.toBeNull();
+  const logo = container.querySelector('img[src*="/platforms/"]');
+  expect(logo).toHaveAttribute('src', expect.stringContaining('-brand.svg'));
+  expect(logo).not.toHaveClass('dark:invert');
   expect(screen.queryByText(name)).not.toBeInTheDocument();
 });
 

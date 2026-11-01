@@ -16,15 +16,23 @@ const ICON_FILES: Record<string, string> = {
   ok: 'odnoklassniki',
 };
 
+const BRAND_FILES: Record<string, string> = {
+  telegram: 'telegram-brand',
+  vk: 'vk-brand',
+  yandex_business: 'yandex-business-brand',
+};
+
 interface PlatformIconProps {
   platform: string;
   className?: string;
+  variant?: 'brand' | 'monochrome';
 }
 
 /** Decorative brand mark; the caller supplies the visible platform name. */
-export function PlatformIcon({ platform, className }: PlatformIconProps) {
-  const file = ICON_FILES[platform];
-  if (!file) return <Globe aria-hidden className={cn('h-5 w-5 shrink-0', className)} />;
+export function PlatformIcon({ platform, className, variant = 'brand' }: PlatformIconProps) {
+  const brandFile = variant === 'brand' ? BRAND_FILES[platform] : undefined;
+  const file = brandFile ?? ICON_FILES[platform];
+  if (!file) return <Globe aria-hidden className={cn('h-head w-head shrink-0', className)} />;
   return (
     <Image
       src={`/platforms/${file}.svg`}
@@ -32,8 +40,8 @@ export function PlatformIcon({ platform, className }: PlatformIconProps) {
       width={24}
       height={24}
       className={cn(
-        'h-5 w-5 shrink-0 object-contain',
-        platform !== '2gis' && 'dark:invert',
+        'h-head w-head shrink-0 object-contain',
+        !brandFile && platform !== '2gis' && 'dark:invert',
         className
       )}
     />

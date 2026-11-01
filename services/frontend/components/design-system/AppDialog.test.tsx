@@ -14,14 +14,14 @@ import { SheetContent } from './AppSheet';
 import { ActionButton } from './ActionButton';
 import { hasLayoutBrowser, withLayoutPage } from '@/test-utils/browser-layout';
 
-function Fixture({ sheet = false }: { sheet?: boolean }) {
+function Fixture({ sheet = false }: { sheet?: boolean | 'bottom' }) {
   const Surface = sheet ? SheetContent : AppDialog;
   const [open, setOpen] = useState(false);
   return (
     <>
       <ActionButton onClick={() => setOpen(true)}>Open</ActionButton>
       <Dialog open={open} onOpenChange={setOpen}>
-        <Surface>
+        <Surface {...(sheet === 'bottom' ? { side: 'bottom' as const } : {})}>
           <DialogHeader>
             <DialogTitle>Connection</DialogTitle>
             <DialogDescription>Enter account details</DialogDescription>
@@ -42,7 +42,7 @@ function Fixture({ sheet = false }: { sheet?: boolean }) {
 }
 
 describe('AppDialog', () => {
-  it.each([false, true])(
+  it.each([false, true, 'bottom'] as const)(
     'traps keyboard focus, closes on Escape and restores a programmatic opener (sheet: %s)',
     async (sheet) => {
       const user = userEvent.setup();

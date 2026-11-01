@@ -27,7 +27,7 @@ describe('SaveTemplateDialog', () => {
       wrapper: Wrapper,
     });
     const opener = screen.getByRole('button', { name: 'Сохранить как шаблон' });
-    expect(opener).toHaveClass('min-h-11');
+    expect(opener).toHaveClass('min-h-[var(--ov-button-sm-h)]');
     await user.click(opener);
     expect(screen.getByText(/сотрудники этой организации/)).toBeInTheDocument();
     const name = screen.getByRole('textbox', { name: 'Название шаблона' });

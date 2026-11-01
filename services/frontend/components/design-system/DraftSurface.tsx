@@ -10,7 +10,10 @@ export function DraftSurface({ className, children, ...props }: DraftSurfaceProp
   return (
     <Card
       {...props}
-      className={cn('min-w-0 rounded-lg border-line bg-card p-4 shadow-none sm:p-6', className)}
+      className={cn(
+        'min-w-0 rounded-lg border-[length:var(--ov-block-border)] border-line bg-card p-4 shadow-none sm:p-[var(--ov-block-pad-desktop)]',
+        className
+      )}
     >
       <div className="min-w-0 break-words text-reading">{children}</div>
     </Card>
