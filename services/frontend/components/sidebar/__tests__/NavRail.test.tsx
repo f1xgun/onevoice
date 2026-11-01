@@ -63,7 +63,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 const destinations = [
-  ['Ждет вашего слова', '/tasks'],
+  ['Ждет вашего слова', '/inbox'],
   ['Поручения', '/chat'],
   ['Посты', '/posts'],
   ['Отзывы', '/reviews'],

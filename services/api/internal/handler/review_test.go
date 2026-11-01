@@ -882,3 +882,5 @@ func TestDomainReviewToOpenAPI_VKLegacyAuthors(t *testing.T) {
 		})
 	}
 }
+
+func (m *mockReviewService) Skip(context.Context, uuid.UUID, string) error { return nil }

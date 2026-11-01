@@ -110,7 +110,7 @@ func computeSLA(reviews []domain.Review, now time.Time, targetHours int) SLAStat
 
 		if r.ReplyStatus == domain.ReviewReplyStatusReplied {
 			stats.Answered++
-		} else {
+		} else if r.ReplyStatus != domain.ReviewReplyStatusSkipped {
 			stats.Unanswered++
 			age := now.Sub(r.CreatedAt)
 			bucketUnanswered(&stats.Buckets, age)

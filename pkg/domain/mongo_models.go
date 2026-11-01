@@ -41,6 +41,7 @@ const (
 // Review.ReplyStatus values used by the syncer and the manual-reply handler.
 const (
 	ReviewReplyStatusPending = "pending"
+	ReviewReplyStatusSkipped = "skipped"
 	ReviewReplyStatusReplied = "replied"
 	ReviewReplyStatusError   = "error"
 )

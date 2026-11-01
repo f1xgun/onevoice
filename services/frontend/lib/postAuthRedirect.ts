@@ -3,7 +3,7 @@
 // unauthenticated visitors to `/login?next=/invite/<token>`), falling back to
 // the default landing when absent or untrusted.
 
-const DEFAULT_POST_AUTH_PATH = '/chat';
+const DEFAULT_POST_AUTH_PATH = '/inbox';
 
 // Auth pages themselves are never valid `next` targets — redirecting back would
 // loop the user straight into the form they just submitted.

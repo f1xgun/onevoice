@@ -330,7 +330,13 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		authHandler.SetConsentDiffer(svcs.Consent)
 	}
 
+	pendingReader, ok := h.PendingToolCallRepo.(domain.BusinessPendingToolCallReader)
+	if !ok {
+		return nil, fmt.Errorf("wire: pending store lacks decision queue reader")
+	}
+	decisionQueue := handler.NewDecisionQueueHandler(service.NewDecisionQueueService(repos.Review, pendingReader, repos.Integration, repos.SyncState, repos.AuditLog))
 	return &router.Handlers{
+		DecisionQueue:        decisionQueue,
 		Auth:                 authHandler,
 		Business:             businessHandler,
 		Integration:          integrationHandler,

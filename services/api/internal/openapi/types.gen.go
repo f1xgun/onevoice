@@ -347,6 +347,7 @@ const (
 	ReviewReplyStatusError   ReviewReplyStatus = "error"
 	ReviewReplyStatusPending ReviewReplyStatus = "pending"
 	ReviewReplyStatusReplied ReviewReplyStatus = "replied"
+	ReviewReplyStatusSkipped ReviewReplyStatus = "skipped"
 )
 
 // Defines values for SSEConcurrencyErrorCode.
@@ -516,6 +517,7 @@ const (
 	Error   ListReviewsParamsReplyStatus = "error"
 	Pending ListReviewsParamsReplyStatus = "pending"
 	Replied ListReviewsParamsReplyStatus = "replied"
+	Skipped ListReviewsParamsReplyStatus = "skipped"
 )
 
 // AcceptInvitationResponse defines model for AcceptInvitationResponse.
@@ -1654,7 +1656,7 @@ type Review struct {
 	Platform         string                  `json:"platform" validate:"required"`
 	PlatformMeta     *map[string]interface{} `json:"platformMeta,omitempty"`
 	Rating           int                     `json:"rating" validate:"required"`
-	ReplyStatus      ReviewReplyStatus       `json:"replyStatus" validate:"required,oneof=pending replied error"`
+	ReplyStatus      ReviewReplyStatus       `json:"replyStatus" validate:"required,oneof=pending skipped replied error"`
 	ReplyText        *string                 `json:"replyText,omitempty"`
 	Text             string                  `json:"text" validate:"required"`
 }

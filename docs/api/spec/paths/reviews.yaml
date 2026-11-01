@@ -42,6 +42,7 @@
         type: string
         enum:
         - pending
+        - skipped
         - replied
         - error
     - name: limit

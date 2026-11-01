@@ -1,0 +1,73 @@
+/businesses/{id}/decision-queue:
+  get:
+    operationId: getDecisionQueue
+    summary: Pending decisions visible to the caller, plus provably automatic review receipts.
+    description: One approval item represents a whole pending batch owned by the current user. Existing resolve and resume protocols are unchanged. Sources retain their content.read, integrations.read and audit.read gates.
+    tags: [reviews]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Decision queue read projection. Any source read failure fails the request rather than returning a false empty queue.
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, total, automatic]
+              properties:
+                total:
+                  type: integer
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, kind, createdAt]
+                    properties:
+                      id: {type: string}
+                      kind: {type: string, enum: [review, approval_batch, connection, drift]}
+                      platform: {type: string}
+                      createdAt: {type: string, format: date-time}
+                      review:
+                        $ref: ../openapi.yaml#/components/schemas/Review
+                      conversationId: {type: string}
+                      callCount: {type: integer}
+                      drift: {type: object, additionalProperties: true}
+                automatic:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+      '403':
+        description: No business.read access.
+      '500':
+        description: Queue state unavailable.
+/businesses/{id}/reviews/{reviewID}/skip:
+  post:
+    operationId: skipReview
+    summary: Persist a deliberate non-reply, without sending externally. Requires content.update.
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: reviewID
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '204': {description: Skipped; later manual replies remain allowed.}
+      '403': {description: No content.update access.}
+      '404': {description: Review not in this business.}
+      '409': {description: Review no longer pending.}
+/businesses/{id}/reviews/{reviewID}/regenerate:
+  post:
+    operationId: regenerateReview
+    summary: Reopen a pending draft and run the existing metered single-flight drafter. Requires content.update.
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: reviewID
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '204': {description: Draft generation completed. Reload the review for its new draft.}
+      '403': {description: No content.update access.}
+      '404': {description: Review not in this business.}
+      '409': {description: Draft busy or review no longer pending.}

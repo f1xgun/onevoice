@@ -7,10 +7,10 @@ import {
 } from '../postAuthRedirect';
 
 describe('safeNextPath', () => {
-  it('falls back to /chat for null / undefined / empty', () => {
-    expect(safeNextPath(null)).toBe('/chat');
-    expect(safeNextPath(undefined)).toBe('/chat');
-    expect(safeNextPath('')).toBe('/chat');
+  it('falls back to /inbox for null / undefined / empty', () => {
+    expect(safeNextPath(null)).toBe('/inbox');
+    expect(safeNextPath(undefined)).toBe('/inbox');
+    expect(safeNextPath('')).toBe('/inbox');
   });
 
   it('accepts a same-origin absolute path (the invite case)', () => {
@@ -20,22 +20,22 @@ describe('safeNextPath', () => {
   });
 
   it('rejects protocol-relative / scheme-relative URLs (open-redirect guard)', () => {
-    expect(safeNextPath('//evil.com')).toBe('/chat');
-    expect(safeNextPath('/\\evil.com')).toBe('/chat');
+    expect(safeNextPath('//evil.com')).toBe('/inbox');
+    expect(safeNextPath('/\\evil.com')).toBe('/inbox');
   });
 
   it('rejects absolute URLs and javascript: payloads', () => {
-    expect(safeNextPath('https://evil.com')).toBe('/chat');
-    expect(safeNextPath('http://evil.com/x')).toBe('/chat');
-    expect(safeNextPath('javascript:alert(1)')).toBe('/chat');
-    expect(safeNextPath('evil.com')).toBe('/chat');
+    expect(safeNextPath('https://evil.com')).toBe('/inbox');
+    expect(safeNextPath('http://evil.com/x')).toBe('/inbox');
+    expect(safeNextPath('javascript:alert(1)')).toBe('/inbox');
+    expect(safeNextPath('evil.com')).toBe('/inbox');
   });
 
   it('never bounces back to an auth page (loop guard)', () => {
-    expect(safeNextPath('/login')).toBe('/chat');
-    expect(safeNextPath('/register')).toBe('/chat');
-    expect(safeNextPath('/login?next=/invite/abc')).toBe('/chat');
-    expect(safeNextPath('/register#x')).toBe('/chat');
+    expect(safeNextPath('/login')).toBe('/inbox');
+    expect(safeNextPath('/register')).toBe('/inbox');
+    expect(safeNextPath('/login?next=/invite/abc')).toBe('/inbox');
+    expect(safeNextPath('/register#x')).toBe('/inbox');
   });
 });
 
@@ -54,8 +54,8 @@ describe('nextParamFrom', () => {
 describe('resolvePostAuthRedirect', () => {
   it('routes a valid invite next through, untrusted to /chat', () => {
     expect(resolvePostAuthRedirect('?next=/invite/abc123')).toBe('/invite/abc123');
-    expect(resolvePostAuthRedirect('?next=//evil.com')).toBe('/chat');
-    expect(resolvePostAuthRedirect('')).toBe('/chat');
+    expect(resolvePostAuthRedirect('?next=//evil.com')).toBe('/inbox');
+    expect(resolvePostAuthRedirect('')).toBe('/inbox');
   });
 });
 
@@ -69,6 +69,6 @@ describe('loginRedirectPath', () => {
     }
   );
   it('does not create an authentication redirect loop', () => {
-    expect(loginRedirectPath({ pathname: '/login', search: '' })).toBe('/login?next=%2Fchat');
+    expect(loginRedirectPath({ pathname: '/login', search: '' })).toBe('/login?next=%2Finbox');
   });
 });
