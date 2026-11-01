@@ -1481,6 +1481,29 @@
       "retry": "Повторить",
       "wildberries": "Wildberries",
       "ozon": "Ozon"
+    },
+    "v2": {
+      "title": "Площадки",
+      "subtitle": "Где OneVoice отвечает и публикует от вашего имени",
+      "registryError": "Не удалось загрузить список площадок. Попробуйте ещё раз.",
+      "unavailable": "Пока недоступны",
+      "notConfigured": "Подключение пока недоступно",
+      "soon": "Скоро",
+      "sync": "Сверка карточки и настройки проверки",
+      "telegramTitle": "Канал в Telegram",
+      "yandexTitle": "Яндекс Карты",
+      "copyBot": "Скопировать имя бота",
+      "botCopied": "Имя бота скопировано",
+      "copyFailed": "Не удалось скопировать. Скопируйте имя вручную.",
+      "telegramChannelStep": "Напишите имя канала или его ID",
+      "verifyAndConnect": "Проверить и подключить",
+      "telegramNote": "Бот публикует только то, что разрешено OneVoice. Убрать его можно в настройках канала.",
+      "platforms": {
+        "telegram": "Канал в Telegram",
+        "vk": "Сообщество ВКонтакте",
+        "yandex_business": "Яндекс Карты"
+      },
+      "loading": "Загружаем настройки подключения…"
     }
   },
   "gettingStarted": {

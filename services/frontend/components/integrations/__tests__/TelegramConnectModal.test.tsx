@@ -35,9 +35,8 @@ function renderModal(onClose = vi.fn()) {
 // Walks the two-step wizard: step 1 intro → "Далее", then types the channel
 // id and clicks "Подключить".
 async function submitChannel(user: ReturnType<typeof userEvent.setup>, channel: string) {
-  await user.click(screen.getByRole('button', { name: 'Далее' }));
   await user.type(screen.getByPlaceholderText(/@channel/), channel);
-  await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
+  await user.click(screen.getByRole('button', { name: 'Проверить и подключить' }));
 }
 
 const VERIFY_REQUIRED = 'Подтвердите email, чтобы продолжить.';
@@ -110,3 +109,11 @@ it.each(['ru', 'en'] as const)(
     expect(dialog).toHaveAccessibleDescription(description.textContent!);
   }
 );
+
+it('copies the actual bot username from the connection sheet', async () => {
+  const user = userEvent.setup();
+  const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+  renderModal();
+  await user.click(screen.getByRole('button', { name: 'Скопировать имя бота' }));
+  expect(write).toHaveBeenCalledWith('@OneVoiceBot');
+});

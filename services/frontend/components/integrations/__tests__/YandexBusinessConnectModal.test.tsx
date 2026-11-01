@@ -66,7 +66,7 @@ describe('YandexBusinessConnectModal — method routing', () => {
       expect(apiGet).toHaveBeenCalledWith('/integrations/yandex_business/delegated-config')
     );
     expect(await screen.findByText(/Добавьте представителя OneVoice/)).toBeInTheDocument();
-    expect(screen.getByText('onevoice-rep')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('onevoice-rep')).toBeInTheDocument();
     expect(screen.queryByText('Зачем нужны cookies?')).not.toBeInTheDocument();
   });
 

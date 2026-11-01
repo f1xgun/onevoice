@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ChevronRight } from 'lucide-react';
 
 import { PlatformIcon } from './PlatformIcons';
 
@@ -29,17 +29,9 @@ import {
 } from '@/components/design-system/AppAlertDialog';
 import { Badge } from '@/components/ui/badge';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { bizApi } from '@/lib/api/business-api';
 import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
-import {
-  channelConnectionState,
-  CONNECTION_HEALTH_TONES,
-  STATUS_LABEL_KEYS,
-  STATUS_TONES,
-  readConnectionHealth,
-  type IntegrationStatus,
-} from '@/lib/constants/integrationStatus';
+import { channelConnectionState, readConnectionHealth } from '@/lib/constants/integrationStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
@@ -127,91 +119,122 @@ export function PlatformCard({
 
   const connection = channelConnectionState(integrations);
 
-  return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-lg border border-line bg-paper-raised',
-        disabled && 'pointer-events-none opacity-50'
-      )}
-    >
-      {/* Header */}
-      <div className="flex items-start gap-4 px-5 py-5">
-        <span
-          aria-hidden
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-soft bg-paper-sunken font-mono text-[11px] text-ink-soft"
+  const needsReconnect = connection === 'error';
+  const header = (
+    <>
+      <PlatformIcon platform={platform} />
+      <div className="min-w-0 flex-1">
+        <h2 className="text-reading font-semibold">{label}</h2>
+        {integrations.length === 0 ? (
+          <p className="mt-1 text-meta text-ink-soft">{description}</p>
+        ) : (
+          integrations.map((i) => {
+            const display = getIntegrationDisplay(i, label);
+            const health = readConnectionHealth(i.metadata);
+            const reason = health?.reason_code ? `health.reason.${health.reason_code}` : '';
+            return (
+              <div key={i.id} className="mt-1 break-words text-reading text-ink-soft">
+                <p>
+                  {display.name}
+                  {display.identifier ? ` · ${display.identifier}` : ''}
+                </p>
+                {(health?.status === 'broken' || health?.status === 'degraded') &&
+                  reason &&
+                  tCard.has(reason) && (
+                    <p className="mt-1 text-meta text-danger">{tCard(reason)}</p>
+                  )}
+              </div>
+            );
+          })
+        )}
+        <p
+          className={cn(
+            'mt-1 flex items-start gap-2 text-reading',
+            needsReconnect ? 'text-danger' : 'text-ink'
+          )}
         >
-          <PlatformIcon platform={platform} className="h-6 w-6" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-[15px] font-semibold text-ink">{label}</span>
-            {connection === 'connected' ? (
-              <Badge tone="success" dot>
-                {tCard('connected')}
-              </Badge>
-            ) : (
-              <Badge tone={connection === 'error' ? 'danger' : 'neutral'}>
-                {tCard(connection === 'disconnected' ? 'notConnected' : `connection.${connection}`)}
-              </Badge>
+          <span
+            aria-hidden
+            className={cn(
+              'mt-2 h-2.5 w-2.5 shrink-0 rounded-full',
+              connection === 'connected' ? 'bg-ok' : needsReconnect ? 'bg-danger' : 'bg-field'
             )}
-            {isPreview && (
-              <Badge
-                tone="warning"
-                title={tCard('previewTooltip')}
-                aria-label={tCard('previewTooltip')}
-              >
-                {tCard('previewBadge')}
-              </Badge>
-            )}
-          </div>
-          <div className="mt-0.5 text-[13px] text-ink-mid">{description}</div>
-        </div>
+          />
+          {integrations.some((i) => i.status === 'token_expired')
+            ? tCard('status.token_expired')
+            : tCard(
+                connection === 'connected'
+                  ? 'connected'
+                  : connection === 'disconnected'
+                    ? 'notConnected'
+                    : `connection.${connection}`
+              )}
+        </p>
+        {integrations.some((i) => readConnectionHealth(i.metadata)?.status === 'degraded') && (
+          <p className="mt-1 text-meta text-warning">{tCard('health.degradedLabel')}</p>
+        )}
+        {isPreview && (
+          <Badge
+            tone="warning"
+            title={tCard('previewTooltip')}
+            aria-label={tCard('previewTooltip')}
+          >
+            {tCard('previewBadge')}
+          </Badge>
+        )}
       </div>
+    </>
+  );
 
-      {/* Channels list */}
-      {integrations.length > 0 && (
-        <div className="px-5 pb-5">
-          <p className="text-meta text-ink-soft">{tCard('channels')}</p>
-          <div className="mt-2.5">
-            {integrations.length > 3 ? (
-              <ScrollArea className="max-h-44">
-                <ChannelList
-                  integrations={integrations}
-                  platform={platform}
-                  platformLabel={label}
-                  onDisconnect={onDisconnect}
-                  canDisconnect={canDisconnect}
-                  refreshingID={refreshingID}
-                  onRefreshTelegram={refreshTelegramLinkedGroup}
-                  activeBusinessId={activeBusinessId}
-                />
-              </ScrollArea>
-            ) : (
-              <ChannelList
-                integrations={integrations}
-                platform={platform}
-                platformLabel={label}
-                onDisconnect={onDisconnect}
-                canDisconnect={canDisconnect}
-                refreshingID={refreshingID}
-                onRefreshTelegram={refreshTelegramLinkedGroup}
-                activeBusinessId={activeBusinessId}
-              />
-            )}
+  return (
+    <div className={cn('p-3', disabled && 'opacity-50')}>
+      {integrations.length > 0 ? (
+        <details className="group">
+          <summary className="flex min-h-tap cursor-pointer list-none items-start gap-3 [&::-webkit-details-marker]:hidden">
+            {header}
+            <ChevronRight
+              aria-hidden
+              className="mt-1 h-head-sm w-head-sm shrink-0 text-ink-soft group-open:rotate-90"
+            />
+          </summary>
+          <div className="ml-11 mt-3">
+            <ChannelList
+              integrations={integrations}
+              platform={platform}
+              platformLabel={label}
+              onDisconnect={onDisconnect}
+              canDisconnect={canDisconnect}
+              refreshingID={refreshingID}
+              onRefreshTelegram={refreshTelegramLinkedGroup}
+              activeBusinessId={activeBusinessId}
+            />
             {canConnect && (
-              <Button variant="secondary" size="sm" className="mt-3" onClick={onConnect}>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-3"
+                onClick={onConnect}
+                disabled={disabled}
+              >
                 {tCard('addChannel')}
               </Button>
             )}
           </div>
-        </div>
+        </details>
+      ) : (
+        <div className="flex items-start gap-3">{header}</div>
       )}
-
-      {integrations.length === 0 && canConnect && (
-        <div className="px-5 pb-5">
-          <Button variant="primary" size="sm" onClick={onConnect}>
-            {tCard('connect')}
-          </Button>
+      {canConnect && (integrations.length === 0 || needsReconnect) && (
+        <div className="ml-11 mt-3">
+          {needsReconnect ? (
+            <Button asChild disabled={disabled}>
+              <Link href={`/integrations?reconnect=${platform}`}>{tCard('reconnect')}</Link>
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={onConnect} disabled={disabled}>
+              {tCard('connect')}
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -285,12 +308,7 @@ function ChannelList({
   return (
     <div className="flex flex-col gap-2">
       {integrations.map((i) => {
-        const status = i.status as IntegrationStatus;
         const connection = channelConnectionState([i]);
-        const tone = connection === 'error' ? 'danger' : (STATUS_TONES[status] ?? 'neutral');
-        const statusLabel = (STATUS_LABEL_KEYS as readonly string[]).includes(i.status)
-          ? tCard(`status.${i.status}`)
-          : tCard('connection.unknown');
         const display = getIntegrationDisplay(i, platformLabel);
         const showLinkedGroupWarn =
           platform === 'telegram' &&
@@ -299,13 +317,8 @@ function ChannelList({
         const health = readConnectionHealth(i.metadata as Record<string, unknown> | undefined);
         const alarmingHealth =
           health?.status === 'broken' || health?.status === 'degraded' ? health.status : null;
-        const healthTone = alarmingHealth ? CONNECTION_HEALTH_TONES[alarmingHealth] : null;
-        const healthLabel = alarmingHealth
-          ? tCard(alarmingHealth === 'broken' ? 'health.brokenLabel' : 'health.degradedLabel')
-          : '';
         const reasonKey = health?.reason_code ? `health.reason.${health.reason_code}` : '';
         const healthReason = reasonKey && tCard.has(reasonKey) ? tCard(reasonKey) : '';
-        const showHealthReconnect = alarmingHealth === 'broken' && i.status !== 'token_expired';
 
         return (
           <div
@@ -324,14 +337,14 @@ function ChannelList({
             <div className="min-w-0 flex-1">
               <div className="break-words text-reading text-ink">{display.name}</div>
               {display.identifier && (
-                <div className="break-all font-mono text-technical text-ink-faint">
+                <div className="break-all font-mono text-meta text-ink-faint">
                   {display.identifier}
                 </div>
               )}
               {alarmingHealth && healthReason && (
                 <div
                   className={cn(
-                    'mt-1 text-[11px] leading-snug',
+                    'mt-1 text-meta',
                     alarmingHealth === 'broken'
                       ? 'text-[var(--ov-danger)]'
                       : 'text-[var(--ov-warning-ink)]'
@@ -374,26 +387,6 @@ function ChannelList({
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-              )}
-
-              {!(alarmingHealth === 'broken' && i.status === 'active') && (
-                <Badge tone={tone}>{statusLabel}</Badge>
-              )}
-
-              {alarmingHealth && healthTone && (
-                <Badge
-                  tone={healthTone}
-                  title={healthReason}
-                  aria-label={healthReason || healthLabel}
-                >
-                  {healthLabel}
-                </Badge>
-              )}
-
-              {(i.status === 'token_expired' || showHealthReconnect) && (
-                <Button variant="secondary" size="sm" className="h-7 px-2" asChild>
-                  <Link href={`/integrations?reconnect=${platform}`}>{tCard('reconnect')}</Link>
-                </Button>
               )}
 
               {canDisconnect && (

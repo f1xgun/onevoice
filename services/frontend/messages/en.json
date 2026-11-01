@@ -1481,6 +1481,29 @@
       "retry": "Retry",
       "wildberries": "Wildberries",
       "ozon": "Ozon"
+    },
+    "v2": {
+      "title": "Platforms",
+      "subtitle": "Where OneVoice replies and publishes on your behalf",
+      "registryError": "Could not load the platform list. Try again.",
+      "unavailable": "Currently unavailable",
+      "notConfigured": "Connection is not available yet",
+      "soon": "Coming soon",
+      "sync": "Profile checks and verification settings",
+      "telegramTitle": "Telegram channel",
+      "yandexTitle": "Yandex Maps",
+      "copyBot": "Copy bot username",
+      "botCopied": "Bot username copied",
+      "copyFailed": "Could not copy. Copy the username manually.",
+      "telegramChannelStep": "Enter the channel username or ID",
+      "verifyAndConnect": "Verify and connect",
+      "telegramNote": "The bot only publishes what OneVoice is allowed to publish. You can remove it in the channel settings.",
+      "platforms": {
+        "telegram": "Telegram channel",
+        "vk": "VK community",
+        "yandex_business": "Yandex Maps"
+      },
+      "loading": "Loading connection settings…"
     }
   },
   "gettingStarted": {

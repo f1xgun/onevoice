@@ -207,7 +207,7 @@ it.each(['future-state', '', 'error', 'inactive'])(
         />
       </Wrapper>
     );
-    expect(screen.getAllByText('Статус пока неизвестен')).toHaveLength(2);
+    expect(screen.getAllByText('Статус пока неизвестен')).toHaveLength(1);
     expect(screen.queryByText('Ошибка подключения')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Переподключить' })).not.toBeInTheDocument();
   }
@@ -229,7 +229,7 @@ it.each([
         />
       </Wrapper>
     );
-    expect(screen.getAllByText(label)).toHaveLength(2);
+    expect(screen.getAllByText(label)).toHaveLength(1);
     expect(
       screen.queryByRole('link', { name: /Переподключить|Reconnect/ })
     ).not.toBeInTheDocument();
@@ -242,7 +242,7 @@ it('shows a partial capability limitation without calling the channel broken', (
       <PlatformCard {...baseProps} platform="telegram" integrations={responses.degraded.body} />
     </Wrapper>
   );
-  expect(screen.getAllByText('Подключено')).toHaveLength(2);
+  expect(screen.getAllByText('Подключено')).toHaveLength(1);
   expect(screen.getByText('Ограничено')).toBeVisible();
   expect(screen.queryByText('Ошибка подключения')).not.toBeInTheDocument();
 });

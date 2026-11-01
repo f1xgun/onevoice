@@ -131,6 +131,7 @@ vi.mock('@/lib/hooks/usePermission', () => ({
 const fixture = vi.hoisted(() => ({ state: 'success' }));
 vi.mock('@/lib/hooks/usePlatforms', () => ({
   usePlatforms: () => ({
+    isSuccess: true,
     platforms: [
       { id: 'telegram', fullLabel: 'Telegram', status: 'active' },
       { id: 'google_business', fullLabel: 'Google Business Profile', status: 'active' },

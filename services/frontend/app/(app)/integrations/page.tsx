@@ -15,10 +15,9 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { PageHeader } from '@/components/ui/page-header';
-import { MonoLabel } from '@/components/ui/mono-label';
-import { EmptyChannels, SkeletonChannels } from '@/components/states';
+import { SkeletonChannels } from '@/components/states';
 import { InlineEmpty } from '@/components/states/InlineEmpty';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
@@ -26,10 +25,8 @@ import { VKCommunityPickerModal } from '@/components/integrations/VKCommunityPic
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
-import { SectionHelp } from '@/components/onboarding/SectionHelp';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
-import { ChannelDemandCards } from '@/components/integrations/ChannelDemandCards';
 import { ScopedBusinessLink } from '@/components/integrations/ScopedBusinessLink';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
@@ -78,6 +75,7 @@ export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
   const tCommon = useTranslations('common');
+  const tV2 = useTranslations('integrations.v2');
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
@@ -92,9 +90,19 @@ export default function IntegrationsPage() {
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
   const baselineBusinessIdRef = useRef<string | null>(null);
 
-  const { platforms, isSuccess: platformsReady } = usePlatforms();
-  const activePlatforms = platforms.filter((p) => p.status === 'active');
-  const comingSoonPlatforms = platforms.filter((p) => p.status === 'coming_soon');
+  const {
+    platforms,
+    isSuccess: platformsReady,
+    isPending: platformsLoading,
+    isError: platformsError,
+    refetch: refetchPlatforms,
+  } = usePlatforms();
+  const activePlatforms = platforms.filter(
+    (p) => p.status === 'active' && !['2gis', 'avito'].includes(p.id)
+  );
+  const comingSoonPlatforms = platforms.filter(
+    (p) => p.status === 'coming_soon' || ['2gis', 'avito'].includes(p.id)
+  );
 
   useEffect(() => {
     const connected = searchParams.get('connected');
@@ -146,7 +154,7 @@ export default function IntegrationsPage() {
     }
 
     const reconnect = searchParams.get('reconnect');
-    if (reconnect && reconnect in MODAL_COMPONENTS) {
+    if (canConnect && reconnect && reconnect in MODAL_COMPONENTS) {
       setActiveModalPlatform(reconnect as ModalPlatform);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
@@ -278,10 +286,12 @@ export default function IntegrationsPage() {
   return (
     <>
       <ScopedBusinessLink />
-      <PageHeader title={tIntegrations('title')} sub={tIntegrations('subtitle')} />
 
-      <div className="px-4 pb-10 sm:px-12 sm:pb-16">
-        <SectionHelp section="integrations" className="mb-8" />
+      <div className="mx-auto max-w-[816px] space-y-group px-gutter pb-10 pt-5 md:px-gutter-desktop">
+        <header>
+          <h1 className="text-page-title">{tV2('title')}</h1>
+          <p className="mt-1 text-[15px] leading-[22px] text-ink-soft">{tV2('subtitle')}</p>
+        </header>
 
         {lastRegistered && (
           <div className="mb-8">
@@ -293,7 +303,6 @@ export default function IntegrationsPage() {
           </div>
         )}
 
-        <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
         {!activeBusinessId ? (
           <InlineEmpty
             action={<EmptyAction href="/business" action="chooseBusiness" />}
@@ -316,17 +325,6 @@ export default function IntegrationsPage() {
           <div className="mb-8">
             <SkeletonChannels count={3} />
           </div>
-        ) : integrations.length === 0 && canConnect ? (
-          <div className="mb-8">
-            <EmptyChannels
-              onConnect={() => {
-                const target = document.getElementById('integrations-platform-grid');
-                if (target) {
-                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }}
-            />
-          </div>
         ) : integrations.length === 0 && !canConnect ? (
           <div className="mb-8">
             <InlineEmpty
@@ -337,15 +335,18 @@ export default function IntegrationsPage() {
             </InlineEmpty>
           </div>
         ) : null}
-        {activeBusinessId && !integrationsError && !integrationsLoading && (
-          <div id="integrations-platform-grid" className="grid grid-cols-1 items-start gap-4">
+        {activeBusinessId && !integrationsError && !integrationsLoading && platformsReady && (
+          <div
+            id="integrations-platform-grid"
+            className="!mt-title-gap rounded-block bg-block p-1 md:p-2"
+          >
             {activePlatforms.map((p) => {
               const platformIntegrations = getIntegrationsForPlatform(p.id);
               return (
                 <PlatformCard
                   key={p.id}
                   platform={p.id}
-                  label={p.fullLabel}
+                  label={tV2.has(`platforms.${p.id}`) ? tV2(`platforms.${p.id}`) : p.fullLabel}
                   description={tPlatformDesc(p.id)}
                   integrations={platformIntegrations}
                   onConnect={() => handleConnect(p.id)}
@@ -362,34 +363,60 @@ export default function IntegrationsPage() {
           </div>
         )}
 
-        {activeBusinessId && !integrationsError && integrations.length > 0 && (
-          <IntegrationsSyncPanel businessId={activeBusinessId} integrations={integrations} />
-        )}
-
-        {comingSoonPlatforms.length > 0 && (
-          <>
-            <SectionLabel className="mt-12">{tIntegrations('page.comingSoon')}</SectionLabel>
-            <ChannelDemandCards businessId={activeBusinessId} platforms={comingSoonPlatforms} />
-          </>
-        )}
-
-        <div className="mt-14 flex flex-col items-stretch gap-4 rounded-lg border border-line bg-paper-sunken p-6 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1">
-            <div className="text-base font-medium text-ink">
-              {tIntegrations('page.missingPlatform')}
-            </div>
-            <div className="mt-1 text-sm text-ink-mid">
-              {tIntegrations('page.missingPlatformBody')}
-            </div>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <Button variant="secondary" size="md" asChild>
-              <a href="mailto:hello@onevoice.app?subject=Запрос%20канала">
-                {tIntegrations('page.requestChannel')}
-              </a>
+        {platformsLoading && <SkeletonChannels count={3} />}
+        {platformsError && (
+          <div role="alert" className="space-y-3 rounded-block bg-block p-block">
+            <p>{tV2('registryError')}</p>
+            <Button variant="secondary" onClick={() => void refetchPlatforms()}>
+              {tCommon('retry')}
             </Button>
           </div>
-        </div>
+        )}
+        {platformsReady &&
+          platforms.filter((p) => p.status === 'oauth_not_configured').length > 0 && (
+            <section>
+              <h2 className="mb-block-gap text-group-title">{tV2('unavailable')}</h2>
+              <div className="rounded-block bg-block p-block">
+                {platforms
+                  .filter((p) => p.status === 'oauth_not_configured')
+                  .map((p) => (
+                    <p key={p.id} className="text-meta text-ink-soft">
+                      {p.fullLabel} — {tV2('notConfigured')}
+                    </p>
+                  ))}
+              </div>
+            </section>
+          )}
+        {platformsReady && comingSoonPlatforms.length > 0 && (
+          <section>
+            <h2 className="mb-block-gap text-group-title">{tIntegrations('page.comingSoon')}</h2>
+            <ul className="space-y-2">
+              {comingSoonPlatforms.map((p) => (
+                <li key={p.id} className="flex items-center gap-3">
+                  <PlatformIcon platform={p.id} className="h-head-sm w-head-sm" />
+                  <span className="flex-1 text-ink-soft">{p.fullLabel}</span>
+                  <Button variant="secondary" size="sm" disabled>
+                    {tV2('soon')}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        <a
+          href="mailto:hello@onevoice.app"
+          className="inline-flex min-h-tap items-center text-meta text-brand underline"
+        >
+          {tIntegrations('page.requestChannel')}
+        </a>
+        {activeBusinessId && !integrationsError && integrations.length > 0 && (
+          <details>
+            <summary className="min-h-tap cursor-pointer text-meta text-brand">
+              {tV2('sync')}
+            </summary>
+            <IntegrationsSyncPanel businessId={activeBusinessId} integrations={integrations} />
+          </details>
+        )}
       </div>
 
       {ActiveModal && <ActiveModal open={true} onClose={closeActiveModal} />}
@@ -398,14 +425,5 @@ export default function IntegrationsPage() {
 
       <FirstActionWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </>
-  );
-}
-
-function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <h2 className={`mb-4 mt-2 flex items-center gap-3 ${className ?? ''}`}>
-      <MonoLabel>{children}</MonoLabel>
-      <span aria-hidden className="h-px flex-1 bg-line-soft" />
-    </h2>
   );
 }
