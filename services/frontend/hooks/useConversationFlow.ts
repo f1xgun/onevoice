@@ -18,6 +18,7 @@ import { approvalKind, trackApprovalEvent } from '@/lib/approvalTelemetry';
 import { useResolveErrorMap } from '@/lib/resolveErrorMap';
 import { mapPreStreamChatError } from '@/lib/chatError';
 import type {
+  Attachment,
   ApprovalDecision,
   Message,
   PendingApproval,
@@ -122,6 +123,7 @@ interface ApiToolResult {
 }
 
 interface ApiMessage {
+  attachments?: Attachment[];
   id: string;
   role: string;
   content: string;
@@ -185,6 +187,7 @@ function mapApiMessages(apiMsgs: ApiMessage[]): Message[] {
       id: m.id,
       role: m.role as 'user' | 'assistant',
       content: m.content,
+      attachments: m.attachments,
       toolCalls,
       status: 'done' as const,
     };
@@ -197,6 +200,8 @@ interface UseConversationFlowOptions {
 
 interface SendMessageOptions {
   selectedPlatforms?: string[];
+  attachments?: Attachment[];
+  conversationId?: string;
 }
 
 export function useConversationFlow({ conversationId }: UseConversationFlowOptions) {
@@ -237,6 +242,10 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   }, []);
 
   useEffect(() => {
+    if (!conversationId) {
+      setIsLoading(false);
+      return;
+    }
     let cancelled = false;
     const historyController = new AbortController();
     let attempts = 0;
@@ -408,6 +417,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const sendMessage = useCallback(
     async (text: string, onAccepted?: () => void, options?: SendMessageOptions) => {
       if (isStreamingRef.current) return;
+      const targetConversationId = options?.conversationId ?? conversationId;
+      if (!targetConversationId) return;
 
       if (turnPollRef.current) {
         clearTimeout(turnPollRef.current);
@@ -419,6 +430,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
         id: crypto.randomUUID(),
         role: 'user',
         content: text,
+        attachments: options?.attachments,
         status: 'done',
       };
 
@@ -437,22 +449,23 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       ]);
       setIsStreaming(true);
       isStreamingRef.current = true;
-      streamingConversationIdRef.current = conversationId;
+      streamingConversationIdRef.current = targetConversationId;
 
       trackEvent('chat_send', 'send_message', {
-        metadata: { conversationId: conversationId ?? '' },
+        metadata: { conversationId: targetConversationId },
       });
 
       const controller = new AbortController();
       sendAbortRef.current = controller;
 
       try {
-        const response = await authFetch(chatUrl(activeBusinessId, conversationId), {
+        const response = await authFetch(chatUrl(activeBusinessId, targetConversationId), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
             locale,
+            ...(options?.attachments?.length ? { attachments: options.attachments } : {}),
             ...(options?.selectedPlatforms !== undefined
               ? { selected_platforms: options.selectedPlatforms }
               : {}),

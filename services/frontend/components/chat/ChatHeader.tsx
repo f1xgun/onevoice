@@ -105,8 +105,8 @@ function ChatHeaderImpl({
   const canUpdate = usePermission('content.update').allowed;
 
   return (
-    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-paper-raised px-6">
-      <span className="truncate text-[15px] font-medium text-ink">{title}</span>
+    <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 bg-background px-gutter md:px-gutter-desktop">
+      <span className="truncate text-xl font-semibold text-ink">{title}</span>
       <div className="flex items-center gap-2">
         {canUpdate && (
           <button

@@ -2,9 +2,8 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { Send, Square } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import { toast } from 'sonner';
 import { GettingStartedChecklist } from '@/components/onboarding/GettingStartedChecklist';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
 import { GuidedCompose } from '@/components/onboarding/GuidedCompose';
@@ -15,7 +14,6 @@ import { SkeletonChat } from '@/components/states';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { useConversationFlow } from '@/hooks/useConversationFlow';
 import { useProjectsQuery } from '@/hooks/useProjects';
-import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
 import { useDefaultQuickActions } from '@/lib/quick-actions';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
@@ -29,8 +27,8 @@ import { useChatComposer } from '@/hooks/useChatComposer';
 import { TemplateChips } from '@/components/templates/TemplateChips';
 import { ChatHeader } from './ChatHeader';
 import { MessageBubble } from './MessageBubble';
-import { ProjectChip } from './ProjectChip';
-import { ProjectPickerChip } from './ProjectPickerChip';
+import { ChatPhotoInput } from './ChatPhotoInput';
+import Link from 'next/link';
 import { ConnectChannelHint, shouldPromptConnectChannel } from './ConnectChannelHint';
 import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
@@ -63,7 +61,7 @@ export function ChatWindow({
     resolveApproval,
   } = useConversationFlow({ conversationId });
   const [wizardOpen, setWizardOpen] = useState(false);
-  const qc = useQueryClient();
+  const [photoUploading, setPhotoUploading] = useState(false);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const openWizard = useCallback(() => {
@@ -75,10 +73,18 @@ export function ChatWindow({
   const sendPerm = usePermission('content.create');
   const canSend = sendPerm.allowed;
   const composerDisabled =
-    isLoading || isStreaming || awaitingTurn || pendingApproval !== null || !canSend || loadError;
+    isLoading ||
+    isStreaming ||
+    awaitingTurn ||
+    pendingApproval !== null ||
+    !canSend ||
+    loadError ||
+    photoUploading;
 
   const {
     composerId,
+    attachment,
+    setAttachment,
     register,
     input,
     bottomRef,
@@ -98,7 +104,6 @@ export function ChatWindow({
   });
 
   const { data: projects } = useProjectsQuery();
-  const move = useMoveConversation();
 
   const currentProject = useMemo(() => {
     if (!conversation?.projectId || !projects) return null;
@@ -141,31 +146,11 @@ export function ChatWindow({
     return null;
   }, [messages]);
 
-  const handlePickerChange = (projectId: string | null) => {
-    if (!conversation) return;
-    if ((conversation.projectId ?? null) === projectId) return;
-    move.mutate(
-      {
-        id: conversationId,
-        projectId,
-        previousProjectId: conversation.projectId ?? null,
-      },
-      {
-        onSuccess: () => {
-          void qc.invalidateQueries({
-            queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
-          });
-          void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
-        },
-        onError: () => {
-          toast.error(tChat('moveError'));
-        },
-      }
-    );
-  };
-
   return (
     <div data-ov-motion className="flex h-full min-h-0 min-w-0 flex-col">
+      <Link href="/chat" className="px-gutter pt-4 text-sm text-brand md:px-gutter-desktop">
+        {tChat('instructionsBack')}
+      </Link>
       <FirstActionWizard open={wizardOpen} onClose={closeWizard} />
       {!showEmptyState && (
         <ChatHeader
@@ -174,18 +159,12 @@ export function ChatWindow({
           menuTitle={conversation?.title}
           menuTitleStatus={conversation?.titleStatus}
           menuProjectId={conversation?.projectId ?? null}
-          rightSlot={
-            <ProjectChip
-              projectId={currentProject?.id ?? null}
-              projectName={currentProject?.name}
-            />
-          }
         />
       )}
 
       <div
         onScroll={handleScroll}
-        className="min-h-0 flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6 md:scroll-py-8 dark:bg-paper"
+        className="min-h-0 flex-1 scroll-pb-28 scroll-pt-20 overflow-y-auto bg-background p-gutter md:scroll-py-8 md:p-gutter-desktop"
       >
         {isLoading ? (
           <SkeletonChat className="bg-transparent p-0" />
@@ -196,10 +175,6 @@ export function ChatWindow({
         ) : messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center gap-4 py-6">
             <GettingStartedChecklist className="w-full max-w-lg" onOpenWizard={openWizard} />
-            <ProjectPickerChip
-              value={conversation?.projectId ?? null}
-              onChange={handlePickerChange}
-            />
             <p className="text-lg text-ink-soft">{tChat('helpPrompt')}</p>
             {showConnectHint ? (
               <ConnectChannelHint />
@@ -246,7 +221,7 @@ export function ChatWindow({
           <IntegrationTokenInvalidBanner platform={tokenInvalidCall.name.split('__')[0] ?? ''} />
         )}
         {pendingApproval?.status === 'pending' && (
-          <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
+          <div className="bg-background p-gutter md:px-gutter-desktop">
             <ToolApprovalCard batch={pendingApproval} onSubmit={resolveApproval} />
           </div>
         )}
@@ -254,7 +229,7 @@ export function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
+      <div className="bg-background p-gutter md:px-gutter-desktop">
         {!showEmptyState && (
           <div className="mb-3">
             <TemplateChips
@@ -269,7 +244,7 @@ export function ChatWindow({
         <label htmlFor={composerId} className="mb-2 block text-meta font-medium">
           {tChat('messagePlaceholder')}
         </label>
-        <div className="flex gap-2 rounded-md border border-control bg-paper-sunken p-2 transition-colors focus-within:border-brand">
+        <div className="flex gap-2 rounded-block bg-paper-raised p-2 transition-colors focus-within:border-brand">
           <Input
             id={composerId}
             {...register('message')}
@@ -279,6 +254,11 @@ export function ChatWindow({
             aria-label={tChat('messagePlaceholder')}
             disabled={composerDisabled}
             className="flex-1 border-0 bg-paper text-ink shadow-none focus:border-0 focus:ring-0"
+          />
+          <ChatPhotoInput
+            disabled={composerDisabled}
+            onChange={setAttachment}
+            onUploadingChange={setPhotoUploading}
           />
           {isStreaming ? (
             <Button variant="outline" size="md" onClick={stop} aria-label={tChat('stopAria')}>
@@ -296,6 +276,18 @@ export function ChatWindow({
             </Button>
           )}
         </div>
+        {attachment && (
+          <p className="mt-2 flex items-center gap-3 text-sm text-ink-soft">
+            {attachment.name}
+            <button
+              type="button"
+              disabled={composerDisabled}
+              onClick={() => setAttachment(undefined)}
+            >
+              {tChat('removePhoto')}
+            </button>
+          </p>
+        )}
         <p className="mt-2 text-meta text-ink-soft">{tChat('sendHint')}</p>
         {sendPerm.isError ? (
           <div className="mt-2">

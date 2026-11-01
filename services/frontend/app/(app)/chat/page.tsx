@@ -1,428 +1,221 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import {
-  ChevronDown,
-  ChevronRight,
-  FolderOpen,
-  FolderPlus,
-  Loader2,
-  MessageCircle,
-  Plus,
-  Search,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import type { AxiosError } from 'axios';
-import { usePermission } from '@/lib/hooks/usePermission';
-import { bizApi } from '@/lib/api/business-api';
-import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
-import { useProjectsQuery } from '@/hooks/useProjects';
-import { useConversationDisplayTitle } from '@/hooks/useConversationDisplayTitle';
-import { AppInput } from '@/components/design-system/AppInput';
-import { conversationsQueryKey } from '@/hooks/useConversations';
-import { listConversations } from '@/lib/conversations';
+import { useLocale, useTranslations } from 'next-intl';
 import { useBusinessStore } from '@/lib/stores/business';
-import { trackClick } from '@/lib/telemetry';
+import { usePermission } from '@/lib/hooks/usePermission';
+import { listConversations, createConversation } from '@/lib/conversations';
+import { conversationsQueryKey } from '@/hooks/useConversations';
+import { useConversationFlow } from '@/hooks/useConversationFlow';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/design-system/AppAlertDialog';
-import { ConversationItem, type Conversation } from '@/components/chat/ConversationItem';
+import { AppTextarea } from '@/components/design-system/AppInput';
+import { TemplateChips } from '@/components/templates/TemplateChips';
 import { ListLoadError } from '@/components/lists/ListLoadError';
-import { SkeletonInbox } from '@/components/states';
+import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
+import { MessageBubble } from '@/components/chat/MessageBubble';
+import { ChatPhotoInput } from '@/components/chat/ChatPhotoInput';
+import type { Attachment } from '@/types/chat';
 
+const schema = z.object({
+  instruction: z.string().trim().min(1),
+  attachment: z.custom<Attachment>().optional(),
+});
 export default function ChatListPage() {
+  const businessId = useBusinessStore((s) => s.activeBusinessId);
+  return <Instructions key={businessId} businessId={businessId} />;
+}
+function Instructions({ businessId }: { businessId: string | null }) {
+  const t = useTranslations('chat.instructions');
+  const locale = useLocale();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  const activeBusiness = useRef(activeBusinessId);
-  activeBusiness.current = activeBusinessId;
-  const tChat = useTranslations('chat');
-  const tCommon = useTranslations('common');
-  const tList = useTranslations('chat.list');
-  const tSidebar = useTranslations('sidebar');
-  const getDisplayTitle = useConversationDisplayTitle();
-  const projectsQuery = useProjectsQuery();
-  const [search, setSearch] = useState('');
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const createPermission = usePermission('content.create');
-  const canCreate = createPermission.allowed;
-  const canUpdate = usePermission('content.update').allowed;
-  const canDelete = usePermission('content.delete').allowed;
-
+  const qc = useQueryClient();
+  const permission = usePermission('content.create');
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const createdId = useRef<string | null>(null);
+  const sending = useRef(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const form = useForm<z.infer<typeof schema>>({
+    resolver: zodResolver(schema),
+    defaultValues: { instruction: '' },
+  });
+  const flow = useConversationFlow({ conversationId: '' });
   const {
     data: conversations = [],
-    isPending: isLoading,
+    isPending,
     isError,
     refetch,
-  } = useQuery<Conversation[]>({
-    queryKey: conversationsQueryKey(activeBusinessId),
-    queryFn: () => listConversations(activeBusinessId!),
-    enabled: !!activeBusinessId,
+  } = useQuery({
+    queryKey: conversationsQueryKey(businessId),
+    queryFn: () => listConversations(businessId!),
+    enabled: !!businessId,
   });
-
-  const { mutate: createConversation, isPending } = useMutation({
-    mutationFn: ({
-      businessId,
-      projectId,
-    }: {
-      businessId: string;
-      projectId?: string;
-      prompt?: string;
-    }) =>
-      bizApi(businessId)
-        .post<Conversation>(BIZ_API_PATHS.CONVERSATIONS.ROOT, {
-          title: tChat('newConversation'),
-          ...(projectId ? { projectId } : {}),
-        })
-        .then((r) => r.data),
-    onSuccess: (conv: Conversation, { businessId, prompt }) => {
-      trackClick('create_conversation', undefined, businessId);
-      queryClient.invalidateQueries({
-        queryKey: conversationsQueryKey(businessId),
-      });
-      if (activeBusiness.current !== businessId) return;
-      router.push(
-        `/chat/${conv.id}${prompt ? `?${new URLSearchParams({ prompt, businessId })}` : ''}`
-      );
-    },
-    onError: () => toast.error(tCommon('connectionError')),
-  });
-
-  const prefillStarted = useRef(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const prompt = params.get('prompt');
-    if (
-      !activeBusinessId ||
-      !prompt ||
-      params.get('businessId') !== activeBusinessId ||
-      !canCreate ||
-      prefillStarted.current
-    )
-      return;
-    prefillStarted.current = true;
-    createConversation({ businessId: activeBusinessId, prompt });
-  }, [activeBusinessId, canCreate, createConversation]);
-
-  const {
-    mutate: renameConversation,
-    isPending: isRenaming,
-    variables: renameVariables,
-  } = useMutation({
-    mutationFn: ({ id, title }: { id: string; title: string }) =>
-      bizApi(activeBusinessId!)
-        .put<Conversation>(BIZ_API_PATHS.CONVERSATIONS.BY_ID(id), { title })
-        .then((r) => r.data),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: conversationsQueryKey(activeBusinessId),
-      }),
-    onError: () => toast.error(tCommon('connectionError')),
-  });
-
-  const {
-    mutate: regenerateTitle,
-    isPending: isRegenerating,
-    variables: regenerateId,
-  } = useMutation({
-    mutationFn: (id: string) =>
-      bizApi(activeBusinessId!)
-        .post(BIZ_API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id))
-        .then((r) => r.data),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: conversationsQueryKey(activeBusinessId),
-      }),
-    onError: (err: unknown) => {
-      const axErr = err as AxiosError<{ message?: string }> | undefined;
-      const msg = axErr?.response?.data?.message ?? tCommon('connectionError');
-      toast.error(msg);
-    },
-  });
-
-  const {
-    mutate: deleteConversation,
-    isPending: isDeleting,
-    variables: deleteVariables,
-  } = useMutation({
-    mutationFn: ({ id, businessId }: { id: string; businessId: string }) =>
-      bizApi(businessId).delete(BIZ_API_PATHS.CONVERSATIONS.BY_ID(id)),
-    onSuccess: (_, { businessId }) => {
-      trackClick('delete_conversation', undefined, businessId);
-      queryClient.invalidateQueries({
-        queryKey: conversationsQueryKey(businessId),
-      });
-      if (activeBusiness.current === businessId) setDeleteTarget(null);
-    },
-    onError: () => toast.error(tCommon('connectionError')),
-  });
-
-  const projects = projectsQuery.data ?? [];
-  const projectNames = new Map(projects.map((project) => [project.id, project.name]));
-  const query = search.trim().toLocaleLowerCase();
-  const groups = new Map<string, { name: string; conversations: Conversation[] }>();
-  for (const project of projects) {
-    if (!query || project.name.toLocaleLowerCase().includes(query)) {
-      groups.set(project.id, { name: project.name, conversations: [] });
+    if (params.get('businessId') === businessId && params.get('prompt'))
+      form.setValue('instruction', params.get('prompt')!);
+  }, [businessId, form]);
+  async function send({ instruction, attachment }: z.infer<typeof schema>) {
+    if (!businessId || !permission.allowed || sending.current || photoUploading) return;
+    sending.current = true;
+    try {
+      if (!createdId.current)
+        createdId.current = (await createConversation(businessId, { title: t('newTitle') })).id;
+      if (!mounted.current || useBusinessStore.getState().activeBusinessId !== businessId) return;
+      const id = createdId.current;
+      await flow.sendMessage(
+        instruction,
+        () => {
+          form.reset();
+          void qc.invalidateQueries({ queryKey: conversationsQueryKey(businessId) });
+          if (mounted.current && useBusinessStore.getState().activeBusinessId === businessId)
+            router.push(`/chat/${id}`);
+        },
+        { conversationId: id, attachments: attachment ? [attachment] : undefined }
+      );
+    } catch {
+      form.setError('root', { message: t('sendError') });
+    } finally {
+      sending.current = false;
     }
   }
-  for (const conv of conversations) {
-    const id = conv.projectId || 'none';
-    const name = conv.projectId
-      ? (projectNames.get(conv.projectId) ?? tList('unavailableProject'))
-      : tSidebar('unassigned');
-    if (
-      query &&
-      ![getDisplayTitle(conv), conv.preview ?? '', name].some((value) =>
-        value.toLocaleLowerCase().includes(query)
-      )
-    )
-      continue;
-    if (!groups.has(id)) groups.set(id, { name, conversations: [] });
-    groups.get(id)!.conversations.push(conv);
+  const days = new Map<string, typeof conversations>();
+  for (const conversation of conversations
+    .filter((row) => row.preview?.trim())
+    .sort((a, b) =>
+      (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt)
+    )) {
+    const date = (conversation.lastMessageAt ?? conversation.createdAt).slice(0, 10);
+    days.set(date, [...(days.get(date) ?? []), conversation]);
   }
-  const sortedGroups = [...groups].sort(([a, first], [b, second]) => {
-    if (a === 'none') return -1;
-    if (b === 'none') return 1;
-    return first.name.localeCompare(second.name);
-  });
-  function handleCreate(projectId?: string) {
-    if (activeBusinessId && canCreate && !isPending) {
-      const params = new URLSearchParams(window.location.search);
-      const prompt =
-        params.get('businessId') === activeBusinessId
-          ? (params.get('prompt') ?? undefined)
-          : undefined;
-      createConversation({ businessId: activeBusinessId, projectId, prompt });
-    }
-  }
-  function renderCreateButton(empty = false) {
-    return (
-      <Button
-        onClick={() => handleCreate()}
-        disabled={isPending || !activeBusinessId}
-        aria-busy={isPending}
-      >
-        {isPending ? (
-          <Loader2 aria-hidden size={16} className="mr-2 animate-spin motion-reduce:animate-none" />
-        ) : (
-          <Plus aria-hidden size={16} className="mr-2" />
-        )}
-        {isPending ? tList('creating') : empty ? tList('createFirst') : tChat('newConversation')}
-      </Button>
-    );
-  }
-
+  const attachment = form.watch('attachment');
   return (
-    <div className="mx-auto max-w-[1040px] p-4 md:p-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-page-title">{tChat('heading')}</h1>
-          <p className="mt-1 text-meta text-ink-soft">{tList('description')}</p>
-        </div>
-        {canCreate && (
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" className="min-h-11">
-              <Link href="/projects/new">
-                <FolderPlus aria-hidden size={16} className="mr-2" />
-                {tList('newProject')}
-              </Link>
-            </Button>
-            {renderCreateButton()}
-          </div>
-        )}
-      </div>
-      {createPermission.isError && <ListLoadError onRetry={createPermission.refetch} />}
-      {isLoading || projectsQuery.isPending ? (
-        <SkeletonInbox rows={3} />
-      ) : isError || projectsQuery.isError ? (
-        <ListLoadError
-          onRetry={() => {
-            void refetch();
-            void projectsQuery.refetch();
-          }}
-        />
-      ) : conversations.length === 0 && projects.length === 0 ? (
-        <div
-          role="status"
-          className="flex flex-col items-center justify-center gap-4 rounded-lg border border-line bg-paper-raised px-4 py-12 text-center"
-        >
-          <MessageCircle aria-hidden size={40} className="text-ink-soft" />
-          <div>
-            <p className="text-document-title">{tChat('noConversations')}</p>
-            <p className="mt-2 max-w-md text-meta text-ink-soft">
-              {canCreate ? tList('emptyDescription') : tList('emptyReadOnly')}
+    <div className="max-w-[816px] p-gutter md:p-gutter-desktop">
+      <h1 className="mb-3.5 text-2xl font-semibold">{t('title')}</h1>
+      <section className="rounded-block bg-paper-raised p-4 md:p-5">
+        <form onSubmit={form.handleSubmit(send)} className="space-y-3">
+          <label htmlFor="instruction" className="block font-semibold">
+            {t('what')}
+          </label>
+          <AppTextarea
+            id="instruction"
+            rows={3}
+            placeholder={t('placeholder')}
+            disabled={!permission.allowed || flow.isStreaming || form.formState.isSubmitting}
+            {...form.register('instruction')}
+          />
+          {attachment && (
+            <p className="flex items-center justify-between gap-3 text-sm text-ink-soft">
+              {attachment.name}
+              <button type="button" onClick={() => form.setValue('attachment', undefined)}>
+                {t('removePhoto')}
+              </button>
             </p>
-          </div>
-          {canCreate && renderCreateButton(true)}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="relative">
-            <Search
-              aria-hidden
-              className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-ink-soft"
-            />
-            <AppInput
-              type="search"
-              aria-label={tList('search')}
-              placeholder={tList('search')}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="pl-9"
-            />
-          </div>
-          {sortedGroups.length === 0 ? (
-            <div
-              role="status"
-              className="rounded-lg border border-line bg-paper-raised p-8 text-center"
-            >
-              <p className="mb-4 text-ink-soft">{tList('noResults')}</p>
-              <Button variant="outline" onClick={() => setSearch('')}>
-                {tList('clearSearch')}
-              </Button>
-            </div>
-          ) : (
-            sortedGroups.map(([id, group]) => {
-              const expanded = !!query || !collapsed.has(id);
-              return (
-                <section
-                  key={id}
-                  aria-label={group.name}
-                  className="overflow-hidden rounded-lg border border-line bg-paper-raised"
-                >
-                  <h2>
-                    <button
-                      type="button"
-                      aria-expanded={expanded}
-                      aria-controls={`chat-group-${id}`}
-                      onClick={() =>
-                        setCollapsed((current) => {
-                          const next = new Set(current);
-                          if (next.has(id)) next.delete(id);
-                          else next.add(id);
-                          return next;
-                        })
-                      }
-                      className="flex min-h-12 w-full items-center gap-2 bg-paper-sunken px-4 py-3 text-left"
-                    >
-                      {expanded ? (
-                        <ChevronDown aria-hidden size={16} />
-                      ) : (
-                        <ChevronRight aria-hidden size={16} />
-                      )}
-                      <FolderOpen aria-hidden size={18} className="shrink-0 text-ink-soft" />
-                      <span className="min-w-0 flex-1 break-words text-action">{group.name}</span>
-                      <span className="shrink-0 text-meta text-ink-soft">
-                        {tList('count', { count: group.conversations.length })}
-                      </span>
-                    </button>
-                  </h2>
-                  {expanded && (
-                    <div id={`chat-group-${id}`}>
-                      {group.conversations.map((conv) => (
-                        <ConversationItem
-                          key={conv.id}
-                          conv={conv}
-                          canUpdate={canUpdate}
-                          canDelete={canDelete}
-                          busy={
-                            (isRenaming && renameVariables?.id === conv.id) ||
-                            (isRegenerating && regenerateId === conv.id) ||
-                            (isDeleting && deleteVariables?.id === conv.id)
-                          }
-                          onOpen={() => router.push(`/chat/${conv.id}`)}
-                          onRename={(title) => renameConversation({ id: conv.id, title })}
-                          onDelete={() => setDeleteTarget(conv.id)}
-                          onRegenerateTitle={() => regenerateTitle(conv.id)}
-                        />
-                      ))}
-                      {group.conversations.length === 0 && projectNames.has(id) && (
-                        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-                          <p className="text-meta text-ink-soft">{tList('emptyProject')}</p>
-                          {canCreate ? (
-                            <Button
-                              variant="outline"
-                              className="min-h-11"
-                              disabled={isPending || !activeBusinessId}
-                              aria-busy={isPending}
-                              aria-label={tList('createProjectChat', { name: group.name })}
-                              onClick={() => handleCreate(id)}
-                            >
-                              {isPending ? (
-                                <Loader2
-                                  aria-hidden
-                                  size={16}
-                                  className="mr-2 animate-spin motion-reduce:animate-none"
-                                />
-                              ) : (
-                                <Plus aria-hidden size={16} className="mr-2" />
-                              )}
-                              {isPending ? tList('creating') : tChat('newConversation')}
-                            </Button>
-                          ) : (
-                            <Button asChild variant="outline" className="min-h-11">
-                              <Link href={`/projects/${id}/chats`}>{tList('openProject')}</Link>
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </section>
-              );
-            })
           )}
+          <div className="flex justify-end gap-2">
+            <ChatPhotoInput
+              disabled={!permission.allowed || flow.isStreaming}
+              onUploadingChange={setPhotoUploading}
+              onChange={(photo) => form.setValue('attachment', photo)}
+            />
+            <Button
+              type="submit"
+              disabled={
+                !permission.allowed ||
+                flow.isStreaming ||
+                form.formState.isSubmitting ||
+                photoUploading ||
+                !form.watch('instruction').trim()
+              }
+            >
+              {t('send')}
+            </Button>
+          </div>
+          {form.formState.errors.root && (
+            <p role="alert" className="text-sm text-danger">
+              {form.formState.errors.root.message}
+            </p>
+          )}
+        </form>
+        {permission.isError && <PermissionLoadError onRetry={permission.refetch} />}
+        <h2 className="mb-2.5 mt-3 font-semibold">{t('occasions')}</h2>
+        <TemplateChips
+          variant="occasions"
+          businessId={businessId}
+          conversationKey={businessId ?? ''}
+          disabled={!permission.allowed || flow.isStreaming}
+          currentInput={form.watch('instruction')}
+          onPrefill={(text) => form.setValue('instruction', text)}
+        />
+      </section>
+      {flow.messages.length > 0 && (
+        <div className="mt-7">
+          {flow.messages.map((message) => (
+            <MessageBubble key={message.id} message={message} />
+          ))}
         </div>
       )}
-
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && !isDeleting && setDeleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tChat('deleteConversationTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {tChat('deleteConversationDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>{tCommon('cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="danger"
-              disabled={isDeleting}
-              aria-busy={isDeleting}
-              onClick={(event) => {
-                event.preventDefault();
-                if (deleteTarget && activeBusinessId && !isDeleting)
-                  deleteConversation({ id: deleteTarget, businessId: activeBusinessId });
-              }}
-            >
-              {isDeleting && (
-                <Loader2
-                  aria-hidden
-                  className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none"
-                />
-              )}
-              {isDeleting ? tList('deleting') : tCommon('delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <div className="mt-7 space-y-7">
+        {isError ? (
+          <ListLoadError onRetry={refetch} />
+        ) : isPending ? (
+          <p role="status">{t('loading')}</p>
+        ) : days.size === 0 ? (
+          <p className="text-[15px] leading-[22px] text-ink-soft">{t('empty')}</p>
+        ) : (
+          [...days].map(([day, rows]) => (
+            <section key={day}>
+              <h2 className="mb-2.5 font-semibold">
+                {new Date(`${day}T12:00:00`).toLocaleDateString(locale, {
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </h2>
+              <div className="space-y-1 rounded-block bg-paper-raised p-2">
+                {rows.map((conversation) => (
+                  <Link
+                    key={conversation.id}
+                    href={`/chat/${conversation.id}`}
+                    className="flex min-h-20 items-start gap-3 rounded-inner p-3 hover:bg-paper-sunken"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <h3 className="break-words font-semibold">
+                        {conversation.titleStatus === 'auto_pending' ||
+                        !conversation.title?.trim() ||
+                        /^(Новый чат|Новый диалог|Новое поручение|New chat|New conversation|New instruction)$/i.test(
+                          conversation.title.trim()
+                        )
+                          ? t('genericTitle')
+                          : conversation.title}
+                      </h3>
+                      <p className="mt-1 line-clamp-2 text-[15px] leading-[22px] text-ink-soft">
+                        {conversation.preview
+                          ?.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+                          .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+                          .replace(/(\*\*|__|~~|`)(.*?)\1/g, '$2')
+                          .replace(/(^|\s)\*([^*]+)\*(?=\s|$|[.,!?])/g, '$1$2')
+                          .replace(/^\s*(#{1,6}|>)\s+/gm, '')
+                          .trim() || t('noOutcome')}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ))
+        )}
+      </div>
     </div>
   );
 }
