@@ -33,9 +33,10 @@ func yandexTools() []toolregistry.ToolSpec {
 			DisplayName:     "Обновить часы работы",
 			DisplayNameKey:  "tools.yandex_business.update_hours.name",
 			UserDescription: "Обновляет часы работы организации в Яндекс.Бизнесе.",
-			DescriptionEn:   "Updates business hours in Yandex Business.",
+			DescriptionEn:   "Updates weekly hours or date-specific hours in Yandex Business, separately.",
 			ParameterDescriptionsEn: map[string]string{
-				"hours": `JSON object mapping each weekday (monday..sunday) to a "HH:MM-HH:MM" range or "closed". Example: {"monday":"09:00-22:00","saturday":"10:00-18:00","sunday":"closed"}`,
+				"special_dates": `JSON change with previous/current arrays of date-only overrides. Only previous dates owned by OneVoice may be removed. Cannot be combined with hours.`,
+				"hours":         `JSON object mapping each weekday (monday..sunday) to a "HH:MM-HH:MM" range or "closed". Example: {"monday":"09:00-22:00","saturday":"10:00-18:00","sunday":"closed"}`,
 			},
 			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUpdateHours,
@@ -43,12 +44,19 @@ func yandexTools() []toolregistry.ToolSpec {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
+						"special_dates": map[string]interface{}{
+							"type":        "string",
+							"description": `JSON {"previous":[...],"current":[...]}. ISO date-only overrides {date,closed,open?,close?}; previous must contain only dates owned by OneVoice before this explicit save. Omitted current dates are removed only if present in previous. Save separately from weekly hours.`,
+						},
 						"hours": map[string]interface{}{
 							"type":        "string",
 							"description": `JSON-объект: ключ — день недели (monday..sunday), значение — диапазон "HH:MM-HH:MM" или "closed". Пример: {"monday":"09:00-22:00","saturday":"10:00-18:00","sunday":"closed"}`,
 						},
 					},
-					"required": []string{"hours"},
+					"oneOf": []interface{}{
+						map[string]interface{}{"required": []string{"hours"}},
+						map[string]interface{}{"required": []string{"special_dates"}},
+					},
 				},
 			}},
 			Floor:          domain.ToolFloorManual,

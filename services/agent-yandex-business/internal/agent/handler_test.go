@@ -16,6 +16,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
@@ -479,4 +480,36 @@ func TestHandler_Handle_ApprovalID_InFlight_ReturnsDuplicateError(t *testing.T) 
 	assert.Contains(t, resp.Error, "duplicate: already in flight")
 	assert.Equal(t, int64(0), atomic.LoadInt64(&browser.postCalls),
 		"in-flight claim must short-circuit before Playwright page acquisition")
+}
+
+// specialDateBrowser implements only the additional date scenario on top of the
+// existing browser contract, allowing older test doubles to remain unchanged.
+type specialDateBrowser struct {
+	stubBrowser
+	change *domain.SpecialDateHoursChange
+}
+
+func (s *specialDateBrowser) UpdateSpecialDates(_ context.Context, change domain.SpecialDateHoursChange) error {
+	s.change = &change
+	return nil
+}
+
+func TestHandler_UpdateHoursSpecialDates(t *testing.T) {
+	browser := &specialDateBrowser{}
+	h := agent.NewHandler(&fakeTokenFetcher{token: "cookies"}, &stubPool{browser: browser}, nil)
+	req := a2a.ToolRequest{TaskID: "dates", BusinessID: "biz", Tool: tools.YandexBusinessUpdateHours, Args: map[string]interface{}{"special_dates": `{"previous":[{"date":"2026-11-04","closed":true}],"current":[]}`}}
+	_, err := h.Handle(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, browser.change)
+	require.Len(t, browser.change.Previous, 1)
+	require.Empty(t, browser.change.Current)
+	require.Empty(t, browser.updatedHours)
+	req.Args["special_dates"] = `{"previous":[],"current":[{"date":"2026-02-30","closed":true}]}`
+	browser.change = nil
+	_, err = h.Handle(context.Background(), req)
+	require.Error(t, err)
+	require.Nil(t, browser.change)
+	req.Args["hours"] = `{"monday":"09:00-18:00"}`
+	_, err = h.Handle(context.Background(), req)
+	require.Error(t, err)
 }

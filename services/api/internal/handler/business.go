@@ -286,54 +286,6 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, updatedBusiness)
 }
 
-// UpdateSchedule updates the business schedule (stored in settings).
-// Requires PermBusinessUpdate.
-func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request) {
-	bc, ok := requireBusiness(w, r, "UpdateSchedule", authz.PermBusinessUpdate)
-	if !ok {
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, maxBusinessBodyBytes)
-	var req openapi.UpdateScheduleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	var schedule interface{}
-	if req.Schedule != nil {
-		schedule = *req.Schedule
-	}
-	if !settingsBlobWithinCap(w, schedule, "schedule too large") {
-		return
-	}
-	keys := map[string]interface{}{"schedule": schedule}
-	if req.SpecialDates != nil {
-		if !settingsBlobWithinCap(w, *req.SpecialDates, "special dates too large") {
-			return
-		}
-		keys["specialDates"] = *req.SpecialDates
-	}
-
-	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, keys, bc.UserID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to update schedule", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	if h.syncer != nil {
-		h.syncer.SyncBusiness(updated)
-	}
-
-	writeJSON(w, http.StatusOK, updated)
-}
-
 // UpdateVoiceTone updates the business voice/tone tags (stored in settings).
 // Body: {"tones": ["Тёплый", "Дружеский"]}.
 // Requires PermBusinessUpdate.

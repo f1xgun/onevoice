@@ -1293,7 +1293,7 @@
       "stored": "Your data",
       "noPlatforms": "Connect platforms to compare your location card.",
       "repair": "Fix everywhere",
-      "specialDestination": "Save special dates in OneVoice. Sending date overrides to platforms is not yet supported."
+      "specialDestination": "Save special dates in OneVoice and send them to connected Yandex Business."
     }
   },
   "platforms": {

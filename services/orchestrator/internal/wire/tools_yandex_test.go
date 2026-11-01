@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
@@ -52,4 +53,13 @@ func TestUpdateInfoToolDoesNotAdvertiseWebsite(t *testing.T) {
 	_, hasDescription := props["description"]
 	assert.True(t, hasPhone, "update_info must still advertise 'phone'")
 	assert.True(t, hasDescription, "update_info must still advertise 'description'")
+}
+
+func TestUpdateHoursSpecialDatesRetainsManualFloor(t *testing.T) {
+	spec := findToolSpec(t, yandexTools(), tools.YandexBusinessUpdateHours)
+	require.Equal(t, domain.ToolFloorManual, spec.Floor)
+	props := spec.Def.Function.Parameters["properties"].(map[string]interface{})
+	require.Contains(t, props, "special_dates")
+	require.NotContains(t, spec.EditableFields, "special_dates", "removal ownership cannot be edited independently")
+	require.Contains(t, spec.Def.Function.Parameters, "oneOf")
 }

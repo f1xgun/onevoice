@@ -6,10 +6,8 @@
 //   <SpecialDatesForm />   — date overrides (Особые даты)
 // Both share the same PUT /business/schedule mutation: the backend stores
 // schedule and specialDates as sibling business.settings keys. Each
-// section owns ONLY its own slice; the other slice is re-read from the freshest
-// BUSINESS_PROFILE query cache at save time so a Hours save never clobbers a
-// just-saved Special Dates value (and vice versa) across the two independent
-// form instances.
+// section owns its own slice. Hours saves preserve the freshest cached dates;
+// dates-only saves leave weekly hours untouched and explicitly sync to Yandex.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -109,9 +107,8 @@ function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: Spec
   return { schedule, setSchedule, specialDates, setSpecialDates };
 }
 
-// owns names the slice this form edits. The PUT keeps the owned slice from the
-// caller's `data` and overrides the other slice with the freshest cached value,
-// so two independent form instances never overwrite each other's last save.
+// Weekly saves retain fresh cached dates for legacy compatibility. A dates-only
+// payload selects the dedicated provider scenario without rewriting weekly hours.
 function useScheduleMutation(owns: ScheduleSlice, successMsg: string, errorMsg: string) {
   const queryClient = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
@@ -123,7 +120,12 @@ function useScheduleMutation(owns: ScheduleSlice, successMsg: string, errorMsg: 
         owns === 'schedule'
           ? { schedule: data.schedule, specialDates: cached.specialDates ?? data.specialDates }
           : { schedule: cached.schedule ?? data.schedule, specialDates: data.specialDates };
-      return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.SCHEDULE, merged);
+      // A dates-only save is explicit consent for the provider date scenario.
+      // The API leaves weekly hours untouched when schedule is omitted.
+      return bizApi(activeBusinessId).put(
+        BIZ_API_PATHS.BUSINESS.SCHEDULE,
+        owns === 'specialDates' ? { specialDates: data.specialDates } : merged
+      );
     },
     onSuccess: () => {
       toast.success(successMsg);

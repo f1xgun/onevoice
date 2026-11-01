@@ -2148,7 +2148,7 @@ type UpdateScheduleRequest struct {
 	// Schedule Free-form per-day schedule blob.
 	Schedule *interface{} `json:"schedule,omitempty"`
 
-	// SpecialDates Optional special-date overrides.
+	// SpecialDates Optional special-date overrides. Send specialDates alone to explicitly sync dates to Yandex Business while preserving weekly hours.
 	SpecialDates *interface{} `json:"specialDates,omitempty"`
 }
 

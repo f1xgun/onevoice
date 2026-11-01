@@ -1004,7 +1004,7 @@ components:
         schedule:
           description: Free-form per-day schedule blob.
         specialDates:
-          description: Optional special-date overrides.
+          description: Optional special-date overrides. Send specialDates alone to explicitly sync dates to Yandex Business while preserving weekly hours.
     UpdateVoiceToneRequest:
       type: object
       properties:

@@ -134,3 +134,16 @@ describe('schedule accessible labels', () => {
     }
   });
 });
+
+it('special-date save sends only its owned dates, without weekly hours', async () => {
+  const user = userEvent.setup();
+  const client = makeClient();
+  bizApiPut.mockReset();
+  bizApiPut.mockResolvedValue({ data: {} });
+  render(
+    <SpecialDatesForm initialSchedule={INITIAL_HOURS} initialSpecialDates={SAVED_SPECIAL_DATES} />,
+    { wrapper: wrapper(client) }
+  );
+  await user.click(screen.getByRole('button', { name: 'Сохранить даты' }));
+  expect(lastPutPayload()).toEqual({ specialDates: SAVED_SPECIAL_DATES });
+});
