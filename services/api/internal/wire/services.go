@@ -459,7 +459,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.Integration = service.WithNATSPublisher(s.Integration, h.NATS)
 	}
 	s.OAuth = service.NewOAuthService(h.Redis)
-	s.Post = service.WithPostScheduling(service.NewPostService(repos.Post, s.Business), repos.Integration)
+	s.Post = service.WithPostApproval(service.WithPostScheduling(service.NewPostService(repos.Post, s.Business), repos.Integration), h.PendingToolCallRepo, repos.Conversation)
 	if h.NATS != nil {
 		s.Post = service.WithPostDispatcher(s.Post, h.NATS)
 	}

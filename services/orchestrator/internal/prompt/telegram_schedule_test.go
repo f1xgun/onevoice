@@ -13,7 +13,7 @@ func TestFutureTelegramPostsCannotUseImmediateTools(t *testing.T) {
 	for _, tc := range []struct {
 		locale language.Tag
 		phrase string
-	}{{language.English, "never call the immediate send tools"}, {language.Russian, "не вызывай инструменты немедленной отправки"}} {
+	}{{language.English, "Never omit the time or send it immediately"}, {language.Russian, "не отправляй пост немедленно"}} {
 		t.Run(tc.locale.String(), func(t *testing.T) {
 			_, business, _ := prompt.BuildSplit(prompt.BusinessContext{Locale: tc.locale}, nil, nil)
 			require.Contains(t, business, tc.phrase)

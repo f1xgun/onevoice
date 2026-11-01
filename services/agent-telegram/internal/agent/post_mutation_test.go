@@ -113,3 +113,21 @@ func TestPostMutationRejectionReceipt(t *testing.T) {
 		})
 	}
 }
+
+func TestScheduledArgumentCannotReachImmediateSend(t *testing.T) {
+	sender := &fakeSender{}
+	h := newHandlerWithSender(&fakeTokenFetcher{token: "token"}, sender)
+	for _, tool := range []string{tools.TelegramSendChannelPost, tools.TelegramSendChannelPhoto} {
+		_, err := h.Handle(context.Background(), a2a.ToolRequest{Tool: tool, Args: map[string]interface{}{"channel_id": "@own", "text": "future", "scheduled_at": "2030-01-01T00:00:00Z"}})
+		require.Error(t, err)
+		require.Empty(t, sender.sentChat)
+	}
+}
+
+func TestExplicitApprovedNowCanReachImmediateSend(t *testing.T) {
+	sender := &fakeSender{}
+	h := newHandlerWithSender(&fakeTokenFetcher{token: "token"}, sender)
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{Tool: tools.TelegramSendChannelPost, ApprovalID: "proof", Args: map[string]interface{}{"channel_id": "@own", "text": "now", "scheduled_at": ""}})
+	require.NoError(t, err)
+	require.Equal(t, "@own", sender.sentChat)
+}

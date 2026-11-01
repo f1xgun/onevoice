@@ -60,14 +60,15 @@ func telegramTools() []toolregistry.ToolSpec {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"text":       map[string]interface{}{"type": "string", "description": "Текст сообщения"},
-						"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+						"scheduled_at": map[string]interface{}{"type": "string", "format": "date-time", "description": "Optional future RFC3339 time. Requires manual approval; OneVoice queues the post instead of sending now."},
+						"text":         map[string]interface{}{"type": "string", "description": "Текст сообщения"},
+						"channel_id":   map[string]interface{}{"type": "string", "description": "ID канала"},
 					},
 					"required": []string{"text"},
 				},
 			}},
 			Floor:          domain.ToolFloorManual,
-			EditableFields: []string{"text"},
+			EditableFields: []string{"text", "scheduled_at"},
 		},
 		{
 			DisplayName:     "Отправить фото",
@@ -85,15 +86,16 @@ func telegramTools() []toolregistry.ToolSpec {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"photo_url":  map[string]interface{}{"type": "string", "description": "Публичный URL изображения"},
-						"caption":    map[string]interface{}{"type": "string", "description": "Подпись к фото"},
-						"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+						"scheduled_at": map[string]interface{}{"type": "string", "format": "date-time", "description": "Optional future RFC3339 time. Requires manual approval; OneVoice queues the post instead of sending now."},
+						"photo_url":    map[string]interface{}{"type": "string", "description": "Публичный URL изображения"},
+						"caption":      map[string]interface{}{"type": "string", "description": "Подпись к фото"},
+						"channel_id":   map[string]interface{}{"type": "string", "description": "ID канала"},
 					},
 					"required": []string{"photo_url"},
 				},
 			}},
 			Floor:          domain.ToolFloorManual,
-			EditableFields: []string{"caption"},
+			EditableFields: []string{"caption", "scheduled_at"},
 		},
 		{
 			DisplayName:     "Уведомление владельцу",

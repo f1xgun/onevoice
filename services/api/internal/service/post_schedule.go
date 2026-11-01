@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,11 +15,12 @@ import (
 )
 
 const (
-	postStatusScheduled  = "scheduled"
-	postStatusCanceled   = "canceled"
-	scheduledBatchSize   = 10
-	postStatusUncertain  = "uncertain"
-	postOutcomeTransient = "transient"
+	postStatusScheduled   = "scheduled"
+	postStatusCanceled    = "canceled"
+	scheduledBatchSize    = 10
+	postStatusUncertain   = "uncertain"
+	postOutcomeTransient  = "transient"
+	postIntegrationActive = "active"
 )
 
 // WithPostScheduling attaches business-scoped integration validation.
@@ -35,6 +37,22 @@ func (s *postService) Schedule(ctx context.Context, businessID uuid.UUID, extern
 	if !ok || bc.BusinessID != businessID || !authz.Can(ctx, authz.PermContentCreate) {
 		return nil, domain.ErrForbidden
 	}
+	return s.createSchedule(ctx, businessID, externalID, content, mediaURLs, at, "", "")
+}
+
+func (s *postService) createSchedule(ctx context.Context, businessID uuid.UUID, externalID, content string, mediaURLs []string, at time.Time, id, group string) (*domain.Post, error) {
+	if id != "" {
+		existing, err := s.repo.GetByID(ctx, id)
+		if err == nil {
+			if existing.BusinessID != businessID.String() {
+				return nil, domain.ErrForbidden
+			}
+			return existing, nil
+		}
+		if !errors.Is(err, domain.ErrPostNotFound) {
+			return nil, fmt.Errorf("lookup approved schedule: %w", err)
+		}
+	}
 	if !at.After(time.Now()) || (strings.TrimSpace(content) == "" && len(mediaURLs) == 0) || len(mediaURLs) > 1 {
 		return nil, fmt.Errorf("%w: choose a future time and text or one photo", domain.ErrPostConflict)
 	}
@@ -45,12 +63,18 @@ func (s *postService) Schedule(ctx context.Context, businessID uuid.UUID, extern
 	if err != nil {
 		return nil, fmt.Errorf("%w: original connected Telegram channel is unavailable", domain.ErrPostConflict)
 	}
-	if integration.BusinessID != businessID || integration.ExternalID != externalID || integration.Status != "active" {
+	if integration.BusinessID != businessID || integration.ExternalID != externalID || integration.Status != postIntegrationActive {
 		return nil, domain.ErrForbidden
 	}
 	at = at.UTC()
-	post := &domain.Post{BusinessID: businessID.String(), Content: content, MediaURLs: mediaURLs, ScheduledAt: &at, Status: postStatusScheduled, PlatformResults: map[string]domain.PlatformResult{a2a.AgentTelegram: {ExternalID: externalID, Status: postStatusScheduled}}}
+	post := &domain.Post{ID: id, BroadcastGroupID: group, BusinessID: businessID.String(), Content: content, MediaURLs: mediaURLs, ScheduledAt: &at, Status: postStatusScheduled, PlatformResults: map[string]domain.PlatformResult{a2a.AgentTelegram: {ExternalID: externalID, Status: postStatusScheduled}}}
 	if err := s.repo.Create(ctx, post); err != nil {
+		if id != "" {
+			existing, lookupErr := s.repo.GetByID(ctx, id)
+			if lookupErr == nil && existing.BusinessID == businessID.String() {
+				return existing, nil
+			}
+		}
 		return nil, fmt.Errorf("create scheduled post: %w", err)
 	}
 	return post, nil

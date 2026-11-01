@@ -67,6 +67,9 @@ func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config, billing ll
 	}
 
 	RegisterPlatformTools(reg, nc, cfg.EnableGoogleBusiness)
+	if err := registerTelegramScheduling(reg, nc, cfg.APIInternalURL); err != nil {
+		return nil, nc, err
+	}
 	log.Info("registered platform tools", "nats_url", cfg.NATSUrl)
 
 	registerImageGenTool(ctx, log, reg, cfg, billing)

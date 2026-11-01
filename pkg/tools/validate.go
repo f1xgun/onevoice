@@ -1,6 +1,9 @@
 package tools
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // ErrFieldNotEditable is returned when the client tries to edit a field that
 // is not in the tool's EditableFields allowlist.
@@ -56,10 +59,11 @@ func (e *ErrFieldTypeMismatch) Error() string {
 // type:"string". Keep this in sync when an editable field with a non-string
 // declared type is added.
 var editableFieldKind = map[string]string{
-	"text":        "string",
-	"caption":     "string",
-	"description": "string",
-	"hours":       "string",
+	"text":         "string",
+	"caption":      "string",
+	"description":  "string",
+	"hours":        "string",
+	"scheduled_at": "string",
 }
 
 // EditableFieldKind returns the declared type ("string", ...) for an editable
@@ -133,8 +137,14 @@ func assertKind(toolName, field, kind string, value interface{}) error {
 	if kind != "string" {
 		return nil
 	}
-	if _, ok := value.(string); !ok {
+	if text, ok := value.(string); !ok {
 		return &ErrFieldTypeMismatch{Tool: toolName, Field: field, Want: kind, Value: value}
+	} else if field == "scheduled_at" && text != "" {
+		at, err := time.Parse(time.RFC3339, text)
+		if err != nil || !at.After(time.Now()) {
+			return &ErrFieldTypeMismatch{Tool: toolName, Field: field, Want: "future RFC3339 timestamp", Value: value}
+		}
 	}
+
 	return nil
 }

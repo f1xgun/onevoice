@@ -441,6 +441,9 @@ func SetupInternal(handlers *Handlers, hc *health.Checker, cfg *config.Config) *
 		r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
 	})
 
+	if handlers.Post != nil {
+		r.With(middleware.RequireServiceIdentity([]string{"orchestrator"}, nil)).Post("/internal/v1/posts/schedule", handlers.Post.ScheduleApprovedPost)
+	}
 	if handlers.InternalBilling != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))

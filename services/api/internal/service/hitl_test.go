@@ -909,3 +909,18 @@ func TestHITLPostDeleteRequiresOwner(t *testing.T) {
 		}
 	}
 }
+
+func TestHITLScheduledTimeChangeRequiresEditAction(t *testing.T) {
+	business := uuid.NewString()
+	pending := newStubPendingRepo()
+	seedBatch(pending, "batch", "conversation", business, []domain.PendingCall{{CallID: "call", ToolName: tools.TelegramSendChannelPost}})
+	svc := newSvc(t, pending, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(business)}}, &stubProjectRepo{})
+	_, err := svc.Resolve(context.Background(), service.ResolveInput{ConversationID: "conversation", BatchID: "batch", ActorBusinessID: business, Decisions: []service.DecisionInput{{ID: "call", Action: "approve", EditedArgs: map[string]interface{}{"scheduled_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}}}})
+	var invalid *service.ErrHITLInvalidAction
+	if !errors.As(err, &invalid) {
+		t.Fatalf("expected invalid action, got %v", err)
+	}
+	if pending.ResolvingCounter != 0 {
+		t.Fatal("invalid schedule edit claimed the approval")
+	}
+}

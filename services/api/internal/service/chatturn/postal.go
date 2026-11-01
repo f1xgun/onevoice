@@ -432,6 +432,21 @@ func (t *Turn) recordPostsAndReviews(
 			if !ok {
 				continue
 			}
+			if date, scheduled := tc.Arguments["scheduled_at"].(string); scheduled && date != "" && tr.IsError && (tc.Name == tools.TelegramSendChannelPost || tc.Name == tools.TelegramSendChannelPhoto) {
+				// The queue API owns schedule records; the existing task retains this failed attempt.
+				continue
+			}
+			if owned, _ := tr.Content["api_owned_schedule"].(bool); owned && !tr.IsError {
+				recordID, _ := tr.Content["post_record_id"].(string)
+				recorded, err := t.deps.Posts.GetByID(ctx, recordID)
+				externalID, _ := tr.Content["external_id"].(string)
+				if err == nil && recorded != nil && externalID != "" && recorded.ID == recordID && recorded.BusinessID == businessID && recorded.BroadcastGroupID == broadcastGroupID && recorded.PlatformResults[a2a.AgentTelegram].ExternalID == externalID {
+					continue
+				}
+				slog.WarnContext(ctx, "chatturn: scheduled receipt could not be verified", "post_id", recordID, "error", err)
+				tr.IsError = true
+				tr.Content = map[string]interface{}{"error": "scheduled post receipt could not be verified"}
+			}
 			info, isPost := postingTools[tc.Name]
 			if !isPost {
 				continue

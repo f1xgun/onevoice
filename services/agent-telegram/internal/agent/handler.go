@@ -240,6 +240,12 @@ func sentPostResult(sent telegram.SentMessage, target string) map[string]any {
 }
 
 func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if raw, scheduled := req.Args["scheduled_at"]; scheduled {
+		value, ok := raw.(string)
+		if !ok || value != "" || req.ApprovalID == "" {
+			return nil, a2a.NewNonRetryableError(fmt.Errorf("scheduled Telegram posts must be queued by OneVoice"))
+		}
+	}
 	text, _ := req.Args["text"].(string)
 	channelIDStr, _ := req.Args["channel_id"].(string)
 
@@ -268,6 +274,12 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if raw, scheduled := req.Args["scheduled_at"]; scheduled {
+		value, ok := raw.(string)
+		if !ok || value != "" || req.ApprovalID == "" {
+			return nil, a2a.NewNonRetryableError(fmt.Errorf("scheduled Telegram posts must be queued by OneVoice"))
+		}
+	}
 	photoURL, _ := req.Args["photo_url"].(string)
 	caption, _ := req.Args["caption"].(string)
 	channelIDStr, _ := req.Args["channel_id"].(string)

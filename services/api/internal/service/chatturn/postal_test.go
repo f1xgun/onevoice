@@ -892,3 +892,20 @@ func TestPostMutationReconcilesVerifiedReceipt(t *testing.T) {
 	require.Equal(t, "42", repo.postID)
 	require.Equal(t, "published", repo.status)
 }
+
+type ownedSchedulePostRepo struct {
+	domain.PostRepository
+	post    *domain.Post
+	creates int
+}
+
+func (r *ownedSchedulePostRepo) GetByID(context.Context, string) (*domain.Post, error) {
+	return r.post, nil
+}
+func (r *ownedSchedulePostRepo) Create(context.Context, *domain.Post) error { r.creates++; return nil }
+func TestScheduledReceiptDoesNotCreateDuplicatePost(t *testing.T) {
+	repo := &ownedSchedulePostRepo{post: &domain.Post{ID: "record", BusinessID: "business", BroadcastGroupID: "message", PlatformResults: map[string]domain.PlatformResult{"telegram": {ExternalID: "@own"}}}}
+	turn := &Turn{deps: Deps{Posts: repo}}
+	turn.recordPostsAndReviews(context.Background(), "business", "message", []domain.ToolCall{{ID: "call", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "text"}}}, []domain.ToolResult{{ToolCallID: "call", Content: map[string]interface{}{"status": "scheduled", "post_record_id": "record", "api_owned_schedule": true, "external_id": "@own"}}})
+	require.Zero(t, repo.creates)
+}
