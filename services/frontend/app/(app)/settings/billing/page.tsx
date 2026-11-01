@@ -7,8 +7,7 @@ import { useTranslations } from 'next-intl';
 
 import { ProRequest } from '@/components/billing/ProRequest';
 import { RequirePermission } from '@/components/permission/RequirePermission';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useBusinessStore } from '@/lib/stores/business';
 import type { BillingSummary } from '@/lib/api/billing';
@@ -30,112 +29,102 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function Gauge({ value, max, label }: { value: number; max: number; label: string }) {
-  const pct = max > 0 ? Math.min(100, Math.max(0, Math.round((value / max) * 100))) : 0;
   return (
-    <div
+    <progress
       role="progressbar"
       aria-label={label}
       aria-valuenow={value}
       aria-valuemin={0}
       aria-valuemax={max}
-      className="h-2 w-full overflow-hidden rounded-full bg-paper-sunken"
-    >
-      <div className="h-full rounded-full bg-ochre" style={{ width: `${pct}%` }} />
-    </div>
+      value={value}
+      max={max}
+      className="h-2 w-full overflow-hidden rounded-full bg-inset [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-brand [&::-webkit-progress-bar]:bg-inset [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-brand"
+    />
   );
 }
 
 function SummaryCards({ summary }: { summary: BillingSummary }) {
   const t = useTranslations('settings.billing');
+  const tV2 = useTranslations('settings.v2');
   const { plan, credits, usage_this_month, daily_spend } = summary;
   const isFree = plan.code.toLowerCase() === 'free';
-
+  const units = usage_this_month.units;
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>{t('plan.title')}</CardTitle>
-          <Badge tone="accent">{plan.code}</Badge>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-2 gap-4">
-            <Stat label={t('plan.name')} value={plan.name} />
+    <div className="space-y-group">
+      <section className="space-y-3 rounded-block bg-block p-block md:p-block-desktop">
+        <h2 className="text-group-title">{plan.name}</h2>
+        <p className="text-reading">
+          {credits.granted < 0
+            ? t('unlimited')
+            : tV2('remainingUnits', { remaining: credits.remaining, total: credits.granted })}
+        </p>
+        {credits.granted > 0 && (
+          <Gauge value={credits.remaining} max={credits.granted} label={tV2('remainingGauge')} />
+        )}
+        {credits.remaining === 0 && credits.granted >= 0 && (
+          <p className="text-[15px] leading-[22px] text-danger">{tV2('unitsExhausted')}</p>
+        )}
+      </section>
+      <section>
+        <h2 className="mb-block-gap text-group-title">{tV2('monthlyUsage')}</h2>
+        <div className="space-y-3 rounded-block bg-block p-block md:p-block-desktop">
+          <dl className="space-y-2">
+            {(units
+              ? [
+                  [tV2('modelUnits'), units.text],
+                  [tV2('imageUnits'), units.images],
+                  ...(units.other > 0 ? [[tV2('otherUnits'), units.other]] : []),
+                  [tV2('totalUnits'), units.total],
+                ]
+              : [
+                  [t('usage.actions'), usage_this_month.actions],
+                  [t('usage.images'), usage_this_month.images],
+                ]
+            ).map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-3 text-reading">
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-meta text-ink-soft">{tV2('unitMeaning')}</p>
+        </div>
+      </section>
+      {!isFree && (
+        <details className="rounded-block bg-block p-block md:p-block-desktop">
+          <summary className="min-h-tap cursor-pointer">{t('daily.title')}</summary>
+          <dl className="mt-3 grid grid-cols-2 gap-4">
+            <Stat label={t('usage.spend')} value={formatUsd(usage_this_month.spend_usd)} />
+            <Stat label={t('daily.today')} value={formatUsd(daily_spend.today_usd)} />
+            <Stat
+              label={t('daily.cap')}
+              value={daily_spend.cap_usd < 0 ? t('unlimited') : formatUsd(daily_spend.cap_usd)}
+            />
             <Stat
               label={t('plan.monthlyCredits')}
               value={plan.monthly_credits < 0 ? t('unlimited') : plan.monthly_credits}
             />
           </dl>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('credits.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <dl className="grid grid-cols-2 gap-4">
-            <Stat label={t('credits.remaining')} value={credits.remaining} />
-            <Stat label={t('credits.used')} value={credits.used} />
-            <Stat
-              label={t('credits.granted')}
-              value={credits.granted < 0 ? t('unlimited') : credits.granted}
+          {daily_spend.cap_usd > 0 && (
+            <Gauge
+              value={daily_spend.today_usd}
+              max={daily_spend.cap_usd}
+              label={t('daily.gaugeLabel')}
             />
-            <Stat label={t('credits.overage')} value={credits.overage} />
-          </dl>
-          {credits.granted > 0 ? (
-            <Gauge value={credits.used} max={credits.granted} label={t('credits.gaugeLabel')} />
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('usage.title')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-3 gap-4">
-            <Stat label={t('usage.actions')} value={usage_this_month.actions} />
-            {!isFree && (
-              <Stat label={t('usage.spend')} value={formatUsd(usage_this_month.spend_usd)} />
-            )}
-            <Stat label={t('usage.images')} value={usage_this_month.images} />
-          </dl>
-        </CardContent>
-      </Card>
-
-      {!isFree && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('daily.title')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <dl className="grid grid-cols-2 gap-4">
-              <Stat label={t('daily.today')} value={formatUsd(daily_spend.today_usd)} />
-              <Stat
-                label={t('daily.cap')}
-                value={daily_spend.cap_usd < 0 ? t('unlimited') : formatUsd(daily_spend.cap_usd)}
-              />
-            </dl>
-            {daily_spend.cap_usd > 0 ? (
-              <Gauge
-                value={daily_spend.today_usd}
-                max={daily_spend.cap_usd}
-                label={t('daily.gaugeLabel')}
-              />
-            ) : null}
-          </CardContent>
-        </Card>
+          )}
+        </details>
       )}
       {isFree && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('pro.title')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p>{t('pro.price')}</p>
+        <section>
+          <h2 className="text-group-title">{t('pro.title')}</h2>
+          <p className="mb-block-gap mt-1 text-[15px] leading-[22px] text-ink-soft">
+            {t('pro.price')}
+          </p>
+          <div className="space-y-4 rounded-block bg-block p-block md:p-block-desktop">
+            <p className="text-reading">{tV2('proBenefits')}</p>
             <ProRequest source="billing" />
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
     </div>
   );
@@ -181,10 +170,9 @@ export default function BillingPage() {
         </div>
       }
     >
-      <section className="space-y-6 px-4 pb-10 pt-6 sm:px-12 sm:pb-16">
+      <section className="mx-auto max-w-[816px] space-y-title-gap px-gutter pb-10 pt-5 md:px-gutter-desktop">
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
-          <p className="text-ink-soft">{t('subtitle')}</p>
         </header>
 
         {errorMessage ? (

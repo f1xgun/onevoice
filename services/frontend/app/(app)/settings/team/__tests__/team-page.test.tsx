@@ -134,11 +134,11 @@ beforeEach(() => {
 });
 
 describe('TeamPage', () => {
-  it('renders the page header + tabs', () => {
+  it('renders the page header and both groups', () => {
     render(wrap(<TeamPage />));
     expect(screen.getAllByText('Команда').length).toBeGreaterThan(0);
-    expect(screen.getByRole('tab', { name: /Участники/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Приглашения/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'В команде' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ждут ответа' })).toBeInTheDocument();
   });
 
   it('shows the «Пригласить» button when user has members.invite (admin role)', async () => {
@@ -148,7 +148,7 @@ describe('TeamPage', () => {
 
   it('renders members rows with name, email, role pill', () => {
     render(wrap(<TeamPage />));
-    expect(screen.getByText('Me')).toBeInTheDocument();
+    expect(screen.getByText('Me (вы)')).toBeInTheDocument();
     expect(screen.getByText('other@example.com')).toBeInTheDocument();
   });
 
@@ -184,9 +184,7 @@ describe('TeamPage', () => {
 
 it('does not flash an empty invitation list while the request is pending', async () => {
   vi.mocked(useInvitations).mockReturnValue({ data: [], isLoading: true } as any);
-  const user = userEvent.setup();
   const { container } = render(wrap(<TeamPage />));
-  await user.click(screen.getByRole('tab', { name: /Приглашения/ }));
   expect(screen.queryByText(messages.team.invitations.empty.title)).not.toBeInTheDocument();
   expect(container.querySelector('[data-loading-placeholder]')).toBeInTheDocument();
 });
@@ -201,7 +199,6 @@ it('shows a retry action instead of an empty invitation list after a failed requ
   } as any);
   const user = userEvent.setup();
   render(wrap(<TeamPage />));
-  await user.click(screen.getByRole('tab', { name: /Приглашения/ }));
   expect(screen.queryByText(messages.team.invitations.empty.title)).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: messages.common.retry }));
   expect(refetch).toHaveBeenCalledOnce();

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -56,8 +57,8 @@ describe('BillingPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Pro')).toBeInTheDocument();
     });
-    expect(screen.getByText('pro')).toBeInTheDocument();
-    expect(screen.getByText('1500')).toBeInTheDocument();
+    expect(screen.getByText('Осталось 1500 единиц из 2000')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Дневной расход'));
     expect(screen.getByText('42')).toBeInTheDocument();
     expect(screen.getByText('$12.34')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
@@ -113,7 +114,7 @@ describe('BillingPage', () => {
       })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('progressbar', { name: 'Использовано ИИ-действий из месячного пула' })
+      screen.getByRole('progressbar', { name: 'Остаток единиц месячного пула' })
     ).toBeInTheDocument();
   });
 
@@ -131,8 +132,9 @@ describe('BillingPage', () => {
     expect(screen.getAllByText('Безлимит').length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText('-1')).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('progressbar', { name: 'Использовано ИИ-действий из месячного пула' })
+      screen.queryByRole('progressbar', { name: 'Остаток единиц месячного пула' })
     ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText('Дневной расход'));
     expect(
       screen.getByRole('progressbar', { name: 'Расход за сегодня относительно дневного лимита' })
     ).toBeInTheDocument();
@@ -155,9 +157,13 @@ it.each(['ru', 'en'] as const)(
     expect(await screen.findByText('Free')).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/кредит|credits/i)).not.toBeInTheDocument();
-    expect(screen.getByText(locale === 'ru' ? 'ИИ-действия' : 'AI actions')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        locale === 'ru' ? 'Осталось 100 единиц из 100' : '100 units remaining out of 100'
+      )
+    ).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '100');
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
     expect(
       screen.getByText(
         locale === 'ru'
@@ -170,3 +176,25 @@ it.each(['ru', 'en'] as const)(
     ).toBeInTheDocument();
   }
 );
+
+it('uses actual consumed units even when the monthly pool is exhausted', async () => {
+  mockedGetSummary.mockResolvedValue({
+    ...SUMMARY,
+    plan: { code: 'free', name: 'Free', monthly_credits: 100 },
+    credits: { granted: 100, used: 100, remaining: 0, overage: 40 },
+    usage_this_month: {
+      actions: 80,
+      images: 7,
+      spend_usd: 4,
+      units: { total: 140, text: 130, images: 7, other: 3 },
+    },
+  });
+  renderPage();
+  expect(await screen.findByText('Осталось 0 единиц из 100')).toBeInTheDocument();
+  expect(
+    within(screen.getByText('Всего единиц').parentElement!).getByText('140')
+  ).toBeInTheDocument();
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+  expect(screen.getByText('Вызовы модели')).toBeInTheDocument();
+  expect(screen.queryByText('Расход')).not.toBeInTheDocument();
+});

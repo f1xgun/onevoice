@@ -24,7 +24,7 @@ export function ActorAutocomplete({ businessID, value, onChange }: Props) {
         data-testid="actor-select"
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || undefined)}
-        className="w-full min-w-0 max-w-full rounded-md border border-line bg-paper-raised px-2 py-1 text-ink"
+        className="min-h-control w-full min-w-0 max-w-full rounded-inner border border-field bg-block px-3 py-2 text-reading text-ink"
       >
         <option value="">{t('actorAny')}</option>
         {members.map((m) => (

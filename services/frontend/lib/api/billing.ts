@@ -23,6 +23,7 @@ export interface BillingCredits {
 }
 
 export interface BillingUsageThisMonth {
+  units?: { total: number; text: number; images: number; other: number };
   actions: number;
   spend_usd: number;
   images: number;

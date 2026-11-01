@@ -4,10 +4,8 @@ import { useState } from 'react';
 import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { useTranslations } from 'next-intl';
-import { UserPlus } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import Link from 'next/link';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { PageHeader } from '@/components/ui/page-header';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useInvitations } from '@/lib/hooks/useInvitations';
@@ -19,6 +17,7 @@ import { InviteModal } from './_components/InviteModal';
 
 export default function TeamPage() {
   const tPage = useTranslations('team.page');
+  const tV2 = useTranslations('settings.v2');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const {
     data: invitations = [],
@@ -40,60 +39,41 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="px-4 pb-10 pt-6 sm:px-12 sm:pb-16">
-      <PageHeader
-        title={tPage('title')}
-        sub={tPage('sub')}
-        actions={
-          <RequirePermission perm="members.invite">
-            <Button onClick={() => setInviteOpen(true)}>
-              <UserPlus size={16} className="mr-2" aria-hidden />
-              {tPage('invite')}
-            </Button>
-          </RequirePermission>
-        }
-      />
-      <Tabs defaultValue="members" className="mt-6">
-        <TabsList
-          aria-label={tPage('tabsAria')}
-          className="inline-flex h-auto items-center justify-start gap-6 rounded-none border-b border-line bg-transparent p-0"
+    <div className="mx-auto max-w-[816px] space-y-group px-gutter pb-10 pt-5 md:px-gutter-desktop">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="text-page-title">{tPage('title')}</h1>
+        <RequirePermission perm="members.invite">
+          <Button onClick={() => setInviteOpen(true)}>{tPage('invite')}</Button>
+        </RequirePermission>
+      </header>
+      <section>
+        <h2 className="mb-block-gap text-group-title">{tV2('inTeam')}</h2>
+        <MembersTab businessId={activeBusinessId} roles={roles} />
+      </section>
+      <section>
+        <h2 className="mb-block-gap text-group-title">{tV2('pending')}</h2>
+        {isLoading ? (
+          <LoadingPlaceholder className="h-48 animate-pulse rounded-lg bg-paper-sunken" />
+        ) : isError ? (
+          <ListLoadError onRetry={() => void refetch()} isPending={isFetching} />
+        ) : (
+          <InvitationsTab
+            businessId={activeBusinessId}
+            invitations={invitations}
+            sessionTokens={sessionTokens}
+          />
+        )}
+      </section>
+      <p className="text-[15px] leading-[22px] text-ink-soft">
+        {tV2('customRolesHint')}
+        <br />
+        <Link
+          href="/settings/roles"
+          className="inline-flex min-h-tap items-center text-brand underline"
         >
-          <TabsTrigger
-            value="members"
-            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 text-ink-soft shadow-none data-[state=active]:border-ink data-[state=active]:bg-transparent data-[state=active]:text-ink data-[state=active]:shadow-none"
-          >
-            {tPage('tabs.members')}
-          </TabsTrigger>
-          <TabsTrigger
-            value="invitations"
-            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 text-ink-soft shadow-none data-[state=active]:border-ink data-[state=active]:bg-transparent data-[state=active]:text-ink data-[state=active]:shadow-none"
-          >
-            <span>{tPage('tabs.invitations')}</span>
-            {invitations.length > 0 && (
-              <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-md bg-ink px-2 font-mono text-[11px] leading-none text-paper">
-                {invitations.length}
-              </span>
-            )}
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="members" className="mt-6">
-          <MembersTab businessId={activeBusinessId} roles={roles} />
-        </TabsContent>
-        <TabsContent value="invitations" className="mt-6">
-          {isLoading ? (
-            <LoadingPlaceholder className="h-48 animate-pulse rounded-lg bg-paper-sunken" />
-          ) : isError ? (
-            <ListLoadError onRetry={() => void refetch()} isPending={isFetching} />
-          ) : (
-            <InvitationsTab
-              businessId={activeBusinessId}
-              invitations={invitations}
-              sessionTokens={sessionTokens}
-              onInvite={() => setInviteOpen(true)}
-            />
-          )}
-        </TabsContent>
-      </Tabs>
+          {tV2('customRoles')}
+        </Link>
+      </p>
       <InviteModal
         open={inviteOpen}
         onOpenChange={setInviteOpen}

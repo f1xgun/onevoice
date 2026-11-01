@@ -36,7 +36,7 @@ function defaultFilters(): TFilters {
   return { category: 'all', from: from.toISOString(), to: now.toISOString() };
 }
 
-export default function AuditPage() {
+export function AuditSection({ embedded = false }: { embedded?: boolean }) {
   const t = useTranslations('audit');
   const businessID = useBusinessStore((s) => s.activeBusinessId);
   const [filters, setFilters] = useState<TFilters>(defaultFilters);
@@ -56,16 +56,22 @@ export default function AuditPage() {
       perm="audit.read"
       fallback={
         <div className="px-4 pb-10 pt-6 sm:px-12 sm:pb-16">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
+          <h2 className="text-group-title">{t('title')}</h2>
           <p className="mt-4 rounded-md border border-line bg-paper-sunken p-3 text-ink">
             {t('errors.forbidden')}
           </p>
         </div>
       }
     >
-      <section className="space-y-6 px-4 pb-10 pt-6 sm:px-12 sm:pb-16">
+      <section
+        className={
+          embedded
+            ? 'space-y-block-gap'
+            : 'mx-auto max-w-[816px] space-y-block-gap px-gutter pb-10 pt-5 md:px-gutter-desktop'
+        }
+      >
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
+          <h2 className="text-group-title">{t('title')}</h2>
           <p className="text-ink-soft">{t('subtitle')}</p>
         </header>
 
@@ -111,4 +117,8 @@ export default function AuditPage() {
       </section>
     </RequirePermission>
   );
+}
+
+export default function AuditPage() {
+  return <AuditSection />;
 }

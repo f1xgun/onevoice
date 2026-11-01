@@ -9,12 +9,12 @@ import { Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
-  AppDialog as DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/design-system/AppDialog';
+import { SheetContent } from '@/components/design-system/AppSheet';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
@@ -157,7 +157,7 @@ export function InviteModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md rounded-lg border border-line bg-paper-raised p-6 shadow-ov-2">
+      <SheetContent side="bottom">
         {state.kind === 'form' ? (
           <>
             <DialogHeader>
@@ -170,24 +170,37 @@ export function InviteModal({
             </DialogHeader>
             <form onSubmit={handleSubmit(onSubmit)} className="mt-6 flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="invite-role" className="text-meta font-medium text-ink">
+                <p id="invite-role-label" className="text-meta font-medium text-ink">
                   {tInvite('fields.role')}
-                </Label>
-                <Select value={currentRoleId} onValueChange={(v) => setValue('roleId', v)}>
-                  <SelectTrigger
-                    id="invite-role"
-                    className="h-auto min-h-11 border-control bg-paper-raised text-reading"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-control bg-card text-ink shadow-overlay">
-                    {roles.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {getRoleLabel(r.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                </p>
+                <fieldset
+                  aria-labelledby="invite-role-label"
+                  className="rounded-inner bg-inset p-3"
+                >
+                  <legend className="sr-only">{tInvite('fields.role')}</legend>
+                  {roles.map((role) => (
+                    <label
+                      key={role.id}
+                      className="flex min-h-tap cursor-pointer items-start gap-3 py-2"
+                    >
+                      <input
+                        type="radio"
+                        name="invite-role"
+                        value={role.id}
+                        checked={currentRoleId === role.id}
+                        disabled={create.isPending}
+                        onChange={() => setValue('roleId', role.id)}
+                        className="mt-1 h-5 w-5 shrink-0 accent-brand"
+                      />
+                      <span>
+                        <span className="block text-reading">{getRoleLabel(role.name)}</span>
+                        {role.description && (
+                          <span className="block text-meta text-ink-soft">{role.description}</span>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
                 <p className="text-xs text-ink-soft">{tInvite('fields.roleHelper')}</p>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -266,7 +279,7 @@ export function InviteModal({
             </DialogFooter>
           </>
         )}
-      </DialogContent>
+      </SheetContent>
     </Dialog>
   );
 }

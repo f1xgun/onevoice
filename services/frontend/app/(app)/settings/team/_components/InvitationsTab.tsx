@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { EmptyAction } from '@/components/states/EmptyAction';
 import { useLocale, useTranslations } from 'next-intl';
 import { Link2 } from 'lucide-react';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
@@ -9,39 +8,25 @@ import { toast } from 'sonner';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRevokeInvitation } from '@/lib/hooks/useInvitations';
 import { useMapInviteError } from '@/lib/resolveErrorMap';
 import type { PendingInvitation } from '@/lib/schemas';
-import { RolePill } from '@/components/business-switcher/RolePill';
+import { useRoleLabel } from '@/lib/hooks/useRoleLabel';
 import { RequirePermission } from '@/components/permission/RequirePermission';
 
 import { ConfirmDestructive } from '@/components/design-system/ConfirmDestructive';
 
 interface InvitationsTabProps {
-  onInvite?: () => void;
   businessId: string;
   invitations: PendingInvitation[];
   sessionTokens: Record<string, string>;
 }
 
-export function InvitationsTab({
-  businessId,
-  invitations,
-  sessionTokens,
-  onInvite,
-}: InvitationsTabProps) {
+export function InvitationsTab({ businessId, invitations, sessionTokens }: InvitationsTabProps) {
   const tTeam = useTranslations('team');
-  const tCols = useTranslations('team.invitations.cols');
+  const getRoleLabel = useRoleLabel();
   const tActions = useTranslations('team.invitations.actions');
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const mapInviteError = useMapInviteError();
@@ -73,24 +58,10 @@ export function InvitationsTab({
 
   if (invitations.length === 0) {
     return (
-      <section className="rounded-lg border border-line bg-paper-raised">
-        <div className="px-6 py-12 text-center">
+      <section className="rounded-block bg-block">
+        <div className="p-block text-center md:p-block-desktop">
           <h3 className="text-base font-medium text-ink">{tTeam('invitations.empty.title')}</h3>
           <p className="mt-1 text-sm text-ink-mid">{tTeam('invitations.empty.body')}</p>
-          <div className="mt-4">
-            <RequirePermission
-              perm="members.invite"
-              fallback={<EmptyAction href="/getting-started" action="gettingStarted" />}
-            >
-              {onInvite ? (
-                <Button size="sm" onClick={onInvite}>
-                  {tTeam('page.invite')}
-                </Button>
-              ) : (
-                <EmptyAction href="/getting-started" action="gettingStarted" />
-              )}
-            </RequirePermission>
-          </div>
         </div>
       </section>
     );
@@ -98,80 +69,66 @@ export function InvitationsTab({
 
   return (
     <TooltipProvider>
-      <section className="rounded-lg border border-line bg-paper-raised">
-        <header className="border-b border-line-soft px-6 py-4">
-          <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-ink-soft">
-            {tTeam('invitations.kicker')}
-          </p>
-          <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">
-            {tTeam('invitations.count', { count: invitations.length })}
-          </h2>
-        </header>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{tCols('role')}</TableHead>
-              <TableHead>{tCols('expiry')}</TableHead>
-              <TableHead>{tCols('creator')}</TableHead>
-              <TableHead className="text-right">{tCols('actions')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {invitations.map((inv) => {
-              const canCopy = !!sessionTokens[inv.id];
-              const expires = parseISO(inv.expires_at);
-              return (
-                <TableRow key={inv.id}>
-                  <TableCell>
-                    <RolePill roleName={inv.role_name} />
-                  </TableCell>
-                  <TableCell
-                    className="text-sm text-ink-mid"
+      <ul className="rounded-block bg-block p-1 md:p-2">
+        {invitations.map((inv) => {
+          const canCopy = !!sessionTokens[inv.id];
+          const expires = parseISO(inv.expires_at);
+          return (
+            <li key={inv.id} className="flex flex-col gap-3 p-3">
+              <div className="flex items-start gap-3">
+                <span
+                  aria-hidden
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed border-field text-avatar-ink"
+                >
+                  @
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{getRoleLabel(inv.role_name)}</p>
+                  <p
+                    className="text-meta text-ink-soft"
                     title={format(expires, 'd MMMM yyyy, HH:mm', { locale: dateFnsLocale })}
                   >
                     {tTeam('invitations.expiry.relative', {
                       duration: formatDistanceToNow(expires, { locale: dateFnsLocale }),
                     })}
-                  </TableCell>
-                  <TableCell className="text-sm text-ink-mid">{inv.created_by.email}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex items-center gap-2">
-                      {canCopy ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void handleCopyLink(inv)}
-                          aria-label={tActions('copyLink')}
-                        >
+                  </p>
+                  <p className="break-words text-meta text-ink-soft">{inv.created_by.email}</p>
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-2">
+                {canCopy ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleCopyLink(inv)}
+                    aria-label={tActions('copyLink')}
+                  >
+                    <Link2 size={14} className="mr-1" aria-hidden />
+                    {tActions('copyLink')}
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={-1}>
+                        <Button variant="ghost" size="sm" disabled>
                           <Link2 size={14} className="mr-1" aria-hidden />
                           {tActions('copyLink')}
                         </Button>
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span tabIndex={-1}>
-                              <Button variant="ghost" size="sm" disabled>
-                                <Link2 size={14} className="mr-1" aria-hidden />
-                                {tActions('copyLink')}
-                              </Button>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>{tTeam('invitations.linkUnavailable')}</TooltipContent>
-                        </Tooltip>
-                      )}
-                      <RequirePermission perm="members.invite">
-                        <Button variant="danger" size="sm" onClick={() => setConfirmRevoke(inv)}>
-                          {tActions('revoke')}
-                        </Button>
-                      </RequirePermission>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </section>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{tTeam('invitations.linkUnavailable')}</TooltipContent>
+                  </Tooltip>
+                )}
+                <RequirePermission perm="members.invite">
+                  <Button variant="danger" size="sm" onClick={() => setConfirmRevoke(inv)}>
+                    {tActions('revoke')}
+                  </Button>
+                </RequirePermission>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
 
       {confirmRevoke && (
         <ConfirmDestructive

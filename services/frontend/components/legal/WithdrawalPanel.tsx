@@ -18,6 +18,7 @@ import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
 import { useEffect, useState } from 'react';
 import { useTranslations, useLocale, useFormatter } from 'next-intl';
 import { toast } from 'sonner';
+import { ChevronRight } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -125,66 +126,60 @@ export function WithdrawalPanel() {
   const bySlug = new Map(consents.map((c) => [c.slug, c]));
 
   return (
-    <section aria-labelledby="withdrawal-heading" className="space-y-6">
-      <h2
-        id="withdrawal-heading"
-        className="text-[24px] font-medium leading-[1.2] tracking-[-0.015em] text-[var(--ov-ink)]"
-      >
+    <section aria-labelledby="withdrawal-heading" className="space-y-block-gap">
+      <h2 id="withdrawal-heading" className="text-group-title">
         {t('title')}
       </h2>
       <p className="text-[15px] leading-[1.55] text-[var(--ov-ink-mid)]">{t('subtitle')}</p>
 
-      <div className="space-y-4">
+      <div className="rounded-block bg-block p-1 md:p-2">
         {ORDERED_SLUGS.map((slug) => {
           const record = bySlug.get(slug);
           return (
-            <article
-              key={slug}
-              className="rounded-xl border border-[var(--ov-line)] bg-[var(--ov-paper-raised)] p-6"
-            >
-              <h3 className="text-[16px] font-medium text-[var(--ov-ink)]">{t(`row.${slug}`)}</h3>
-              <p className="mt-1 font-mono text-[13px] text-[var(--ov-ink-mid)]">
-                {record
-                  ? t('acceptedAt', {
-                      acceptedAt: formatDate(record.acceptedAt),
-                      version: record.version,
-                    })
-                  : '—'}
-              </p>
+            <article key={slug} className="p-3">
               <a
                 href={legalDocHref(slug)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-block text-[14px] text-[var(--ov-accent)] hover:underline"
+                className="flex min-h-control items-center justify-between gap-3"
               >
-                {t('openDoc')} ↗
-              </a>
-
-              {slug === 'pdn' && (
-                <div className="mt-4 space-y-3">
-                  <p className="rounded-md border border-[var(--ov-line)] bg-[var(--ov-paper-sunken)] px-4 py-3 text-[13px] leading-[1.55] text-[var(--ov-ink-mid)]">
-                    {t('pdn.note')}
+                <div className="min-w-0">
+                  <h3 className="text-[16px] font-medium text-[var(--ov-ink)]">
+                    {t(`row.${slug}`)}
+                  </h3>
+                  <p className="mt-1 text-meta text-ink-soft">
+                    {record
+                      ? t('acceptedAt', {
+                          acceptedAt: formatDate(record.acceptedAt),
+                          version: record.version,
+                        })
+                      : '—'}
                   </p>
-                  {alreadyScheduled ? (
-                    <p className="text-[13px] text-[var(--ov-danger)]">
-                      {t('pdn.alreadyScheduled', { deletionDate: alreadyScheduledDate })}
-                    </p>
-                  ) : (
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setDialogOpen(true)}
-                      aria-haspopup="dialog"
-                      lang={locale}
-                    >
-                      {t('pdn.cta')}
-                    </Button>
-                  )}
                 </div>
-              )}
+                <ChevronRight aria-hidden className="h-head-sm w-head-sm shrink-0 text-ink-soft" />
+              </a>
             </article>
           );
         })}
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <p className="text-meta text-ink-soft">{t('pdn.note')}</p>
+        {alreadyScheduled ? (
+          <p className="text-[13px] text-[var(--ov-danger)]">
+            {t('pdn.alreadyScheduled', { deletionDate: alreadyScheduledDate })}
+          </p>
+        ) : (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setDialogOpen(true)}
+            aria-haspopup="dialog"
+            lang={locale}
+          >
+            {t('pdn.cta')}
+          </Button>
+        )}
       </div>
 
       <AlertDialog open={dialogOpen} onOpenChange={(o) => !submitting && setDialogOpen(o)}>
