@@ -143,6 +143,19 @@ it('opens the whole approval batch without resolving or rejecting sibling calls'
   );
   expect(apiPost).not.toHaveBeenCalled();
 });
+it('opens profile drift in the card comparison and preserves reconnect destinations', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: /Данные на площадке отличаются/ }));
+  expect(screen.getByRole('link', { name: 'Открыть сверку' })).toHaveAttribute(
+    'href',
+    '/business#comparison'
+  );
+  await userEvent.click(screen.getByRole('button', { name: /Нужно переподключить площадку/ }));
+  expect(screen.getByRole('link', { name: 'Переподключить' })).toHaveAttribute(
+    'href',
+    '/integrations?reconnect=vk'
+  );
+});
 it('keeps read-only actors unable to send or suppress a reply', () => {
   state.canWrite = false;
   renderPage();

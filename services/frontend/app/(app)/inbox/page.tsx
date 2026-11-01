@@ -30,7 +30,7 @@ export default function InboxPage() {
   function target(item: DecisionItem) {
     if (item.kind === 'approval_batch') return `/chat/${item.conversationId}`;
     if (item.kind === 'connection') return `/integrations?reconnect=${item.platform}`;
-    return '/integrations';
+    return '/business#comparison';
   }
   return (
     <div className="space-y-title-gap px-gutter pb-10 pt-5 xl:px-gutter-desktop">

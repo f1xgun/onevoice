@@ -47,6 +47,42 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/drift:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getIntegrationsDrift
+    summary: Read the business's per-channel profile comparison.
+    description: Requires integrations.read; profile values additionally require business.read. Returns an empty list when reconciliation is not configured.
+    tags:
+    - integrations
+    responses:
+      '200':
+        description: Per-channel comparison states.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/IntegrationDrift
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
 /businesses/{id}/integrations/verify:
   parameters:
   - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath

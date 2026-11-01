@@ -1111,6 +1111,24 @@ type Integration struct {
 	UpdatedAt      time.Time              `json:"updatedAt" validate:"required"`
 }
 
+// IntegrationDrift Per-channel profile comparison from the existing reconciliation state.
+type IntegrationDrift struct {
+	// CheckFailed The latest check failed; earlier comparison values are not a current success.
+	CheckFailed   *bool      `json:"checkFailed,omitempty"`
+	DriftDetected bool       `json:"driftDetected" validate:"required"`
+	DriftFields   []string   `json:"driftFields" validate:"required"`
+	ExternalId    string     `json:"externalId" validate:"required"`
+	LastCheckedAt *time.Time `json:"lastCheckedAt,omitempty"`
+	NextCheckAt   time.Time  `json:"nextCheckAt" validate:"required"`
+	Platform      string     `json:"platform" validate:"required"`
+
+	// RemoteValues Supported drifted public profile values; empty without business.read.
+	RemoteValues *map[string]string `json:"remoteValues,omitempty"`
+
+	// StoredValues Corresponding stored values in the sync writer's format; empty without business.read.
+	StoredValues *map[string]string `json:"storedValues,omitempty"`
+}
+
 // IntegrationHealth Per-integration connection-liveness verdict computed synchronously by the verify endpoint. Distinct from the composite presence-health score.
 type IntegrationHealth struct {
 	CheckedAt  time.Time `json:"checkedAt" validate:"required"`
