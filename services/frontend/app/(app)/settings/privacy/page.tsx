@@ -8,7 +8,7 @@ import { DeleteBusinessModal } from '@/components/business/DeleteBusinessModal';
 import { ActionButton } from '@/components/design-system/ActionButton';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
-import { AuditSection } from '../audit/page';
+import { AuditSection } from '../audit/_components/AuditSection';
 
 const OWNER_ROLE_ID = '00000000-0000-0000-0000-000000000001';
 
