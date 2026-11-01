@@ -13,7 +13,8 @@ import { useBusinessList } from '@/lib/hooks/useBusinessList';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { AppTextarea } from '@/components/design-system/AppInput';
+import { format } from 'date-fns';
+import { AppInput, AppTextarea } from '@/components/design-system/AppInput';
 import {
   Dialog,
   AppDialog,
@@ -25,7 +26,17 @@ import {
 import type { Post } from '@/types/post';
 
 const OWNER_ROLE_ID = '00000000-0000-0000-0000-000000000001';
-const schema = z.object({ content: z.string().trim().min(1) });
+const schema = z.object({
+  content: z.string().trim().min(1),
+  scheduledAt: z
+    .string()
+    .optional()
+    .refine(
+      (value) =>
+        !value ||
+        (Number.isFinite(new Date(value).getTime()) && new Date(value).getTime() > Date.now())
+    ),
+});
 interface PostActionsProps {
   posts: Post[];
 }
@@ -46,21 +57,28 @@ export function PostActions({ posts }: PostActionsProps) {
   const qc = useQueryClient();
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { content: '' },
+    defaultValues: { content: '', scheduledAt: '' },
   });
   const mutation = useMutation({
     mutationFn: async ({
       post,
       operation,
       content,
+      scheduledAt,
     }: {
       post: Post;
       operation: 'edit' | 'delete' | 'retry';
       content?: string;
+      scheduledAt?: string;
     }) => {
       const path = `/posts/${post.id}`;
       if (operation === 'edit')
-        return (await bizApi(businessId!).patch<Post>(path, { content })).data;
+        return (
+          await bizApi(businessId!).patch<Post>(path, {
+            content,
+            ...(scheduledAt ? { scheduledAt } : {}),
+          })
+        ).data;
       if (operation === 'delete') return (await bizApi(businessId!).delete<Post>(path)).data;
       return (await bizApi(businessId!).post<Post>(`${path}/retry`)).data;
     },
@@ -85,7 +103,13 @@ export function PostActions({ posts }: PostActionsProps) {
 
   function open(post: Post, operation: 'edit' | 'delete') {
     mutation.reset();
-    form.reset({ content: post.content });
+    form.reset({
+      content: post.content,
+      scheduledAt:
+        post.status === 'scheduled' && post.scheduledAt
+          ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm")
+          : '',
+    });
     setTarget({ post, operation });
   }
 
@@ -147,29 +171,35 @@ export function PostActions({ posts }: PostActionsProps) {
                   {t('feed.retryPlatform', { platform: label })}
                 </Button>
               )}
-            {post.status === 'published' && supported && hasPublishedTarget && (
-              <>
-                {canEdit && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => open(post, 'edit')}
-                    disabled={mutation.isPending}
-                  >
-                    {t('feed.editPlatform', { platform: label })}
-                  </Button>
-                )}
-                {canDelete && (
-                  <Button
-                    variant="secondary"
-                    className="text-danger"
-                    onClick={() => open(post, 'delete')}
-                    disabled={mutation.isPending}
-                  >
-                    {t('feed.deletePlatform', { platform: label })}
-                  </Button>
-                )}
-              </>
-            )}
+            {supported &&
+              ((post.status === 'published' && hasPublishedTarget) ||
+                (post.status === 'scheduled' && platform === 'telegram')) && (
+                <>
+                  {canEdit && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => open(post, 'edit')}
+                      disabled={mutation.isPending}
+                    >
+                      {post.status === 'scheduled'
+                        ? t('feed.reschedule')
+                        : t('feed.editPlatform', { platform: label })}
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button
+                      variant="secondary"
+                      className="text-danger"
+                      onClick={() => open(post, 'delete')}
+                      disabled={mutation.isPending}
+                    >
+                      {post.status === 'scheduled'
+                        ? t('feed.cancelScheduled')
+                        : t('feed.deletePlatform', { platform: label })}
+                    </Button>
+                  )}
+                </>
+              )}
             {post.status === 'processing' && (
               <p role="status" className="text-sm text-ink-soft">
                 {t('feed.processingHelp')}
@@ -180,7 +210,7 @@ export function PostActions({ posts }: PostActionsProps) {
                 {t('feed.uncertainHelp')}
               </p>
             )}
-            {post.status === 'scheduled' && (
+            {post.status === 'scheduled' && platform !== 'telegram' && (
               <p className="text-sm text-ink-soft">{t('feed.schedulingHelp')}</p>
             )}
           </div>
@@ -207,23 +237,53 @@ export function PostActions({ posts }: PostActionsProps) {
         <AppDialog>
           <DialogHeader>
             <DialogTitle>
-              {target?.operation === 'delete' ? t('feed.deleteTitle') : t('feed.editTitle')}
+              {target?.operation === 'delete'
+                ? target.post.status === 'scheduled'
+                  ? t('feed.cancelTitle')
+                  : t('feed.deleteTitle')
+                : t('feed.editTitle')}
             </DialogTitle>
             <DialogDescription>
-              {target?.operation === 'delete' ? t('feed.deleteHelp') : t('feed.editHelp')}
+              {target?.operation === 'delete'
+                ? target.post.status === 'scheduled'
+                  ? t('feed.cancelHelp')
+                  : t('feed.deleteHelp')
+                : t('feed.editHelp')}
             </DialogDescription>
           </DialogHeader>
           {target?.operation === 'edit' ? (
             <form
               id="post-edit"
-              onSubmit={form.handleSubmit(
-                ({ content }) =>
-                  target &&
-                  !mutation.isPending &&
-                  mutation.data?.status !== 'uncertain' &&
-                  mutation.mutate({ ...target, content })
-              )}
+              onSubmit={form.handleSubmit(({ content, scheduledAt }) => {
+                if (!target || mutation.isPending || mutation.data?.status === 'uncertain') return;
+                if (target.post.status === 'scheduled' && !scheduledAt) {
+                  form.setError('scheduledAt', { message: t('feed.futureTime') });
+                  return;
+                }
+                mutation.mutate({
+                  ...target,
+                  content,
+                  ...(target.post.status === 'scheduled' && scheduledAt
+                    ? { scheduledAt: new Date(scheduledAt).toISOString() }
+                    : {}),
+                });
+              })}
             >
+              {target.post.status === 'scheduled' && (
+                <label className="mb-3 block text-sm">
+                  {t('feed.publishAt')}
+                  <AppInput
+                    type="datetime-local"
+                    aria-label={t('feed.publishAt')}
+                    {...form.register('scheduledAt')}
+                  />
+                  {form.formState.errors.scheduledAt && (
+                    <span role="alert" className="text-danger">
+                      {t('feed.futureTime')}
+                    </span>
+                  )}
+                </label>
+              )}
               <AppTextarea
                 aria-label={t('feed.contentLabel')}
                 rows={7}
@@ -258,7 +318,11 @@ export function PostActions({ posts }: PostActionsProps) {
               disabled={mutation.isPending || mutation.data?.status === 'uncertain'}
               onClick={() => target?.operation === 'delete' && mutation.mutate(target)}
             >
-              {target?.operation === 'delete' ? t('feed.confirmDelete') : t('feed.save')}
+              {target?.operation === 'delete'
+                ? target.post.status === 'scheduled'
+                  ? t('feed.cancelScheduled')
+                  : t('feed.confirmDelete')
+                : t('feed.save')}
             </Button>
           </DialogFooter>
         </AppDialog>

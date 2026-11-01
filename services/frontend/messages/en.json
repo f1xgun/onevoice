@@ -689,10 +689,18 @@
         "error": "not published",
         "uncertain": "checking outcome",
         "deleted": "deleted",
-        "pending": "waiting to send"
+        "pending": "waiting to send",
+        "canceled": "canceled",
+        "processing": "processing"
       },
       "newPrompt": "Prepare a new post",
-      "processingHelp": "Updating the post on the platform…"
+      "processingHelp": "Updating the post on the platform…",
+      "reschedule": "Edit text and time",
+      "cancelScheduled": "Cancel scheduled post",
+      "publishAt": "When to publish",
+      "futureTime": "Choose a valid future time",
+      "cancelTitle": "Cancel the scheduled post?",
+      "cancelHelp": "The post will not be sent. Its text remains in history."
     }
   },
   "tasks": {

@@ -13,7 +13,7 @@ import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { cn } from '@/lib/utils';
 import type { Post } from '@/types/post';
-import { mergeBroadcastGroups } from './_helpers';
+import { mergeBroadcastGroups, postLocalDay } from './_helpers';
 import { PostsEmpty } from './_components/PostsEmpty';
 import { PostsSkeleton } from './_components/PostsSkeleton';
 import { MediaThumb } from './_components/MediaThumb';
@@ -61,7 +61,7 @@ export default function PostsPage() {
         )
       )
         continue;
-      const day = (row.scheduledAt ?? row.publishedAt ?? row.createdAt).slice(0, 10);
+      const day = postLocalDay(row);
       groups.set(day, [...(groups.get(day) ?? []), row]);
     }
     return [...groups];
@@ -158,41 +158,51 @@ export default function PostsPage() {
                           {results.length === 0 && (
                             <p className="text-sm text-ink-soft">
                               {t(
-                                `feed.status.${['published', 'scheduled', 'error', 'uncertain', 'deleted'].includes(row.status) ? row.status : 'pending'}`
+                                `feed.status.${['published', 'scheduled', 'error', 'uncertain', 'deleted', 'canceled', 'processing'].includes(row.status) ? row.status : 'pending'}`
                               )}
                             </p>
                           )}
-                          {results.map(([platform, result], i) => (
-                            <div
-                              key={`${platform}-${i}`}
-                              className={cn(
-                                'flex items-start gap-2 text-[15px] leading-[22px]',
-                                result.error && 'text-danger'
-                              )}
-                            >
-                              <PlatformIcon platform={platform} className="mt-1 size-4" />
-                              <span className="min-w-0 flex-1 break-words">
-                                {t.has(`platformShort.${platform}`)
-                                  ? t(`platformShort.${platform}`)
-                                  : platform}{' '}
-                                —{' '}
-                                {result.error ||
-                                  t(
-                                    `feed.status.${['published', 'scheduled', 'error', 'uncertain', 'deleted'].includes(result.status) ? result.status : result.status === 'ok' ? 'published' : 'pending'}`
-                                  )}
-                              </span>
-                              {result.url && !result.error && (
-                                <a
-                                  href={result.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="shrink-0 text-ink-soft underline"
-                                >
-                                  {t('feed.open')}
-                                </a>
-                              )}
-                            </div>
-                          ))}
+                          {results.map(([platform, result], i) => {
+                            const memberStatus =
+                              members.find((post) => post.platformResults?.[platform] === result)
+                                ?.status ?? row.status;
+                            const status = ['canceled', 'processing', 'uncertain'].includes(
+                              memberStatus
+                            )
+                              ? memberStatus
+                              : result.status;
+                            return (
+                              <div
+                                key={`${platform}-${i}`}
+                                className={cn(
+                                  'flex items-start gap-2 text-[15px] leading-[22px]',
+                                  result.error && 'text-danger'
+                                )}
+                              >
+                                <PlatformIcon platform={platform} className="mt-1 size-4" />
+                                <span className="min-w-0 flex-1 break-words">
+                                  {t.has(`platformShort.${platform}`)
+                                    ? t(`platformShort.${platform}`)
+                                    : platform}{' '}
+                                  —{' '}
+                                  {result.error ||
+                                    t(
+                                      `feed.status.${['published', 'scheduled', 'error', 'uncertain', 'deleted', 'canceled', 'processing'].includes(status) ? status : status === 'ok' ? 'published' : 'pending'}`
+                                    )}
+                                </span>
+                                {result.url && !result.error && (
+                                  <a
+                                    href={result.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="shrink-0 text-ink-soft underline"
+                                  >
+                                    {t('feed.open')}
+                                  </a>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                       <div className="col-span-2 md:col-span-1">
