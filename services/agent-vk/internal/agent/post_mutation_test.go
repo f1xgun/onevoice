@@ -54,3 +54,10 @@ func TestPostMutationNeedsUserToken(t *testing.T) {
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{Tool: tools.VKDeletePost, Args: map[string]any{"group_id": "123", "post_id": 42}})
 	require.Equal(t, "integration_token_invalid", a2a.CodeOf(err))
 }
+
+func TestRetrySendDoesNotFallBackToAnotherCommunity(t *testing.T) {
+	factory := func(string) agent.VKClient { t.Fatal("must not dispatch with fallback target"); return nil }
+	h := agent.NewHandler(&mockTokenFetcher{token: "token", extID: "123"}, factory, "", nil)
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{BusinessID: "biz", Tool: tools.VKPublishPost, Args: map[string]interface{}{"group_id": "999", "text": "retry", "strict_target": true}})
+	require.Equal(t, "channel_not_found", a2a.CodeOf(err))
+}

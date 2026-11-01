@@ -69,3 +69,47 @@ func TestPostMutationPermanentTelegramErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestRetrySendDoesNotFallBackToAnotherChannel(t *testing.T) {
+	sender := &fakeSender{}
+	h := newHandlerWithSender(&firstActiveTokenFetcher{token: "token", ownExternalID: "@own"}, sender)
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{BusinessID: "biz", Tool: tools.TelegramSendChannelPost, Args: map[string]interface{}{"channel_id": "@old", "text": "retry", "strict_target": true}})
+	require.Equal(t, "channel_not_found", a2a.CodeOf(err))
+	require.Empty(t, sender.sentChat)
+}
+
+func TestRetrySendDoesNotAutomaticallyRetryAmbiguousFailure(t *testing.T) {
+	h := newHandlerWithErrSender(&fakeTokenFetcher{token: "token"}, errors.New("connection reset after send"))
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{Tool: tools.TelegramSendChannelPost, Args: map[string]interface{}{"channel_id": "@own", "text": "retry", "strict_target": true}})
+	require.ErrorIs(t, err, &a2a.NonRetryableError{})
+}
+
+func (e *errSender) EditMessage(_ string, _ int, _ string, _ bool) (telegram.SentMessage, error) {
+	return telegram.SentMessage{}, e.err
+}
+func (e *errSender) DeleteMessage(_ string, _ int) error { return e.err }
+
+func TestPostMutationRejectionReceipt(t *testing.T) {
+	for _, tc := range []struct {
+		description string
+		rejected    bool
+	}{
+		{"Bad Request: message can't be deleted", true},
+		{"Bad Request: message can't be edited", true},
+		{"Bad Request: message to delete not found", true},
+		{"connection reset after send", false},
+	} {
+		t.Run(tc.description, func(t *testing.T) {
+			h := newHandlerWithErrSender(&fakeTokenFetcher{token: "token"}, errors.New(tc.description))
+			response, err := h.Handle(context.Background(), a2a.ToolRequest{Tool: tools.TelegramDeleteChannelPost, Args: map[string]interface{}{"channel_id": "@own", "message_id": 42}})
+			if !tc.rejected {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.False(t, response.Success)
+			require.Equal(t, "transient", response.Code)
+			require.Equal(t, true, response.Result["mutation_rejected"])
+		})
+	}
+}

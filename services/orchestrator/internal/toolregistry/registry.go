@@ -38,6 +38,7 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 type entry struct {
 	def                     llm.ToolDefinition
 	displayName             string
+	userDescriptionKey      string
 	userDescription         string // human-readable; LLM-facing description stays in def.Function.Description
 	displayNameKey          string
 	descriptionEn           string
@@ -64,6 +65,7 @@ type ToolSpec struct {
 	Def                     llm.ToolDefinition
 	DisplayName             string
 	DisplayNameKey          string
+	UserDescriptionKey      string
 	UserDescription         string
 	DescriptionEn           string
 	ParameterDescriptionsEn map[string]string
@@ -85,6 +87,7 @@ func (r *Registry) Register(spec ToolSpec, exec Executor) {
 		def:                     spec.Def,
 		displayName:             spec.DisplayName,
 		userDescription:         spec.UserDescription,
+		userDescriptionKey:      spec.UserDescriptionKey,
 		displayNameKey:          spec.DisplayNameKey,
 		descriptionEn:           spec.DescriptionEn,
 		parameterDescriptionsEn: paramsEn,
@@ -360,14 +363,15 @@ func (r *Registry) AllEntriesForLocale(tag language.Tag) []RegistryEntry {
 			desc = e.descriptionEn
 		}
 		out = append(out, RegistryEntry{
-			Name:            e.def.Function.Name,
-			DisplayName:     e.displayName,
-			DisplayNameKey:  e.displayNameKey,
-			Platform:        platform,
-			Floor:           e.floor,
-			EditableFields:  append([]string(nil), e.editableFields...),
-			Description:     desc,
-			UserDescription: e.userDescription,
+			Name:               e.def.Function.Name,
+			DisplayName:        e.displayName,
+			DisplayNameKey:     e.displayNameKey,
+			Platform:           platform,
+			Floor:              e.floor,
+			EditableFields:     append([]string(nil), e.editableFields...),
+			Description:        desc,
+			UserDescription:    e.userDescription,
+			UserDescriptionKey: e.userDescriptionKey,
 		})
 	}
 	return out

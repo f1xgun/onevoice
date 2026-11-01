@@ -30,6 +30,7 @@ func (s *contentTemplateRepoStub) Update(context.Context, *domain.ContentTemplat
 func (s *contentTemplateRepoStub) Delete(context.Context, uuid.UUID, uuid.UUID) error    { return nil }
 
 type postRepoStub struct {
+	domain.PostRepository
 	post *domain.Post
 	err  error
 }

@@ -16,6 +16,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
+const strictTargetArg = "strict_target"
+
 // TokenInfo aliases agentbase.TokenInfo so existing tests compile after the
 // agentbase migration. AccessToken is the community token (write operations);
 // UserToken is the user token (read operations on private data); ExternalID is
@@ -163,6 +165,9 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 	if err != nil {
 		return nil, "", err
 	}
+	if strict, _ := req.Args[strictTargetArg].(bool); strict && ensureNegativeGroupID(suppliedGroupID) != ensureNegativeGroupID(info.ExternalID) {
+		return nil, "", a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(fmt.Errorf("vk: original connected community is unavailable")))
+	}
 	groupID := resolveGroupTarget(suppliedGroupID, info.ExternalID)
 	return h.clientFactory(info.AccessToken), groupID, nil
 }
@@ -208,7 +213,7 @@ func wallPostURL(groupID string, postID int64) string {
 // publishedPostResult builds the tool-result payload of a landed wall post:
 // the VK-assigned post id always, the public permalink when derivable.
 func publishedPostResult(groupID string, postID int64) map[string]any {
-	result := map[string]any{"post_id": float64(postID)}
+	result := map[string]any{"post_id": float64(postID), "external_id": groupID}
 	if url := wallPostURL(groupID, postID); url != "" {
 		result["url"] = url
 	}
@@ -224,6 +229,9 @@ func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 
 	postID, err := client.PublishPost(groupID, text)
 	if err != nil {
+		if strict, _ := req.Args[strictTargetArg].(bool); strict {
+			return nil, a2a.NewNonRetryableError(err)
+		}
 		return nil, fmt.Errorf("vk: publish post: %w", classifyVKError(err))
 	}
 
@@ -243,6 +251,9 @@ func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.Tool
 	}
 	postID, err := client.PostPhoto(groupID, photoURL, caption)
 	if err != nil {
+		if strict, _ := req.Args[strictTargetArg].(bool); strict {
+			return nil, a2a.NewNonRetryableError(err)
+		}
 		return nil, fmt.Errorf("vk: post photo: %w", classifyVKError(err))
 	}
 	return a2a.OK(req, publishedPostResult(groupID, postID)), nil

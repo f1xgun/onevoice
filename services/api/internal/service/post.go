@@ -11,12 +11,14 @@ import (
 
 // PostService defines the interface for post operations
 type PostService interface {
+	Mutate(ctx context.Context, businessID uuid.UUID, id, action string, content *string) (*domain.Post, error)
 	List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
 }
 
 type postService struct {
-	repo domain.PostRepository
+	repo     domain.PostRepository
+	dispatch natsRequester
 }
 
 // Compile-time check that postService implements PostService

@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
@@ -877,4 +879,33 @@ func TestToolsRegistryCache_FetchAndCache(t *testing.T) {
 
 func (s *stubBusinessRepo) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	return s.GetByID(ctx, id)
+}
+
+func TestHITLPostDeleteRequiresOwner(t *testing.T) {
+	for _, tool := range []string{tools.TelegramDeleteChannelPost, tools.VKDeletePost} {
+		for _, owner := range []bool{false, true} {
+			t.Run(tool+fmt.Sprint(owner), func(t *testing.T) {
+				business, user := uuid.New(), uuid.New()
+				role := uuid.New()
+				if owner {
+					role = uuid.MustParse(domain.SystemRoleOwnerID)
+				}
+				repo := newStubPendingRepo()
+				seedBatch(repo, "batch", "conversation", business.String(), []domain.PendingCall{{CallID: "call", ToolName: tool}})
+				svc := newSvc(t, repo, &stubBusinessRepo{Business: &domain.Business{ID: business}}, &stubProjectRepo{})
+				ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{BusinessID: business, UserID: user, RoleID: role, Permissions: []authz.Permission{authz.PermContentUpdate, authz.PermContentDelete}})
+				_, err := svc.Resolve(ctx, service.ResolveInput{ConversationID: "conversation", BatchID: "batch", ActorUserID: user.String(), ActorBusinessID: business.String(), Decisions: []service.DecisionInput{{ID: "call", Action: "approve"}}})
+				if !owner {
+					if !errors.Is(err, service.ErrHITLForbidden) {
+						t.Fatalf("nonowner delete: %v", err)
+					}
+					if repo.ResolvingCounter != 0 {
+						t.Fatal("unauthorized delete claimed approval")
+					}
+				} else if err != nil {
+					t.Fatalf("owner delete: %v", err)
+				}
+			})
+		}
+	}
 }

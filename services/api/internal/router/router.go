@@ -341,6 +341,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				r.Get("/posts", handlers.Post.ListPosts)
 				r.Get("/posts/{id}", handlers.Post.GetPost)
+				r.With(writeLimit).Patch("/posts/{id}", handlers.Post.EditPost)
+				r.With(writeLimit).Delete("/posts/{id}", handlers.Post.DeletePost)
+				r.With(writeLimit).Post("/posts/{id}/retry", handlers.Post.RetryPost)
 
 				if handlers.ContentTemplate != nil {
 					r.Get("/content-templates", handlers.ContentTemplate.List)

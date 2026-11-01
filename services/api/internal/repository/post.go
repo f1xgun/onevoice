@@ -82,3 +82,40 @@ func (r *postRepository) GetByID(ctx context.Context, id string) (*domain.Post, 
 
 	return &post, nil
 }
+
+// ClaimOperation serializes mutations on the existing business-scoped post.
+// A claim is never expired automatically: a crashed dispatch may have landed.
+func (r *postRepository) ClaimOperation(ctx context.Context, businessID, id, previousStatus, operationID string) (bool, error) {
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id, "business_id": businessID, "status": previousStatus, "operation_id": bson.M{"$in": bson.A{"", nil}}}, bson.M{"$set": bson.M{"status": "processing", "operation_id": operationID}})
+	if err != nil {
+		return false, fmt.Errorf("claim post operation: %w", err)
+	}
+	return result.ModifiedCount == 1, nil
+}
+
+// CompleteOperation updates this post only while its durable claim still matches.
+func (r *postRepository) CompleteOperation(ctx context.Context, post *domain.Post, operationID string) error {
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": post.ID, "business_id": post.BusinessID, "operation_id": operationID}, bson.M{"$set": bson.M{"content": post.Content, "platform_results": post.PlatformResults, "status": post.Status, "published_at": post.PublishedAt}, "$unset": bson.M{"operation_id": ""}})
+	if err != nil {
+		return fmt.Errorf("complete post operation: %w", err)
+	}
+	if result.MatchedCount != 1 {
+		return domain.ErrPostConflict
+	}
+	return nil
+}
+
+// ReconcileMutation changes only an exact business/platform/verified-target receipt.
+func (r *postRepository) ReconcileMutation(ctx context.Context, businessID, platform, externalID, postID, status string, content *string) error {
+	prefix := "platform_results." + platform
+	filter := bson.M{"business_id": businessID, prefix + ".external_id": externalID, prefix + ".post_id": postID, "operation_id": bson.M{"$in": bson.A{"", nil}}}
+	set := bson.M{"status": status, prefix + ".status": status, prefix + ".error": ""}
+	if content != nil {
+		set["content"] = *content
+	}
+	_, err := r.collection.UpdateOne(ctx, filter, bson.M{"$set": set})
+	if err != nil {
+		return fmt.Errorf("reconcile post mutation: %w", err)
+	}
+	return nil
+}

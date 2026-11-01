@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/i18n"
@@ -211,6 +212,12 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 
 	for _, c := range batch.Calls {
 		d := decisionByID[c.CallID]
+		if (c.ToolName == tools.TelegramDeleteChannelPost || c.ToolName == tools.VKDeletePost) && d.Action != actionReject {
+			bc, ok := authz.BusinessContextFromCtx(ctx)
+			if !ok || bc.BusinessID.String() != batch.BusinessID || bc.RoleID.String() != domain.SystemRoleOwnerID || !authz.Can(ctx, authz.PermContentDelete) {
+				return nil, ErrHITLForbidden
+			}
+		}
 		switch d.Action {
 		case actionApprove:
 		case actionEdit:

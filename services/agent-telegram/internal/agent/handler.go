@@ -17,6 +17,8 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/telegram"
 )
 
+const strictTargetArg = "strict_target"
+
 // TokenInfo aliases agentbase.TokenInfo so test files that construct
 // agent.TokenInfo{...} continue to compile after the agentbase migration.
 // New callers should use agentbase.TokenInfo directly.
@@ -230,7 +232,7 @@ func channelPostURL(sent telegram.SentMessage, target string) string {
 // sentPostResult builds the tool-result payload of a delivered channel post:
 // the message id always, the t.me permalink when the channel is public.
 func sentPostResult(sent telegram.SentMessage, target string) map[string]any {
-	result := map[string]any{"status": "sent", "message_id": sent.MessageID}
+	result := map[string]any{"status": "sent", "message_id": sent.MessageID, "external_id": target}
 	if url := channelPostURL(sent, target); url != "" {
 		result["url"] = url
 	}
@@ -246,6 +248,9 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 		return nil, err
 	}
 
+	if strict, _ := req.Args[strictTargetArg].(bool); strict && channelIDStr != resolvedID {
+		return nil, a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(fmt.Errorf("telegram: original connected channel is unavailable")))
+	}
 	target, err := resolveChatTarget(channelIDStr, resolvedID)
 	if err != nil {
 		return nil, err
@@ -253,6 +258,9 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 
 	sent, err := sender.SendMessage(target, text)
 	if err != nil {
+		if strict, _ := req.Args[strictTargetArg].(bool); strict {
+			return nil, a2a.NewNonRetryableError(err)
+		}
 		return nil, fmt.Errorf("telegram: send message: %w", classifyTelegramError(err))
 	}
 
@@ -269,6 +277,9 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 		return nil, err
 	}
 
+	if strict, _ := req.Args[strictTargetArg].(bool); strict && channelIDStr != resolvedID {
+		return nil, a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(fmt.Errorf("telegram: original connected channel is unavailable")))
+	}
 	target, err := resolveChatTarget(channelIDStr, resolvedID)
 	if err != nil {
 		return nil, err
@@ -276,6 +287,9 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 
 	sent, err := sender.SendPhoto(target, photoURL, caption)
 	if err != nil {
+		if strict, _ := req.Args[strictTargetArg].(bool); strict {
+			return nil, a2a.NewNonRetryableError(err)
+		}
 		return nil, fmt.Errorf("telegram: send photo: %w", classifyTelegramError(err))
 	}
 

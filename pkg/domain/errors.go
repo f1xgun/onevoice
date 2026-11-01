@@ -143,6 +143,7 @@ var (
 
 // Post errors.
 var (
+	ErrPostConflict            = errors.New("post operation unavailable")
 	ErrPostNotFound            = errors.New("post not found")
 	ErrContentTemplateNotFound = errors.New("content template not found")
 	ErrContentTemplateLimit    = errors.New("content template limit reached")

@@ -79,3 +79,70 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  patch:
+    operationId: editPublishedPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: postID
+      in: path
+      required: true
+      schema: {type: string}
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [content]
+            properties:
+              content: {type: string}
+    responses:
+      '200':
+        description: Updated existing post; inspect status and platform error for the platform outcome. Uncertain outcomes must not be retried automatically.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '403': {description: Permission denied; deleting also requires the system owner role.}
+      '404': {description: Post not found in the active business.}
+      '409': {description: Operation already claimed, unsupported state, or original verified target missing.}
+  delete:
+    operationId: deletePublishedPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: postID
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '200':
+        description: Updated existing post; inspect status and platform error for the platform outcome. Uncertain outcomes must not be retried automatically.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '403': {description: Permission denied; deleting also requires the system owner role.}
+      '404': {description: Post not found in the active business.}
+      '409': {description: Operation already claimed, unsupported state, or original verified target missing.}
+/businesses/{id}/posts/{postID}/retry:
+  post:
+    operationId: retryFailedPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: postID
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '200':
+        description: Updated existing post; inspect status and platform error for the platform outcome. Uncertain outcomes must not be retried automatically.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '403': {description: Permission denied; deleting also requires the system owner role.}
+      '404': {description: Post not found in the active business.}
+      '409': {description: Operation already claimed, unsupported state, or original verified target missing.}

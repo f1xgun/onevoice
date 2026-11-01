@@ -627,7 +627,6 @@ func TestHandler_GetReviews_HugeLimit_ClampedToMax(t *testing.T) {
 
 // errSender is a Sender that always returns a configured error.
 type errSender struct {
-	fakeSender
 	err error
 }
 

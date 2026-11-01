@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -20,6 +21,7 @@ import (
 
 // mockPostService implements PostService for tests.
 type mockPostService struct {
+	mutateFn  func(context.Context, uuid.UUID, string, string, *string) (*domain.Post, error)
 	listFn    func(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
 	getByIDFn func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
 }
@@ -205,4 +207,52 @@ func TestGetPost_ServiceError(t *testing.T) {
 	r.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+func (m *mockPostService) Mutate(ctx context.Context, businessID uuid.UUID, id, action string, content *string) (*domain.Post, error) {
+	return m.mutateFn(ctx, businessID, id, action, content)
+}
+
+func TestPostMutationHTTPContracts(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, path, body string
+		permission               authz.Permission
+		owner                    bool
+		want                     int
+	}{
+		{"edit", http.MethodPatch, "/posts/p", `{"content":"new"}`, authz.PermContentUpdate, false, http.StatusOK},
+		{"retry", http.MethodPost, "/posts/p/retry", "", authz.PermContentCreate, false, http.StatusOK},
+		{"delete owner", http.MethodDelete, "/posts/p", "", authz.PermContentDelete, true, http.StatusOK},
+		{"delete admin", http.MethodDelete, "/posts/p", "", authz.PermContentDelete, false, http.StatusForbidden},
+		{"invalid edit", http.MethodPatch, "/posts/p", `{}`, authz.PermContentUpdate, false, http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			business := uuid.New()
+			role := uuid.New()
+			if tc.owner {
+				role = uuid.MustParse(domain.SystemRoleOwnerID)
+			}
+			called := false
+			svc := &mockPostService{mutateFn: func(_ context.Context, bid uuid.UUID, id, action string, content *string) (*domain.Post, error) {
+				called = true
+				require.Equal(t, business, bid)
+				require.Equal(t, "p", id)
+				if action == "edit" {
+					require.Equal(t, "new", *content)
+				}
+				return &domain.Post{ID: id, BusinessID: bid.String(), Status: "published"}, nil
+			}}
+			h, _ := NewPostHandler(svc)
+			router := chi.NewRouter()
+			router.Patch("/posts/{id}", h.EditPost)
+			router.Delete("/posts/{id}", h.DeletePost)
+			router.Post("/posts/{id}/retry", h.RetryPost)
+			ctx := authz.WithBusinessContext(context.Background(), authz.BusinessContext{BusinessID: business, RoleID: role, Permissions: []authz.Permission{tc.permission}})
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)).WithContext(ctx)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			require.Equal(t, tc.want, rec.Code)
+			require.Equal(t, tc.want == http.StatusOK, called)
+		})
+	}
 }

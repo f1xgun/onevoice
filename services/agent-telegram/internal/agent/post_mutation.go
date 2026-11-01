@@ -42,7 +42,13 @@ func (h *Handler) mutateChannelPost(ctx context.Context, req a2a.ToolRequest) (*
 		err = sender.DeleteMessage(target, id)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("telegram: mutate post: %w", classifyTelegramError(err))
+		classified := classifyTelegramError(err)
+		description := strings.ToLower(err.Error())
+		if strings.Contains(description, "message can't be edited") || strings.Contains(description, "message can't be deleted") ||
+			strings.Contains(description, "message to edit not found") || strings.Contains(description, "message to delete not found") {
+			return &a2a.ToolResponse{TaskID: req.TaskID, Success: false, Error: err.Error(), Code: a2a.CodeOf(classified), Result: map[string]interface{}{"mutation_rejected": true}}, nil
+		}
+		return nil, fmt.Errorf("telegram: mutate post: %w", classified)
 	}
 	result := sentPostResult(sent, target)
 	result["status"] = status

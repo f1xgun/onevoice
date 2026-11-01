@@ -1390,10 +1390,13 @@ type PostListResponse struct {
 
 // PostPlatformResult defines model for PostPlatformResult.
 type PostPlatformResult struct {
-	Error  *string `json:"error,omitempty"`
-	PostId string  `json:"postId" validate:"required"`
-	Status string  `json:"status" validate:"required"`
-	Url    string  `json:"url" validate:"required"`
+	Error *string `json:"error,omitempty"`
+
+	// ExternalId Verified original platform integration target; absent on legacy records.
+	ExternalId *string `json:"externalId,omitempty"`
+	PostId     string  `json:"postId" validate:"required"`
+	Status     string  `json:"status" validate:"required"`
+	Url        string  `json:"url" validate:"required"`
 }
 
 // PresenceHealthResponse Read-only composite presence-health score. Aggregate-only: no author, review text, or reply text is carried — numbers only. composite and trendDelta are null when there is not yet enough data.
@@ -2006,6 +2009,9 @@ type ToolEntry struct {
 	Name            string         `json:"name" validate:"required"`
 	Platform        string         `json:"platform" validate:"required"`
 	UserDescription string         `json:"userDescription" validate:"required"`
+
+	// UserDescriptionKey Translation catalog key for the user-facing tool description.
+	UserDescriptionKey *string `json:"userDescriptionKey,omitempty"`
 }
 
 // ToolEntryFloor defines model for ToolEntry.Floor.
@@ -2037,6 +2043,9 @@ type ToolRegistryEntry struct {
 	Name            string    `json:"name" validate:"required"`
 	Platform        string    `json:"platform" validate:"required"`
 	UserDescription string    `json:"userDescription" validate:"required"`
+
+	// UserDescriptionKey Translation catalog key for the user-facing tool description.
+	UserDescriptionKey *string `json:"userDescriptionKey,omitempty"`
 }
 
 // UpdateBusinessRequest defines model for UpdateBusinessRequest.
@@ -2411,6 +2420,11 @@ type ListPostsParams struct {
 	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// EditPublishedPostJSONBody defines parameters for EditPublishedPost.
+type EditPublishedPostJSONBody struct {
+	Content string `json:"content" validate:"required"`
+}
+
 // GetPresenceHealthParams defines parameters for GetPresenceHealth.
 type GetPresenceHealthParams struct {
 	// TargetHours Answered-within-target window in hours (default 24) the SLA sub-score is computed against. Values <= 0 fall back to the default.
@@ -2626,6 +2640,9 @@ type UpdateMemberRoleJSONRequestBody = UpdateMemberRoleRequest
 
 // UpdateBusinessOwnerBriefJSONRequestBody defines body for UpdateBusinessOwnerBrief for application/json ContentType.
 type UpdateBusinessOwnerBriefJSONRequestBody = UpdateOwnerBriefRequest
+
+// EditPublishedPostJSONRequestBody defines body for EditPublishedPost for application/json ContentType.
+type EditPublishedPostJSONRequestBody EditPublishedPostJSONBody
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectRequest

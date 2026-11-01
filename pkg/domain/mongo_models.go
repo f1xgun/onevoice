@@ -283,6 +283,7 @@ type ReviewDraftFeedback struct {
 }
 
 type Post struct {
+	OperationID     string                    `json:"-" bson:"operation_id,omitempty"`
 	ID              string                    `json:"id" bson:"_id,omitempty"`
 	BusinessID      string                    `json:"businessId" bson:"business_id"`
 	Content         string                    `json:"content" bson:"content"`
@@ -306,8 +307,9 @@ type Post struct {
 }
 
 type PlatformResult struct {
-	PostID string `json:"postId" bson:"post_id"`
-	URL    string `json:"url" bson:"url"`
-	Status string `json:"status" bson:"status"`
-	Error  string `json:"error,omitempty" bson:"error,omitempty"`
+	ExternalID string `json:"externalId,omitempty" bson:"external_id,omitempty"`
+	PostID     string `json:"postId" bson:"post_id"`
+	URL        string `json:"url" bson:"url"`
+	Status     string `json:"status" bson:"status"`
+	Error      string `json:"error,omitempty" bson:"error,omitempty"`
 }

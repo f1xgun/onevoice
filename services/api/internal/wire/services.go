@@ -456,6 +456,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	}
 	s.OAuth = service.NewOAuthService(h.Redis)
 	s.Post = service.NewPostService(repos.Post, s.Business)
+	if h.NATS != nil {
+		s.Post = service.WithPostDispatcher(s.Post, h.NATS)
+	}
 	s.ContentTemplate = service.NewContentTemplateService(repos.ContentTemplate, repos.Post, repos.Review)
 	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
 

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,12 +18,14 @@ import (
 
 // Constants for post pagination
 const (
-	DefaultPostLimit = 20
-	MaxPostLimit     = 100
+	DefaultPostLimit    = 20
+	MaxPostLimit        = 100
+	maxPostMutationBody = 1 << 20
 )
 
 // PostService defines the interface for post operations.
 type PostService interface {
+	Mutate(ctx context.Context, businessID uuid.UUID, id, action string, content *string) (*domain.Post, error)
 	List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
 }
@@ -78,6 +81,10 @@ func domainPostToOpenAPI(p domain.Post) openapi.Post {
 				PostId: v.PostID,
 				Url:    v.URL,
 				Status: v.Status,
+			}
+			if v.ExternalID != "" {
+				externalID := v.ExternalID
+				r.ExternalId = &externalID
 			}
 			if v.Error != "" {
 				e := v.Error
@@ -151,5 +158,60 @@ func (h *PostHandler) GetPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeJSON(w, http.StatusOK, domainPostToOpenAPI(*post))
+}
+
+// EditPost handles an explicit content change to one published platform post.
+func (h *PostHandler) EditPost(w http.ResponseWriter, r *http.Request) {
+	h.mutatePost(w, r, "edit", authz.PermContentUpdate)
+}
+
+// DeletePost removes a published post; the service also enforces the owner role.
+func (h *PostHandler) DeletePost(w http.ResponseWriter, r *http.Request) {
+	h.mutatePost(w, r, "delete", authz.PermContentDelete)
+}
+
+// RetryPost retries only this failed platform row, never successful broadcast siblings.
+func (h *PostHandler) RetryPost(w http.ResponseWriter, r *http.Request) {
+	h.mutatePost(w, r, "retry", authz.PermContentCreate)
+}
+
+func (h *PostHandler) mutatePost(w http.ResponseWriter, r *http.Request, action string, permission authz.Permission) {
+	bc, ok := requireBusiness(w, r, "PostMutation", permission)
+	if !ok {
+		return
+	}
+	if action == "delete" && bc.RoleID.String() != domain.SystemRoleOwnerID {
+		writeJSONError(w, http.StatusForbidden, "only the business owner can delete a post")
+		return
+	}
+	var content *string
+	if action == "edit" {
+		var body struct {
+			Content *string `json:"content"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPostMutationBody))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&body); err != nil || body.Content == nil {
+			writeJSONError(w, http.StatusBadRequest, "content is required")
+			return
+		}
+		content = body.Content
+	}
+	post, err := h.postService.Mutate(r.Context(), bc.BusinessID, chi.URLParam(r, "id"), action, content)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrPostNotFound):
+			writeJSONError(w, http.StatusNotFound, "post not found")
+		case errors.Is(err, domain.ErrForbidden):
+			writeJSONError(w, http.StatusForbidden, "forbidden")
+		case errors.Is(err, domain.ErrPostConflict):
+			writeJSONError(w, http.StatusConflict, err.Error())
+		default:
+			slog.ErrorContext(r.Context(), "post operation failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
 	writeJSON(w, http.StatusOK, domainPostToOpenAPI(*post))
 }

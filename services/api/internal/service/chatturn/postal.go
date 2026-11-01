@@ -25,6 +25,8 @@ import (
 // separate so goconst doesn't conflate them.
 const taskStatusError = "error"
 
+const postStatusPublished = "published"
+
 // postingToolInfo describes how to extract post data from a platform tool call.
 // scheduled marks tools that queue a delayed publish (vk__schedule_post) rather
 // than posting immediately: those records are stored with status "scheduled"
@@ -424,6 +426,7 @@ func (t *Turn) recordPostsAndReviews(
 	}
 
 	if t.deps.Posts != nil {
+		t.reconcilePostMutations(ctx, businessID, toolResults, toolCallByID)
 		for _, tr := range toolResults {
 			tc, ok := toolCallByID[tr.ToolCallID]
 			if !ok {
@@ -442,7 +445,7 @@ func (t *Turn) recordPostsAndReviews(
 				}
 			}
 
-			status := "published"
+			status := postStatusPublished
 			var publishedAt, scheduledAt *time.Time
 			switch {
 			case tr.IsError:
@@ -455,6 +458,10 @@ func (t *Turn) recordPostsAndReviews(
 				publishedAt = &now
 			}
 			platformResult := domain.PlatformResult{Status: status}
+			platformResult.ExternalID, _ = tr.Content["external_id"].(string)
+			if tr.IsError && tr.Code != "" && tr.Code != "transient" {
+				platformResult.ExternalID = t.failedPostTarget(ctx, businessID, info.platform, tc.Arguments)
+			}
 			if tr.IsError {
 				if errMsg, ok := tr.Content["error"].(string); ok {
 					platformResult.Error = errMsg
@@ -478,7 +485,7 @@ func (t *Turn) recordPostsAndReviews(
 			}
 			if err := t.deps.Posts.Create(ctx, post); err != nil {
 				slog.ErrorContext(ctx, "chatturn: failed to create post record", "tool", tc.Name, "error", err)
-			} else if status == "published" && t.valueTelemetry != nil {
+			} else if status == postStatusPublished && t.valueTelemetry != nil {
 				if bizID, err := uuid.Parse(businessID); err == nil {
 					t.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{
 						Action: valuetelemetry.PostPublished, SourceID: businessID + ":" + broadcastGroupID + ":" + tc.ID,

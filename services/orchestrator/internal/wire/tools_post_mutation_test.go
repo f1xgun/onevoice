@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,13 @@ func TestPostMutationToolsRequireManualApproval(t *testing.T) {
 	for _, name := range []string{tools.TelegramEditChannelPost, tools.TelegramDeleteChannelPost, tools.VKEditPost, tools.VKDeletePost} {
 		t.Run(name, func(t *testing.T) {
 			require.True(t, registry.Has(name))
+			key := "tools." + strings.ReplaceAll(name, "__", ".")
+			require.Equal(t, key+".name", registry.DisplayNameKey(name))
+			for _, entry := range registry.AllEntries() {
+				if entry.Name == name {
+					require.Equal(t, key+".description", entry.UserDescriptionKey)
+				}
+			}
 			require.Equal(t, domain.ToolFloorManual, registry.Floor(name))
 			for _, field := range registry.EditableFields(name) {
 				require.Equal(t, "text", field, "approval edits cannot retarget a post")
