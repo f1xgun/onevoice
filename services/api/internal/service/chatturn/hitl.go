@@ -53,12 +53,11 @@ const (
 	sseEventError = "error"
 	// pendingBatchStatusResuming marks a batch whose approved continuation is in flight.
 	pendingBatchStatusResuming = "resuming"
+	batchStatusResolving       = "resolving"
 )
 
 // gateOnRequest selects an action from the conversation's active message + pending batches.
 // See docs/services/chatturn-hitl.md.
-const batchStatusResolving = "resolving"
-
 func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID string) (gateAction, *domain.Message, *domain.PendingToolCallBatch, string) {
 	activeMsg, activeErr := t.deps.Messages.FindByConversationActive(ctx, conversationID)
 	if activeErr != nil && !errors.Is(activeErr, domain.ErrMessageNotFound) {
@@ -77,7 +76,7 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 		for _, b := range batches {
 			switch b.Status {
 			case batchStatusResolving, pendingBatchStatusResuming:
-				// "resuming" is an in-flight resolve/resume just like batchStatusResolving:
+				// "resuming" is an in-flight resolve/resume just like "resolving":
 				// a POST /chat/{id}/resume already claimed the batch and is
 				// streaming the post-approval continuation (up to streamBudget).
 				// Classifying it as in-flight routes a concurrent fresh turn to the
@@ -87,7 +86,7 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 				// stranded, and the fresh turn force-completes it and runs a second
 				// billed orchestrator stream. A genuinely-orphaned "resuming" batch
 				// is still reclaimed by ReconcileOrphanResolving + the compensating
-				// reset, exactly as an orphaned batchStatusResolving batch is.
+				// reset, exactly as an orphaned "resolving" batch is.
 				if resolving == nil {
 					resolving = b
 				}
