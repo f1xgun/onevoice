@@ -14,6 +14,9 @@ vi.mock('@/lib/stores/business', () => ({
   useBusinessStore: (select: (s: { activeBusinessId: string }) => unknown) =>
     select({ activeBusinessId: 'org' }),
 }));
+vi.mock('@/components/business/BusinessCard', () => ({
+  BusinessCard: () => <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]" />,
+}));
 vi.mock('@/components/business/ProfileForm', () => ({
   ProfileForm: () => <p role="alert">{'Ошибка'.repeat(50)}</p>,
 }));

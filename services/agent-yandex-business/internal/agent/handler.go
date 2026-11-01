@@ -324,6 +324,9 @@ func (h *Handler) verifyAccess(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 }
 
 func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if raw, exists := req.Args["special_dates"]; exists {
+		return h.updateSpecialDates(ctx, req, raw)
+	}
 	browser, err := h.getBrowser(ctx, req)
 	if err != nil {
 		return nil, err

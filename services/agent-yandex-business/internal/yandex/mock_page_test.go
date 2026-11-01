@@ -24,6 +24,7 @@ type mockLocator struct {
 	attributes    map[string]string
 	fillCalls     []string // records Fill() calls
 	fillErr       error
+	fillFn        func()
 	clickErr      error
 	clickCount    int    // records number of Click() invocations
 	clickFn       func() // optional side effect run on each Click()
@@ -62,6 +63,10 @@ func (m *mockLocator) GetAttribute(name string, _ ...playwright.LocatorGetAttrib
 
 func (m *mockLocator) Fill(value string, _ ...playwright.LocatorFillOptions) error {
 	m.fillCalls = append(m.fillCalls, value)
+	m.inputValue = value
+	if m.fillFn != nil {
+		m.fillFn()
+	}
 	return m.fillErr
 }
 
@@ -230,3 +235,18 @@ func (k *mockKeyboard) Type(text string, _ ...playwright.KeyboardTypeOptions) er
 	k.typeCalls = append(k.typeCalls, text)
 	return k.typeErr
 }
+
+func (m *mockLocator) SetChecked(checked bool, _ ...playwright.LocatorSetCheckedOptions) error {
+	m.isChecked = checked
+	return nil
+}
+
+func (m *mockPage) GetByRole(role playwright.AriaRole, options ...playwright.PageGetByRoleOptions) playwright.Locator {
+	key := "role=" + string(role)
+	if len(options) > 0 {
+		key += fmt.Sprintf("[name=%v]", options[0].Name)
+	}
+	return m.Locator(key)
+}
+
+func (m *mockLocator) Blur(_ ...playwright.LocatorBlurOptions) error { return nil }

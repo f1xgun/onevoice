@@ -23,7 +23,7 @@ vi.mock('@/lib/hooks/usePermission', () => ({
 import { toast } from 'sonner';
 import { fetchIntegrationsDrift, verifyIntegrations } from '@/lib/api/integrationsSync';
 import type { IntegrationDrift } from '@/lib/api/integrationsSync';
-import { IntegrationsSyncPanel } from '../IntegrationsSyncPanel';
+import { IntegrationsSyncPanel, syncStatusFor } from '../IntegrationsSyncPanel';
 
 const mockedFetchDrift = vi.mocked(fetchIntegrationsDrift);
 const mockedVerify = vi.mocked(verifyIntegrations);
@@ -88,7 +88,7 @@ beforeEach(() => {
   mockedToast.success.mockReset();
   mockedToast.error.mockReset();
   mockedFetchDrift.mockResolvedValue(DRIFT);
-  mockedVerify.mockResolvedValue({ status: 'repair_started' });
+  mockedVerify.mockResolvedValue({ started: true });
 });
 
 afterEach(() => {
@@ -171,4 +171,8 @@ describe('IntegrationsSyncPanel', () => {
     );
     expect(screen.queryByText('Синхронизировано')).not.toBeInTheDocument();
   });
+});
+
+it('does not show a previous green comparison after a failed check', () => {
+  expect(syncStatusFor({ ...DRIFT[0], checkFailed: true })).toBe('not_checked');
 });

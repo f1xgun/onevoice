@@ -124,6 +124,8 @@ paths:
     $ref: paths/integrations.yaml#/~1platforms
   /businesses/{id}/integrations:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations
+  /businesses/{id}/integrations/drift:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1drift
   /businesses/{id}/integrations/verify:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1verify
   /businesses/{id}/integrations/{integrationId}:
@@ -1004,7 +1006,7 @@ components:
         schedule:
           description: Free-form per-day schedule blob.
         specialDates:
-          description: Optional special-date overrides.
+          description: Optional special-date overrides. Send specialDates alone to explicitly sync dates to Yandex Business while preserving weekly hours.
     UpdateVoiceToneRequest:
       type: object
       properties:
@@ -1457,6 +1459,45 @@ components:
           - no_linked_group
         channel_title:
           type: string
+    IntegrationDrift:
+      type: object
+      description: Per-channel profile comparison from the existing reconciliation state.
+      required:
+      - platform
+      - externalId
+      - driftDetected
+      - driftFields
+      - nextCheckAt
+      properties:
+        platform:
+          type: string
+        externalId:
+          type: string
+        driftDetected:
+          type: boolean
+        driftFields:
+          type: array
+          items:
+            type: string
+        lastCheckedAt:
+          type: string
+          format: date-time
+        nextCheckAt:
+          type: string
+          format: date-time
+        remoteValues:
+          type: object
+          description: Supported drifted public profile values; empty without business.read.
+          additionalProperties:
+            type: string
+        storedValues:
+          type: object
+          description: Corresponding stored values in the sync writer's format; empty without business.read.
+          additionalProperties:
+            type: string
+        checkFailed:
+          type: boolean
+          description: The latest check failed; earlier comparison values are not a current success.
     IntegrationHealth:
       type: object
       description: >-

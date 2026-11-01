@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // delegatedToolCall names each delegated-reachable read/write tool and invokes
@@ -23,6 +24,9 @@ type delegatedToolCall struct {
 // wrong-org or dead-session page regardless of the rest of the tool body.
 func delegatedWriteAndReadTools() []delegatedToolCall {
 	return []delegatedToolCall{
+		{"updateSpecialDates", func(ctx context.Context, bb *BusinessBrowser) error {
+			return bb.UpdateSpecialDates(ctx, domain.SpecialDateHoursChange{Previous: []domain.SpecialDateHours{}, Current: []domain.SpecialDateHours{}})
+		}},
 		{"getReviews", func(ctx context.Context, bb *BusinessBrowser) error {
 			_, err := bb.GetReviews(ctx, 5)
 			return err

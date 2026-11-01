@@ -15,6 +15,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/openapi"
+	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service/connhealth"
 )
 
@@ -178,16 +179,17 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// driftView is the per-channel drift status surfaced to the frontend. It never
-// includes the raw remote snapshot (which may hold transient PII) — only the
-// drifted field names and the check schedule.
+// driftView exposes only supported public profile fields, never the raw snapshot.
 type driftView struct {
-	Platform      string     `json:"platform"`
-	ExternalID    string     `json:"externalId"`
-	DriftDetected bool       `json:"driftDetected"`
-	DriftFields   []string   `json:"driftFields"`
-	LastCheckedAt *time.Time `json:"lastCheckedAt,omitempty"`
-	NextCheckAt   time.Time  `json:"nextCheckAt"`
+	RemoteValues  map[string]string `json:"remoteValues"`
+	StoredValues  map[string]string `json:"storedValues"`
+	CheckFailed   bool              `json:"checkFailed"`
+	Platform      string            `json:"platform"`
+	ExternalID    string            `json:"externalId"`
+	DriftDetected bool              `json:"driftDetected"`
+	DriftFields   []string          `json:"driftFields"`
+	LastCheckedAt *time.Time        `json:"lastCheckedAt,omitempty"`
+	NextCheckAt   time.Time         `json:"nextCheckAt"`
 }
 
 // GetIntegrationsDrift returns the proactive-sync drift status for every
@@ -211,13 +213,27 @@ func (h *IntegrationHandler) GetIntegrationsDrift(w http.ResponseWriter, r *http
 		return
 	}
 
+	var business *domain.Business
+	if authz.Can(r.Context(), authz.PermBusinessRead) {
+		business, err = h.businessService.GetByID(r.Context(), bc.BusinessID)
+		if err != nil {
+			if errors.Is(err, domain.ErrBusinessNotFound) {
+				writeJSONError(w, http.StatusNotFound, "business not found")
+				return
+			}
+			writeJSONError(w, http.StatusInternalServerError, "failed to load business profile")
+			return
+		}
+	}
 	views := make([]driftView, 0, len(states))
 	for _, s := range states {
 		fields := s.DriftFields
 		if fields == nil {
 			fields = []string{}
 		}
+		remote, stored := publicDriftValues(s, business)
 		views = append(views, driftView{
+			RemoteValues: remote, StoredValues: stored, CheckFailed: s.ConsecutiveFailures > 0 || s.LastError != "",
 			Platform:      s.Platform,
 			ExternalID:    s.ExternalID,
 			DriftDetected: s.DriftDetected,
@@ -289,4 +305,22 @@ func toIntegrationHealthDTO(results []connhealth.IntegrationHealth) []openapi.In
 		})
 	}
 	return out
+}
+
+// publicDriftValues uses the writer's exact formatting and allowlist to avoid
+// exposing unrelated snapshot data or presenting formatted values as changes.
+func publicDriftValues(s domain.SyncState, business *domain.Business) (remote, stored map[string]string) {
+	remote, stored = map[string]string{}, map[string]string{}
+	if business == nil {
+		return remote, stored
+	}
+	expected := platform.SyncedSnapshot(business, s.Platform)
+	for _, field := range s.DriftFields {
+		if value, ok := expected[field]; ok {
+			if old, exists := s.LastRemoteSnapshot[field]; exists {
+				remote[field], stored[field] = old, value
+			}
+		}
+	}
+	return remote, stored
 }

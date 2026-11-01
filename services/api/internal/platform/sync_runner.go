@@ -15,7 +15,7 @@ type BusinessSyncer interface {
 // SyncRunner owns a bounded queue and fixed startup workers for business sync.
 type SyncRunner struct {
 	syncer *Syncer
-	jobs   chan domain.Business
+	jobs   chan syncJob
 	ctx    context.Context
 }
 
@@ -23,7 +23,7 @@ func NewSyncRunner(syncer *Syncer, queueSize int) *SyncRunner {
 	if queueSize <= 0 {
 		queueSize = 32
 	}
-	return &SyncRunner{syncer: syncer, jobs: make(chan domain.Business, queueSize)}
+	return &SyncRunner{syncer: syncer, jobs: make(chan syncJob, queueSize)}
 }
 
 func (r *SyncRunner) Start(ctx context.Context, workers int, wg *sync.WaitGroup) {
@@ -47,7 +47,7 @@ func (r *SyncRunner) SyncBusiness(business *domain.Business) {
 	select {
 	case <-r.ctx.Done():
 		slog.Warn("platform sync queue stopped", "business_id", business.ID)
-	case r.jobs <- job:
+	case r.jobs <- syncJob{business: job}:
 	default:
 		slog.Warn("platform sync queue full", "business_id", business.ID)
 	}
@@ -58,8 +58,34 @@ func (r *SyncRunner) worker(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case business := <-r.jobs:
-			r.syncer.SyncBusinessContext(ctx, &business)
+		case job := <-r.jobs:
+			if job.specialDates != nil {
+				r.syncer.SyncSpecialDatesContext(ctx, &job.business, *job.specialDates)
+			} else {
+				r.syncer.SyncBusinessContext(ctx, &job.business)
+			}
 		}
+	}
+}
+
+// syncJob keeps explicit special-date changes separate from generic profile sync.
+type syncJob struct {
+	business     domain.Business
+	specialDates *domain.SpecialDateHoursChange
+}
+
+func (r *SyncRunner) SyncSpecialDates(business *domain.Business, change domain.SpecialDateHoursChange) {
+	if business == nil || r.ctx == nil {
+		return
+	}
+	// Copy slices so edits after enqueue cannot change deletion ownership.
+	change.Previous = append([]domain.SpecialDateHours{}, change.Previous...)
+	change.Current = append([]domain.SpecialDateHours{}, change.Current...)
+	select {
+	case <-r.ctx.Done():
+		slog.Warn("platform sync queue stopped", "business_id", business.ID)
+	case r.jobs <- syncJob{business: *business, specialDates: &change}:
+	default:
+		slog.Warn("platform sync queue full", "business_id", business.ID)
 	}
 }

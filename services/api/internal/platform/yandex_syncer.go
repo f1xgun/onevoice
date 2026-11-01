@@ -50,8 +50,10 @@ func NewYandexSyncer(taskPublisher TaskPublisher) *YandexSyncer {
 // only called when there is real work to do). The dispatcher also records
 // the AgentTask; SyncSchedule only performs the RPC and returns errors.
 func (y *YandexSyncer) SyncSchedule(ctx context.Context, b *domain.Business, integ domain.Integration) error {
-	hoursJSON := scheduleToYandexJSON(b.Settings)
+	return y.updateHours(ctx, b, map[string]interface{}{"hours": scheduleToYandexJSON(b.Settings)})
+}
 
+func (y *YandexSyncer) updateHours(ctx context.Context, b *domain.Business, args map[string]interface{}) error {
 	if y.taskPublisher == nil {
 		slog.WarnContext(ctx, "platform sync: yandex_business: task publisher not configured")
 		return errYandexPublisherUnconfigured
@@ -60,7 +62,7 @@ func (y *YandexSyncer) SyncSchedule(ctx context.Context, b *domain.Business, int
 	req := a2a.ToolRequest{
 		TaskID:     uuid.New().String(),
 		Tool:       tools.YandexBusinessUpdateHours,
-		Args:       map[string]interface{}{"hours": hoursJSON},
+		Args:       args,
 		BusinessID: b.ID.String(),
 	}
 

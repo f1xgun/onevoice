@@ -4,12 +4,10 @@
 // Splits the previous single block into two API-aware sections:
 //   <HoursForm />          — weekly hours (Часы работы)
 //   <SpecialDatesForm />   — date overrides (Особые даты)
-// Both share the same PUT /business/schedule mutation: backend stores the
-// `{schedule, specialDates}` payload under business.settings.schedule. Each
-// section owns ONLY its own slice; the other slice is re-read from the freshest
-// BUSINESS_PROFILE query cache at save time so a Hours save never clobbers a
-// just-saved Special Dates value (and vice versa) across the two independent
-// form instances.
+// Both share the same PUT /business/schedule mutation: the backend stores
+// schedule and specialDates as sibling business.settings keys. Each
+// section owns its own slice. Hours saves preserve the freshest cached dates;
+// dates-only saves leave weekly hours untouched and explicitly sync to Yandex.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -84,8 +82,16 @@ function readCachedSchedule(
     | { schedule?: ScheduleDay[]; specialDates?: SpecialDate[] }
     | ScheduleDay[]
     | undefined;
-  if (Array.isArray(raw)) return { schedule: raw, specialDates: undefined };
-  return { schedule: raw?.schedule, specialDates: raw?.specialDates };
+  if (Array.isArray(raw))
+    return {
+      schedule: raw,
+      specialDates: cached?.settings?.specialDates as SpecialDate[] | undefined,
+    };
+  return {
+    schedule: raw?.schedule,
+    specialDates:
+      raw?.specialDates ?? (cached?.settings?.specialDates as SpecialDate[] | undefined),
+  };
 }
 
 function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: SpecialDate[]) {
@@ -101,9 +107,8 @@ function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: Spec
   return { schedule, setSchedule, specialDates, setSpecialDates };
 }
 
-// owns names the slice this form edits. The PUT keeps the owned slice from the
-// caller's `data` and overrides the other slice with the freshest cached value,
-// so two independent form instances never overwrite each other's last save.
+// Weekly saves retain fresh cached dates for legacy compatibility. A dates-only
+// payload selects the dedicated provider scenario without rewriting weekly hours.
 function useScheduleMutation(owns: ScheduleSlice, successMsg: string, errorMsg: string) {
   const queryClient = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
@@ -115,7 +120,12 @@ function useScheduleMutation(owns: ScheduleSlice, successMsg: string, errorMsg: 
         owns === 'schedule'
           ? { schedule: data.schedule, specialDates: cached.specialDates ?? data.specialDates }
           : { schedule: cached.schedule ?? data.schedule, specialDates: data.specialDates };
-      return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.SCHEDULE, merged);
+      // A dates-only save is explicit consent for the provider date scenario.
+      // The API leaves weekly hours untouched when schedule is omitted.
+      return bizApi(activeBusinessId).put(
+        BIZ_API_PATHS.BUSINESS.SCHEDULE,
+        owns === 'specialDates' ? { specialDates: data.specialDates } : merged
+      );
     },
     onSuccess: () => {
       toast.success(successMsg);
@@ -185,7 +195,7 @@ function DayRow({
   const tSchedule = useTranslations('business.scheduleForm');
   const open = !day.closed;
   return (
-    <div className="grid grid-cols-[120px_1fr] items-center gap-4 rounded-md border border-line-soft bg-paper px-4 py-2.5 sm:grid-cols-[120px_140px_1fr]">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-md border border-line-soft bg-paper px-4 py-2.5">
       <span className="text-sm font-medium text-ink">{label}</span>
       <label className="flex min-h-11 cursor-pointer items-center gap-2">
         <Switch
@@ -198,7 +208,7 @@ function DayRow({
         </span>
       </label>
       <div
-        className={`flex items-center gap-2 transition-opacity ${open ? 'opacity-100' : 'opacity-40'}`}
+        className={`col-span-2 flex items-center gap-2 transition-opacity ${open ? 'opacity-100' : 'opacity-40'}`}
         aria-hidden={!open}
       >
         <TimeBox
@@ -237,8 +247,7 @@ function TimeBox({
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
-      style={{ minWidth: 78 }}
+      className="h-10 w-[120px] min-w-0 rounded-inner border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
     />
   );
 }
@@ -347,7 +356,7 @@ function SpecialDateRow({
   const closed = date.closed;
   const formatted = format(parseISO(date.date), 'd MMMM · yyyy', { locale: dateFnsLocale });
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-line-soft bg-paper px-4 py-3 sm:grid-cols-[180px_1fr_auto_auto]">
+    <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-line-soft bg-paper px-4 py-3">
       <MonoLabel tone="ink" className="text-[13px] normal-case tracking-normal">
         {formatted}
       </MonoLabel>
@@ -376,14 +385,13 @@ function SpecialDateRow({
       </div>
 
       {!closed ? (
-        <div className="flex items-center gap-2">
+        <div className="col-span-2 flex items-center gap-2">
           <input
             type="time"
             aria-label={tSchedule('openAria', { label: formatted })}
             value={date.open ?? '10:00'}
             onChange={(e) => onChange({ open: e.target.value })}
-            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
-            style={{ minWidth: 78 }}
+            className="h-10 w-[120px] min-w-0 rounded-inner border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
           />
           <span className="text-ink-soft">—</span>
           <input
@@ -391,8 +399,7 @@ function SpecialDateRow({
             aria-label={tSchedule('closeAria', { label: formatted })}
             value={date.close ?? '18:00'}
             onChange={(e) => onChange({ close: e.target.value })}
-            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
-            style={{ minWidth: 78 }}
+            className="h-10 w-[120px] min-w-0 rounded-inner border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
       ) : (

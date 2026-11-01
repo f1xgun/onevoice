@@ -66,40 +66,46 @@ describe('Schedule lost-update across independent Hours / Special Dates forms', 
     bizApiPut.mockResolvedValue({ data: {} });
   });
 
-  it('a Hours save preserves the previously-saved special dates instead of clobbering them', async () => {
-    const user = userEvent.setup();
-    const client = makeClient();
+  it.each(['nested', 'sibling'])(
+    'a Hours save preserves previously-saved special dates (%s)',
+    async (shape) => {
+      const user = userEvent.setup();
+      const client = makeClient();
 
-    // The page first renders both forms with NO special dates persisted yet:
-    // this is what freezes the HoursForm instance with an empty specialDates.
-    render(
-      <>
-        <HoursForm initialSchedule={INITIAL_HOURS} initialSpecialDates={[]} />
-        <SpecialDatesForm initialSchedule={INITIAL_HOURS} initialSpecialDates={[]} />
-      </>,
-      { wrapper: wrapper(client) }
-    );
+      // The page first renders both forms with NO special dates persisted yet:
+      // this is what freezes the HoursForm instance with an empty specialDates.
+      render(
+        <>
+          <HoursForm initialSchedule={INITIAL_HOURS} initialSpecialDates={[]} />
+          <SpecialDatesForm initialSchedule={INITIAL_HOURS} initialSpecialDates={[]} />
+        </>,
+        { wrapper: wrapper(client) }
+      );
 
-    // User adds + saves a special date. Its save persists the special dates,
-    // and the post-save refetch lands them in the BUSINESS_PROFILE cache. We
-    // model that refetched profile directly so the test does not depend on a
-    // live backend round-trip.
-    client.setQueryData<Business>(QUERY_KEYS.BUSINESS_PROFILE(BIZ_ID), {
-      id: BIZ_ID,
-      name: 'Acme',
-      category: 'cafe',
-      settings: { schedule: { schedule: INITIAL_HOURS, specialDates: SAVED_SPECIAL_DATES } },
-    });
+      // User adds + saves a special date. Its save persists the special dates,
+      // and the post-save refetch lands them in the BUSINESS_PROFILE cache. We
+      // model that refetched profile directly so the test does not depend on a
+      // live backend round-trip.
+      client.setQueryData<Business>(QUERY_KEYS.BUSINESS_PROFILE(BIZ_ID), {
+        id: BIZ_ID,
+        name: 'Acme',
+        category: 'cafe',
+        settings:
+          shape === 'sibling'
+            ? { schedule: INITIAL_HOURS, specialDates: SAVED_SPECIAL_DATES }
+            : { schedule: { schedule: INITIAL_HOURS, specialDates: SAVED_SPECIAL_DATES } },
+      });
 
-    // Now the user saves Hours from the still-mounted HoursForm, whose local
-    // specialDates copy is the stale empty array.
-    await user.click(screen.getByRole('button', { name: 'Сохранить часы' }));
+      // Now the user saves Hours from the still-mounted HoursForm, whose local
+      // specialDates copy is the stale empty array.
+      await user.click(screen.getByRole('button', { name: 'Сохранить часы' }));
 
-    const payload = lastPutPayload();
-    expect(payload.specialDates).toEqual(SAVED_SPECIAL_DATES);
-    expect(payload.specialDates).not.toHaveLength(0);
-    expect(payload.schedule).toEqual(INITIAL_HOURS);
-  });
+      const payload = lastPutPayload();
+      expect(payload.specialDates).toEqual(SAVED_SPECIAL_DATES);
+      expect(payload.specialDates).not.toHaveLength(0);
+      expect(payload.schedule).toEqual(INITIAL_HOURS);
+    }
+  );
 });
 
 describe('schedule accessible labels', () => {
@@ -127,4 +133,17 @@ describe('schedule accessible labels', () => {
       expect(control.getAttribute('aria-label')).not.toMatch(/[А-Яа-яЁё]/);
     }
   });
+});
+
+it('special-date save sends only its owned dates, without weekly hours', async () => {
+  const user = userEvent.setup();
+  const client = makeClient();
+  bizApiPut.mockReset();
+  bizApiPut.mockResolvedValue({ data: {} });
+  render(
+    <SpecialDatesForm initialSchedule={INITIAL_HOURS} initialSpecialDates={SAVED_SPECIAL_DATES} />,
+    { wrapper: wrapper(client) }
+  );
+  await user.click(screen.getByRole('button', { name: 'Сохранить даты' }));
+  expect(lastPutPayload()).toEqual({ specialDates: SAVED_SPECIAL_DATES });
 });
