@@ -1043,7 +1043,7 @@ func TestBusinessHandler_GetReviewAutopilot(t *testing.T) {
 		assert.Equal(t, 5, body.MinRating)
 	})
 
-	t.Run("returns default off with floor when unset", func(t *testing.T) {
+	t.Run("returns approved default when unset", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
 		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{
 			ID:       testBusinessID,
@@ -1065,8 +1065,8 @@ func TestBusinessHandler_GetReviewAutopilot(t *testing.T) {
 			MinRating int  `json:"minRating"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-		assert.False(t, body.Enabled)
-		assert.Equal(t, 0, body.MinRating)
+		assert.True(t, body.Enabled)
+		assert.Equal(t, 5, body.MinRating)
 	})
 
 	t.Run("missing PermBusinessRead returns 403", func(t *testing.T) {
@@ -1093,6 +1093,7 @@ func TestBusinessHandler_UpdateReviewAutopilot(t *testing.T) {
 
 	t.Run("valid config persists under reviewAutopilot and does not sync", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{ID: testBusinessID}, nil).Maybe()
 		syncer := &fakeScheduleSyncer{called: make(chan *domain.Business, 1)}
 
 		var captured map[string]interface{}
@@ -1127,6 +1128,7 @@ func TestBusinessHandler_UpdateReviewAutopilot(t *testing.T) {
 
 	t.Run("disable persists enabled false", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{ID: testBusinessID}, nil).Maybe()
 		var captured map[string]interface{}
 		mockSvc.On("UpdateSettingsKeys", mock.Anything, testBusinessID, mock.MatchedBy(func(keys map[string]interface{}) bool {
 			captured = keys
@@ -1152,6 +1154,7 @@ func TestBusinessHandler_UpdateReviewAutopilot(t *testing.T) {
 
 	t.Run("minRating below floor returns 400 and does not persist", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{ID: testBusinessID}, nil).Maybe()
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
 
@@ -1167,6 +1170,7 @@ func TestBusinessHandler_UpdateReviewAutopilot(t *testing.T) {
 
 	t.Run("minRating above 5 returns 400 and does not persist", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(&domain.Business{ID: testBusinessID}, nil).Maybe()
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
 

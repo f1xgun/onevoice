@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -16,7 +15,6 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
-	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // --- fakes -------------------------------------------------------------------
@@ -111,19 +109,6 @@ func (r *recordingRouter) Chat(_ context.Context, req llm.ChatRequest) (*llm.Cha
 		return nil, r.err
 	}
 	return &llm.ChatResponse{Content: r.reply}, nil
-}
-
-func (r *recordingRouter) lastPromptText() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var b strings.Builder
-	for _, req := range r.requests {
-		for _, m := range req.Messages {
-			b.WriteString(m.Content)
-			b.WriteString("\n")
-		}
-	}
-	return b.String()
 }
 
 // recordingRequester records each dispatched NATS message and replies with a
@@ -229,51 +214,9 @@ func someStats() OwnerBriefStats {
 // Fail-on-revert: remove the stampSent write (or the lastSent==isoWeek skip in
 // processBusiness) and the second pass dispatches a second DM — the "want 1"
 // assertion fails.
-func TestOwnerBrief_WeeklyIdempotency(t *testing.T) {
-	router := &recordingRouter{reply: "Ваша недельная сводка."}
-	svc, bizRepo, nc, _, _ := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
-
-	if err := svc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("first RunOnce: %v", err)
-	}
-	if err := svc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("second RunOnce: %v", err)
-	}
-
-	if got := nc.count(); got != 1 {
-		t.Fatalf("dispatches across two same-week passes = %d, want exactly 1 (weekly idempotency)", got)
-	}
-	if bizRepo.updates != 1 {
-		t.Errorf("last-sent stamp writes = %d, want 1", bizRepo.updates)
-	}
-}
 
 // TestOwnerBrief_DueSelection asserts a business is dispatched only inside its
 // weekday/hour window and only once its enabled+owner-channel gates pass.
-func TestOwnerBrief_DueSelection(t *testing.T) {
-	t.Run("outside window is skipped", func(t *testing.T) {
-		offWindow := time.Date(2026, 7, 6, 15, 0, 0, 0, time.UTC) // Monday 15:00, not the 09:00 window
-		router := &recordingRouter{reply: "x"}
-		svc, _, nc, _, _ := newBriefFixture(t, offWindow, router, fakeBriefStats{stats: someStats()})
-		if err := svc.RunOnce(context.Background()); err != nil {
-			t.Fatalf("RunOnce: %v", err)
-		}
-		if nc.count() != 0 {
-			t.Fatalf("dispatches = %d, want 0 outside the weekday/hour window", nc.count())
-		}
-	})
-
-	t.Run("inside window sends", func(t *testing.T) {
-		router := &recordingRouter{reply: "x"}
-		svc, _, nc, _, _ := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
-		if err := svc.RunOnce(context.Background()); err != nil {
-			t.Fatalf("RunOnce: %v", err)
-		}
-		if nc.count() != 1 {
-			t.Fatalf("dispatches = %d, want 1 inside the window", nc.count())
-		}
-	})
-}
 
 // TestOwnerBrief_OptOutSkip asserts ownerBrief.enabled=false skips the business.
 func TestOwnerBrief_OptOutSkip(t *testing.T) {
@@ -317,173 +260,26 @@ func TestOwnerBrief_NoOwnerChannelSkip(t *testing.T) {
 // TestOwnerBrief_TenantScoping asserts the composed brief and the dispatched DM
 // carry ONLY the acting business's own id and owner chat id — no cross-tenant
 // bleed of BusinessID (metering) or chat_id (delivery).
-func TestOwnerBrief_TenantScoping(t *testing.T) {
-	bizA, bizB := uuid.New(), uuid.New()
-	bizRepo := &fakeBriefBusinessRepo{businesses: map[uuid.UUID]*domain.Business{
-		bizA: {ID: bizA, Name: "A"},
-		bizB: {ID: bizB, Name: "B"},
-	}}
-	integRepo := &fakeBriefIntegRepo{integrations: []domain.Integration{
-		telegramInteg(bizA, map[string]interface{}{"telegram_user_id": "111"}),
-		telegramInteg(bizB, map[string]interface{}{"telegram_user_id": "222"}),
-	}}
-	router := &recordingRouter{reply: "x"}
-	nc := &recordingRequester{}
-	svc := NewOwnerBriefService(integRepo, bizRepo, fakeBriefStats{stats: someStats()}, router, "m", nc, &recordingTelemetry{}, inlineBriefLocker{})
-	svc.now = mondayNineAM
-
-	if err := svc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-
-	router.mu.Lock()
-	byBiz := map[uuid.UUID]string{}
-	for _, req := range router.requests {
-		byBiz[req.BusinessID] = req.Messages[len(req.Messages)-1].Content
-	}
-	router.mu.Unlock()
-	if len(byBiz) != 2 || byBiz[bizA] == "" || byBiz[bizB] == "" {
-		t.Fatalf("expected one metered compose per business, got %v", byBiz)
-	}
-
-	nc.mu.Lock()
-	defer nc.mu.Unlock()
-	chatByArgs := map[string]bool{}
-	for _, m := range nc.sent {
-		chatByArgs[m.args["chat_id"].(string)] = true
-	}
-	if !chatByArgs["111"] || !chatByArgs["222"] || len(chatByArgs) != 2 {
-		t.Fatalf("expected exactly the two owner chat ids, got %v", chatByArgs)
-	}
-}
 
 // TestOwnerBrief_TemplatedFallback asserts that when the metered LLM call errors
 // (credit-denied via ErrRateLimitExceeded, or a generic provider outage) the
 // brief degrades to the deterministic template, is STILL dispatched and stamped,
 // and telemetry is STILL emitted with mode=template — never a silent no-send and
 // never a forced/uncharged spend beyond the single metered attempt.
-func TestOwnerBrief_TemplatedFallback(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		err  error
-	}{
-		{"credit denied", llm.ErrRateLimitExceeded},
-		{"provider down", errors.New("upstream 503")},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			router := &recordingRouter{err: tc.err}
-			svc, bizRepo, nc, tel, _ := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
-
-			if err := svc.RunOnce(context.Background()); err != nil {
-				t.Fatalf("RunOnce: %v", err)
-			}
-			if nc.count() != 1 {
-				t.Fatalf("dispatches = %d, want 1 (fallback must still send)", nc.count())
-			}
-			if bizRepo.updates != 1 {
-				t.Errorf("last-sent stamp writes = %d, want 1 (fallback must still stamp)", bizRepo.updates)
-			}
-			nc.mu.Lock()
-			body, _ := nc.sent[0].args["text"].(string)
-			nc.mu.Unlock()
-			if !strings.Contains(body, "Еженедельная сводка") {
-				t.Errorf("fallback brief must be the deterministic template, got %q", body)
-			}
-			tel.mu.Lock()
-			defer tel.mu.Unlock()
-			if len(tel.events) != 1 || tel.events[0].Metadata["mode"] != "template" {
-				t.Errorf("telemetry must record one mode=template event, got %+v", tel.events)
-			}
-		})
-	}
-}
 
 // TestOwnerBrief_MeteringWiring asserts the composer sets ChatRequest.BusinessID
 // (never uuid.Nil) so the WithBilling router meters the call — this is the entire
 // "zero new billing code" guarantee.
-func TestOwnerBrief_MeteringWiring(t *testing.T) {
-	router := &recordingRouter{reply: "сводка"}
-	svc, _, _, tel, bizID := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
-
-	if err := svc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-
-	router.mu.Lock()
-	defer router.mu.Unlock()
-	if len(router.requests) != 1 {
-		t.Fatalf("router calls = %d, want 1", len(router.requests))
-	}
-	if router.requests[0].BusinessID != bizID {
-		t.Errorf("ChatRequest.BusinessID = %v, want %v (metering fires only when set)", router.requests[0].BusinessID, bizID)
-	}
-	if router.requests[0].BusinessID == uuid.Nil {
-		t.Error("ChatRequest.BusinessID must not be uuid.Nil — the Router skips billing on Nil")
-	}
-	tel.mu.Lock()
-	defer tel.mu.Unlock()
-	if len(tel.events) != 1 || tel.events[0].Metadata["mode"] != "llm" {
-		t.Errorf("telemetry must record one mode=llm event, got %+v", tel.events)
-	}
-}
 
 // TestOwnerBrief_PDnPromptSafety is the PDn guard: the composer prompt must carry
 // ONLY aggregate numbers, never a raw author name, review text, or reply text.
-func TestOwnerBrief_PDnPromptSafety(t *testing.T) {
-	router := &recordingRouter{reply: "x"}
-	svc, _, _, _, _ := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
-
-	if err := svc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-
-	prompt := router.lastPromptText()
-	for _, leaked := range []string{"author", "Иван", "review text", "reply_text", "AuthorName"} {
-		if strings.Contains(prompt, leaked) {
-			t.Errorf("composer prompt leaked raw review field %q: %s", leaked, prompt)
-		}
-	}
-}
 
 // TestOwnerBrief_FirstBriefOptOutLine asserts the FIRST brief (no prior send)
 // carries the opt-out line, in the default (ru) locale.
-func TestOwnerBrief_FirstBriefOptOutLine(t *testing.T) {
-	router := &recordingRouter{reply: "Ваша сводка"}
-	svc, _, nc, _, _ := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
-
-	if err := svc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-	nc.mu.Lock()
-	body, _ := nc.sent[0].args["text"].(string)
-	nc.mu.Unlock()
-	if !strings.Contains(body, "Отключить еженедельные сводки можно в настройках организации") {
-		t.Errorf("first brief must carry the ru opt-out line, got %q", body)
-	}
-}
 
 // TestOwnerBrief_DispatchTargetsSendNotification asserts the dispatch uses the
 // send_notification tool on the telegram subject with the owner's private chat_id
 // and a per-week approval id.
-func TestOwnerBrief_DispatchTargetsSendNotification(t *testing.T) {
-	router := &recordingRouter{reply: "x"}
-	svc, _, nc, _, _ := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
-
-	if err := svc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-	nc.mu.Lock()
-	defer nc.mu.Unlock()
-	if nc.sent[0].tool != tools.TelegramSendNotification {
-		t.Errorf("tool = %q, want %q", nc.sent[0].tool, tools.TelegramSendNotification)
-	}
-	if nc.sent[0].subject != a2a.Subject(a2a.AgentTelegram) {
-		t.Errorf("subject = %q, want %q", nc.sent[0].subject, a2a.Subject(a2a.AgentTelegram))
-	}
-	if nc.sent[0].args["chat_id"].(string) != "42" {
-		t.Errorf("chat_id = %v, want the owner private id 42", nc.sent[0].args["chat_id"])
-	}
-}
 
 // TestOwnerBrief_NilNATSNoOp asserts a Mongo-only deploy (nil NATS) never sends.
 func TestOwnerBrief_NilNATSNoOp(t *testing.T) {
@@ -553,4 +349,26 @@ type inlineBriefLocker struct{}
 
 func (inlineBriefLocker) WithOwnerBriefLock(_ context.Context, fn func() error) (bool, error) {
 	return true, fn()
+}
+
+func TestOwnerBriefDisabledEvenForLegacyEnabledBusiness(t *testing.T) {
+	router := &recordingRouter{reply: "must not compose"}
+	svc, businessRepo, nc, telemetry, businessID := newBriefFixture(t, mondayNineAM(), router, fakeBriefStats{stats: someStats()})
+	businessRepo.businesses[businessID].Settings = map[string]interface{}{"ownerBrief": map[string]interface{}{"enabled": true, "weekday": 1, "hour": 9}}
+	if err := svc.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if nc.count() != 0 || len(router.requests) != 0 || businessRepo.updates != 0 || len(telemetry.events) != 0 {
+		t.Fatal("proactive brief performed work")
+	}
+	if err := svc.dispatch(context.Background(), ownerBriefTarget{businessID: businessID, chatID: "555"}, "2026-W1", "blocked"); err == nil {
+		t.Fatal("direct proactive dispatch must be blocked")
+	}
+	// The compatibility pass still cannot dispatch when invoked directly.
+	if err := svc.runPass(context.Background()); err == nil {
+		t.Fatal("legacy direct pass must stop at the disabled dispatch")
+	}
+	if nc.count() != 0 || businessRepo.updates != 0 {
+		t.Fatal("direct pass sent or stamped a brief")
+	}
 }

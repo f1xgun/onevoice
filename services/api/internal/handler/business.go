@@ -468,7 +468,7 @@ func (h *BusinessHandler) UpdateVoiceProfile(w http.ResponseWriter, r *http.Requ
 
 // GetReviewAutopilot handles GET /business/{id}/review-autopilot.
 // Returns the stored review-reply autopilot config. When unset the response is
-// the default-off state {enabled:false, minRating:ReviewAutopilotMinRatingFloor}.
+// approved unconfigured defaults; explicit legacy settings retain their semantics.
 // Requires PermBusinessRead.
 func (h *BusinessHandler) GetReviewAutopilot(w http.ResponseWriter, r *http.Request) {
 	bc, ok := requireBusiness(w, r, "GetReviewAutopilot", authz.PermBusinessRead)
@@ -489,8 +489,10 @@ func (h *BusinessHandler) GetReviewAutopilot(w http.ResponseWriter, r *http.Requ
 
 	cfg := platform.ReviewAutopilotFromSettings(business.Settings)
 	writeJSON(w, http.StatusOK, openapi.ReviewAutopilotResponse{
-		Enabled:   cfg.Enabled,
-		MinRating: cfg.MinRating,
+		Enabled:         cfg.Enabled,
+		MinRating:       cfg.MinRating,
+		IgnoreFourStar:  cfg.IgnoreFourStar,
+		AutoAnswerFacts: cfg.AutoAnswerFacts,
 	})
 }
 
@@ -520,6 +522,37 @@ func (h *BusinessHandler) UpdateReviewAutopilot(w http.ResponseWriter, r *http.R
 	}
 
 	cfg := platform.ReviewAutopilotConfig{Enabled: boolDeref(req.Enabled), MinRating: req.MinRating}
+	if req.IgnoreFourStar != nil {
+		cfg.IgnoreFourStar = *req.IgnoreFourStar
+	}
+	if req.AutoAnswerFacts != nil {
+		cfg.AutoAnswerFacts = *req.AutoAnswerFacts
+	}
+	if req.IgnoreFourStar == nil || (req.AutoAnswerFacts == nil && cfg.Enabled) {
+		current, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+		if err != nil {
+			if errors.Is(err, domain.ErrBusinessNotFound) {
+				writeJSONError(w, http.StatusNotFound, "business not found")
+			} else {
+				writeJSONError(w, http.StatusInternalServerError, "internal server error")
+			}
+			return
+		}
+		raw, _ := json.Marshal(current.Settings[platform.ReviewAutopilotSettingsKey])
+		var stored struct {
+			IgnoreFourStar  *bool `json:"ignoreFourStar"`
+			AutoAnswerFacts *bool `json:"autoAnswerFacts"`
+		}
+		if json.Unmarshal(raw, &stored) == nil {
+			if req.IgnoreFourStar == nil && stored.IgnoreFourStar != nil {
+				cfg.IgnoreFourStar = *stored.IgnoreFourStar
+			}
+			if req.AutoAnswerFacts == nil && cfg.Enabled && stored.AutoAnswerFacts != nil {
+				cfg.AutoAnswerFacts = *stored.AutoAnswerFacts
+			}
+		}
+	}
+
 	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, map[string]interface{}{platform.ReviewAutopilotSettingsKey: cfg}, bc.UserID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {

@@ -1690,10 +1690,16 @@ type ReviewReplyStatus string
 
 // ReviewAutopilotResponse defines model for ReviewAutopilotResponse.
 type ReviewAutopilotResponse struct {
-	// Enabled Whether the review-reply autopilot is enabled (default false).
+	// AutoAnswerFacts Factual-comment consent, independent of five-star auto replies (fresh default true; legacy absent false).
+	AutoAnswerFacts bool `json:"autoAnswerFacts" validate:"required"`
+
+	// Enabled Whether the review-reply autopilot is enabled (fresh default true).
 	Enabled bool `json:"enabled" validate:"required"`
 
-	// MinRating The minimum star rating that may be auto-published (default 4 when
+	// IgnoreFourStar Whether four-star reviews are deliberately skipped (fresh default true).
+	IgnoreFourStar bool `json:"ignoreFourStar" validate:"required"`
+
+	// MinRating The minimum star rating that may be auto-published (default 5 when
 	// unset; always at least 4).
 	MinRating int `json:"minRating" validate:"required"`
 }
@@ -2146,11 +2152,17 @@ type UpdateProfileRequest struct {
 
 // UpdateReviewAutopilotRequest defines model for UpdateReviewAutopilotRequest.
 type UpdateReviewAutopilotRequest struct {
+	// AutoAnswerFacts Independent consent for exact factual address or complete weekly-hours answers in validated Telegram/VK comments. Missing facts or unsafe questions stay drafts. Legacy omission with enabled false disables this consent; otherwise a stored explicit value is preserved.
+	AutoAnswerFacts *bool `json:"autoAnswerFacts,omitempty"`
+
 	// Enabled Opt-in switch for the review-reply autopilot. When true, a positive
 	// drafted reply on a direct-API platform (Telegram/VK) is auto-published;
 	// Yandex.Business, negative, and needs_review replies always stay pending
 	// for manual approval. Absent is treated as false (disabled).
 	Enabled *bool `json:"enabled,omitempty"`
+
+	// IgnoreFourStar Deliberately skip four-star reviews. Omission preserves a stored explicit flag, otherwise uses legacy false.
+	IgnoreFourStar *bool `json:"ignoreFourStar,omitempty"`
 
 	// MinRating The minimum star rating that may be auto-published. Bounded to the
 	// positive range so the floor can only be raised (e.g. 5-star-only) and

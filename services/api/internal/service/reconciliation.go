@@ -339,7 +339,7 @@ func (s *ReconciliationService) deliverDriftAlert(ctx context.Context, episode d
 		return fmt.Errorf("revalidate drift episode: %w", err)
 	}
 	episode = current
-	business, err := s.businessRepo.GetByID(ctx, episode.BusinessID)
+	_, err = s.businessRepo.GetByID(ctx, episode.BusinessID)
 	if errors.Is(err, domain.ErrBusinessNotFound) {
 		return nil
 	}
@@ -350,9 +350,7 @@ func (s *ReconciliationService) deliverDriftAlert(ctx context.Context, episode d
 		id := "drift-alert-" + episode.EpisodeID.String()
 		href := "/integrations?businessId=" + episode.BusinessID.String()
 		input := map[string]interface{}{"fields": episode.Fields, "href": href, "businessId": episode.BusinessID.String()}
-		if _, ok, lookupErr := s.privateDriftRecipient(ctx, episode.BusinessID); lookupErr == nil && !ok {
-			input["dmPrerequisite"] = "link_private_telegram"
-		}
+
 		_, err := s.tasks.GetByID(ctx, episode.BusinessID.String(), id)
 		if errors.Is(err, domain.ErrAgentTaskNotFound) {
 			err = s.tasks.Create(ctx, &domain.AgentTask{
@@ -370,36 +368,8 @@ func (s *ReconciliationService) deliverDriftAlert(ctx context.Context, episode d
 			return fmt.Errorf("create drift task: %w", err)
 		}
 	}
-	if !s.driftDMEnabled || episode.DMSettledAt != nil || s.nc == nil {
-		return s.settleDriftDM(ctx, episode)
-	}
-	pref := platform.DriftAlertFromSettings(business.Settings)
-	if !pref.Enabled {
-		return s.settleDriftDM(ctx, episode)
-	}
-	chatID, ok, err := s.privateDriftRecipient(ctx, episode.BusinessID)
-	if err != nil {
-		return fmt.Errorf("resolve private drift recipient: %w", err)
-	}
-	if !ok {
-		return s.settleDriftDM(ctx, episode)
-	}
-	fields := localizedDriftFields(episode.Fields, pref.Locale)
-	href := s.publicURL + "/integrations?businessId=" + episode.BusinessID.String()
-	text := "Профиль организации изменился на площадке " + driftPlatformName(episode.Platform, "ru") + ". Поля: " + fields + ". Проверьте организацию: " + href
-	if pref.Locale == "en" {
-		text = "An organization profile changed on " + driftPlatformName(episode.Platform, "en") + ". Fields: " + fields + ". Review this organization: " + href
-	}
-	args := map[string]interface{}{"text": text, "chat_id": chatID}
-	approvalID := "drift-alert-" + episode.EpisodeID.String()
-	if _, err := dispatchToolWithApproval(ctx, s.nc, a2a.AgentTelegram, tools.TelegramSendNotification,
-		args, episode.BusinessID.String(), approvalID, driftAlertDispatchTimeout); err != nil {
-		return fmt.Errorf("deliver drift DM for %s: %w", episode.BusinessID, err)
-	}
-	if err := s.syncState.MarkDriftDMSettled(ctx, episode.SyncStateID, episode.EpisodeID); err != nil {
-		return fmt.Errorf("acknowledge drift DM: %w", err)
-	}
-	return nil
+	// Keep in-app drift tasks; proactive owner Telegram delivery is disabled globally.
+	return s.settleDriftDM(ctx, episode)
 }
 
 func (s *ReconciliationService) settleDriftDM(ctx context.Context, episode domain.DriftAlertEpisode) error {
@@ -447,16 +417,6 @@ func localizedDriftFields(fields []string, locale string) string {
 		}
 	}
 	return strings.Join(out, ", ")
-}
-
-func driftPlatformName(platformID, locale string) string {
-	if platformID == a2a.AgentVK {
-		return "VK"
-	}
-	if locale == "en" {
-		return "Yandex Business"
-	}
-	return "Яндекс Бизнес"
 }
 
 // recordFailure applies the failure backoff + metric for a fetch that did not

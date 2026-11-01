@@ -26,8 +26,8 @@ const VoiceProfileSettingsKey = "voiceProfile"
 
 // ReviewAutopilotSettingsKey is the businesses.settings JSONB sub-key holding
 // the per-business review-reply autopilot configuration. Absent key means the
-// autopilot is disabled (default-off): a positive reply is never auto-published
-// and every review stays pending for HITL. It is a sibling of voiceProfile and
+// default is five-star automatic replies and deliberate four-star non-replies.
+// Existing explicit configurations retain their stored behavior. It is a sibling of voiceProfile and
 // descriptionTemplate, written via UpdateSettingsKeys (jsonb_set, no migration).
 const ReviewAutopilotSettingsKey = "reviewAutopilot"
 
@@ -35,34 +35,42 @@ const ReviewAutopilotSettingsKey = "reviewAutopilot"
 // auto-publish. It equals ReviewNeedsReviewMaxRating+1 so the positive floor
 // can be RAISED by a stricter minRating (e.g. 5-star-only) but never lowered
 // below a positive review.
+const ReviewAutopilotDefaultMinRating = 5
+
 const ReviewAutopilotMinRatingFloor = domain.ReviewNeedsReviewMaxRating + 1
 
-// ReviewAutopilotConfig is the stored per-business autopilot setting. Enabled is
-// the single opt-in control; MinRating raises the positive floor (clamped to at
-// least ReviewAutopilotMinRatingFloor at read time).
+// ReviewAutopilotConfig stores rated-review automation, four-star disposition
+// and independent factual-comment consent. MinRating never lowers the positive floor.
 type ReviewAutopilotConfig struct {
-	Enabled   bool `json:"enabled"`
-	MinRating int  `json:"minRating"`
+	Enabled         bool `json:"enabled"`
+	IgnoreFourStar  bool `json:"ignoreFourStar"`
+	AutoAnswerFacts bool `json:"autoAnswerFacts"`
+	MinRating       int  `json:"minRating"`
 }
 
 // ReviewAutopilotFromSettings reads the reviewAutopilot sub-key from the
-// settings blob. A missing, blank, or malformed key yields the zero value
-// (Enabled=false, MinRating=0), i.e. the default-off state. When the stored
+// settings blob. Absent or empty settings use the approved five-star default;
+// malformed data fails closed. When the stored
 // minRating is below the positive floor it is raised to
 // ReviewAutopilotMinRatingFloor so a misconfigured setting can never auto-publish
 // a negative or neutral review. Mirrors the marshal-roundtrip idiom
 // formatScheduleCompact uses to read Settings["schedule"].
 func ReviewAutopilotFromSettings(settings map[string]interface{}) ReviewAutopilotConfig {
+	defaults := ReviewAutopilotConfig{Enabled: true, MinRating: ReviewAutopilotDefaultMinRating, IgnoreFourStar: true, AutoAnswerFacts: true}
 	if settings == nil {
-		return ReviewAutopilotConfig{}
+		return defaults
 	}
 	raw, ok := settings[ReviewAutopilotSettingsKey]
 	if !ok || raw == nil {
-		return ReviewAutopilotConfig{}
+		return defaults
 	}
 	data, err := json.Marshal(raw)
 	if err != nil {
 		return ReviewAutopilotConfig{}
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err == nil && len(fields) == 0 {
+		return defaults
 	}
 	var cfg ReviewAutopilotConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
