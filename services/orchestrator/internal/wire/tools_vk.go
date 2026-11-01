@@ -14,6 +14,37 @@ import (
 func vkTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
 		{
+			DisplayName:     "Изменить пост",
+			DisplayNameKey:  "tools.vk.edit_post.name",
+			UserDescription: "Изменяет текст опубликованного поста, сохраняя фото.",
+			DescriptionEn:   "Edits published post text while retaining its photos.",
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+				Name: tools.VKEditPost, Description: "Изменяет текст опубликованного поста, сохраняя фото.",
+				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+					"group_id": map[string]interface{}{"type": "string", "description": "Explicit connected vk target ID; must match the integration."},
+					"post_id":  map[string]interface{}{"type": "integer", "minimum": 1, "description": "Existing published post ID"},
+					"text":     map[string]interface{}{"type": "string", "description": "Replacement text or media caption"},
+				}, "required": []string{"group_id", "post_id", "text"}},
+			}},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
+		},
+		{
+			DisplayName:     "Удалить пост",
+			DisplayNameKey:  "tools.vk.delete_post.name",
+			UserDescription: "Удаляет опубликованный пост.",
+			DescriptionEn:   "Deletes a published post.",
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+				Name: tools.VKDeletePost, Description: "Удаляет опубликованный пост.",
+				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+					"group_id": map[string]interface{}{"type": "string", "description": "Explicit connected vk target ID; must match the integration."},
+					"post_id":  map[string]interface{}{"type": "integer", "minimum": 1, "description": "Existing published post ID"},
+				}, "required": []string{"group_id", "post_id"}},
+			}},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: nil,
+		},
+		{
 			DisplayName:     "Опубликовать пост",
 			DisplayNameKey:  "tools.vk.publish_post.name",
 			UserDescription: "Публикует пост на стене сообщества ВКонтакте.",

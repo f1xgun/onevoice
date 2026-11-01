@@ -48,6 +48,37 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  post:
+    operationId: scheduleTelegramPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [platform, externalId, content, scheduledAt]
+            properties:
+              platform: {type: string, enum: [telegram]}
+              externalId: {type: string}
+              content: {type: string}
+              mediaUrls:
+                type: array
+                maxItems: 1
+                items: {type: string}
+              scheduledAt: {type: string, format: date-time}
+    responses:
+      '201':
+        description: OneVoice-held Telegram schedule created; no external post is sent yet.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '400': {description: Invalid schedule body.}
+      '403': {description: Missing content.create permission or target not owned.}
+      '409': {description: Past time or connected target unavailable.}
 /businesses/{id}/posts/{postID}:
   get:
     operationId: getPost
@@ -79,3 +110,70 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  patch:
+    operationId: editPublishedPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: postID
+      in: path
+      required: true
+      schema: {type: string}
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              content: {type: string}
+              scheduledAt: {type: string, format: date-time, description: Only an unclaimed OneVoice-held Telegram schedule can be rescheduled.}
+    responses:
+      '200':
+        description: Updated existing post; inspect status and platform error for the platform outcome. Uncertain outcomes must not be retried automatically.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '403': {description: Permission denied; deleting also requires the system owner role.}
+      '404': {description: Post not found in the active business.}
+      '409': {description: Operation already claimed, unsupported state, or original verified target missing.}
+  delete:
+    operationId: deletePublishedPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: postID
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '200':
+        description: Updated existing post; inspect status and platform error for the platform outcome. Uncertain outcomes must not be retried automatically.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '403': {description: Permission denied; deleting also requires the system owner role.}
+      '404': {description: Post not found in the active business.}
+      '409': {description: Operation already claimed, unsupported state, or original verified target missing.}
+/businesses/{id}/posts/{postID}/retry:
+  post:
+    operationId: retryFailedPost
+    tags: [posts]
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: postID
+      in: path
+      required: true
+      schema: {type: string}
+    responses:
+      '200':
+        description: Updated existing post; inspect status and platform error for the platform outcome. Uncertain outcomes must not be retried automatically.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Post
+      '403': {description: Permission denied; deleting also requires the system owner role.}
+      '404': {description: Post not found in the active business.}
+      '409': {description: Operation already claimed, unsupported state, or original verified target missing.}

@@ -56,9 +56,9 @@ func dispatchToolWithApproval(ctx context.Context, nc natsRequester, platform, t
 	if !resp.Success {
 		agentErr := fmt.Errorf("agent error: %s", resp.Error)
 		if resp.Code != "" {
-			return a2a.ToolResponse{}, a2a.NewCodedError(resp.Code, agentErr)
+			return resp, a2a.NewCodedError(resp.Code, agentErr)
 		}
-		return a2a.ToolResponse{}, agentErr
+		return resp, agentErr
 	}
 	return resp, nil
 }

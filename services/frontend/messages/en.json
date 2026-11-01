@@ -420,7 +420,9 @@
       "readOnlyHint": "You don't have permission to send messages in this organization",
       "authorOwner": "You",
       "authorAssistant": "OneVoice",
-      "sendHint": "Enter for a new line. Ctrl/Cmd+Enter to send your instruction."
+      "sendHint": "Enter for a new line. Ctrl/Cmd+Enter to send your instruction.",
+      "instructionsBack": "← Instructions",
+      "removePhoto": "Remove photo"
     },
     "header": {
       "menuAria": "Chat menu",
@@ -501,7 +503,10 @@
       "decisionUnavailableBadge": "Approval needed",
       "decisionUnavailableReason": "Decision not found — please approve again",
       "unknownAction": "Platform action",
-      "unknownPlatform": "Platform"
+      "unknownPlatform": "Platform",
+      "openResult": "Open on platform",
+      "scheduled": "Scheduled",
+      "scheduledFor": "Scheduled for {time}"
     },
     "streamError": {
       "streamInterrupted": "The response ended before completion. Try sending your instruction again.",
@@ -580,6 +585,15 @@
         "count": "Count",
         "limit": "Limit",
         "parse_mode": "Text formatting"
+      },
+      "time": {
+        "label": "When",
+        "title": "When to publish",
+        "description": "Publishing happens only after your confirmation.",
+        "now": "Immediately after your approval",
+        "choose": "Choose date and time",
+        "invalid": "Choose a valid future time",
+        "save": "Done"
       }
     },
     "list": {
@@ -598,6 +612,41 @@
       "clearSearch": "Clear search",
       "count": "{count, plural, one {# chat} other {# chats}}",
       "deleting": "Deleting…"
+    },
+    "instructions": {
+      "title": "Instructions",
+      "what": "What needs doing?",
+      "placeholder": "For example: we open at 11 tomorrow, prepare a post for Telegram and VK",
+      "occasions": "Or start with an occasion",
+      "send": "Send instruction",
+      "newTitle": "New instruction",
+      "loading": "Loading instructions…",
+      "empty": "No instructions yet. Tell us what needs doing — we will prepare the text for your review.",
+      "noOutcome": "No outcome yet",
+      "sendError": "The instruction could not be sent. Please try again.",
+      "photo": "Photo",
+      "uploading": "Uploading…",
+      "uploadError": "The photo could not be uploaded. Choose JPG, PNG or WebP up to 5 MB and try again.",
+      "removePhoto": "Remove photo",
+      "starts": {
+        "post": {
+          "title": "Post",
+          "hint": "Prepare text for your platforms",
+          "prompt": "Prepare a new post for our platforms. Ask what it should cover."
+        },
+        "hours": {
+          "title": "Hours changed",
+          "hint": "Location profile and a post",
+          "prompt": "Help update our opening hours and prepare an announcement for customers."
+        },
+        "reviews": {
+          "title": "Reply to reviews",
+          "hint": "Draft replies to unanswered reviews",
+          "prompt": "Check unanswered reviews and prepare replies for review."
+        }
+      },
+      "manageOccasions": "My occasions",
+      "genericTitle": "Instruction"
     }
   },
   "posts": {
@@ -661,6 +710,46 @@
       "errorLabel": "With errors",
       "errorHintSome": "need attention",
       "errorHintNone": "all clear"
+    },
+    "feed": {
+      "new": "New post",
+      "all": "All",
+      "scheduled": "Upcoming",
+      "error": "Not published",
+      "open": "open",
+      "repeat": "Repeat as new",
+      "retryPlatform": "Send to {platform}",
+      "editPlatform": "Edit — {platform}",
+      "deletePlatform": "Delete — {platform}",
+      "uncertainHelp": "Checking the platform outcome. Retry is unavailable until it is confirmed.",
+      "schedulingHelp": "Scheduled on the platform. Schedule changes are not available yet.",
+      "operationProblem": "The action could not be confirmed. Refresh the list and check the result on the platform.",
+      "deleteTitle": "Delete this post from the platform?",
+      "deleteHelp": "The post will be deleted from the selected platform. This cannot be undone.",
+      "editTitle": "Edit post text",
+      "editHelp": "The change goes to the selected platform. Other publications of this post remain unchanged.",
+      "contentLabel": "Post text",
+      "contentRequired": "Enter post text",
+      "confirmDelete": "Delete from platform",
+      "save": "Save on platform",
+      "status": {
+        "published": "published",
+        "scheduled": "scheduled",
+        "error": "not published",
+        "uncertain": "checking outcome",
+        "deleted": "deleted",
+        "pending": "waiting to send",
+        "canceled": "canceled",
+        "processing": "processing"
+      },
+      "newPrompt": "Prepare a new post",
+      "processingHelp": "Updating the post on the platform…",
+      "reschedule": "Edit text and time",
+      "cancelScheduled": "Cancel scheduled post",
+      "publishAt": "When to publish",
+      "futureTime": "Choose a valid future time",
+      "cancelTitle": "Cancel the scheduled post?",
+      "cancelHelp": "The post will not be sent. Its text remains in history."
     }
   },
   "tasks": {
@@ -779,6 +868,14 @@
           "reply_to_comment": {
             "name": "Reply to comment",
             "description": "Replies to a comment on a Telegram channel post."
+          },
+          "edit_channel_post": {
+            "name": "Edit post",
+            "description": "Changes the text or photo caption of a published post."
+          },
+          "delete_channel_post": {
+            "name": "Delete post",
+            "description": "Deletes a published channel post."
           }
         },
         "vk": {
@@ -817,6 +914,14 @@
           "get_wall_posts": {
             "name": "Load wall posts",
             "description": "Loads posts from the VK community wall."
+          },
+          "edit_post": {
+            "name": "Edit post",
+            "description": "Changes published post text while preserving its photos."
+          },
+          "delete_post": {
+            "name": "Delete post",
+            "description": "Deletes a published community post."
           }
         },
         "yandex_business": {
@@ -957,7 +1062,7 @@
       "retry": "Try again"
     },
     "aiSample": {
-      "label": "AI draft reply",
+      "label": "Organization reply, draft",
       "hint": "Send as-is or edit",
       "edit": "Edit",
       "preparing": "Preparing a draft reply…",
@@ -979,7 +1084,14 @@
     "sendReplyError": "Couldn't send the reply",
     "refreshSuccess": "Reviews refreshed",
     "refreshError": "Couldn't refresh the reviews",
-    "updatingResults": "Updating reviews…"
+    "updatingResults": "Updating reviews…",
+    "feed": {
+      "filters": "Filters and refresh",
+      "awaiting": "Without a reply",
+      "history": "All reviews",
+      "statistics": "Reply statistics",
+      "loadedRatings": "Based on {count} loaded ratings"
+    }
   },
   "business": {
     "title": "Organization profile",

@@ -14,6 +14,38 @@ import (
 func telegramTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
 		{
+			DisplayName:     "Изменить пост",
+			DisplayNameKey:  "tools.telegram.edit_channel_post.name",
+			UserDescription: "Изменяет текст опубликованного поста, сохраняя фото.",
+			DescriptionEn:   "Edits published post text while retaining its photos. Set is_caption=true for a media caption; an empty caption removes it.",
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+				Name: tools.TelegramEditChannelPost, Description: "Изменяет текст опубликованного поста, сохраняя фото.",
+				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+					"channel_id": map[string]interface{}{"type": "string", "description": "Explicit connected telegram target ID; must match the integration."},
+					"message_id": map[string]interface{}{"type": "integer", "minimum": 1, "description": "Existing published post ID"},
+					"text":       map[string]interface{}{"type": "string", "description": "Replacement text or media caption"},
+					"is_caption": map[string]interface{}{"type": "boolean", "description": "True to edit media caption instead of message text"},
+				}, "required": []string{"channel_id", "message_id", "text"}},
+			}},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
+		},
+		{
+			DisplayName:     "Удалить пост",
+			DisplayNameKey:  "tools.telegram.delete_channel_post.name",
+			UserDescription: "Удаляет опубликованный пост.",
+			DescriptionEn:   "Deletes a published post. Telegram may reject deletion after 48 hours.",
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+				Name: tools.TelegramDeleteChannelPost, Description: "Удаляет опубликованный пост.",
+				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+					"channel_id": map[string]interface{}{"type": "string", "description": "Explicit connected telegram target ID; must match the integration."},
+					"message_id": map[string]interface{}{"type": "integer", "minimum": 1, "description": "Existing published post ID"},
+				}, "required": []string{"channel_id", "message_id"}},
+			}},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: nil,
+		},
+		{
 			DisplayName:     "Отправить пост",
 			DisplayNameKey:  "tools.telegram.send_channel_post.name",
 			UserDescription: "Публикует текстовое сообщение в Telegram-канале.",
@@ -28,14 +60,15 @@ func telegramTools() []toolregistry.ToolSpec {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"text":       map[string]interface{}{"type": "string", "description": "Текст сообщения"},
-						"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+						"scheduled_at": map[string]interface{}{"type": "string", "format": "date-time", "description": "Optional future RFC3339 time. Requires manual approval; OneVoice queues the post instead of sending now."},
+						"text":         map[string]interface{}{"type": "string", "description": "Текст сообщения"},
+						"channel_id":   map[string]interface{}{"type": "string", "description": "ID канала"},
 					},
 					"required": []string{"text"},
 				},
 			}},
 			Floor:          domain.ToolFloorManual,
-			EditableFields: []string{"text"},
+			EditableFields: []string{"text", "scheduled_at"},
 		},
 		{
 			DisplayName:     "Отправить фото",
@@ -53,15 +86,16 @@ func telegramTools() []toolregistry.ToolSpec {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"photo_url":  map[string]interface{}{"type": "string", "description": "Публичный URL изображения"},
-						"caption":    map[string]interface{}{"type": "string", "description": "Подпись к фото"},
-						"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+						"scheduled_at": map[string]interface{}{"type": "string", "format": "date-time", "description": "Optional future RFC3339 time. Requires manual approval; OneVoice queues the post instead of sending now."},
+						"photo_url":    map[string]interface{}{"type": "string", "description": "Публичный URL изображения"},
+						"caption":      map[string]interface{}{"type": "string", "description": "Подпись к фото"},
+						"channel_id":   map[string]interface{}{"type": "string", "description": "ID канала"},
 					},
 					"required": []string{"photo_url"},
 				},
 			}},
 			Floor:          domain.ToolFloorManual,
-			EditableFields: []string{"caption"},
+			EditableFields: []string{"caption", "scheduled_at"},
 		},
 		{
 			DisplayName:     "Уведомление владельцу",

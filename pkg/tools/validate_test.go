@@ -215,3 +215,17 @@ func TestValidateEditArgs_ToolNameFieldAttempt_Rejected(t *testing.T) {
 		t.Errorf("field = %q, want tool_name", e.Field)
 	}
 }
+
+func TestScheduledAtEditRequiresFutureRFC3339(t *testing.T) {
+	for _, value := range []interface{}{true, "tomorrow", "2020-01-01T00:00:00Z"} {
+		if err := tools.ValidateEditArgs(tools.TelegramSendChannelPost, map[string]interface{}{"scheduled_at": value}, []string{"scheduled_at"}); err == nil {
+			t.Fatalf("accepted invalid schedule %v", value)
+		}
+	}
+}
+
+func TestScheduledAtEditCanExplicitlyChooseNow(t *testing.T) {
+	if err := tools.ValidateEditArgs(tools.TelegramSendChannelPost, map[string]interface{}{"scheduled_at": ""}, []string{"scheduled_at"}); err != nil {
+		t.Fatal(err)
+	}
+}

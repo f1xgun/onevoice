@@ -48,19 +48,20 @@ const (
 
 // Services aggregates every business-logic service the API consumes.
 type Services struct {
-	User             service.UserService
-	Business         service.BusinessService
-	Integration      service.IntegrationService
-	OAuth            *service.OAuthService
-	Post             service.PostService
-	ContentTemplate  *service.ContentTemplateService
-	Review           service.ReviewService
-	AgentTask        service.AgentTaskService
-	TaskVerification *service.TaskVerification
-	Project          *service.ProjectService
-	Conversation     *service.ConversationService
-	HITL             *service.HITLService
-	Titler           *service.Titler // may be nil — graceful disable
+	postSchedulerCancel context.CancelFunc
+	User                service.UserService
+	Business            service.BusinessService
+	Integration         service.IntegrationService
+	OAuth               *service.OAuthService
+	Post                service.PostService
+	ContentTemplate     *service.ContentTemplateService
+	Review              service.ReviewService
+	AgentTask           service.AgentTaskService
+	TaskVerification    *service.TaskVerification
+	Project             *service.ProjectService
+	Conversation        *service.ConversationService
+	HITL                *service.HITLService
+	Titler              *service.Titler // may be nil — graceful disable
 
 	// TelegramApproval consumes inline-button HITL approval callbacks published
 	// by the Telegram agent and resolves them server-side. Constructed in
@@ -222,6 +223,9 @@ type Services struct {
 func (s *Services) Close() {
 	if s == nil {
 		return
+	}
+	if s.postSchedulerCancel != nil {
+		s.postSchedulerCancel()
 	}
 	if s.reviewSyncerCancel != nil {
 		s.reviewSyncerCancel()
@@ -455,7 +459,10 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.Integration = service.WithNATSPublisher(s.Integration, h.NATS)
 	}
 	s.OAuth = service.NewOAuthService(h.Redis)
-	s.Post = service.NewPostService(repos.Post, s.Business)
+	s.Post = service.WithPostApproval(service.WithPostScheduling(service.NewPostService(repos.Post, s.Business), repos.Integration), h.PendingToolCallRepo, repos.Conversation)
+	if h.NATS != nil {
+		s.Post = service.WithPostDispatcher(s.Post, h.NATS)
+	}
 	s.ContentTemplate = service.NewContentTemplateService(repos.ContentTemplate, repos.Post, repos.Review)
 	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
 

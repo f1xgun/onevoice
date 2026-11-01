@@ -32,7 +32,7 @@ interface PlatformIconProps {
 export function PlatformIcon({ platform, className, variant = 'brand' }: PlatformIconProps) {
   const brandFile = variant === 'brand' ? BRAND_FILES[platform] : undefined;
   const file = brandFile ?? ICON_FILES[platform];
-  if (!file) return <Globe aria-hidden className={cn('h-head w-head shrink-0', className)} />;
+  if (!file) return <Globe aria-hidden className={cn('h-8 w-8 shrink-0', className)} />;
   return (
     <Image
       src={`/platforms/${file}.svg`}
@@ -40,7 +40,7 @@ export function PlatformIcon({ platform, className, variant = 'brand' }: Platfor
       width={24}
       height={24}
       className={cn(
-        'h-head w-head shrink-0 object-contain',
+        'h-8 w-8 shrink-0 object-contain',
         !brandFile && platform !== '2gis' && 'dark:invert',
         className
       )}

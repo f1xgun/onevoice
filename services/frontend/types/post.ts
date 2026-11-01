@@ -3,6 +3,7 @@ export interface PlatformResult {
   url: string;
   status: string;
   error?: string;
+  externalId?: string;
 }
 
 export interface Post {

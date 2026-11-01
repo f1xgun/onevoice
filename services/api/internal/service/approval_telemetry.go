@@ -51,7 +51,7 @@ func approvalTelemetryRow(event approvaltelemetry.Event) (repository.TelemetryEv
 			return repository.TelemetryEventRow{}, false
 		}
 	case "send_result":
-		if event.Outcome != "success" && event.Outcome != "error" && event.Outcome != "not_dispatched" {
+		if event.Outcome != "success" && event.Outcome != taskStatusError && event.Outcome != "not_dispatched" {
 			return repository.TelemetryEventRow{}, false
 		}
 	default:

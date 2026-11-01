@@ -83,3 +83,22 @@ it('does not navigate to an old business conversation after a late create succes
   );
   expect(h.push).not.toHaveBeenCalled();
 });
+
+it('carries a post prompt only into a new conversation in the matching business', async () => {
+  h.activeBusinessId = 'test-org';
+  h.push.mockReset();
+  vi.mocked(listConversations).mockResolvedValue([]);
+  const post = vi.fn().mockResolvedValue({ data: { id: 'draft-conversation' } });
+  vi.mocked(bizApi).mockReturnValue({ post } as unknown as ReturnType<typeof bizApi>);
+  window.history.replaceState({}, '', '/chat?prompt=Editable+post&businessId=test-org');
+  renderPage();
+  await waitFor(() =>
+    expect(h.push).toHaveBeenCalledWith(
+      '/chat/draft-conversation?prompt=Editable+post&businessId=test-org'
+    )
+  );
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(post.mock.calls[0][0]).toBe('/conversations');
+  expect(post.mock.calls[0][1]).not.toHaveProperty('message');
+  window.history.replaceState({}, '', '/chat');
+});

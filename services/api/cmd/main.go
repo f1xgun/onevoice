@@ -89,6 +89,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	var workers sync.WaitGroup
 	var verificationWorkers sync.WaitGroup
+	svcs.StartPostScheduler(ctx, &workers, log)
 	if svcs.TaskVerification != nil {
 		svcs.TaskVerification.Start(ctx, 2, &verificationWorkers)
 	}

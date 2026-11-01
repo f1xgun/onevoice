@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/i18n"
@@ -211,6 +212,15 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 
 	for _, c := range batch.Calls {
 		d := decisionByID[c.CallID]
+		if _, scheduled := d.EditedArgs["scheduled_at"]; scheduled && d.Action == actionApprove && (c.ToolName == tools.TelegramSendChannelPost || c.ToolName == tools.TelegramSendChannelPhoto) {
+			return nil, &ErrHITLInvalidAction{Action: "scheduled_at changes require edit"}
+		}
+		if (c.ToolName == tools.TelegramDeleteChannelPost || c.ToolName == tools.VKDeletePost) && d.Action != actionReject {
+			bc, ok := authz.BusinessContextFromCtx(ctx)
+			if !ok || bc.BusinessID.String() != batch.BusinessID || bc.RoleID.String() != domain.SystemRoleOwnerID || !authz.Can(ctx, authz.PermContentDelete) {
+				return nil, ErrHITLForbidden
+			}
+		}
 		switch d.Action {
 		case actionApprove:
 		case actionEdit:

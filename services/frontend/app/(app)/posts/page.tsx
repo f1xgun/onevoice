@@ -1,360 +1,221 @@
-// app/(app)/posts/page.tsx — OneVoice (Linen) Posts page.
-//
-// pilot adoption of the <DataTable> + useDataTableFilters
-// + useDataTableSearch composition primitives. Filter / search state moves
-// out of inline useState into the sibling hooks; the table block becomes
-// `<DataTable<Post>>` with a Column<Post>[] config.
-//
-// RBAC (plan 02-09): the /posts list is fetched via bizApi(activeBusinessId)
-// so the request hits `/businesses/{id}/posts`. The query key is partitioned
-// by business id to keep the React Query cache scoped per active business
-// (so switching businesses can't surface cross-tenant posts).
-//
-// Layout per design_handoff_onevoice 2/mocks/mock-posts.jsx:
-// PageHeader → stat strip (4 cards) → filter bar (platform select, status
-// tabs, ⌘K search) → expandable posts table.
-//
-// Data contract is unchanged: GET /businesses/{id}/posts?status&platform →
-// { posts: Post[] }. Aggregate counters in the stat strip are derived
-// client-side from the returned list because the API doesn't expose summary
-// endpoints yet — see `TODO(api)` markers below.
-
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { format } from 'date-fns';
 import Link from 'next/link';
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
-
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
-import { getDateFnsLocale } from '@/lib/dateFnsLocale';
-import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { MonoLabel } from '@/components/ui/mono-label';
-import { PageHeader } from '@/components/ui/page-header';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { SkeletonMetricStrip } from '@/components/states';
-import { cn } from '@/lib/utils';
-import { DataTable, type Column } from '@/components/lists/DataTable';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { ListLoadError } from '@/components/lists/ListLoadError';
-import { useDataTableFilters } from '@/hooks/useDataTableFilters';
-import { useDataTableSearch } from '@/hooks/useDataTableSearch';
-import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
+import { cn } from '@/lib/utils';
 import type { Post } from '@/types/post';
-
-import { BroadcastBadge } from './_components/BroadcastBadge';
-import { ChannelChip } from './_components/ChannelChip';
-import { ExpandedPanel } from './_components/ExpandedPanel';
+import { mergeBroadcastGroups, postLocalDay } from './_helpers';
 import { PostsEmpty } from './_components/PostsEmpty';
 import { PostsSkeleton } from './_components/PostsSkeleton';
-import { SearchField } from './_components/SearchField';
-import { StatCard } from './_components/StatCard';
-import { StatusBadge } from './_components/StatusBadge';
-import {
-  collectPlatforms,
-  mergeBroadcastGroups,
-  nextScheduledLabel,
-  type PostRow,
-} from './_helpers';
+import { MediaThumb } from './_components/MediaThumb';
+import { PostActions } from './_components/PostActions';
 
-// ─── Constants ───────────────────────────────────────────────────────
-
-type StatusKey = 'all' | 'published' | 'scheduled' | 'error';
-type PlatformKey = 'all' | 'telegram' | 'vk' | 'yandex_business';
-
-interface PostsFilters extends Record<string, string> {
-  status: StatusKey;
-  platform: PlatformKey;
-}
-
-// Status column is sized for the widest broadcast badge («Опубликовано в N
-// каналах»), not just the single-word per-post statuses.
-const POSTS_GRID_TEMPLATE = '24px 1fr 190px 200px 160px 56px';
-const POSTS_MIN_WIDTH = '670px';
-
-// Status radiogroup option order — used both for rendering the chips and
-// for the arrow-key navigation hook (which walks this list to decide which
-// radio comes next).
-const POSTS_STATUS_OPTIONS = [
-  'all',
-  'published',
-  'scheduled',
-  'error',
-] as const satisfies readonly StatusKey[];
-
-// ─── Page ────────────────────────────────────────────────────────────
+const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
 
 export default function PostsPage() {
-  const tPosts = useTranslations('posts');
-  const tCommon = useTranslations('common');
-  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
-  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const t = useTranslations('posts');
+  const locale = useLocale();
+  const businessId = useBusinessStore((s) => s.activeBusinessId);
   const canCreate = usePermission('content.create').allowed;
-
-  const { filters, setFilter, queryString } = useDataTableFilters<PostsFilters>({
-    defaultValue: { status: 'all', platform: 'all' },
-  });
-
+  const [filter, setFilter] = useState('all');
   const {
     data: posts = [],
     isLoading,
     isError,
     refetch,
   } = useQuery<Post[]>({
-    queryKey: ['businesses', activeBusinessId, 'posts', filters.status, filters.platform],
-    queryFn: () => {
-      const qs = queryString();
-      const url = qs ? `${BIZ_API_PATHS.POSTS.ROOT}?${qs}` : BIZ_API_PATHS.POSTS.ROOT;
-      return bizApi(activeBusinessId!)
-        .get<{ posts?: Post[] }>(url)
-        .then((r) => (r.data.posts ?? []) as Post[]);
-    },
-    enabled: !!activeBusinessId,
+    queryKey: ['businesses', businessId, 'posts'],
+    queryFn: () =>
+      bizApi(businessId!)
+        .get<{ posts?: Post[] }>(BIZ_API_PATHS.POSTS.ROOT)
+        .then((r) => r.data.posts ?? []),
+    enabled: !!businessId,
   });
-
-  const tableRows = useMemo(() => mergeBroadcastGroups(posts), [posts]);
-
-  const { query, setQuery, visibleRows } = useDataTableSearch<PostRow>({
-    rows: tableRows,
-    searchableFields: (p) => [p.content],
-  });
-
-  const statusRadio = useRadiogroupKeyboard<StatusKey>({
-    options: POSTS_STATUS_OPTIONS,
-    value: filters.status,
-    onValueChange: (v) => setFilter('status', v),
-  });
-
-  const counts = useMemo(() => {
-    const by = (s: string) => posts.filter((p) => p.status === s).length;
-    return {
-      total: posts.length,
-      published: by('published'),
-      scheduled: by('scheduled'),
-      error: by('error'),
-    };
-  }, [posts]);
-
-  const postColumns = useMemo<Column<PostRow>[]>(
-    () => [
-      {
-        id: 'expand',
-        header: <span aria-hidden />,
-        cell: (_post, ctx) => (
-          <span aria-hidden className="text-ink-soft">
-            {ctx.expanded ? (
-              <ChevronDown className="size-4" />
-            ) : (
-              <ChevronRight className="size-4" />
-            )}
-          </span>
-        ),
-      },
-      {
-        id: 'content',
-        header: tPosts('table.content'),
-        cell: (p) => <span className="truncate text-sm text-ink">{p.content}</span>,
-      },
-      {
-        id: 'status',
-        header: tPosts('table.status'),
-        cell: (p) =>
-          p.broadcastChannels ? (
-            <BroadcastBadge channels={p.broadcastChannels} />
-          ) : (
-            <StatusBadge status={p.status} />
-          ),
-      },
-      {
-        id: 'platforms',
-        header: tPosts('table.platforms'),
-        cell: (p) => {
-          const platforms = collectPlatforms(p);
-          return (
-            <span className="flex flex-wrap items-center gap-1.5">
-              {platforms.length === 0 ? (
-                <span className="text-xs text-ink-faint">—</span>
-              ) : (
-                platforms.map((id) => <ChannelChip key={id} platform={id} />)
-              )}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'date',
-        header: tPosts('table.date'),
-        cell: (p) => {
-          const dateIso = p.scheduledAt ?? p.publishedAt ?? p.createdAt;
-          return (
-            <MonoLabel tone="mid" className="text-[12px] normal-case tracking-normal">
-              {format(new Date(dateIso), 'd MMM yyyy · HH:mm', { locale: dateFnsLocale })}
-            </MonoLabel>
-          );
-        },
-      },
-      {
-        id: 'more',
-        header: <span aria-hidden />,
-        cell: () => (
-          <span aria-hidden className="text-right text-ink-soft">
-            {tPosts('more')}
-          </span>
-        ),
-      },
-    ],
-    [tPosts, dateFnsLocale]
-  );
+  const days = useMemo(() => {
+    const groups = new Map<string, ReturnType<typeof mergeBroadcastGroups>>();
+    for (const row of mergeBroadcastGroups(posts).sort((a, b) =>
+      (b.scheduledAt ?? b.publishedAt ?? b.createdAt).localeCompare(
+        a.scheduledAt ?? a.publishedAt ?? a.createdAt
+      )
+    )) {
+      const members = row.broadcastGroupId
+        ? posts.filter((p) => p.broadcastGroupId === row.broadcastGroupId)
+        : [row];
+      if (filter === 'scheduled' && !members.some((p) => p.status === 'scheduled')) continue;
+      if (
+        filter === 'error' &&
+        !members.some(
+          (p) =>
+            p.status === 'error' ||
+            p.status === 'uncertain' ||
+            Object.values(p.platformResults ?? {}).some((r) => r.error)
+        )
+      )
+        continue;
+      const day = postLocalDay(row);
+      groups.set(day, [...(groups.get(day) ?? []), row]);
+    }
+    return [...groups];
+  }, [posts, filter]);
 
   return (
-    <>
-      <PageHeader
-        title={tPosts('title')}
-        sub={tPosts('subtitle')}
-        actions={
-          canCreate ? (
-            <Button asChild variant="primary" size="md" title={tPosts('createPostTooltip')}>
-              <Link href="/chat" aria-label={tPosts('createPostTooltip')}>
-                <Plus aria-hidden />
-                {tPosts('createPost')}
-              </Link>
-            </Button>
-          ) : undefined
-        }
-      />
-
-      <div className="px-4 pb-16 sm:px-12">
-        {/* Stat strip — Linen static skeleton while the first /posts payload
-            lands; the same 4-card geometry as the loaded state so the page
-            doesn't reflow. */}
-        {isLoading ? (
-          <SkeletonMetricStrip count={3} />
-        ) : (
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <StatCard
-              label={tPosts('stats.publishedLabel')}
-              value={String(counts.published)}
-              hint={tPosts('stats.publishedHint')}
-            />
-            <StatCard
-              label={tPosts('stats.scheduledLabel')}
-              value={String(counts.scheduled)}
-              hint={
-                counts.scheduled > 0
-                  ? tPosts('stats.scheduledHintNext', {
-                      label: nextScheduledLabel(posts, dateFnsLocale),
-                    })
-                  : tPosts('stats.scheduledHintNone')
-              }
-            />
-            <StatCard
-              label={tPosts('stats.errorLabel')}
-              value={String(counts.error)}
-              hint={
-                counts.error > 0 ? tPosts('stats.errorHintSome') : tPosts('stats.errorHintNone')
-              }
-              tone={counts.error > 0 ? 'danger' : 'neutral'}
-            />
-          </section>
-        )}
-
-        {/* Filter bar — stacks on narrow viewports so tabs don't overflow. */}
-        <div className="mt-6 flex flex-col gap-3 rounded-md border border-line bg-paper-raised p-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <Select
-            value={filters.platform}
-            onValueChange={(v) => setFilter('platform', v as PlatformKey)}
-          >
-            <SelectTrigger
-              id="posts-platform-select"
-              aria-label={tPosts('platformLabel')}
-              className="h-8 w-full text-sm sm:w-[180px]"
+    <div className="max-w-[816px] p-gutter md:p-gutter-desktop">
+      <header className="mb-3.5 flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        {canCreate && (
+          <Button asChild>
+            <Link
+              href={`/chat?${new URLSearchParams({ prompt: t('feed.newPrompt'), businessId: businessId ?? '' })}`}
             >
-              <SelectValue placeholder={tCommon('allPlatforms')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{tCommon('allPlatforms')}</SelectItem>
-              <SelectItem value="telegram">{tPosts('platforms.telegram')}</SelectItem>
-              <SelectItem value="vk">VK</SelectItem>
-              <SelectItem value="yandex_business">{tPosts('platforms.yandexBusiness')}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Status filter — rendered as a radiogroup of chip buttons rather
-              than Radix <Tabs>. Radix Tabs internally generates
-              aria-controls IDREFs pointing at TabsContent panels that don't
-              exist on this page, which trips axe-core's
-              aria-valid-attr-value. A radiogroup is the semantically correct
-              primitive for "pick one of N filters" and emits no IDREF attrs. */}
-          <div
-            role="radiogroup"
-            aria-label={tPosts('statusLabel')}
-            onKeyDown={statusRadio.onKeyDown}
-            className="-mx-1 inline-flex h-8 items-center justify-center gap-0.5 overflow-x-auto rounded-lg bg-paper-sunken p-1 px-1 text-muted-foreground sm:mx-0 sm:overflow-visible sm:px-0"
-          >
-            {(
-              [
-                ['all', tPosts('tabs.all', { count: counts.total })],
-                ['published', tPosts('tabs.published', { count: counts.published })],
-                ['scheduled', tPosts('tabs.scheduled', { count: counts.scheduled })],
-                ['error', tPosts('tabs.error', { count: counts.error })],
-              ] as [StatusKey, string][]
-            ).map(([key, label]) => {
-              const active = filters.status === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => setFilter('status', key)}
-                  {...statusRadio.getRadioProps(key)}
-                  className={cn(
-                    'duration-[120ms] inline-flex h-7 items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-[13px] font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                    active && 'bg-background text-foreground shadow'
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          <span className="hidden flex-1 sm:inline" />
-
-          <SearchField value={query} onChange={setQuery} />
-        </div>
-
-        {/* Table — full schema needs ~620 px; on narrow viewports we let
-            the row scroll horizontally rather than collapsing columns,
-            since each (status / platforms / date) carries information the
-            operator scans at a glance. */}
-        {isError ? (
-          <ListLoadError onRetry={refetch} />
-        ) : (
-          <DataTable<PostRow>
-            columns={postColumns}
-            rows={visibleRows}
-            rowKey={(p) => p.id}
-            gridTemplate={POSTS_GRID_TEMPLATE}
-            minWidth={POSTS_MIN_WIDTH}
-            isLoading={isLoading}
-            skeleton={<PostsSkeleton />}
-            empty={<PostsEmpty search={query} onResetSearch={() => setQuery('')} />}
-            expandable={(post) => <ExpandedPanel post={post} />}
-          />
+              {t('feed.new')}
+            </Link>
+          </Button>
         )}
+      </header>
+      <div
+        role="group"
+        aria-label={t('statusLabel')}
+        className="mb-7 inline-flex max-w-full rounded-inner bg-btn2 p-1"
+      >
+        {['all', 'scheduled', 'error'].map((key) => (
+          <button
+            type="button"
+            key={key}
+            aria-pressed={filter === key}
+            onClick={() => setFilter(key)}
+            className={cn(
+              'min-h-11 rounded-inner px-3 text-[15px] font-medium',
+              filter === key ? 'bg-paper-raised text-ink shadow-sm' : 'text-ink-soft'
+            )}
+          >
+            {t(`feed.${key}`)}
+          </button>
+        ))}
       </div>
-    </>
+      {isError ? (
+        <ListLoadError onRetry={refetch} />
+      ) : isLoading ? (
+        <PostsSkeleton />
+      ) : days.length === 0 ? (
+        <PostsEmpty search="" onResetSearch={() => setFilter('all')} />
+      ) : (
+        <div className="space-y-7">
+          {days.map(([day, rows]) => (
+            <section key={day}>
+              <h2 className="mb-2.5 text-base font-semibold">
+                {new Date(`${day}T12:00:00`).toLocaleDateString(locale, {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </h2>
+              <div className="space-y-3">
+                {rows.map((row) => {
+                  const members = row.broadcastGroupId
+                    ? posts.filter((p) => p.broadcastGroupId === row.broadcastGroupId)
+                    : [row];
+                  const results =
+                    row.broadcastChannels?.map((c) => [c.platform, c.result] as const) ??
+                    Object.entries(row.platformResults ?? {});
+                  const failed = results.some(([, r]) => r.error || r.status === 'error');
+                  return (
+                    <article
+                      key={row.id}
+                      className={cn(
+                        'grid grid-cols-[56px_minmax(0,1fr)] gap-x-4 gap-y-3 rounded-block bg-paper-raised p-4 md:grid-cols-[64px_minmax(0,1fr)_224px] md:p-5',
+                        failed && 'border border-danger'
+                      )}
+                    >
+                      <time
+                        className="text-xl font-semibold"
+                        dateTime={row.scheduledAt ?? row.publishedAt ?? row.createdAt}
+                      >
+                        {new Date(
+                          row.scheduledAt ?? row.publishedAt ?? row.createdAt
+                        ).toLocaleTimeString(locale, TIME_FORMAT)}
+                      </time>
+                      <div className="min-w-0">
+                        <p className="whitespace-pre-wrap break-words text-base leading-6">
+                          {row.content}
+                        </p>
+                        {!!row.mediaUrls?.length && (
+                          <div className="my-3 flex flex-wrap gap-2">
+                            {row.mediaUrls.map((url, i) => (
+                              <MediaThumb key={`${url}-${i}`} url={url} index={i} />
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 space-y-1">
+                          {results.length === 0 && (
+                            <p className="text-sm text-ink-soft">
+                              {t(
+                                `feed.status.${['published', 'scheduled', 'error', 'uncertain', 'deleted', 'canceled', 'processing'].includes(row.status) ? row.status : 'pending'}`
+                              )}
+                            </p>
+                          )}
+                          {results.map(([platform, result], i) => {
+                            const memberStatus =
+                              members.find((post) => post.platformResults?.[platform] === result)
+                                ?.status ?? row.status;
+                            const status = ['canceled', 'processing', 'uncertain'].includes(
+                              memberStatus
+                            )
+                              ? memberStatus
+                              : result.status;
+                            return (
+                              <div
+                                key={`${platform}-${i}`}
+                                className={cn(
+                                  'flex items-start gap-2 text-[15px] leading-[22px]',
+                                  result.error && 'text-danger'
+                                )}
+                              >
+                                <PlatformIcon platform={platform} className="mt-1 size-4" />
+                                <span className="min-w-0 flex-1 break-words">
+                                  {t.has(`platformShort.${platform}`)
+                                    ? t(`platformShort.${platform}`)
+                                    : platform}{' '}
+                                  —{' '}
+                                  {result.error ||
+                                    t(
+                                      `feed.status.${['published', 'scheduled', 'error', 'uncertain', 'deleted', 'canceled', 'processing'].includes(status) ? status : status === 'ok' ? 'published' : 'pending'}`
+                                    )}
+                                </span>
+                                {result.url && !result.error && (
+                                  <a
+                                    href={result.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="shrink-0 text-ink-soft underline"
+                                  >
+                                    {t('feed.open')}
+                                  </a>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="col-span-2 md:col-span-1">
+                        <PostActions key={`${businessId}-${row.id}`} posts={members} />
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

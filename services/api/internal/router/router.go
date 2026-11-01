@@ -340,7 +340,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(writeLimit).Post("/reviews/{id}/reply/retry", handlers.Review.RetryReviewReply)
 
 				r.Get("/posts", handlers.Post.ListPosts)
+				r.With(writeLimit).Post("/posts", handlers.Post.SchedulePost)
 				r.Get("/posts/{id}", handlers.Post.GetPost)
+				r.With(writeLimit).Patch("/posts/{id}", handlers.Post.EditPost)
+				r.With(writeLimit).Delete("/posts/{id}", handlers.Post.DeletePost)
+				r.With(writeLimit).Post("/posts/{id}/retry", handlers.Post.RetryPost)
 
 				if handlers.ContentTemplate != nil {
 					r.Get("/content-templates", handlers.ContentTemplate.List)
@@ -437,6 +441,9 @@ func SetupInternal(handlers *Handlers, hc *health.Checker, cfg *config.Config) *
 		r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
 	})
 
+	if handlers.Post != nil {
+		r.With(middleware.RequireServiceIdentity([]string{"orchestrator"}, nil)).Post("/internal/v1/posts/schedule", handlers.Post.ScheduleApprovedPost)
+	}
 	if handlers.InternalBilling != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))

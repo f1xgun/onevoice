@@ -506,6 +506,11 @@ const (
 	ListAuditLogsParamsCategoryRpa         ListAuditLogsParamsCategory = "rpa"
 )
 
+// Defines values for ScheduleTelegramPostJSONBodyPlatform.
+const (
+	Telegram ScheduleTelegramPostJSONBodyPlatform = "telegram"
+)
+
 // Defines values for ListReviewsParamsReplyStatus.
 const (
 	Error   ListReviewsParamsReplyStatus = "error"
@@ -1390,10 +1395,13 @@ type PostListResponse struct {
 
 // PostPlatformResult defines model for PostPlatformResult.
 type PostPlatformResult struct {
-	Error  *string `json:"error,omitempty"`
-	PostId string  `json:"postId" validate:"required"`
-	Status string  `json:"status" validate:"required"`
-	Url    string  `json:"url" validate:"required"`
+	Error *string `json:"error,omitempty"`
+
+	// ExternalId Verified original platform integration target; absent on legacy records.
+	ExternalId *string `json:"externalId,omitempty"`
+	PostId     string  `json:"postId" validate:"required"`
+	Status     string  `json:"status" validate:"required"`
+	Url        string  `json:"url" validate:"required"`
 }
 
 // PresenceHealthResponse Read-only composite presence-health score. Aggregate-only: no author, review text, or reply text is carried — numbers only. composite and trendDelta are null when there is not yet enough data.
@@ -2411,6 +2419,26 @@ type ListPostsParams struct {
 	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ScheduleTelegramPostJSONBody defines parameters for ScheduleTelegramPost.
+type ScheduleTelegramPostJSONBody struct {
+	Content     string                               `json:"content" validate:"required"`
+	ExternalId  string                               `json:"externalId" validate:"required"`
+	MediaUrls   *[]string                            `json:"mediaUrls,omitempty"`
+	Platform    ScheduleTelegramPostJSONBodyPlatform `json:"platform" validate:"required,oneof=telegram"`
+	ScheduledAt time.Time                            `json:"scheduledAt" validate:"required"`
+}
+
+// ScheduleTelegramPostJSONBodyPlatform defines parameters for ScheduleTelegramPost.
+type ScheduleTelegramPostJSONBodyPlatform string
+
+// EditPublishedPostJSONBody defines parameters for EditPublishedPost.
+type EditPublishedPostJSONBody struct {
+	Content *string `json:"content,omitempty"`
+
+	// ScheduledAt Only an unclaimed OneVoice-held Telegram schedule can be rescheduled.
+	ScheduledAt *time.Time `json:"scheduledAt,omitempty"`
+}
+
 // GetPresenceHealthParams defines parameters for GetPresenceHealth.
 type GetPresenceHealthParams struct {
 	// TargetHours Answered-within-target window in hours (default 24) the SLA sub-score is computed against. Values <= 0 fall back to the default.
@@ -2626,6 +2654,12 @@ type UpdateMemberRoleJSONRequestBody = UpdateMemberRoleRequest
 
 // UpdateBusinessOwnerBriefJSONRequestBody defines body for UpdateBusinessOwnerBrief for application/json ContentType.
 type UpdateBusinessOwnerBriefJSONRequestBody = UpdateOwnerBriefRequest
+
+// ScheduleTelegramPostJSONRequestBody defines body for ScheduleTelegramPost for application/json ContentType.
+type ScheduleTelegramPostJSONRequestBody ScheduleTelegramPostJSONBody
+
+// EditPublishedPostJSONRequestBody defines body for EditPublishedPost for application/json ContentType.
+type EditPublishedPostJSONRequestBody EditPublishedPostJSONBody
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectRequest

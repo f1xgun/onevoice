@@ -25,6 +25,8 @@ import (
 // separate so goconst doesn't conflate them.
 const taskStatusError = "error"
 
+const postStatusPublished = "published"
+
 // postingToolInfo describes how to extract post data from a platform tool call.
 // scheduled marks tools that queue a delayed publish (vk__schedule_post) rather
 // than posting immediately: those records are stored with status "scheduled"
@@ -424,10 +426,26 @@ func (t *Turn) recordPostsAndReviews(
 	}
 
 	if t.deps.Posts != nil {
+		t.reconcilePostMutations(ctx, businessID, toolResults, toolCallByID)
 		for _, tr := range toolResults {
 			tc, ok := toolCallByID[tr.ToolCallID]
 			if !ok {
 				continue
+			}
+			if date, scheduled := tc.Arguments["scheduled_at"].(string); scheduled && date != "" && tr.IsError && (tc.Name == tools.TelegramSendChannelPost || tc.Name == tools.TelegramSendChannelPhoto) {
+				// The queue API owns schedule records; the existing task retains this failed attempt.
+				continue
+			}
+			if owned, _ := tr.Content["api_owned_schedule"].(bool); owned && !tr.IsError {
+				recordID, _ := tr.Content["post_record_id"].(string)
+				recorded, err := t.deps.Posts.GetByID(ctx, recordID)
+				externalID, _ := tr.Content["external_id"].(string)
+				if err == nil && recorded != nil && externalID != "" && recorded.ID == recordID && recorded.BusinessID == businessID && recorded.BroadcastGroupID == broadcastGroupID && recorded.PlatformResults[a2a.AgentTelegram].ExternalID == externalID {
+					continue
+				}
+				slog.WarnContext(ctx, "chatturn: scheduled receipt could not be verified", "post_id", recordID, "error", err)
+				tr.IsError = true
+				tr.Content = map[string]interface{}{"error": "scheduled post receipt could not be verified"}
 			}
 			info, isPost := postingTools[tc.Name]
 			if !isPost {
@@ -442,7 +460,7 @@ func (t *Turn) recordPostsAndReviews(
 				}
 			}
 
-			status := "published"
+			status := postStatusPublished
 			var publishedAt, scheduledAt *time.Time
 			switch {
 			case tr.IsError:
@@ -455,6 +473,10 @@ func (t *Turn) recordPostsAndReviews(
 				publishedAt = &now
 			}
 			platformResult := domain.PlatformResult{Status: status}
+			platformResult.ExternalID, _ = tr.Content["external_id"].(string)
+			if tr.IsError && tr.Code != "" && tr.Code != "transient" {
+				platformResult.ExternalID = t.failedPostTarget(ctx, businessID, info.platform, tc.Arguments)
+			}
 			if tr.IsError {
 				if errMsg, ok := tr.Content["error"].(string); ok {
 					platformResult.Error = errMsg
@@ -478,7 +500,7 @@ func (t *Turn) recordPostsAndReviews(
 			}
 			if err := t.deps.Posts.Create(ctx, post); err != nil {
 				slog.ErrorContext(ctx, "chatturn: failed to create post record", "tool", tc.Name, "error", err)
-			} else if status == "published" && t.valueTelemetry != nil {
+			} else if status == postStatusPublished && t.valueTelemetry != nil {
 				if bizID, err := uuid.Parse(businessID); err == nil {
 					t.valueTelemetry.RecordValue(ctx, valuetelemetry.Event{
 						Action: valuetelemetry.PostPublished, SourceID: businessID + ":" + broadcastGroupID + ":" + tc.ID,

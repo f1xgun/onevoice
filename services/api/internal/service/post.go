@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -11,12 +12,21 @@ import (
 
 // PostService defines the interface for post operations
 type PostService interface {
+	ScheduleApproved(ctx context.Context, in ApprovedPostSchedule) (*ApprovedScheduleResult, error)
+	Schedule(ctx context.Context, businessID uuid.UUID, externalID, content string, mediaURLs []string, at time.Time) (*domain.Post, error)
+	Reschedule(ctx context.Context, businessID uuid.UUID, id string, at *time.Time, content *string) (*domain.Post, error)
+	PublishDue(ctx context.Context) (int, error)
+	Mutate(ctx context.Context, businessID uuid.UUID, id, action string, content *string) (*domain.Post, error)
 	List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
 }
 
 type postService struct {
-	repo domain.PostRepository
+	repo          domain.PostRepository
+	dispatch      natsRequester
+	integrations  domain.IntegrationRepository
+	pending       domain.PendingToolCallRepository
+	conversations domain.ConversationRepository
 }
 
 // Compile-time check that postService implements PostService

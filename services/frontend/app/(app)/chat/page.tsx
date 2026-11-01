@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -74,23 +74,48 @@ export default function ChatListPage() {
   });
 
   const { mutate: createConversation, isPending } = useMutation({
-    mutationFn: ({ businessId, projectId }: { businessId: string; projectId?: string }) =>
+    mutationFn: ({
+      businessId,
+      projectId,
+    }: {
+      businessId: string;
+      projectId?: string;
+      prompt?: string;
+    }) =>
       bizApi(businessId)
         .post<Conversation>(BIZ_API_PATHS.CONVERSATIONS.ROOT, {
           title: tChat('newConversation'),
           ...(projectId ? { projectId } : {}),
         })
         .then((r) => r.data),
-    onSuccess: (conv: Conversation, { businessId }) => {
+    onSuccess: (conv: Conversation, { businessId, prompt }) => {
       trackClick('create_conversation', undefined, businessId);
       queryClient.invalidateQueries({
         queryKey: conversationsQueryKey(businessId),
       });
       if (activeBusiness.current !== businessId) return;
-      router.push(`/chat/${conv.id}`);
+      router.push(
+        `/chat/${conv.id}${prompt ? `?${new URLSearchParams({ prompt, businessId })}` : ''}`
+      );
     },
     onError: () => toast.error(tCommon('connectionError')),
   });
+
+  const prefillStarted = useRef(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prompt = params.get('prompt');
+    if (
+      !activeBusinessId ||
+      !prompt ||
+      params.get('businessId') !== activeBusinessId ||
+      !canCreate ||
+      prefillStarted.current
+    )
+      return;
+    prefillStarted.current = true;
+    createConversation({ businessId: activeBusinessId, prompt });
+  }, [activeBusinessId, canCreate, createConversation]);
 
   const {
     mutate: renameConversation,
@@ -176,7 +201,12 @@ export default function ChatListPage() {
   });
   function handleCreate(projectId?: string) {
     if (activeBusinessId && canCreate && !isPending) {
-      createConversation({ businessId: activeBusinessId, projectId });
+      const params = new URLSearchParams(window.location.search);
+      const prompt =
+        params.get('businessId') === activeBusinessId
+          ? (params.get('prompt') ?? undefined)
+          : undefined;
+      createConversation({ businessId: activeBusinessId, projectId, prompt });
     }
   }
   function renderCreateButton(empty = false) {

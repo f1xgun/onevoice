@@ -68,5 +68,15 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
 
   if (switched) return null;
 
-  return <ChatWindow conversationId={id} onConversationDeleted={() => router.push('/chat')} />;
+  return (
+    <ChatWindow
+      initialPrompt={
+        searchParams.get('businessId') === activeBusinessId
+          ? (searchParams.get('prompt') ?? '')
+          : ''
+      }
+      conversationId={id}
+      onConversationDeleted={() => router.push('/chat')}
+    />
+  );
 }

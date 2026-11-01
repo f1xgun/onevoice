@@ -17,6 +17,8 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/telegram"
 )
 
+const strictTargetArg = "strict_target"
+
 // TokenInfo aliases agentbase.TokenInfo so test files that construct
 // agent.TokenInfo{...} continue to compile after the agentbase migration.
 // New callers should use agentbase.TokenInfo directly.
@@ -33,6 +35,8 @@ type TokenFetcher = agentbase.TokenResolver
 // The channel-post sends return the delivery receipt (message id + public
 // username when the channel has one) so the tool result can carry a permalink.
 type Sender interface {
+	EditMessage(chat string, messageID int, text string, caption bool) (telegram.SentMessage, error)
+	DeleteMessage(chat string, messageID int) error
 	SendMessage(chat, text string) (telegram.SentMessage, error)
 	SendPhoto(chat, photoURL, caption string) (telegram.SentMessage, error)
 	SendReply(chat string, messageID int, text string) error
@@ -138,11 +142,13 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 // Called once from NewHandler to seed the agentbase.Router.
 func (h *Handler) routes() map[string]agentbase.ToolExec {
 	return map[string]agentbase.ToolExec{
-		tools.TelegramSendChannelPost:  h.sendChannelPost,
-		tools.TelegramSendChannelPhoto: h.sendChannelPhoto,
-		tools.TelegramSendNotification: h.sendNotification,
-		tools.TelegramGetReviews:       h.getReviews,
-		tools.TelegramReplyToComment:   h.replyToComment,
+		tools.TelegramSendChannelPost:   h.sendChannelPost,
+		tools.TelegramEditChannelPost:   h.mutateChannelPost,
+		tools.TelegramDeleteChannelPost: h.mutateChannelPost,
+		tools.TelegramSendChannelPhoto:  h.sendChannelPhoto,
+		tools.TelegramSendNotification:  h.sendNotification,
+		tools.TelegramGetReviews:        h.getReviews,
+		tools.TelegramReplyToComment:    h.replyToComment,
 	}
 }
 
@@ -177,6 +183,10 @@ func classifyTelegramError(err error) error {
 	if strings.Contains(lower, "photo_invalid_dimensions") || strings.Contains(lower, "photo dimensions") ||
 		strings.Contains(lower, "file too big") || strings.Contains(lower, "photo_save_file_invalid") {
 		return a2a.NewCodedError("media_too_large", a2a.NewNonRetryableError(err))
+	}
+	if strings.Contains(lower, "message can't be edited") || strings.Contains(lower, "message can't be deleted") ||
+		strings.Contains(lower, "message to edit not found") || strings.Contains(lower, "message to delete not found") {
+		return a2a.NewCodedError("transient", a2a.NewNonRetryableError(err))
 	}
 	if strings.Contains(msg, "chat not found") || strings.Contains(msg, "Bad Request: chat_id is empty") {
 		return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
@@ -222,7 +232,7 @@ func channelPostURL(sent telegram.SentMessage, target string) string {
 // sentPostResult builds the tool-result payload of a delivered channel post:
 // the message id always, the t.me permalink when the channel is public.
 func sentPostResult(sent telegram.SentMessage, target string) map[string]any {
-	result := map[string]any{"status": "sent", "message_id": sent.MessageID}
+	result := map[string]any{"status": "sent", "message_id": sent.MessageID, "external_id": target}
 	if url := channelPostURL(sent, target); url != "" {
 		result["url"] = url
 	}
@@ -230,6 +240,12 @@ func sentPostResult(sent telegram.SentMessage, target string) map[string]any {
 }
 
 func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if raw, scheduled := req.Args["scheduled_at"]; scheduled {
+		value, ok := raw.(string)
+		if !ok || value != "" || req.ApprovalID == "" {
+			return nil, a2a.NewNonRetryableError(fmt.Errorf("scheduled Telegram posts must be queued by OneVoice"))
+		}
+	}
 	text, _ := req.Args["text"].(string)
 	channelIDStr, _ := req.Args["channel_id"].(string)
 
@@ -238,6 +254,9 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 		return nil, err
 	}
 
+	if strict, _ := req.Args[strictTargetArg].(bool); strict && channelIDStr != resolvedID {
+		return nil, a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(fmt.Errorf("telegram: original connected channel is unavailable")))
+	}
 	target, err := resolveChatTarget(channelIDStr, resolvedID)
 	if err != nil {
 		return nil, err
@@ -245,6 +264,9 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 
 	sent, err := sender.SendMessage(target, text)
 	if err != nil {
+		if strict, _ := req.Args[strictTargetArg].(bool); strict {
+			return nil, a2a.NewNonRetryableError(err)
+		}
 		return nil, fmt.Errorf("telegram: send message: %w", classifyTelegramError(err))
 	}
 
@@ -252,6 +274,12 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if raw, scheduled := req.Args["scheduled_at"]; scheduled {
+		value, ok := raw.(string)
+		if !ok || value != "" || req.ApprovalID == "" {
+			return nil, a2a.NewNonRetryableError(fmt.Errorf("scheduled Telegram posts must be queued by OneVoice"))
+		}
+	}
 	photoURL, _ := req.Args["photo_url"].(string)
 	caption, _ := req.Args["caption"].(string)
 	channelIDStr, _ := req.Args["channel_id"].(string)
@@ -261,6 +289,9 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 		return nil, err
 	}
 
+	if strict, _ := req.Args[strictTargetArg].(bool); strict && channelIDStr != resolvedID {
+		return nil, a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(fmt.Errorf("telegram: original connected channel is unavailable")))
+	}
 	target, err := resolveChatTarget(channelIDStr, resolvedID)
 	if err != nil {
 		return nil, err
@@ -268,6 +299,9 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 
 	sent, err := sender.SendPhoto(target, photoURL, caption)
 	if err != nil {
+		if strict, _ := req.Args[strictTargetArg].(bool); strict {
+			return nil, a2a.NewNonRetryableError(err)
+		}
 		return nil, fmt.Errorf("telegram: send photo: %w", classifyTelegramError(err))
 	}
 
