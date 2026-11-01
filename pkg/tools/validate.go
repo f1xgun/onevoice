@@ -61,6 +61,7 @@ func (e *ErrFieldTypeMismatch) Error() string {
 var editableFieldKind = map[string]string{
 	"text":         "string",
 	"caption":      "string",
+	"photo_url":    "string",
 	"description":  "string",
 	"hours":        "string",
 	"scheduled_at": "string",

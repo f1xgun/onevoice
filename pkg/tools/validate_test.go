@@ -229,3 +229,11 @@ func TestScheduledAtEditCanExplicitlyChooseNow(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPhotoURLRequiresString(t *testing.T) {
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPhoto, map[string]interface{}{"photo_url": true}, []string{"photo_url"})
+	var mismatch *tools.ErrFieldTypeMismatch
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("want string type error, got %v", err)
+	}
+}

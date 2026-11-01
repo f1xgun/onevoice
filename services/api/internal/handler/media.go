@@ -6,8 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"path"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -108,17 +106,12 @@ func (h *ChatProxyHandler) validateAttachments(businessID uuid.UUID, input []ope
 	if a.Type != "image" || !ok {
 		return nil, fmt.Errorf("unsupported attachment")
 	}
-	key := h.attachmentStorage.KeyFromPublicURL(a.Url)
-	prefix := "businesses/" + businessID.String() + "/media/"
-	if !strings.HasPrefix(key, prefix) || a.Url != h.attachmentStorage.PublicURL(key) {
-		return nil, fmt.Errorf("attachment outside business media")
+	actualExt, err := storage.OwnedMediaExtension(h.attachmentStorage, businessID, a.Url)
+	if err != nil {
+		return nil, err
 	}
-	filename := strings.TrimPrefix(key, prefix)
-	if strings.ContainsAny(filename, "/\\%?#") || path.Ext(filename) != ext {
-		return nil, fmt.Errorf("invalid media key")
-	}
-	if _, err := uuid.Parse(strings.TrimSuffix(filename, ext)); err != nil {
-		return nil, fmt.Errorf("invalid media key")
+	if actualExt != ext {
+		return nil, fmt.Errorf("attachment MIME type does not match media key")
 	}
 	return []domain.Attachment{{Type: "image", URL: a.Url, MimeType: a.MimeType, Name: a.Name}}, nil
 }

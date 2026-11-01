@@ -22,6 +22,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/service/approvaltelemetry"
+	"github.com/f1xgun/onevoice/services/api/internal/storage"
 )
 
 // defaultToolsRegistryCacheTTL is the fallback TTL when callers pass a
@@ -30,6 +31,9 @@ const defaultToolsRegistryCacheTTL = 5 * time.Minute
 
 // ErrHITLBatchNotFound is returned when batch_id is not in the collection (→ 404).
 var ErrHITLBatchNotFound = errors.New("hitl: batch not found")
+
+// ErrHITLInvalidPhotoURL rejects photo edits outside the configured tenant upload store.
+var ErrHITLInvalidPhotoURL = errors.New("hitl: edited photo must be an owned upload")
 
 // ErrHITLForbidden is returned when the actor's business does not own the batch (→ 403).
 var ErrHITLForbidden = errors.New("hitl: cross-tenant access forbidden")
@@ -88,6 +92,7 @@ const MaxRejectReasonChars = 500
 // registry cache, and orchestrator client behind the Resolve entry point.
 // See docs/services/hitl.md.
 type HITLService struct {
+	attachmentStorage storage.Uploader
 	approvalTelemetry approvaltelemetry.Sink
 	pendingRepo       domain.PendingToolCallRepository
 	businessRepo      domain.BusinessRepository
@@ -99,6 +104,11 @@ type HITLService struct {
 // SetApprovalTelemetry attaches the optional best-effort sink before serving requests.
 func (s *HITLService) SetApprovalTelemetry(sink approvaltelemetry.Sink) {
 	s.approvalTelemetry = sink
+}
+
+// SetAttachmentStorage wires the same upload store used by chat attachments.
+func (s *HITLService) SetAttachmentStorage(store storage.Uploader) {
+	s.attachmentStorage = store
 }
 
 // NewHITLService constructs a HITLService; a nil dep is a wiring bug and panics.
@@ -227,6 +237,14 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 			editable := s.toolsCache.EditableFields(c.ToolName)
 			if err := tools.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
 				return nil, err
+			}
+			if c.ToolName == tools.TelegramSendChannelPhoto || c.ToolName == tools.VKPostPhoto {
+				if photo, edited := d.EditedArgs["photo_url"]; edited && photo != c.Arguments["photo_url"] {
+					url, _ := photo.(string) // ValidateEditArgs has enforced the declared string type.
+					if _, err := storage.OwnedMediaExtension(s.attachmentStorage, parseUUIDSafe(batch.BusinessID), url); err != nil {
+						return nil, fmt.Errorf("%w: %v", ErrHITLInvalidPhotoURL, err)
+					}
+				}
 			}
 		case actionReject:
 			if len(d.RejectReason) > MaxRejectReasonChars {

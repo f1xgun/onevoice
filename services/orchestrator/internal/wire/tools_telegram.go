@@ -95,7 +95,7 @@ func telegramTools() []toolregistry.ToolSpec {
 				},
 			}},
 			Floor:          domain.ToolFloorManual,
-			EditableFields: []string{"caption", "scheduled_at"},
+			EditableFields: []string{"caption", "photo_url", "scheduled_at"},
 		},
 		{
 			DisplayName:     "Уведомление владельцу",

@@ -92,7 +92,7 @@ func vkTools() []toolregistry.ToolSpec {
 				},
 			}},
 			Floor:          domain.ToolFloorManual,
-			EditableFields: []string{"caption"},
+			EditableFields: []string{"caption", "photo_url"},
 		},
 		{
 			DisplayName:     "Запланировать пост",
