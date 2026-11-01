@@ -33,6 +33,8 @@ type TokenFetcher = agentbase.TokenResolver
 // The channel-post sends return the delivery receipt (message id + public
 // username when the channel has one) so the tool result can carry a permalink.
 type Sender interface {
+	EditMessage(chat string, messageID int, text string, caption bool) (telegram.SentMessage, error)
+	DeleteMessage(chat string, messageID int) error
 	SendMessage(chat, text string) (telegram.SentMessage, error)
 	SendPhoto(chat, photoURL, caption string) (telegram.SentMessage, error)
 	SendReply(chat string, messageID int, text string) error
@@ -138,11 +140,13 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 // Called once from NewHandler to seed the agentbase.Router.
 func (h *Handler) routes() map[string]agentbase.ToolExec {
 	return map[string]agentbase.ToolExec{
-		tools.TelegramSendChannelPost:  h.sendChannelPost,
-		tools.TelegramSendChannelPhoto: h.sendChannelPhoto,
-		tools.TelegramSendNotification: h.sendNotification,
-		tools.TelegramGetReviews:       h.getReviews,
-		tools.TelegramReplyToComment:   h.replyToComment,
+		tools.TelegramSendChannelPost:   h.sendChannelPost,
+		tools.TelegramEditChannelPost:   h.mutateChannelPost,
+		tools.TelegramDeleteChannelPost: h.mutateChannelPost,
+		tools.TelegramSendChannelPhoto:  h.sendChannelPhoto,
+		tools.TelegramSendNotification:  h.sendNotification,
+		tools.TelegramGetReviews:        h.getReviews,
+		tools.TelegramReplyToComment:    h.replyToComment,
 	}
 }
 
@@ -177,6 +181,10 @@ func classifyTelegramError(err error) error {
 	if strings.Contains(lower, "photo_invalid_dimensions") || strings.Contains(lower, "photo dimensions") ||
 		strings.Contains(lower, "file too big") || strings.Contains(lower, "photo_save_file_invalid") {
 		return a2a.NewCodedError("media_too_large", a2a.NewNonRetryableError(err))
+	}
+	if strings.Contains(lower, "message can't be edited") || strings.Contains(lower, "message can't be deleted") ||
+		strings.Contains(lower, "message to edit not found") || strings.Contains(lower, "message to delete not found") {
+		return a2a.NewCodedError("transient", a2a.NewNonRetryableError(err))
 	}
 	if strings.Contains(msg, "chat not found") || strings.Contains(msg, "Bad Request: chat_id is empty") {
 		return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))

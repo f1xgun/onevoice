@@ -45,6 +45,8 @@ func (m *mockTokenFetcher) GetToken(_ context.Context, _, _, _, _ string) (agent
 
 // mockVKClient is a test double for VKClient.
 type mockVKClient struct {
+	editPostFn         func(string, int, string) error
+	deletePostFn       func(string, int) error
 	publishPostFn      func(groupID, text string) (int64, error)
 	schedulePostFn     func(groupID, text string, publishDate int64) (int64, error)
 	postPhotoFn        func(groupID string, photoURL, caption string) (int64, error)

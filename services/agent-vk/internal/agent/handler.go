@@ -28,6 +28,8 @@ type TokenFetcher = agentbase.TokenResolver
 
 // VKClient abstracts VK API operations for testability.
 type VKClient interface {
+	EditPost(groupID string, postID int, text string) error
+	DeletePost(groupID string, postID int) error
 	PublishPost(groupID, text string) (int64, error)
 	PostPhoto(groupID, photoURL, caption string) (int64, error)
 	SchedulePost(groupID, text string, publishDate int64) (int64, error)
@@ -73,6 +75,8 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 func (h *Handler) routes() map[string]agentbase.ToolExec {
 	return map[string]agentbase.ToolExec{
 		tools.VKPublishPost:      h.publishPost,
+		tools.VKEditPost:         h.mutatePost,
+		tools.VKDeletePost:       h.mutatePost,
 		tools.VKPostPhoto:        h.postPhoto,
 		tools.VKUpdateGroupInfo:  h.updateGroupInfo,
 		tools.VKSchedulePost:     h.schedulePost,

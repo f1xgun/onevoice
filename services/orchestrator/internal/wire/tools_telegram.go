@@ -14,6 +14,36 @@ import (
 func telegramTools() []toolregistry.ToolSpec {
 	return []toolregistry.ToolSpec{
 		{
+			DisplayName:     "Изменить пост",
+			UserDescription: "Изменяет текст опубликованного поста, сохраняя фото.",
+			DescriptionEn:   "Edits published post text while retaining its photos. Set is_caption=true for a media caption; an empty caption removes it.",
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+				Name: tools.TelegramEditChannelPost, Description: "Изменяет текст опубликованного поста, сохраняя фото.",
+				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+					"channel_id": map[string]interface{}{"type": "string", "description": "Explicit connected telegram target ID; must match the integration."},
+					"message_id": map[string]interface{}{"type": "integer", "minimum": 1, "description": "Existing published post ID"},
+					"text":       map[string]interface{}{"type": "string", "description": "Replacement text or media caption"},
+					"is_caption": map[string]interface{}{"type": "boolean", "description": "True to edit media caption instead of message text"},
+				}, "required": []string{"channel_id", "message_id", "text"}},
+			}},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
+		},
+		{
+			DisplayName:     "Удалить пост",
+			UserDescription: "Удаляет опубликованный пост.",
+			DescriptionEn:   "Deletes a published post. Telegram may reject deletion after 48 hours.",
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+				Name: tools.TelegramDeleteChannelPost, Description: "Удаляет опубликованный пост.",
+				Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+					"channel_id": map[string]interface{}{"type": "string", "description": "Explicit connected telegram target ID; must match the integration."},
+					"message_id": map[string]interface{}{"type": "integer", "minimum": 1, "description": "Existing published post ID"},
+				}, "required": []string{"channel_id", "message_id"}},
+			}},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: nil,
+		},
+		{
 			DisplayName:     "Отправить пост",
 			DisplayNameKey:  "tools.telegram.send_channel_post.name",
 			UserDescription: "Публикует текстовое сообщение в Telegram-канале.",

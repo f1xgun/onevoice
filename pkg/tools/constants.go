@@ -17,15 +17,19 @@ const (
 
 // Telegram tools.
 const (
-	TelegramSendChannelPost  = "telegram__send_channel_post"
-	TelegramSendChannelPhoto = "telegram__send_channel_photo"
-	TelegramSendNotification = "telegram__send_notification"
-	TelegramGetReviews       = "telegram__get_reviews"
-	TelegramReplyToComment   = "telegram__reply_to_comment"
+	TelegramEditChannelPost   = "telegram__edit_channel_post"
+	TelegramDeleteChannelPost = "telegram__delete_channel_post"
+	TelegramSendChannelPost   = "telegram__send_channel_post"
+	TelegramSendChannelPhoto  = "telegram__send_channel_photo"
+	TelegramSendNotification  = "telegram__send_notification"
+	TelegramGetReviews        = "telegram__get_reviews"
+	TelegramReplyToComment    = "telegram__reply_to_comment"
 )
 
 // VK tools.
 const (
+	VKEditPost         = "vk__edit_post"
+	VKDeletePost       = "vk__delete_post"
 	VKPublishPost      = "vk__publish_post"
 	VKPostPhoto        = "vk__post_photo"
 	VKSchedulePost     = "vk__schedule_post"
