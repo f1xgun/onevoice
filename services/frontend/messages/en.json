@@ -661,6 +661,38 @@
       "errorLabel": "With errors",
       "errorHintSome": "need attention",
       "errorHintNone": "all clear"
+    },
+    "feed": {
+      "new": "New post",
+      "all": "All",
+      "scheduled": "Upcoming",
+      "error": "Not published",
+      "open": "open",
+      "repeat": "Repeat as new",
+      "retryPlatform": "Send to {platform}",
+      "editPlatform": "Edit — {platform}",
+      "deletePlatform": "Delete — {platform}",
+      "uncertainHelp": "Checking the platform outcome. Retry is unavailable until it is confirmed.",
+      "schedulingHelp": "Scheduled on the platform. Schedule changes are not available yet.",
+      "operationProblem": "The action could not be confirmed. Refresh the list and check the result on the platform.",
+      "deleteTitle": "Delete this post from the platform?",
+      "deleteHelp": "The post will be deleted from the selected platform. This cannot be undone.",
+      "editTitle": "Edit post text",
+      "editHelp": "The change goes to the selected platform. Other publications of this post remain unchanged.",
+      "contentLabel": "Post text",
+      "contentRequired": "Enter post text",
+      "confirmDelete": "Delete from platform",
+      "save": "Save on platform",
+      "status": {
+        "published": "published",
+        "scheduled": "scheduled",
+        "error": "not published",
+        "uncertain": "checking outcome",
+        "deleted": "deleted",
+        "pending": "waiting to send"
+      },
+      "newPrompt": "Prepare a new post",
+      "processingHelp": "Updating the post on the platform…"
     }
   },
   "tasks": {
@@ -957,7 +989,7 @@
       "retry": "Try again"
     },
     "aiSample": {
-      "label": "AI draft reply",
+      "label": "Organization reply, draft",
       "hint": "Send as-is or edit",
       "edit": "Edit",
       "preparing": "Preparing a draft reply…",
@@ -979,7 +1011,14 @@
     "sendReplyError": "Couldn't send the reply",
     "refreshSuccess": "Reviews refreshed",
     "refreshError": "Couldn't refresh the reviews",
-    "updatingResults": "Updating reviews…"
+    "updatingResults": "Updating reviews…",
+    "feed": {
+      "filters": "Filters and refresh",
+      "awaiting": "Without a reply",
+      "history": "All reviews",
+      "statistics": "Reply statistics",
+      "loadedRatings": "Based on {count} loaded ratings"
+    }
   },
   "business": {
     "title": "Organization profile",

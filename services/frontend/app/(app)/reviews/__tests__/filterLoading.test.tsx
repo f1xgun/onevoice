@@ -46,6 +46,7 @@ it('keeps reviews visible during a filter request, then offers to reset an empty
   );
   renderPage();
   await screen.findByText(review.text);
+  fireEvent.click(screen.getByText('Фильтры и обновление'));
   fireEvent.click(screen.getByRole('radio', { name: 'Без ответа' }));
   expect(await screen.findByText('Обновляем список…')).toBeInTheDocument();
   expect(screen.getByText(review.text)).toBeInTheDocument();

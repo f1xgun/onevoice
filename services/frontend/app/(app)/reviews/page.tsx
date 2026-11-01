@@ -1,13 +1,5 @@
 'use client';
 
-// app/(app)/reviews/page.tsx — OneVoice (Linen) Reviews
-// Customer feedback aggregated across connected platforms. Per brand voice
-// "AI suggests, never commits": when a draft reply exists for a pending
-// review, OneVoice surfaces it as an offer (paper-sunken sub-panel with
-// "Образец ответа AI") that the operator must explicitly send or edit.
-// No mock for this page — extrapolated from mock-states.jsx (empty state)
-// and the patterns established in mock-posts.jsx (filter bar, stat strip).
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
@@ -21,7 +13,6 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { useApprovalImpressions } from '@/hooks/useApprovalImpressions';
 import { useReviewStatusBadges, type ReviewStatus } from '@/lib/constants/statuses';
 import { usePermission } from '@/lib/hooks/usePermission';
-import { Badge } from '@/components/ui/badge';
 import { SaveTemplateDialog } from '@/components/templates/SaveTemplateDialog';
 
 // Manual refresh fan-out budget. The backend caps total work at 90s; the
@@ -49,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { cn } from '@/lib/utils';
@@ -96,6 +86,8 @@ const REVIEWS_REPLY_STATUS_OPTIONS = [
   'replied',
 ] as const satisfies readonly ReplyStatusFilter[];
 
+const SMALL_STAR_SIZE = 14;
+
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   const tReviews = useTranslations('reviews');
   return (
@@ -104,10 +96,9 @@ function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
         <Star
           key={i}
           aria-hidden
-          style={{ width: size, height: size }}
           className={cn(
-            'transition-colors',
-            i < rating ? 'fill-ochre text-ochre' : 'fill-transparent text-ink-faint'
+            size === SMALL_STAR_SIZE ? 'size-3.5' : 'size-4',
+            i < rating ? 'fill-star text-star' : 'fill-line text-line'
           )}
         />
       ))}
@@ -155,6 +146,7 @@ export default function ReviewsPage() {
   const activeBusinessIdRef = useRef(activeBusinessId);
   activeBusinessIdRef.current = activeBusinessId;
   const tReviews = useTranslations('reviews');
+  const locale = useLocale() as Locale;
   const tPlatformLabels = useTranslations('reviews.platformLabels');
   const tCommon = useTranslations('common');
   const [platform, setPlatform] = useState<string>('all');
@@ -280,16 +272,6 @@ export default function ReviewsPage() {
     },
   });
 
-  const stats = useMemo(() => {
-    const total = reviews.length;
-    const pending = reviews.filter((r) => r.replyStatus === 'pending').length;
-    const ratings = reviews
-      .filter((r) => platformHasRating(r.platform) && r.rating > 0)
-      .map((r) => r.rating);
-    const avg = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
-    return { total, pending, avg };
-  }, [reviews]);
-
   const sortedReviews = useMemo(() => sortLoadedReviewsLowRatingFirst(reviews), [reviews]);
 
   function platformLabel(id: string): string {
@@ -311,183 +293,253 @@ export default function ReviewsPage() {
 
   return (
     <>
-      <PageHeader title={tReviews('title')} sub={tReviews('subtitle')} />
+      <div className="p-gutter md:p-gutter-desktop">
+        <h1 className="mb-3.5 text-2xl font-semibold text-ink">{tReviews('title')}</h1>
+        <div className="grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="min-w-0">
+            {/* Filter bar — platform select + reply-status tabs. */}
+            <details className="mb-5">
+              <summary className="cursor-pointer text-sm text-ink-soft">
+                {tReviews('feed.filters')}
+              </summary>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Select value={platform} onValueChange={setPlatform}>
+                  <SelectTrigger
+                    id="reviews-platform-select"
+                    aria-label={tReviews('platformPlaceholder')}
+                    className="h-9 w-[200px]"
+                  >
+                    <SelectValue placeholder={tReviews('platformPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{tReviews('platformOptions.all')}</SelectItem>
+                    <SelectItem value="yandex_business">
+                      {tReviews('platformOptions.yandexBusiness')}
+                    </SelectItem>
+                    <SelectItem value="google">{tReviews('platformOptions.google')}</SelectItem>
+                    <SelectItem value="2gis">{tReviews('platformOptions.twoGis')}</SelectItem>
+                    <SelectItem value="telegram">{tReviews('platformOptions.telegram')}</SelectItem>
+                    <SelectItem value="vk">{tReviews('platformOptions.vk')}</SelectItem>
+                  </SelectContent>
+                </Select>
 
-      <div className="px-4 pb-10 sm:px-12 sm:pb-16">
-        <ReviewResponseBoard
-          data={slaQuery.data}
-          isLoading={slaQuery.isLoading}
-          isError={slaQuery.isError}
-          onRetry={() => void slaQuery.refetch()}
-          platformLabel={platformLabel}
-        />
-        <DelegationMetricsBoard
-          data={delegationQuery.data}
-          isLoading={delegationQuery.isLoading}
-          isError={delegationQuery.isError}
-          onRetry={() => void delegationQuery.refetch()}
-        />
-
-        {/* Stat strip — three quiet metrics. No celebratory tone. */}
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <StatCell
-            isLoading={isLoading || isError}
-            label={tReviews('stats.pendingLabel')}
-            value={stats.pending}
-            hint={
-              stats.pending === 0
-                ? tReviews('stats.pendingHintNone')
-                : tReviews('stats.pendingHintSome')
-            }
-          />
-          <StatCell
-            isLoading={isLoading || isError}
-            label={tReviews('stats.totalLabel')}
-            value={stats.total}
-            hint={tReviews('stats.totalHint')}
-          />
-          <StatCell
-            isLoading={isLoading || isError}
-            label={tReviews('stats.avgLabel')}
-            value={stats.avg == null ? tReviews('stats.avgEmpty') : stats.avg.toFixed(1)}
-            hint={
-              stats.avg == null ? tReviews('stats.avgHintEmpty') : tReviews('stats.avgHintOutOf')
-            }
-          />
-        </div>
-
-        {/* Filter bar — platform select + reply-status tabs. */}
-        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised px-4 py-3">
-          <Select value={platform} onValueChange={setPlatform}>
-            <SelectTrigger
-              id="reviews-platform-select"
-              aria-label={tReviews('platformPlaceholder')}
-              className="h-9 w-[200px]"
-            >
-              <SelectValue placeholder={tReviews('platformPlaceholder')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{tReviews('platformOptions.all')}</SelectItem>
-              <SelectItem value="yandex_business">
-                {tReviews('platformOptions.yandexBusiness')}
-              </SelectItem>
-              <SelectItem value="google">{tReviews('platformOptions.google')}</SelectItem>
-              <SelectItem value="2gis">{tReviews('platformOptions.twoGis')}</SelectItem>
-              <SelectItem value="telegram">{tReviews('platformOptions.telegram')}</SelectItem>
-              <SelectItem value="vk">{tReviews('platformOptions.vk')}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Reply-status filter — radiogroup of chip buttons. We avoid
+                {/* Reply-status filter — radiogroup of chip buttons. We avoid
               Radix <Tabs> here because it internally emits
               aria-controls IDREFs that point at TabsContent panels we don't
               render, which axe-core flags as aria-valid-attr-value. A
               radiogroup is the correct semantic primitive for a one-of-N
               filter and emits no IDREF attributes. */}
-          <div
-            role="radiogroup"
-            aria-label={tReviews('replyStatusLabel')}
-            onKeyDown={replyStatusRadio.onKeyDown}
-            className="inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-muted p-1 text-muted-foreground"
-          >
-            {(
-              [
-                ['all', tReviews('tabs.all')],
-                ['pending', tReviews('tabs.pending')],
-                ['replied', tReviews('tabs.replied')],
-              ] as [ReplyStatusFilter, string][]
-            ).map(([key, label]) => {
-              const active = replyStatus === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => setReplyStatus(key)}
-                  {...replyStatusRadio.getRadioProps(key)}
-                  className={cn(
-                    'duration-[120ms] inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                    active && 'bg-background text-foreground shadow'
-                  )}
+                <div
+                  role="radiogroup"
+                  aria-label={tReviews('replyStatusLabel')}
+                  onKeyDown={replyStatusRadio.onKeyDown}
+                  className="inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-muted p-1 text-muted-foreground"
                 >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+                  {(
+                    [
+                      ['all', tReviews('tabs.all')],
+                      ['pending', tReviews('tabs.pending')],
+                      ['replied', tReviews('tabs.replied')],
+                    ] as [ReplyStatusFilter, string][]
+                  ).map(([key, label]) => {
+                    const active = replyStatus === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setReplyStatus(key)}
+                        {...replyStatusRadio.getRadioProps(key)}
+                        className={cn(
+                          'duration-[120ms] inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          active && 'bg-background text-foreground shadow'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="ml-auto gap-1.5"
-            onClick={() => activeBusinessId && refreshMutation.mutate(activeBusinessId)}
-            disabled={refreshMutation.isPending}
-            aria-busy={refreshMutation.isPending}
-            title={tReviews('refreshTitle')}
-          >
-            {refreshMutation.isPending ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto gap-1.5"
+                  onClick={() => activeBusinessId && refreshMutation.mutate(activeBusinessId)}
+                  disabled={refreshMutation.isPending}
+                  aria-busy={refreshMutation.isPending}
+                  title={tReviews('refreshTitle')}
+                >
+                  {refreshMutation.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  {refreshMutation.isPending ? tReviews('refreshing') : tReviews('refresh')}
+                </Button>
+              </div>
+            </details>
+
+            {isPlaceholderData && (
+              <p role="status" className="mb-3 flex items-center gap-2 text-meta text-ink-soft">
+                <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
+                {tReviews('updatingResults')}
+              </p>
             )}
-            {refreshMutation.isPending ? tReviews('refreshing') : tReviews('refresh')}
-          </Button>
-        </div>
+            {isError && <ListLoadError onRetry={refetch} isPending={isFetching} />}
 
-        {isPlaceholderData && (
-          <p role="status" className="mb-3 flex items-center gap-2 text-meta text-ink-soft">
-            <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
-            {tReviews('updatingResults')}
-          </p>
-        )}
-        {isError && <ListLoadError onRetry={refetch} isPending={isFetching} />}
+            {!isError && isLoading && (
+              <LoadingPlaceholder className="space-y-3">
+                {Array.from({ length: 3 }, (_, i) => (
+                  <ReviewSkeleton key={i} />
+                ))}
+              </LoadingPlaceholder>
+            )}
 
-        {!isError && isLoading && (
-          <LoadingPlaceholder className="space-y-3">
-            {Array.from({ length: 3 }, (_, i) => (
-              <ReviewSkeleton key={i} />
-            ))}
-          </LoadingPlaceholder>
-        )}
-
-        {!isError && !isLoading && !isPlaceholderData && reviews.length === 0 && (
-          <ReviewsEmptyState
-            replyStatus={replyStatus}
-            filtered={platform !== 'all' || replyStatus !== 'all'}
-            onResetFilters={() => {
-              setPlatform('all');
-              setReplyStatus('all');
-            }}
-          />
-        )}
-
-        {!isError && !isLoading && reviews.length > 0 && (
-          <div className="space-y-3" aria-busy={isPlaceholderData}>
-            <p className="text-xs text-ink-soft">{tReviews('loadedSortLabel')}</p>
-            {sortedReviews.map((review) => (
-              <ReviewCard
-                key={review.id}
-                review={review}
-                onSendDraft={() => sendDraftAsIs(review)}
-                onEdit={() => openReply(review, review.draftReply ?? '')}
-                onWriteOwn={() =>
-                  openReply(review, review.replyStatus === 'error' ? (review.replyText ?? '') : '')
-                }
-                onRetry={() =>
-                  activeBusinessId &&
-                  retryMutation.mutate({ businessId: activeBusinessId, id: review.id })
-                }
-                isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
-                isRetrying={retryMutation.isPending && retryMutation.variables?.id === review.id}
-                canReply={canReply && !isPlaceholderData}
-                businessId={activeBusinessId}
-                canCreateTemplate={canCreateTemplate}
+            {!isError && !isLoading && !isPlaceholderData && reviews.length === 0 && (
+              <ReviewsEmptyState
+                replyStatus={replyStatus}
+                filtered={platform !== 'all' || replyStatus !== 'all'}
+                onResetFilters={() => {
+                  setPlatform('all');
+                  setReplyStatus('all');
+                }}
               />
-            ))}
+            )}
+
+            {!isError && !isLoading && reviews.length > 0 && (
+              <div className="space-y-7" aria-busy={isPlaceholderData}>
+                {[
+                  {
+                    key: 'awaiting',
+                    rows: sortedReviews.filter(
+                      (r) => r.replyStatus === 'pending' || r.replyStatus === 'error'
+                    ),
+                  },
+                  {
+                    key: 'history',
+                    rows: [...sortedReviews]
+                      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                      .filter((r) => r.replyStatus !== 'pending' && r.replyStatus !== 'error'),
+                  },
+                ].map(
+                  ({ key, rows }) =>
+                    rows.length > 0 && (
+                      <section key={key}>
+                        <h2 className="mb-2.5 text-base font-semibold">
+                          {tReviews(`feed.${key}`)}
+                          {key === 'awaiting' && (
+                            <span className="ml-2 rounded-full bg-count px-1.5 text-sm text-white">
+                              {rows.length}
+                            </span>
+                          )}
+                        </h2>
+                        <div
+                          className={
+                            key === 'history'
+                              ? 'space-y-6 rounded-block bg-paper-raised p-4 md:p-5'
+                              : 'space-y-3'
+                          }
+                        >
+                          {rows.map((review, index) => (
+                            <div key={review.id}>
+                              {key === 'history' &&
+                                (index === 0 ||
+                                  rows[index - 1].createdAt.slice(0, 10) !==
+                                    review.createdAt.slice(0, 10)) && (
+                                  <h3 className="mb-3 text-sm font-medium text-ink-soft">
+                                    {formatReviewDate(review.createdAt, locale)}
+                                  </h3>
+                                )}
+                              <ReviewCard
+                                key={review.id}
+                                review={review}
+                                onSendDraft={() => sendDraftAsIs(review)}
+                                onEdit={() => openReply(review, review.draftReply ?? '')}
+                                onWriteOwn={() =>
+                                  openReply(
+                                    review,
+                                    review.replyStatus === 'error' ? (review.replyText ?? '') : ''
+                                  )
+                                }
+                                onRetry={() =>
+                                  activeBusinessId &&
+                                  retryMutation.mutate({
+                                    businessId: activeBusinessId,
+                                    id: review.id,
+                                  })
+                                }
+                                isSending={
+                                  replyMutation.isPending &&
+                                  replyMutation.variables?.id === review.id
+                                }
+                                isRetrying={
+                                  retryMutation.isPending &&
+                                  retryMutation.variables?.id === review.id
+                                }
+                                canReply={canReply && !isPlaceholderData}
+                                businessId={activeBusinessId}
+                                canCreateTemplate={canCreateTemplate}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )
+                )}
+              </div>
+            )}
           </div>
-        )}
+          <aside className="space-y-7 text-[15px] leading-[22px] text-ink-soft">
+            {!isLoading &&
+              !isError &&
+              [...new Set(reviews.map((review) => review.platform))]
+                .filter(platformHasRating)
+                .map((id) => {
+                  const ratings = reviews.filter(
+                    (review) => review.platform === id && review.rating > 0
+                  );
+                  if (!ratings.length) return null;
+                  const average =
+                    ratings.reduce((sum, review) => sum + review.rating, 0) / ratings.length;
+                  return (
+                    <div key={id}>
+                      <h2 className="flex items-center gap-2 font-semibold text-ink">
+                        <PlatformIcon
+                          platform={id === 'yandex' ? 'yandex_business' : id}
+                          className="size-4"
+                        />
+                        {platformLabel(id)}
+                      </h2>
+                      <p className="mt-2 text-3xl font-semibold text-ink">{average.toFixed(1)}</p>
+                      <p className="mt-2">
+                        {tReviews('feed.loadedRatings', { count: ratings.length })}
+                      </p>
+                    </div>
+                  );
+                })}
+            <details>
+              <summary className="cursor-pointer font-semibold text-ink">
+                {tReviews('feed.statistics')}
+              </summary>
+              <ReviewResponseBoard
+                data={slaQuery.data}
+                isLoading={slaQuery.isLoading}
+                isError={slaQuery.isError}
+                onRetry={() => void slaQuery.refetch()}
+                platformLabel={platformLabel}
+              />
+              <DelegationMetricsBoard
+                data={delegationQuery.data}
+                isLoading={delegationQuery.isLoading}
+                isError={delegationQuery.isError}
+                onRetry={() => void delegationQuery.refetch()}
+              />
+            </details>
+          </aside>
+        </div>
       </div>
 
       <Dialog open={!!dialogReview} onOpenChange={(open) => !open && setReplyDialog(null)}>
@@ -551,35 +603,6 @@ export default function ReviewsPage() {
 
 // ─── Subcomponents ─────────────────────────────────────────────────
 
-function StatCell({
-  label,
-  value,
-  hint,
-  isLoading,
-}: {
-  isLoading: boolean;
-  label: string;
-  value: string | number;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-md border border-line bg-paper-raised px-5 py-4">
-      <MonoLabel>{label}</MonoLabel>
-      <div className="mt-1.5 text-[26px] font-medium leading-none tracking-[-0.015em] text-ink">
-        {isLoading ? '—' : value}
-      </div>
-      {hint && (
-        <div
-          aria-hidden={isLoading || undefined}
-          className={cn('mt-1.5 text-xs text-ink-soft', isLoading && 'invisible')}
-        >
-          {hint}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ReviewCard({
   review,
   onSendDraft,
@@ -614,7 +637,6 @@ function ReviewCard({
   };
   const status =
     (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
-  const badge = statusBadge[status];
 
   const draftReady =
     (status === 'pending' || status === 'error') &&
@@ -634,33 +656,51 @@ function ReviewCard({
   const hasFailedReply = status === 'error' && !!review.replyText;
 
   return (
-    <article className="rounded-lg border border-line bg-paper-raised p-6 shadow-ov-1">
-      {/* Header — channel mark, name, stars, date, status badge */}
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <PlatformIcon
-          platform={review.platform === 'yandex' ? 'yandex_business' : review.platform}
-          className="size-6"
-        />
-        <span className="text-sm font-medium text-ink">{review.authorName}</span>
-        <span aria-hidden className="size-1 rounded-full bg-ink-faint" />
-        <span className="text-xs text-ink-soft">{meta.label}</span>
-        {platformHasRating(review.platform) && <StarRating rating={review.rating} />}
-        <span className="ml-auto flex items-center gap-3">
-          <MonoLabel>{formatReviewDate(review.createdAt, locale)}</MonoLabel>
-          <Badge tone={badge.tone} dot>
-            {badge.label}
-          </Badge>
+    <article
+      className={cn(
+        'text-ink',
+        (status === 'pending' || status === 'error') && 'rounded-block bg-paper-raised p-4 md:p-5'
+      )}
+    >
+      <header className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-paper-sunken text-sm font-semibold"
+        >
+          {review.authorName
+            .split(/\s+/)
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join('')}
         </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="break-words text-base font-semibold">{review.authorName}</h3>
+          {platformHasRating(review.platform) && <StarRating rating={review.rating} />}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-ink-soft">
+            <PlatformIcon
+              platform={review.platform === 'yandex' ? 'yandex_business' : review.platform}
+              className="size-4"
+            />
+            <span>
+              {meta.label}, {formatReviewDate(review.createdAt, locale)}
+            </span>
+          </div>
+        </div>
       </header>
 
       {/* Review body */}
-      <p className="mt-4 whitespace-pre-wrap text-[15px] leading-relaxed text-ink-mid">
+      <p
+        className={cn(
+          'mt-3 whitespace-pre-wrap leading-[26px] text-ink',
+          status === 'pending' || status === 'error' ? 'text-lg' : 'text-[15px] leading-[22px]'
+        )}
+      >
         {review.text}
       </p>
 
       {/* Sent reply — quiet sub-panel, no actions */}
       {hasSentReply && (
-        <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
+        <div className="mt-3 rounded-inner bg-brand-soft p-4">
           <MonoLabel>{tReviews('sentReply')}</MonoLabel>
           <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
           <div className="mt-3">
@@ -708,12 +748,14 @@ function ReviewCard({
 
       {/* AI draft — offered, not committed. Two actions: send / edit. */}
       {draftReady && (
-        <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
+        <div className="mt-3 rounded-inner bg-brand-soft p-4">
           <div className="flex items-center justify-between gap-3">
-            <MonoLabel tone="ochre">{tReviews('aiSample.label')}</MonoLabel>
-            <span className="text-xs text-ink-soft">{tReviews('aiSample.hint')}</span>
+            <span className="text-sm text-ink-soft">{tReviews('aiSample.label')}</span>
+            <span className="text-sm text-ink-soft">{tReviews('aiSample.hint')}</span>
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-ink">{review.draftReply}</p>
+          <p className="mt-3 whitespace-pre-wrap text-base leading-[26px] text-ink">
+            {review.draftReply}
+          </p>
           {canReply && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button
@@ -741,7 +783,7 @@ function ReviewCard({
 
       {/* Generating state — quiet hint, no actions until ready. */}
       {draftGenerating && (
-        <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-inner bg-paper-sunken px-4 py-3">
           <span className="text-sm text-ink-mid">{tReviews('aiSample.preparing')}</span>
           {canReply && (
             <Button variant="secondary" size="sm" onClick={onWriteOwn}>
@@ -754,7 +796,7 @@ function ReviewCard({
       {/* No-draft fallback: covers draft_status ∈ {"", "failed"} and any
           unexpected value. The operator can always author a reply by hand. */}
       {(status === 'pending' || status === 'error') && !draftReady && !draftGenerating && (
-        <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-inner bg-paper-sunken px-4 py-3">
           <span className="text-sm text-ink-mid">
             {review.draftStatus === 'failed'
               ? tReviews('aiSample.draftFailed')

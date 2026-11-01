@@ -39,10 +39,15 @@ import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
 
 interface ChatWindowProps {
   conversationId: string;
+  initialPrompt?: string;
   onConversationDeleted?: () => void;
 }
 
-export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
+export function ChatWindow({
+  conversationId,
+  onConversationDeleted,
+  initialPrompt,
+}: ChatWindowProps) {
   const tChat = useTranslations('chat.window');
   const {
     messages,
@@ -81,7 +86,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     handleScroll,
     handleKeyDown,
     prefill,
-  } = useChatComposer({ messages, disabled: composerDisabled, sendMessage });
+  } = useChatComposer({ messages, disabled: composerDisabled, sendMessage, initialPrompt });
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],

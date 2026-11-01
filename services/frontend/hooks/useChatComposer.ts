@@ -11,15 +11,21 @@ const composerSchema = z.object({ message: z.string() });
 
 interface ChatComposerOptions {
   messages: Message[];
+  initialPrompt?: string;
   disabled: boolean;
   sendMessage: (text: string, onAccepted?: () => void) => Promise<void>;
 }
 
-export function useChatComposer({ messages, disabled, sendMessage }: ChatComposerOptions) {
+export function useChatComposer({
+  messages,
+  disabled,
+  sendMessage,
+  initialPrompt = '',
+}: ChatComposerOptions) {
   const composerId = useId();
   const { register, watch, setValue } = useForm<z.infer<typeof composerSchema>>({
     resolver: zodResolver(composerSchema),
-    defaultValues: { message: '' },
+    defaultValues: { message: initialPrompt },
   });
   const input = watch('message');
   const followingRef = useRef(true);
