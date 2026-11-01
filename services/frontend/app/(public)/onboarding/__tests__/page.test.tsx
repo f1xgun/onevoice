@@ -17,6 +17,10 @@ vi.mock('@/lib/hooks/useLogout', () => ({
   useLogout: () => logoutMock,
 }));
 
+vi.mock('@/components/onboarding/FirstLaunch', () => ({
+  FirstLaunch: () => <div>Первый запуск</div>,
+}));
+
 import OnboardingPage from '../page';
 
 function wrap(node: ReactNode) {
@@ -36,18 +40,13 @@ beforeEach(() => {
 describe('OnboardingPage', () => {
   it('renders both cards with locked Russian copy', () => {
     render(wrap(<OnboardingPage />));
-    expect(screen.getByText('Создать организацию')).toBeInTheDocument();
+    expect(screen.getByText('Первый запуск')).toBeInTheDocument();
     expect(screen.getByText('У меня есть приглашение')).toBeInTheDocument();
-  });
-
-  it('Card A links to /business/new', () => {
-    render(wrap(<OnboardingPage />));
-    const link = screen.getByText('Создать организацию').closest('a');
-    expect(link).toHaveAttribute('href', '/business/new');
   });
 
   it('shows the invalid-format error on a too-short token', async () => {
     render(wrap(<OnboardingPage />));
+    fireEvent.click(screen.getByRole('button', { name: 'У меня есть приглашение' }));
     fireEvent.change(screen.getByLabelText('Ссылка-приглашение'), {
       target: { value: 'too-short' },
     });
@@ -60,6 +59,7 @@ describe('OnboardingPage', () => {
 
   it('routes to /invite/{token} on a valid 43-char base64-url token', async () => {
     render(wrap(<OnboardingPage />));
+    fireEvent.click(screen.getByRole('button', { name: 'У меня есть приглашение' }));
     const valid = 'A'.repeat(43);
     fireEvent.change(screen.getByLabelText('Ссылка-приглашение'), {
       target: { value: valid },
@@ -70,6 +70,7 @@ describe('OnboardingPage', () => {
 
   it('rejects 43 chars with an illegal character', async () => {
     render(wrap(<OnboardingPage />));
+    fireEvent.click(screen.getByRole('button', { name: 'У меня есть приглашение' }));
     const invalid = '!' + 'A'.repeat(42);
     fireEvent.change(screen.getByLabelText('Ссылка-приглашение'), {
       target: { value: invalid },

@@ -64,7 +64,8 @@ export function ToolsPageClient() {
   const updateMutation = useUpdateBusinessToolApprovals(businessId);
 
   const manualTools = useMemo<Tool[]>(
-    () => (tools ?? []).filter((t) => t.floor === 'manual'),
+    () =>
+      (tools ?? []).filter((t) => t.name !== 'telegram__send_notification' && t.floor === 'manual'),
     [tools]
   );
 
@@ -76,7 +77,11 @@ export function ToolsPageClient() {
   const [draftState, setDraftState] = useState({ source: initialDraft, values: initialDraft });
   const draft = draftState.source === initialDraft ? draftState.values : initialDraft;
 
-  const buckets = useMemo(() => groupByPlatform(tools ?? []), [tools]);
+  const buckets = useMemo(
+    () =>
+      groupByPlatform((tools ?? []).filter((tool) => tool.name !== 'telegram__send_notification')),
+    [tools]
+  );
   const platforms = TOOL_PLATFORM_ORDER.filter((p) =>
     buckets[p].some((t) => t.floor === 'manual' || t.floor === 'forbidden')
   );

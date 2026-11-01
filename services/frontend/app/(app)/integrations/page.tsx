@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { EmptyAction } from '@/components/states/EmptyAction';
 
 import { useState, useEffect, useRef } from 'react';
@@ -74,11 +75,16 @@ interface LastRegistered {
 export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
+  const tLaunch = useTranslations('launchV2');
+  const [resumeBusiness, setResumeBusiness] = useState<string | null>(null);
   const tCommon = useTranslations('common');
   const tV2 = useTranslations('integrations.v2');
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  useEffect(() => {
+    setResumeBusiness(sessionStorage.getItem('onevoice:launch-vk-business'));
+  }, [activeBusinessId]);
   const activeBusiness = useRef(activeBusinessId);
   activeBusiness.current = activeBusinessId;
   const canConnect = usePermission('integrations.connect').allowed;
@@ -292,6 +298,16 @@ export default function IntegrationsPage() {
           <h1 className="text-page-title">{tV2('title')}</h1>
           <p className="mt-1 text-[15px] leading-[22px] text-ink-soft">{tV2('subtitle')}</p>
         </header>
+
+        {activeBusinessId && resumeBusiness === activeBusinessId && (
+          <Link
+            href={`/business/new?step=2&businessId=${encodeURIComponent(activeBusinessId)}`}
+            className="inline-flex min-h-11 items-center text-brand underline"
+            onClick={() => sessionStorage.removeItem('onevoice:launch-vk-business')}
+          >
+            {tLaunch('resume')}
+          </Link>
+        )}
 
         {lastRegistered && (
           <div className="mb-8">

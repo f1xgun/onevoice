@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -150,4 +150,28 @@ describe('IntegrationsPage — ?vk_step query handler', () => {
     );
     expect(openSpies.vkPicker).not.toHaveBeenCalled();
   });
+});
+
+it('offers a fixed setup return only for the current business', async () => {
+  sessionStorage.setItem('onevoice:launch-vk-business', 'biz-test');
+  render(
+    <Wrapper>
+      <IntegrationsPage />
+    </Wrapper>
+  );
+  expect(await screen.findByRole('link', { name: 'Продолжить настройку точки' })).toHaveAttribute(
+    'href',
+    '/business/new?step=2&businessId=biz-test'
+  );
+  sessionStorage.removeItem('onevoice:launch-vk-business');
+});
+it('does not expose another business setup return', () => {
+  sessionStorage.setItem('onevoice:launch-vk-business', 'other');
+  render(
+    <Wrapper>
+      <IntegrationsPage />
+    </Wrapper>
+  );
+  expect(screen.queryByRole('link', { name: 'Продолжить настройку точки' })).toBeNull();
+  sessionStorage.removeItem('onevoice:launch-vk-business');
 });
