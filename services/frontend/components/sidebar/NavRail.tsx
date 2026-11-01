@@ -22,14 +22,14 @@ const navItems = [
   { href: '/settings', labelKey: 'settings' },
 ];
 const settingsItems = [
-  { href: '/settings/tools', labelKey: 'rules', matches: ['/settings/tools'] },
+  { href: '/settings/rules', labelKey: 'rules', matches: ['/settings/rules', '/settings/tools'] },
   { href: '/settings/team', labelKey: 'team', matches: ['/settings/team', '/settings/roles'] },
   { href: '/settings/billing', labelKey: 'plan', matches: ['/settings/billing'] },
   { href: '/settings/account', labelKey: 'account', matches: ['/settings/account'] },
   {
-    href: '/settings/privacy',
+    href: '/settings/data',
     labelKey: 'data',
-    matches: ['/settings/privacy', '/settings/audit'],
+    matches: ['/settings/data', '/settings/privacy', '/settings/audit'],
   },
 ];
 

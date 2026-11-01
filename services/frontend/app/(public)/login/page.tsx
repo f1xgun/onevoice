@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -18,11 +19,12 @@ import { ActionButton as Button } from '@/components/design-system/ActionButton'
 import { AppInput as Input } from '@/components/design-system/AppInput';
 import { Label } from '@/components/ui/label';
 import { AuthShell } from '@/components/auth/AuthShell';
-import { FormError } from '@/components/ui/form-error';
 import { SmartCaptcha, type SmartCaptchaHandle } from '@/components/auth/SmartCaptcha';
 
 // HTTP 423 Locked — same status the LockoutMiddleware short-circuits with.
 const HTTP_STATUS_LOCKED = 423;
+const PRODUCT_PREVIEW = '/auth/product-preview.png';
+const PRODUCT_PREVIEW_DARK = '/auth/product-preview-dark.png';
 // Defensive fallback when the backend omits retry_after_seconds.
 const DEFAULT_LOCK_SECONDS = 900;
 const SECONDS_PER_MINUTE = 60;
@@ -114,9 +116,49 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      eyebrow={tLogin('eyebrow')}
-      title={tLogin('title')}
-      description={tLogin('description')}
+      variant="access"
+      eyebrow={null}
+      title={tLogin('accessTitle')}
+      description={null}
+      aside={
+        <figure>
+          <div className="overflow-hidden rounded-inner border border-line">
+            <Image
+              src={PRODUCT_PREVIEW}
+              alt={tLogin('previewAlt')}
+              width={1280}
+              height={900}
+              priority
+              className="h-auto w-full dark:hidden"
+            />
+            <Image
+              src={PRODUCT_PREVIEW_DARK}
+              alt={tLogin('previewAlt')}
+              width={1280}
+              height={900}
+              priority
+              className="hidden h-auto w-full dark:block"
+            />
+          </div>
+          <figcaption className="mt-4 text-[15px] leading-[22px] text-ink-soft">
+            {tLogin('previewCaption')}
+          </figcaption>
+        </figure>
+      }
+      footer={
+        <>
+          <p>
+            {tLogin('betaPrompt')}
+            <br />
+            <Link href="/register">{tLogin('apply')}</Link>
+          </p>
+          <p>
+            {tLogin('invitedPrompt')}
+            <br />
+            <Link href="/register?invited=1">{tLogin('createAccount')}</Link>
+          </p>
+        </>
+      }
     >
       {lockedRetrySeconds !== null ? (
         <div
@@ -137,13 +179,16 @@ export default function LoginPage() {
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email" className="text-meta font-medium text-ink">
+            <Label htmlFor="email" className="text-sm font-normal text-ink-soft">
               {tLogin('emailLabel')}
             </Label>
             <Input
+              className="aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:border-danger"
               id="email"
               aria-invalid={!!errors.email}
-              aria-describedby={errors.email ? 'email-error' : undefined}
+              aria-describedby={
+                errors.email ? 'email-error' : formError ? 'login-error' : undefined
+              }
               type="email"
               placeholder="vy@example.com"
               autoComplete="email"
@@ -157,13 +202,16 @@ export default function LoginPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password" className="text-meta font-medium text-ink">
+            <Label htmlFor="password" className="text-sm font-normal text-ink-soft">
               {tLogin('passwordLabel')}
             </Label>
             <Input
+              className="aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:border-danger"
               id="password"
-              aria-invalid={!!errors.password}
-              aria-describedby={errors.password ? 'password-error' : undefined}
+              aria-invalid={!!errors.password || !!formError}
+              aria-describedby={
+                errors.password ? 'password-error' : formError ? 'login-error' : undefined
+              }
               type="password"
               placeholder="••••••••"
               autoComplete="current-password"
@@ -174,9 +222,14 @@ export default function LoginPage() {
                 {errors.password.message}
               </p>
             )}
+            {formError && (
+              <p id="login-error" role="alert" className="text-sm leading-[22px] text-danger">
+                {formError}
+              </p>
+            )}
             <Link
               href="/auth/password-reset"
-              className="self-end text-sm font-medium text-ink-mid hover:text-ink hover:underline"
+              className="mt-2 self-end text-sm text-brand underline"
             >
               {tLogin('forgotPassword')}
             </Link>
@@ -190,18 +243,9 @@ export default function LoginPage() {
             <SmartCaptcha ref={captchaRef} siteKey={captchaSiteKey} />
           )}
 
-          <FormError>{formError}</FormError>
-
           <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting}>
             {isSubmitting ? tLogin('submitting') : tLogin('submit')}
           </Button>
-
-          <p className="mt-6 text-sm text-ink-soft">
-            {tLogin('noAccount')}{' '}
-            <Link href="/register" className="font-medium text-ink hover:underline">
-              {tLogin('register')}
-            </Link>
-          </p>
         </form>
       )}
     </AuthShell>

@@ -172,7 +172,7 @@ const config: Config = {
         review: ['1.1875rem', { lineHeight: '1.875rem' }],
         'review-mobile': ['1.125rem', { lineHeight: '1.75rem' }],
         response: ['1.0625rem', { lineHeight: '1.6875rem' }],
-        secondary: ['.9375rem', { lineHeight: '1.375rem' }],
+        supporting: ['.9375rem', { lineHeight: '1.375rem' }],
         price: ['2rem', { lineHeight: '2.375rem', fontWeight: '500' }],
       },
       borderRadius: {

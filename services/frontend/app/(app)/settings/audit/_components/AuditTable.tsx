@@ -5,13 +5,12 @@ import { EmptyAction } from '@/components/states/EmptyAction';
 
 import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import type { AuditLogDTO } from '../_lib/types';
 import { actionToI18nKey, isKnownAuditAction } from '../_lib/actionLabels';
 import { isKnownResource } from '../_lib/resourceLabels';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { DEFAULT_LOCALE, localeToIntlTag } from '@/lib/i18n/locales';
 
 interface Props {
   items: AuditLogDTO[];
@@ -24,27 +23,9 @@ interface Props {
   onRowClick: (item: AuditLogDTO) => void;
 }
 
-const MS_PER_SEC = 1000;
-const SEC_PER_MIN = 60;
-const MIN_PER_HOUR = 60;
-const HOURS_PER_DAY = 24;
 const SKELETON_ROW_COUNT = 5;
-const LOCALE = localeToIntlTag(DEFAULT_LOCALE);
-
-type AuditTableTranslator = ReturnType<typeof useTranslations<'audit.table'>>;
+const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
 type AuditFiltersTranslator = ReturnType<typeof useTranslations<'audit.filters'>>;
-
-function formatRelative(iso: string, tTable: AuditTableTranslator): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const sec = Math.floor(ms / MS_PER_SEC);
-  if (sec < SEC_PER_MIN) return tTable('relJustNow');
-  const min = Math.floor(sec / SEC_PER_MIN);
-  if (min < MIN_PER_HOUR) return tTable('relMinutes', { m: min });
-  const hr = Math.floor(min / MIN_PER_HOUR);
-  if (hr < HOURS_PER_DAY) return tTable('relHours', { h: hr });
-  const d = Math.floor(hr / HOURS_PER_DAY);
-  return tTable('relDays', { d });
-}
 
 // SYSTEM_ACTIONS are emitted by the platform itself with no human actor by
 // design (the audit builders leave user_id nil). Rendering them as "Система"
@@ -80,6 +61,7 @@ export function AuditTable({
   isRefreshing = false,
 }: Props) {
   const t = useTranslations('audit.table');
+  const locale = useLocale();
   const tEmpty = useTranslations('states.actions');
   const tActions = useTranslations();
   const tFilters = useTranslations('audit.filters');
@@ -118,41 +100,52 @@ export function AuditTable({
 
   return (
     <div className="space-y-3" aria-busy={isRefreshing || isFetchingMore}>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-line text-left text-ink-soft">
-              <th className="py-2 pr-4 font-medium">{t('colTime')}</th>
-              <th className="py-2 pr-4 font-medium">{t('colActor')}</th>
-              <th className="py-2 pr-4 font-medium">{t('colAction')}</th>
-              <th className="py-2 pr-4 font-medium">{t('colResource')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it) => (
-              <tr
-                key={it.id}
-                data-testid={`audit-row-${it.id}`}
-                onClick={() => onRowClick(it)}
-                className="cursor-pointer border-b border-line text-ink hover:bg-paper-sunken"
-              >
-                <td className="py-2 pr-4" title={new Date(it.created_at).toLocaleString(LOCALE)}>
-                  {formatRelative(it.created_at, t)}
-                </td>
-                <td className="py-2 pr-4">{actorLabel(it, tFilters)}</td>
-                <td className="py-2 pr-4">
-                  {isKnownAuditAction(it.action)
-                    ? tActions(actionToI18nKey(it.action))
-                    : tActions('audit.actions.unknown')}
-                </td>
-                <td className="py-2 pr-4">
-                  {isKnownResource(it.resource) ? tResources(it.resource) : tResources('other')}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {Array.from(
+        new Set(items.map((item) => new Date(item.created_at).toLocaleDateString(locale)))
+      ).map((day) => (
+        <section key={day}>
+          <h3 className="mb-block-gap text-group-title">{day}</h3>
+          <ul className="rounded-block bg-block p-1 md:p-2">
+            {items
+              .filter((item) => new Date(item.created_at).toLocaleDateString(locale) === day)
+              .map((it) => (
+                <li key={it.id}>
+                  <button
+                    data-testid={`audit-row-${it.id}`}
+                    type="button"
+                    onClick={() => onRowClick(it)}
+                    className="flex min-h-tap w-full items-start gap-3 rounded-inner p-3 text-left hover:bg-inset"
+                  >
+                    <span
+                      aria-hidden
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-avatar text-meta text-avatar-ink"
+                    >
+                      {actorLabel(it, tFilters).slice(0, 1)}
+                    </span>
+                    <span className="min-w-0 flex-1 break-words text-reading">
+                      <span className="font-medium">{actorLabel(it, tFilters)}</span>{' '}
+                      {isKnownAuditAction(it.action)
+                        ? tActions(actionToI18nKey(it.action))
+                        : tActions('audit.actions.unknown')}
+                      <span className="block text-meta text-ink-soft">
+                        {isKnownResource(it.resource)
+                          ? tResources(it.resource)
+                          : tResources('other')}
+                      </span>
+                    </span>
+                    <time
+                      dateTime={it.created_at}
+                      title={new Date(it.created_at).toLocaleString(locale)}
+                      className="shrink-0 text-meta text-ink-soft"
+                    >
+                      {new Date(it.created_at).toLocaleTimeString(locale, TIME_FORMAT)}
+                    </time>
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </section>
+      ))}
       {hasNextPage ? (
         <div className="flex justify-center">
           <Button type="button" variant="secondary" onClick={onLoadMore} disabled={isFetchingMore}>

@@ -15,10 +15,65 @@ export interface AuthShellProps {
   children: React.ReactNode;
   /** Right-side editorial visual (quote, stat cards, preview). Hidden on mobile. */
   aside?: React.ReactNode;
+  variant?: 'legacy' | 'access';
+  footer?: React.ReactNode;
 }
 
-export function AuthShell({ eyebrow, title, description, children, aside }: AuthShellProps) {
+export function AuthShell({
+  eyebrow,
+  title,
+  description,
+  children,
+  aside,
+  variant = 'legacy',
+  footer,
+}: AuthShellProps) {
   const tShell = useTranslations('auth.shell');
+  if (variant === 'access') {
+    return (
+      <div className="ov-app relative min-h-dvh bg-background px-gutter py-6 text-ink md:flex md:items-center md:py-12 md:pl-16 md:pr-12">
+        <div
+          className={cn(
+            'mx-auto w-full max-w-[440px]',
+            aside &&
+              'md:grid md:max-w-none md:grid-cols-[392px_minmax(0,1fr)] md:items-center md:gap-12'
+          )}
+        >
+          <div className="min-w-0">
+            <Link
+              href="/"
+              aria-label="OneVoice"
+              className="mb-5 inline-flex min-h-8 items-center gap-2.5 font-semibold"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-ink text-sm text-paper">
+                OV
+              </span>
+              {tShell('wordmark')}
+            </Link>
+            <div className="rounded-block bg-paper-raised p-4 md:p-5 [&_button[type=submit]]:min-h-12 [&_input]:min-h-12">
+              {eyebrow && <p className="mb-3 text-sm text-ink-soft">{eyebrow}</p>}
+              {title && <h1 className="text-2xl font-semibold leading-8">{title}</h1>}
+              {description && (
+                <p className="mt-3 text-[15px] leading-[22px] text-ink-soft">{description}</p>
+              )}
+              <div className={title || description ? 'mt-4' : undefined}>{children}</div>
+            </div>
+            {footer && (
+              <div className="mt-5 space-y-3 text-[15px] leading-[22px] text-ink-soft [&_a]:text-brand [&_a]:underline">
+                {footer}
+              </div>
+            )}
+            <AppearanceControls className="mt-5 md:absolute md:bottom-6 md:left-16 md:mt-0" />
+          </div>
+          {aside && (
+            <aside aria-label={tShell('illustrationAria')} className="hidden min-w-0 md:block">
+              {aside}
+            </aside>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       data-ov-motion

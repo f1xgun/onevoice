@@ -26,9 +26,9 @@ export function RefusalCard({
 
   if (status === HTTP_STATUS.GONE) {
     return (
-      <div className="flex flex-col gap-4 text-center">
-        <h2 className="text-lg font-medium tracking-tight text-ink">{tErrors('gone.title')}</h2>
-        <p className="text-sm text-ink-mid">{tErrors('gone.body')}</p>
+      <div className="flex flex-col gap-4">
+        <h2 className="text-2xl font-semibold leading-8 text-ink">{tErrors('gone.title')}</h2>
+        <p className="text-[15px] leading-[22px] text-ink-soft">{tErrors('gone.body')}</p>
         <Link href="/chat" className={cn(buttonVariants({ variant: 'secondary' }), 'mt-2 w-full')}>
           {tErrors('gone.cta')}
         </Link>
@@ -38,11 +38,11 @@ export function RefusalCard({
 
   if (status === HTTP_STATUS.CONFLICT && businessId && businessName) {
     return (
-      <div className="flex flex-col gap-4 text-center">
-        <h2 className="text-lg font-medium tracking-tight text-ink">
+      <div className="flex flex-col gap-4">
+        <h2 className="text-2xl font-semibold leading-8 text-ink">
           {tErrors('alreadyMember.title')}
         </h2>
-        <p className="text-sm text-ink-mid">{tErrors('alreadyMember.body')}</p>
+        <p className="text-[15px] leading-[22px] text-ink-soft">{tErrors('alreadyMember.body')}</p>
         <Button
           variant="default"
           className="mt-2 w-full"
@@ -58,8 +58,8 @@ export function RefusalCard({
   }
 
   return (
-    <div className="flex flex-col gap-4 text-center">
-      <p className="text-sm text-ink-mid">{tErrors('generic')}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-[15px] leading-[22px] text-ink-soft">{tErrors('generic')}</p>
     </div>
   );
 }

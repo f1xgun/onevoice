@@ -18,15 +18,18 @@ vi.mock('@/components/auth/AuthShell', () => ({
     children,
     title,
     description,
+    footer,
   }: {
     children: ReactNode;
     title: ReactNode;
     description: ReactNode;
+    footer?: ReactNode;
   }) => (
     <div>
       <h1>{title}</h1>
       <p>{description}</p>
       {children}
+      {footer}
     </div>
   ),
 }));
@@ -94,9 +97,9 @@ it('shows the waitlist state for a direct visit in invite-only mode', () => {
   render(<RegisterPage />);
 
   expect(
-    screen.getByRole('heading', { name: 'Подключаем организации небольшими группами.' })
+    screen.getByRole('heading', { name: ru.auth.register.closedBeta.title })
   ).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Подать заявку' })).toHaveAttribute('href', '/#waitlist');
+  expect(screen.getByRole('button', { name: 'Подать заявку' })).toHaveAttribute('type', 'submit');
   expect(document.getElementById('email')).not.toBeInTheDocument();
 });
 
@@ -145,8 +148,9 @@ it.each(['ru', 'en'] as const)('keeps closed-beta actions usable in %s', (locale
   const copy = locale === 'ru' ? ru : en;
   render(<RegisterPage />);
   expect(
-    screen.getByRole('link', { name: copy.auth.register.closedBeta.waitlistCta })
-  ).toHaveAttribute('href', '/#waitlist');
+    screen.getByRole('button', { name: copy.auth.register.closedBeta.waitlistCta })
+  ).toHaveAttribute('type', 'submit');
+  expect(screen.getByLabelText(copy.landing.waitlist.emailLabel)).toBeVisible();
   expect(
     screen.getByRole('link', { name: copy.auth.register.closedBeta.inviteCta })
   ).toHaveAttribute('href', '/register?invited=1');

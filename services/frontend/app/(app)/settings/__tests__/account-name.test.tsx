@@ -3,7 +3,7 @@ import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import SettingsPage from '../page';
+import SettingsPage from '../account/page';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 

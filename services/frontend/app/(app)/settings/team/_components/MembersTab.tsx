@@ -10,14 +10,6 @@ import { toast } from 'sonner';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import {
   DropdownMenu,
@@ -31,7 +23,7 @@ import { useMembers, useRemoveMember, useUpdateMemberRole } from '@/lib/hooks/us
 import { useMapMemberError } from '@/lib/resolveErrorMap';
 import { usePermission } from '@/lib/hooks/usePermission';
 import type { Member, Role } from '@/lib/schemas';
-import { RolePill } from '@/components/business-switcher/RolePill';
+import { useRoleLabel } from '@/lib/hooks/useRoleLabel';
 import { useAuthStore } from '@/lib/auth';
 
 import { ConfirmDestructive } from '@/components/design-system/ConfirmDestructive';
@@ -46,7 +38,8 @@ interface MembersTabProps {
 
 export function MembersTab({ businessId, roles }: MembersTabProps) {
   const tTeam = useTranslations('team');
-  const tCols = useTranslations('team.members.cols');
+  const tV2 = useTranslations('settings.v2');
+  const getRoleLabel = useRoleLabel();
   const tActions = useTranslations('team.members.actions');
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const mapMemberError = useMapMemberError();
@@ -108,101 +101,98 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
 
   return (
     <TooltipProvider>
-      <section className="rounded-lg border border-line bg-paper-raised">
-        <header className="border-b border-line-soft px-6 py-4">
-          <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-ink-soft">
-            {tTeam('members.kicker')}
-          </p>
-          <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">
-            {tTeam('members.count', { count: members?.length ?? 0 })}
-          </h2>
-        </header>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{tCols('name')}</TableHead>
-              <TableHead>{tCols('email')}</TableHead>
-              <TableHead>{tCols('role')}</TableHead>
-              <TableHead>{tCols('joined')}</TableHead>
-              <TableHead className="text-right">{tCols('actions')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(members ?? []).map((m) => {
-              const showSelf = isSelf(m);
-              const canActOnThisRow = canUpdateRole || canRemove || showSelf;
-              return (
-                <TableRow key={m.user.id}>
-                  <TableCell className="text-sm text-ink">
-                    {m.user.name ?? m.user.email.split('@')[0]}
-                  </TableCell>
-                  <TableCell className="font-mono text-sm text-ink-mid">{m.user.email}</TableCell>
-                  <TableCell>
-                    <RolePill roleName={m.role.name} />
-                  </TableCell>
-                  <TableCell className="text-xs text-ink-soft">
-                    {format(parseISO(m.joined_at), 'd MMMM yyyy', { locale: dateFnsLocale })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {!canActOnThisRow ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span tabIndex={-1} aria-disabled="true">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled
-                              aria-label={tActions('menuAria', { name: m.user.email })}
-                              className="h-8 w-8"
-                            >
-                              <MoreHorizontal size={16} aria-hidden />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{tActions('disabledHint')}</TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            aria-label={tActions('menuAria', { name: m.user.email })}
-                          >
-                            <MoreHorizontal size={16} aria-hidden />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          className="max-w-[calc(100vw-2rem)] border-control bg-card text-ink shadow-overlay"
-                          align="end"
+      <ul className="rounded-block bg-block p-1 md:p-2">
+        {(members ?? []).map((m) => {
+          const showSelf = isSelf(m);
+          const canActOnThisRow = canUpdateRole || canRemove || showSelf;
+          return (
+            <li key={m.user.id} className="flex items-start gap-3 p-3">
+              <span
+                aria-hidden
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-avatar text-meta font-semibold text-avatar-ink"
+              >
+                {(m.user.name ?? m.user.email)
+                  .trim()
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join('')
+                  .toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1 break-words">
+                <p className="font-semibold">
+                  {m.user.name ?? m.user.email.split('@')[0]}
+                  {showSelf && ` (${tV2('you')})`}
+                </p>
+                <p className="text-reading">{getRoleLabel(m.role.name)}</p>
+                {roles.find((role) => role.id === m.role.id)?.description && (
+                  <p className="text-[15px] leading-[22px]">
+                    {roles.find((role) => role.id === m.role.id)?.description}
+                  </p>
+                )}
+                <p className="text-meta text-ink-soft">{m.user.email}</p>
+                <span className="sr-only">
+                  {format(parseISO(m.joined_at), 'd MMMM yyyy', { locale: dateFnsLocale })}
+                </span>
+              </div>
+              <div>
+                {!canActOnThisRow ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={-1} aria-disabled="true">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled
+                          aria-label={tActions('menuAria', { name: m.user.email })}
+                          className="h-8 w-8"
                         >
-                          {canUpdateRole && !showSelf && (
-                            <DropdownMenuItem onSelect={() => setRoleChange(m)}>
-                              {tActions('changeRole')}
-                            </DropdownMenuItem>
-                          )}
-                          {(showSelf || canRemove) && (
-                            <DropdownMenuItem
-                              className="text-danger focus:text-danger"
-                              onSelect={(e) => {
-                                e.preventDefault();
-                                setConfirmRemove(m);
-                              }}
-                            >
-                              {showSelf ? tActions('leave') : tActions('remove')}
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </section>
+                          <MoreHorizontal size={16} aria-hidden />
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{tActions('disabledHint')}</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={tActions('menuAria', { name: m.user.email })}
+                      >
+                        <MoreHorizontal size={16} aria-hidden />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      className="max-w-[calc(100vw-2rem)] border-control bg-card text-ink shadow-overlay"
+                      align="end"
+                    >
+                      {canUpdateRole && !showSelf && (
+                        <DropdownMenuItem onSelect={() => setRoleChange(m)}>
+                          {tActions('changeRole')}
+                        </DropdownMenuItem>
+                      )}
+                      {(showSelf || canRemove) && (
+                        <DropdownMenuItem
+                          className="text-danger focus:text-danger"
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            setConfirmRemove(m);
+                          }}
+                        >
+                          {showSelf ? tActions('leave') : tActions('remove')}
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
 
       {roleChange && (
         <RoleChangeDialog

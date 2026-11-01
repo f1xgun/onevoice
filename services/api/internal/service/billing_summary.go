@@ -41,9 +41,10 @@ type BillingSummary struct {
 		Overage   int `json:"overage"`
 	} `json:"credits"`
 	UsageThisMonth struct {
-		Actions  int     `json:"actions"`
-		SpendUSD float64 `json:"spend_usd"`
-		Images   int     `json:"images"`
+		Actions  int                   `json:"actions"`
+		SpendUSD float64               `json:"spend_usd"`
+		Images   int                   `json:"images"`
+		Units    llm.MonthlyUsageUnits `json:"units"`
 	} `json:"usage_this_month"`
 	DailySpend struct {
 		TodayUSD float64 `json:"today_usd"`
@@ -70,8 +71,9 @@ func NewBillingSummaryService(resolver PlanResolver, billing BillingReader) *Bil
 // lands a `grant` row per (business, period), so GetCreditBalance reflects the
 // remaining allowance and Used = Granted-Remaining is a meaningful "consumed vs
 // allocation" figure. Overage is still reported as 0 here — surfacing metered
-// overage credits is a Track-B concern. UsageThisMonth (sourced from
-// usage_logs) remains the raw activity signal alongside the credit block.
+// overage credits is a Track-B concern. UsageThisMonth retains raw activity and
+// spend alongside ledger-backed Units. Units.Total includes overage and may
+// exceed Credits.Used, which reflects only the allowance drawn down.
 func (s *BillingSummaryService) Summary(ctx context.Context, businessID uuid.UUID) (BillingSummary, error) {
 	plan := s.resolver.Resolve(ctx, businessID)
 
@@ -104,6 +106,7 @@ func (s *BillingSummaryService) Summary(ctx context.Context, businessID uuid.UUI
 	out.UsageThisMonth.Actions = usage.Actions
 	out.UsageThisMonth.SpendUSD = usage.SpendUSD
 	out.UsageThisMonth.Images = usage.Images
+	out.UsageThisMonth.Units = usage.Units
 
 	out.DailySpend.TodayUSD = todaySpend
 	out.DailySpend.CapUSD = plan.DailyLLMUSDCap

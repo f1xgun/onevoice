@@ -6,11 +6,12 @@ import { Check, Copy, Loader2 } from 'lucide-react';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import {
   Dialog,
-  AppDialog as DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/design-system/AppDialog';
+import { SheetContent } from '@/components/design-system/AppSheet';
+import { PlatformIcon } from './PlatformIcons';
 import { AppInput as Input } from '@/components/design-system/AppInput';
 import { useYandexBusinessConfig, useYandexDelegatedForm } from '@/hooks/useYandexBusinessConnect';
 import type { DelegatedFlowProps } from '@/hooks/useYandexBusinessConnect';
@@ -25,6 +26,7 @@ interface Props {
 
 export function YandexBusinessConnectModal({ open, onClose }: Props) {
   const tYa = useTranslations('integrations.yandexBusiness');
+  const tV2 = useTranslations('integrations.v2');
   const {
     activeBusinessId,
     config,
@@ -37,14 +39,16 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{tYa('title')}</DialogTitle>
-          <DialogDescription>{tYa('security')}</DialogDescription>
+      <SheetContent side="bottom" className="!pt-4">
+        <DialogHeader className="pr-12 text-left">
+          <DialogTitle className="flex items-center gap-3 text-block-title">
+            <PlatformIcon platform="yandex_business" className="h-head-sm w-head-sm" />
+            {tV2('yandexTitle')}
+          </DialogTitle>
         </DialogHeader>
 
         {configLoading ? (
-          <div className="flex justify-center py-12">
+          <div role="status" aria-label={tV2('loading')} className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-ink-soft" />
           </div>
         ) : !delegatedAvailable ? (
@@ -64,7 +68,10 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
             onClose={handleClose}
           />
         )}
-      </DialogContent>
+        <DialogDescription className="mt-4 text-meta text-ink-soft">
+          {tYa('security')}
+        </DialogDescription>
+      </SheetContent>
     </Dialog>
   );
 }
@@ -126,10 +133,10 @@ function DelegatedFlow({ activeBusinessId, repLogin, onClose }: DelegatedFlowPro
   }
 
   return (
-    <form onSubmit={handleSubmit(handleConnect)} className="space-y-4">
-      <p className="text-sm text-ink-mid">{tD('intro')}</p>
+    <form onSubmit={handleSubmit(handleConnect)} className="mt-4 space-y-4">
+      <p className="text-reading text-ink-soft">{tD('intro')}</p>
 
-      <ol className="space-y-3 text-sm text-ink-mid">
+      <ol className="space-y-3 text-reading text-ink">
         <li className="flex gap-2">
           <span className="font-medium text-ink">1.</span>
           <span>{tD('step1')}</span>
@@ -140,13 +147,17 @@ function DelegatedFlow({ activeBusinessId, repLogin, onClose }: DelegatedFlowPro
         </li>
       </ol>
 
-      <div className="space-y-1.5 rounded-lg border border-line-soft bg-paper-sunken p-3">
-        <span className="text-xs text-ink-soft">{tD('repLoginLabel')}</span>
-        <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded bg-paper px-2 py-1.5 font-mono text-sm text-ink">
-            {repLogin}
-          </code>
-          <Button type="button" variant="outline" size="sm" onClick={copyRepLogin}>
+      <div className="space-y-1.5">
+        <span className="text-meta text-ink-soft">{tD('repLoginLabel')}</span>
+        <div className="flex flex-col items-stretch gap-2">
+          <Input readOnly value={repLogin} aria-label={tD('repLoginLabel')} />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={copyRepLogin}
+          >
             {copied ? (
               <Check className="mr-1 h-3.5 w-3.5 text-success" />
             ) : (
@@ -158,7 +169,7 @@ function DelegatedFlow({ activeBusinessId, repLogin, onClose }: DelegatedFlowPro
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-sm text-ink-mid" htmlFor="yandex-delegated-link">
+        <label className="text-reading text-ink-soft" htmlFor="yandex-delegated-link">
           {tD('linkLabel')}
         </label>
         <Input

@@ -35,7 +35,8 @@
           "cta": "Open {businessName}"
         },
         "generic": "Couldn't process the invitation. Please try again."
-      }
+      },
+      "roleLabel": "Your role in the team"
     }
   },
   "onboarding": {
@@ -1480,6 +1481,29 @@
       "retry": "Retry",
       "wildberries": "Wildberries",
       "ozon": "Ozon"
+    },
+    "v2": {
+      "title": "Platforms",
+      "subtitle": "Where OneVoice replies and publishes on your behalf",
+      "registryError": "Could not load the platform list. Try again.",
+      "unavailable": "Currently unavailable",
+      "notConfigured": "Connection is not available yet",
+      "soon": "Coming soon",
+      "sync": "Profile checks and verification settings",
+      "telegramTitle": "Telegram channel",
+      "yandexTitle": "Yandex Maps",
+      "copyBot": "Copy bot username",
+      "botCopied": "Bot username copied",
+      "copyFailed": "Could not copy. Copy the username manually.",
+      "telegramChannelStep": "Enter the channel username or ID",
+      "verifyAndConnect": "Verify and connect",
+      "telegramNote": "The bot only publishes what OneVoice is allowed to publish. You can remove it in the channel settings.",
+      "platforms": {
+        "telegram": "Telegram channel",
+        "vk": "VK community",
+        "yandex_business": "Yandex Maps"
+      },
+      "loading": "Loading connection settings…"
     }
   },
   "gettingStarted": {
@@ -2158,12 +2182,19 @@
       "register": "Sign up",
       "submit": "Log in",
       "submitting": "Logging in…",
-      "invalidCredentials": "Invalid email or password",
+      "invalidCredentials": "Incorrect email or password. Check your keyboard layout",
       "lockoutTitle": "Account temporarily locked",
       "lockoutBody": "Too many failed login attempts. Try again in {minutes} min or reset your password.",
       "lockoutResetCta": "Reset password",
       "captchaRequired": "Please complete the captcha check and try again.",
-      "captchaInvalid": "Captcha check failed. Please try again."
+      "captchaInvalid": "Captcha check failed. Please try again.",
+      "accessTitle": "Sign in",
+      "betaPrompt": "No account yet? We open access in waves.",
+      "apply": "Request access",
+      "invitedPrompt": "Received an invitation?",
+      "createAccount": "Create an account",
+      "previewAlt": "Example OneVoice screen: decision queue, review and draft reply",
+      "previewCaption": "A morning with OneVoice: everything waiting for your word on one screen, with the rest done by your rules."
     },
     "register": {
       "nameLabel": "What should we call you",
@@ -2174,7 +2205,7 @@
       "haveAccount": "Already have an account?",
       "login": "Log in",
       "eyebrow": "Sign up",
-      "title": "Let's get started.",
+      "title": "Create an account",
       "description": "A minute to sign up — then we'll connect your channels and talk about your organization's voice.",
       "submit": "Create account",
       "submitting": "Creating account…",
@@ -2193,7 +2224,7 @@
       "closedBeta": {
         "invitedDescription": "Use the email address that received your invitation. Access is enabled for that address; you can connect your organization after registering.",
         "eyebrow": "Closed beta",
-        "title": "We onboard organizations in small groups.",
+        "title": "We connect locations in small groups",
         "description": "This gives our team time to help with setup and fix issues quickly.",
         "body": "Join the waitlist. When your cohort opens, we'll enable access for your email and send you a registration link.",
         "waitlistCta": "Apply for access",
@@ -2447,6 +2478,40 @@
         "cta": "Request Pro",
         "description": "Leave your email so we can contact you about Pro."
       }
+    },
+    "v2": {
+      "title": "Settings",
+      "rules": "Rules",
+      "rulesHint": "What OneVoice does automatically and what needs your decision",
+      "team": "Team",
+      "teamHint": "People and their access to this location",
+      "billing": "Plan",
+      "billingHint": "Units and usage",
+      "account": "Account",
+      "accountHint": "Name, email and password",
+      "data": "Data and activity",
+      "dataHint": "Consents, activity and location deletion",
+      "signIn": "Sign-in",
+      "inTeam": "In the team",
+      "pending": "Awaiting a response",
+      "you": "you",
+      "customRolesHint": "Need a different role, such as reviews only?",
+      "customRoles": "Manage custom roles",
+      "controller": "Data controller",
+      "deleteLocation": "Delete location",
+      "remainingUnits": "{remaining} units remaining out of {total}",
+      "remainingGauge": "Units remaining in the monthly pool",
+      "monthlyUsage": "Usage this month",
+      "modelUnits": "Model calls",
+      "imageUnits": "Images",
+      "otherUnits": "Other calls",
+      "totalUnits": "Total units",
+      "unitMeaning": "1 unit is one model call or one image. Review collection and profile checks are free.",
+      "unitsExhausted": "No units remain. Review collection and profile checks continue.",
+      "proBenefits": "More units for posts, replies and publishing across platforms.",
+      "accountNameHint": "This name appears with your activity and in the team",
+      "loginEmail": "Sign-in email",
+      "moreFilters": "More filters"
     }
   },
   "audit": {
@@ -2575,7 +2640,7 @@
   },
   "sidebar": {
     "menuLabel": "Side menu",
-    "menuDescription": "App navigation and project list",
+    "menuDescription": "App sections and account settings",
     "wordmark": "OneVoice",
     "pinned": "Pinned",
     "moreCount": "…and {count} more",
