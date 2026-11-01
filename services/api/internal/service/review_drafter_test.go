@@ -32,6 +32,7 @@ type fakeReviewRepo struct {
 	updateDraftCalls  []updateDraftCall
 	listPendingCalls  int
 	listExamplesCalls int
+	skippedIDs        []string
 }
 
 type updateDraftCall struct {
@@ -180,6 +181,10 @@ func (f *fakeDraftClient) DraftReply(_ context.Context, in orchestratorclient.Dr
 }
 
 func newDrafter(repo *fakeReviewRepo, biz *fakeBusinessRepo, orchC *fakeDraftClient) *ReviewDrafter {
+	// These tests exercise drafting mechanics under an explicit legacy manual policy.
+	if biz.business != nil && biz.business.Settings == nil {
+		biz.business.Settings = map[string]interface{}{"reviewAutopilot": map[string]interface{}{"enabled": false, "minRating": 4}}
+	}
 	return NewReviewDrafter(repo, biz, orchC, 5, 10)
 }
 
@@ -539,4 +544,29 @@ var _ DraftReplyClient = (*fakeDraftClient)(nil)
 
 func (m *fakeBusinessRepo) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	return m.GetByID(ctx, id)
+}
+
+func (f *fakeReviewRepo) SkipPending(_ context.Context, businessID, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.skippedIDs = append(f.skippedIDs, id)
+	for i := range f.pending {
+		if f.pending[i].ID == id {
+			f.pending[i].ReplyStatus = domain.ReviewReplyStatusSkipped
+		}
+	}
+	return nil
+}
+func TestReviewFourStarIgnorePersistsWithoutDraftOrPublication(t *testing.T) {
+	repo := &fakeReviewRepo{}
+	orch := &fakeDraftClient{}
+	drafter := NewReviewDrafter(repo, &fakeBusinessRepo{}, orch, 5, 10)
+	business := &domain.Business{ID: uuid.New()}
+	review := &domain.Review{ID: "four-star", BusinessID: business.ID.String(), Rating: 4, ReplyStatus: domain.ReviewReplyStatusPending}
+	if err := drafter.DraftReviewByID(context.Background(), business, review, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.skippedIDs) != 1 || len(repo.claimCalls) != 0 || len(repo.updateDraftCalls) != 0 {
+		t.Fatal("ignored review should persist disposition without drafting")
+	}
 }

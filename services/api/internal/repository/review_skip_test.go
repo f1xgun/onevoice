@@ -50,3 +50,26 @@ func TestReviewRegenerateDoesNotResetRunningDraft(t *testing.T) {
 	require.True(t, claimed)
 	require.ErrorIs(t, reset.PrepareRegeneration(ctx, business, review.ID), domain.ErrReviewAlreadyAnswered)
 }
+
+func TestApprovedFourStarPolicyPersistsSkipInMongo(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := context.Background()
+	business := uuid.NewString()
+	require.NoError(t, repo.Upsert(ctx, &domain.Review{BusinessID: business, Platform: "yandex_business", ExternalID: "four", Rating: 4, ReplyStatus: domain.ReviewReplyStatusPending}))
+	review, err := repo.GetByExternalID(ctx, business, "yandex_business", "four")
+	require.NoError(t, err)
+	skipper := repo.(interface {
+		SkipPending(context.Context, string, string) error
+	})
+	require.NoError(t, skipper.SkipPending(ctx, business, review.ID))
+	stored, err := repo.GetByID(ctx, review.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.ReviewReplyStatusSkipped, stored.ReplyStatus)
+	_, total, err := repo.ListByBusinessID(ctx, business, domain.ReviewFilter{ReplyStatus: domain.ReviewReplyStatusPending, Limit: 10})
+	require.NoError(t, err)
+	require.Zero(t, total)
+	claimed, err := repo.ClaimDraftForGenerating(ctx, review.ID)
+	require.NoError(t, err)
+	require.False(t, claimed)
+}

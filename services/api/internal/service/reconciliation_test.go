@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -456,7 +455,7 @@ func TestPrivateDriftRecipientRequiresPositiveNumericUserID(t *testing.T) {
 	}
 }
 
-func TestDriftRecipientLookupFailureRetriesWithoutSettling(t *testing.T) {
+func TestDriftDMDisabledDespiteLegacyEnabledAndRecipientFailure(t *testing.T) {
 	episode := domain.DriftAlertEpisode{
 		SyncStateID: uuid.New(), EpisodeID: uuid.New(), BusinessID: uuid.New(),
 		Platform: a2a.AgentVK,
@@ -473,20 +472,11 @@ func TestDriftRecipientLookupFailureRetriesWithoutSettling(t *testing.T) {
 		}},
 		nc: stubYandexInfoRequester{}, driftDMEnabled: true, now: func() time.Time { return time.Unix(1000, 0) },
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	err := svc.deliverOrScheduleDriftAlert(ctx, episode)
-	if err == nil || !strings.Contains(err.Error(), "resolve private drift recipient") {
-		t.Fatalf("expected recipient lookup error, got %v", err)
+	if err := svc.deliverOrScheduleDriftAlert(context.Background(), episode); err != nil {
+		t.Fatal(err)
 	}
-	if ss.settled != 0 {
-		t.Fatalf("lookup failure falsely settled %d alerts", ss.settled)
-	}
-	if len(ss.retries) != 1 || !ss.retries[0].Equal(time.Unix(1000, 0).Add(driftAlertRetryBase)) {
-		t.Fatalf("retry schedule = %v", ss.retries)
-	}
-	if ss.retryCtxErr != nil {
-		t.Fatalf("retry persistence inherited canceled context: %v", ss.retryCtxErr)
+	if ss.settled != 1 || len(ss.retries) != 0 {
+		t.Fatalf("disabled DM must settle without private-recipient lookup or retry: settled=%d retries=%v", ss.settled, ss.retries)
 	}
 }
 

@@ -125,16 +125,16 @@ func businessWithID() *domain.Business {
 }
 
 // Opted-out (no reviewAutopilot key) -> draft persists ready, never published.
-func TestAutopilot_OptedOut_NoPublish(t *testing.T) {
+func TestAutopilot_FreshDefaultsPublishSafeFiveStar(t *testing.T) {
 	pub := &fakeAutoPublisher{}
 	d := newAutopilotDrafter(t, pub, audit.Nop(), "Спасибо!")
-	biz := businessWithID() // Settings nil => opted out
+	biz := businessWithID() // Settings nil => approved five-star default
 
 	if err := runDraftOne(t, d, biz, positiveTelegramReview()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if pub.count() != 0 {
-		t.Fatalf("opted-out business must not auto-publish, got %d calls", pub.count())
+	if pub.count() != 1 {
+		t.Fatalf("fresh safe five-star review should auto-publish, got %d calls", pub.count())
 	}
 }
 

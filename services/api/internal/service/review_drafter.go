@@ -196,12 +196,32 @@ func (d *ReviewDrafter) DraftReviewByID(ctx context.Context, business *domain.Bu
 // wins for one of them; the loser observes claimed=false and returns without
 // calling the orchestrator, so the LLM never drafts the same review twice.
 func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Business, review *domain.Review, examples []domain.Review) error {
+	if platformCfg := apiplatform.ReviewAutopilotFromSettings(business.Settings); platformCfg.IgnoreFourStar && review.ReplyStatus == domain.ReviewReplyStatusPending && review.Rating == apiplatform.ReviewAutopilotMinRatingFloor {
+		repo, ok := d.reviewRepo.(interface {
+			SkipPending(context.Context, string, string) error
+		})
+		if !ok {
+			return fmt.Errorf("four-star disposition storage unavailable")
+		}
+		return repo.SkipPending(ctx, business.ID.String(), review.ID)
+	}
 	claimed, err := d.reviewRepo.ClaimDraftForGenerating(ctx, review.ID)
 	if err != nil {
 		return fmt.Errorf("claim row: %w", err)
 	}
 	if !claimed {
 		return nil
+	}
+
+	cfg := apiplatform.ReviewAutopilotFromSettings(business.Settings)
+	if cfg.AutoAnswerFacts {
+		if reply, ok := factualCommentReply(business, review); ok {
+			if err := d.reviewRepo.UpdateDraft(ctx, review.ID, reply, domain.ReviewDraftStatusReady, "", false); err != nil {
+				return fmt.Errorf("persist factual draft: %w", err)
+			}
+			d.publishAutomaticReply(ctx, business, review, reply)
+			return nil
+		}
 	}
 
 	reqBody := orchestratorclient.DraftReplyRequest{
@@ -257,6 +277,13 @@ func (d *ReviewDrafter) maybeAutoPublish(ctx context.Context, business *domain.B
 		return
 	}
 
+	d.publishAutomaticReply(ctx, business, review, draft)
+}
+
+func (d *ReviewDrafter) publishAutomaticReply(ctx context.Context, business *domain.Business, review *domain.Review, draft string) {
+	if d.autoPublisher == nil {
+		return
+	}
 	if err := d.autoPublisher.Reply(withAutoPublishSignal(ctx), business.ID, review.ID, draft); err != nil {
 		slog.Warn("review autopilot: auto-publish failed, leaving draft for HITL",
 			"review_id", review.ID,
@@ -286,6 +313,9 @@ func (d *ReviewDrafter) maybeAutoPublish(ctx context.Context, business *domain.B
 // draft and needsReview are the values just persisted, so the gate reads the
 // exact stored draft rather than re-loading the row.
 func autopilotShouldPublish(cfg apiplatform.ReviewAutopilotConfig, review *domain.Review, draft string, needsReview bool) bool {
+	if cfg.IgnoreFourStar && review.Rating == apiplatform.ReviewAutopilotMinRatingFloor {
+		return false
+	}
 	if !cfg.Enabled {
 		return false
 	}

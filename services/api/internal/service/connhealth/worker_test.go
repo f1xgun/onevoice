@@ -13,7 +13,6 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // fakeNATS records dispatched tool requests and returns a canned success reply.
@@ -118,68 +117,6 @@ func telegramOwnerRow(bizID uuid.UUID, chatID string) domain.Integration {
 	}
 }
 
-func TestWorker_TransitionToBroken_NudgesOnce(t *testing.T) {
-	bizID, yID := uuid.New(), uuid.New()
-	priorActive := MergeIntoMetadata(nil, Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now().Add(-time.Hour)})
-	rows := []domain.Integration{
-		yandexRow(bizID, yID, priorActive),
-		telegramOwnerRow(bizID, "555"),
-	}
-	nc := &fakeNATS{}
-	dispatch := &fakeDispatcher{err: a2a.NewCodedError(codeIntegrationTokenInvalid, errors.New("passport.yandex"))}
-	w, store := newYandexWorker(t, dispatch, nc, rows)
-
-	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce pass 1: %v", err)
-	}
-	if nc.count() != 1 {
-		t.Fatalf("expected exactly one nudge on transition to broken, got %d", nc.count())
-	}
-	sent := nc.dispatches[0]
-	if sent.Tool != tools.TelegramSendNotification {
-		t.Fatalf("expected send_notification, got %q", sent.Tool)
-	}
-	if sent.Args["chat_id"] != "555" {
-		t.Fatalf("expected owner chat 555, got %v", sent.Args["chat_id"])
-	}
-	if ReadNudgedAt(store.get(yID)).IsZero() {
-		t.Fatalf("expected nudged_at stamped after successful nudge")
-	}
-
-	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce pass 2: %v", err)
-	}
-	if nc.count() != 1 {
-		t.Fatalf("expected NO re-nudge while still broken, got %d total", nc.count())
-	}
-}
-
-func TestWorker_TransitionToBroken_PersistsBrokenAfterNudgeStamp(t *testing.T) {
-	bizID, yID := uuid.New(), uuid.New()
-	priorActive := MergeIntoMetadata(nil, Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now().Add(-time.Hour)})
-	rows := []domain.Integration{
-		yandexRow(bizID, yID, priorActive),
-		telegramOwnerRow(bizID, "555"),
-	}
-	nc := &fakeNATS{}
-	dispatch := &fakeDispatcher{err: a2a.NewCodedError(codeIntegrationTokenInvalid, errors.New("passport.yandex"))}
-	w, store := newYandexWorker(t, dispatch, nc, rows)
-
-	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-	if nc.count() != 1 {
-		t.Fatalf("expected one nudge on transition to broken, got %d", nc.count())
-	}
-	persisted := ReadFromMetadata(store.get(yID))
-	if persisted.Status != StatusBroken {
-		t.Fatalf("the nudge stamp must layer on the fresh broken verdict, got persisted status %q (dashboard would show healthy while the owner got a reconnect DM)", persisted.Status)
-	}
-	if ReadNudgedAt(store.get(yID)).IsZero() {
-		t.Fatalf("expected nudged_at stamped alongside the broken verdict")
-	}
-}
-
 func TestWorker_Recovery_PersistsActiveAfterNudgeClear(t *testing.T) {
 	bizID, yID := uuid.New(), uuid.New()
 	brokenNudged := MergeNudgedAt(
@@ -203,31 +140,6 @@ func TestWorker_Recovery_PersistsActiveAfterNudgeClear(t *testing.T) {
 	}
 	if !ReadNudgedAt(store.get(yID)).IsZero() {
 		t.Fatalf("expected nudged_at cleared on recovery")
-	}
-}
-
-func TestWorker_RecoveryClearsNudgedAt(t *testing.T) {
-	bizID, yID := uuid.New(), uuid.New()
-	brokenNudged := MergeNudgedAt(
-		MergeIntoMetadata(nil, Result{Status: StatusBroken, ReasonCode: ReasonYandexSessionExpiry, CheckedAt: time.Now().Add(-time.Hour)}),
-		time.Now().Add(-2*time.Hour),
-	)
-	rows := []domain.Integration{
-		yandexRow(bizID, yID, brokenNudged),
-		telegramOwnerRow(bizID, "555"),
-	}
-	nc := &fakeNATS{}
-	dispatch := &fakeDispatcher{resp: &a2a.ToolResponse{Success: true}}
-	w, store := newYandexWorker(t, dispatch, nc, rows)
-
-	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-	if !ReadNudgedAt(store.get(yID)).IsZero() {
-		t.Fatalf("expected nudged_at cleared on recovery to active")
-	}
-	if nc.count() != 0 {
-		t.Fatalf("expected no nudge on recovery, got %d", nc.count())
 	}
 }
 
@@ -351,46 +263,6 @@ func TestWorker_VKBreak_PersistsHealth_NoNudge(t *testing.T) {
 // TestWorker_MultiPlatform_ProbesAll_NudgesYandexOnly: one pass probes and
 // persists Telegram, VK, and Yandex health, and DMs the owner exactly once —
 // for the Yandex break only.
-func TestWorker_MultiPlatform_ProbesAll_NudgesYandexOnly(t *testing.T) {
-	bizID := uuid.New()
-	yID, tgID, vkID := uuid.New(), uuid.New(), uuid.New()
-	prior := func() map[string]interface{} {
-		return MergeIntoMetadata(nil, Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now().Add(-time.Hour)})
-	}
-	tgMeta := prior()
-	tgMeta["telegram_user_id"] = "555"
-	rows := []domain.Integration{
-		yandexRow(bizID, yID, prior()),
-		telegramChannelRow(bizID, tgID, tgMeta),
-		vkRow(bizID, vkID, prior()),
-	}
-	nc := &fakeNATS{}
-	probe := &fakeProbe{
-		tg: Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now()},
-		vk: Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now()},
-	}
-	dispatch := &fakeDispatcher{err: a2a.NewCodedError(codeIntegrationTokenInvalid, errors.New("passport.yandex"))}
-	w, store := newMultiWorker(t, probe, dispatch, nc, rows)
-
-	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-	if got := ReadFromMetadata(store.get(yID)).Status; got != StatusBroken {
-		t.Fatalf("expected Yandex probed broken, got %q", got)
-	}
-	if got := ReadFromMetadata(store.get(tgID)).Status; got != StatusActive {
-		t.Fatalf("expected Telegram probed+persisted active, got %q", got)
-	}
-	if got := ReadFromMetadata(store.get(vkID)).Status; got != StatusActive {
-		t.Fatalf("expected VK probed+persisted active, got %q", got)
-	}
-	if nc.count() != 1 {
-		t.Fatalf("expected exactly one nudge (Yandex only), got %d", nc.count())
-	}
-	if nc.dispatches[0].Args["chat_id"] != "555" {
-		t.Fatalf("expected the Yandex nudge to the bound owner chat 555, got %v", nc.dispatches[0].Args["chat_id"])
-	}
-}
 
 // TestWorker_TelegramFlaky_KeepsPriorActive_NoNudge proves fail-soft holds for
 // the newly-enabled Telegram path when driven THROUGH RunOnce: an inconclusive
@@ -479,41 +351,29 @@ func TestWorker_TelegramRecovery_DoesNotClearYandexNudge(t *testing.T) {
 
 // perBizDispatcher fails the Yandex canary only for one business, so multi-tenant
 // nudge isolation can be exercised.
-type perBizDispatcher struct{ brokenBiz string }
-
-func (d *perBizDispatcher) RequestTool(_ context.Context, _ string, req a2a.ToolRequest, _ time.Duration) (*a2a.ToolResponse, error) {
-	if req.BusinessID == d.brokenBiz {
-		return nil, a2a.NewCodedError(codeIntegrationTokenInvalid, errors.New("passport.yandex"))
-	}
-	return &a2a.ToolResponse{Success: true}, nil
-}
 
 // TestWorker_TwoBusinesses_NudgeIsolation: with two businesses each holding a
 // Yandex row and a bound owner, only the business whose Yandex session broke is
 // DMed, and only on its own owner chat — no cross-tenant leakage.
-func TestWorker_TwoBusinesses_NudgeIsolation(t *testing.T) {
-	bizA, bizB := uuid.New(), uuid.New()
-	yA, yB := uuid.New(), uuid.New()
-	prior := func() map[string]interface{} {
-		return MergeIntoMetadata(nil, Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now().Add(-time.Hour)})
-	}
-	rows := []domain.Integration{
-		yandexRow(bizA, yA, prior()),
-		telegramOwnerRow(bizA, "111"),
-		yandexRow(bizB, yB, prior()),
-		telegramOwnerRow(bizB, "222"),
-	}
-	nc := &fakeNATS{}
-	probe := &fakeProbe{tg: Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now()}}
-	w, _ := newMultiWorker(t, probe, &perBizDispatcher{brokenBiz: bizA.String()}, nc, rows)
 
+func TestWorkerKeepsHealthButNeverNudgesBoundOwner(t *testing.T) {
+	bizID, yID := uuid.New(), uuid.New()
+	rows := []domain.Integration{yandexRow(bizID, yID, MergeIntoMetadata(nil, Result{Status: StatusActive, ReasonCode: ReasonOK, CheckedAt: time.Now().Add(-time.Hour)})), telegramOwnerRow(bizID, "555")}
+	nc := &fakeNATS{}
+	w, store := newYandexWorker(t, &fakeDispatcher{err: a2a.NewCodedError(codeIntegrationTokenInvalid, errors.New("expired"))}, nc, rows)
 	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce: %v", err)
+		t.Fatal(err)
 	}
-	if nc.count() != 1 {
-		t.Fatalf("expected exactly one nudge (only business A's Yandex broke), got %d", nc.count())
+	if ReadFromMetadata(store.get(yID)).Status != StatusBroken {
+		t.Fatal("health checks must still record broken access")
 	}
-	if nc.dispatches[0].Args["chat_id"] != "111" {
-		t.Fatalf("cross-tenant leak: nudge must go to business A's owner 111, got %v", nc.dispatches[0].Args["chat_id"])
+	if nc.count() != 0 || !ReadNudgedAt(store.get(yID)).IsZero() {
+		t.Fatal("health pass must not DM or stamp an owner nudge")
+	}
+	if err := w.dispatchNudge(context.Background(), rows[0], "555", time.Now()); err == nil {
+		t.Fatal("direct proactive nudge must be blocked")
+	}
+	if nc.count() != 0 {
+		t.Fatal("direct nudge sent a DM")
 	}
 }

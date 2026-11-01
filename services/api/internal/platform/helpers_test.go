@@ -218,22 +218,22 @@ func TestReviewAutopilotFromSettings(t *testing.T) {
 		wantMin     int
 	}{
 		{
-			name:        "nil settings -> default off",
+			name:        "nil settings -> default five-star policy",
 			settings:    nil,
-			wantEnabled: false,
-			wantMin:     0,
+			wantEnabled: true,
+			wantMin:     5,
 		},
 		{
-			name:        "absent key -> default off",
+			name:        "absent key -> default five-star policy",
 			settings:    map[string]interface{}{"voiceProfile": "x"},
-			wantEnabled: false,
-			wantMin:     0,
+			wantEnabled: true,
+			wantMin:     5,
 		},
 		{
-			name:        "nil value -> default off",
+			name:        "nil value -> default five-star policy",
 			settings:    map[string]interface{}{ReviewAutopilotSettingsKey: nil},
-			wantEnabled: false,
-			wantMin:     0,
+			wantEnabled: true,
+			wantMin:     5,
 		},
 		{
 			name:        "malformed (string) -> default off",
@@ -283,5 +283,27 @@ func TestReviewAutopilotMinRatingFloor_IsPositive(t *testing.T) {
 	if ReviewAutopilotMinRatingFloor != domain.ReviewNeedsReviewMaxRating+1 {
 		t.Fatalf("floor = %d, want ReviewNeedsReviewMaxRating+1 = %d",
 			ReviewAutopilotMinRatingFloor, domain.ReviewNeedsReviewMaxRating+1)
+	}
+}
+
+func TestReviewAutopilotFourStarDefaultsAndLegacy(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		settings        map[string]interface{}
+		enabled, ignore bool
+		min             int
+	}{
+		{"fresh", nil, true, true, 5},
+		{"empty", map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{}}, true, true, 5},
+		{"legacy disabled", map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{"enabled": false, "minRating": 4}}, false, false, 4},
+		{"legacy four auto", map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{"enabled": true, "minRating": 4}}, true, false, 4},
+		{"explicit ignore", map[string]interface{}{ReviewAutopilotSettingsKey: map[string]interface{}{"enabled": true, "minRating": 5, "ignoreFourStar": true}}, true, true, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ReviewAutopilotFromSettings(tc.settings)
+			if got.Enabled != tc.enabled || got.MinRating != tc.min || got.IgnoreFourStar != tc.ignore {
+				t.Fatalf("got %+v", got)
+			}
+		})
 	}
 }

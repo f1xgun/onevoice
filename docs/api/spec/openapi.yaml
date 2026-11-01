@@ -1070,6 +1070,12 @@ components:
             drafted reply on a direct-API platform (Telegram/VK) is auto-published;
             Yandex.Business, negative, and needs_review replies always stay pending
             for manual approval. Absent is treated as false (disabled).
+        autoAnswerFacts:
+          type: boolean
+          description: Independent consent for exact factual address or complete weekly-hours answers in validated Telegram/VK comments. Missing facts or unsafe questions stay drafts. Legacy omission with enabled false disables this consent; otherwise a stored explicit value is preserved.
+        ignoreFourStar:
+          type: boolean
+          description: Deliberately skip four-star reviews. Omission preserves a stored explicit flag, otherwise uses legacy false.
         minRating:
           type: integer
           minimum: 4
@@ -1083,14 +1089,22 @@ components:
       required:
       - enabled
       - minRating
+      - ignoreFourStar
+      - autoAnswerFacts
       properties:
         enabled:
           type: boolean
-          description: Whether the review-reply autopilot is enabled (default false).
+          description: Whether the review-reply autopilot is enabled (fresh default true).
+        autoAnswerFacts:
+          type: boolean
+          description: Factual-comment consent, independent of five-star auto replies (fresh default true; legacy absent false).
+        ignoreFourStar:
+          type: boolean
+          description: Whether four-star reviews are deliberately skipped (fresh default true).
         minRating:
           type: integer
           description: |
-            The minimum star rating that may be auto-published (default 4 when
+            The minimum star rating that may be auto-published (default 5 when
             unset; always at least 4).
     OwnerBriefResponse:
       type: object

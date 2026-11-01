@@ -63,7 +63,9 @@ describe('ProfileForm preserves unsaved edits across a BUSINESS_PROFILE refetch'
           wrapper: wrapper(client),
         }
       );
-      for (const id of ['name', 'address', 'phone', 'website', 'description', 'category']) {
+      for (const id of page === 'new'
+        ? ['name', 'address', 'category']
+        : ['name', 'address', 'phone', 'website', 'description', 'category']) {
         const input = container.querySelector(`#${id}`)!;
         const label = container.querySelector(`label[for="${id}"]`)!;
         expect(input).toHaveAccessibleName();

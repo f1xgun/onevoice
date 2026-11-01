@@ -24,7 +24,6 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
 )
 
@@ -35,8 +34,6 @@ const ownerBriefConcurrency = 4
 
 // ownerBriefDispatchTimeout caps the per-business NATS request budget for the
 // send_notification dispatch.
-const ownerBriefDispatchTimeout = 30 * time.Second
-const ownerBriefPassTimeout = 5 * time.Minute
 const ownerBriefBusinessTimeout = 45 * time.Second
 
 // OwnerBriefPassLocker holds the cross-replica lock through generation, dispatch,
@@ -112,18 +109,7 @@ func NewOwnerBriefService(
 // not already been sent this ISO week, then composes+dispatches+stamps each in
 // bounded parallel. Per-business failures are collected after other work finishes.
 func (s *OwnerBriefService) RunOnce(ctx context.Context) error {
-	if s == nil || s.nc == nil {
-		return nil
-	}
-	if s.locker == nil {
-		return errors.New("owner brief: pass lock is not configured")
-	}
-	passCtx, cancel := context.WithTimeout(ctx, ownerBriefPassTimeout)
-	defer cancel()
-	_, err := s.locker.WithOwnerBriefLock(passCtx, func() error { return s.runPass(passCtx) })
-	if err != nil {
-		return fmt.Errorf("owner brief pass: %w", err)
-	}
+	// Proactive owner Telegram messages are disabled, including legacy enabled settings.
 	return nil
 }
 
@@ -280,14 +266,7 @@ func (s *OwnerBriefService) processBusiness(ctx context.Context, t ownerBriefTar
 // a NATS retry dedupes at the agent and never double-DMs the owner within a
 // week.
 func (s *OwnerBriefService) dispatch(ctx context.Context, t ownerBriefTarget, isoWeek, text string) error {
-	args := map[string]interface{}{
-		"text":    text,
-		"chat_id": t.chatID,
-	}
-	approvalID := fmt.Sprintf("owner-brief-%s-%s", t.businessID, isoWeek)
-	_, err := dispatchToolWithApproval(ctx, s.nc, a2a.AgentTelegram, tools.TelegramSendNotification,
-		args, t.businessID.String(), approvalID, ownerBriefDispatchTimeout)
-	return err
+	return errors.New("proactive owner Telegram messages are disabled")
 }
 
 // stampSent persists the current ISO week as ownerBriefLastSent so a restart or

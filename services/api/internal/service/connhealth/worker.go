@@ -2,7 +2,6 @@ package connhealth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -14,8 +13,6 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/i18n"
-	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // workerConcurrency bounds how many integrations a single RunOnce pass probes at
@@ -23,7 +20,6 @@ import (
 const workerConcurrency = 4
 
 // nudgeDispatchTimeout caps the per-nudge NATS request budget.
-const nudgeDispatchTimeout = 30 * time.Second
 
 // nudgeCooldown throttles repeat owner nudges: even across a broken→active→broken
 // cycle, a fresh nudge waits at least this long. The transition-only gate is the
@@ -134,6 +130,9 @@ func (w *Worker) processIntegration(ctx context.Context, integ domain.Integratio
 	}
 
 	if !nudgeEligible(integ.Platform) {
+		if effective.Status == StatusActive && !ReadNudgedAt(fresh).IsZero() {
+			w.clearNudge(ctx, integ, fresh)
+		}
 		return nil
 	}
 
@@ -153,7 +152,7 @@ func (w *Worker) processIntegration(ctx context.Context, integ domain.Integratio
 // owner-communication decision. A non-eligible platform still gets its verdict
 // persisted by CheckIntegration above; only the DM is withheld.
 func nudgeEligible(platform string) bool {
-	return platform == a2a.AgentYandexBusiness
+	return false
 }
 
 // crossedIntoBroken reports whether the status transitioned INTO broken this
@@ -204,33 +203,7 @@ func (w *Worker) nudgeAndStamp(ctx context.Context, integ domain.Integration, fr
 // stable approvalID (business + platform + date bucket) so a NATS retry dedupes
 // at the agent and never double-DMs within a day.
 func (w *Worker) dispatchNudge(ctx context.Context, integ domain.Integration, chatID string, now time.Time) error {
-	text := i18n.TrTag(i18n.DefaultTag, "notify.connection.reconnect_yandex")
-	args := map[string]interface{}{
-		"text":    text,
-		"chat_id": chatID,
-	}
-	approvalID := fmt.Sprintf("conn-health-nudge-%s-%s-%s",
-		integ.BusinessID, integ.Platform, now.UTC().Format("2006-01-02"))
-	req := a2a.ToolRequest{
-		TaskID:     uuid.NewString(),
-		Tool:       tools.TelegramSendNotification,
-		Args:       args,
-		BusinessID: integ.BusinessID.String(),
-		ApprovalID: approvalID,
-	}
-	data, err := marshalToolRequest(req)
-	if err != nil {
-		return err
-	}
-	dispatchCtx, cancel := context.WithTimeout(ctx, nudgeDispatchTimeout)
-	defer cancel()
-	if _, err := w.nc.RequestMsgWithContext(dispatchCtx, &natslib.Msg{
-		Subject: a2a.Subject(a2a.AgentTelegram),
-		Data:    data,
-	}); err != nil {
-		return fmt.Errorf("nats request: %w", err)
-	}
-	return nil
+	return fmt.Errorf("proactive owner Telegram messages are disabled")
 }
 
 // clearNudge wipes the throttle key once a broken channel recovers to active, so
@@ -279,10 +252,3 @@ func ownerChatIDFromMetadata(meta map[string]interface{}) string {
 }
 
 // marshalToolRequest serializes an a2a.ToolRequest for NATS dispatch.
-func marshalToolRequest(req a2a.ToolRequest) ([]byte, error) {
-	data, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-	return data, nil
-}
