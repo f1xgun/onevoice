@@ -77,6 +77,7 @@ func (t *Turn) enrich(ctx context.Context, req TurnRequest) (*enrichmentResult, 
 		ConversationID: req.ConversationID,
 		Role:           domain.MessageRoleUser,
 		Content:        req.Message,
+		Attachments:    req.Attachments,
 	}
 
 	project, projectOverrides := t.resolveProject(ctx, business.ID, req.ConversationID)
@@ -158,12 +159,13 @@ func (t *Turn) loadHistory(ctx context.Context, conversationID string) []map[str
 	for _, m := range msgs {
 		switch m.Role {
 		case domain.MessageRoleUser:
-			history = append(history, map[string]string{"role": domain.MessageRoleUser, "content": m.Content})
+			history = append(history, map[string]string{"role": domain.MessageRoleUser, "content": contentWithAttachments(m.Content, m.Attachments, t.deps.AttachmentPublicURL)})
 		case domain.MessageRoleAssistant:
-			if m.Content == "" && len(m.ToolCalls) == 0 {
+			content := contentWithAttachments(m.Content, m.Attachments, t.deps.AttachmentPublicURL)
+			if content == "" && len(m.ToolCalls) == 0 {
 				continue
 			}
-			history = append(history, map[string]string{"role": domain.MessageRoleAssistant, "content": m.Content})
+			history = append(history, map[string]string{"role": domain.MessageRoleAssistant, "content": content})
 		}
 	}
 	return history

@@ -731,6 +731,9 @@ type ChatRequestSelectedPlatforms string
 
 // ChatTurnRequest defines model for ChatTurnRequest.
 type ChatTurnRequest struct {
+	// Attachments One uploaded image belonging to this business media prefix.
+	Attachments *[]MessageAttachment `json:"attachments,omitempty"`
+
 	// Locale BCP-47 language tag (e.g. "ru", "en") for the LLM response language. Takes precedence over the Accept-Language header, which browsers cannot set on fetch. Empty falls back to Accept-Language.
 	Locale  *string `json:"locale,omitempty"`
 	Message *string `json:"message,omitempty"`
@@ -2413,6 +2416,11 @@ type GetVKCommunityAuthURLParams struct {
 	GroupId string `form:"group_id" json:"group_id"`
 }
 
+// UploadBusinessMediaMultipartBody defines parameters for UploadBusinessMedia.
+type UploadBusinessMediaMultipartBody struct {
+	File openapi_types.File `json:"file" validate:"required"`
+}
+
 // ListPostsParams defines parameters for ListPosts.
 type ListPostsParams struct {
 	Platform *string `form:"platform,omitempty" json:"platform,omitempty"`
@@ -2650,6 +2658,9 @@ type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
 // UploadBusinessLogoMultipartRequestBody defines body for UploadBusinessLogo for multipart/form-data ContentType.
 type UploadBusinessLogoMultipartRequestBody = UploadLogoRequest
+
+// UploadBusinessMediaMultipartRequestBody defines body for UploadBusinessMedia for multipart/form-data ContentType.
+type UploadBusinessMediaMultipartRequestBody UploadBusinessMediaMultipartBody
 
 // UpdateMemberRoleJSONRequestBody defines body for UpdateMemberRole for application/json ContentType.
 type UpdateMemberRoleJSONRequestBody = UpdateMemberRoleRequest

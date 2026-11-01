@@ -150,6 +150,8 @@ paths:
     $ref: paths/business.yaml#/~1businesses~1{id}~1schedule
   /businesses/{id}/voice-tone:
     $ref: paths/business.yaml#/~1businesses~1{id}~1voice-tone
+  /businesses/{id}/media:
+    $ref: paths/media.yaml#/~1businesses~1{id}~1media
   /businesses/{id}/logo:
     $ref: paths/business.yaml#/~1businesses~1{id}~1logo
   /businesses/{id}/tool-approvals:
@@ -2092,6 +2094,13 @@ components:
     ChatTurnRequest:
       type: object
       properties:
+        attachments:
+          type: array
+          maxItems: 1
+          description: One uploaded image belonging to this business media prefix.
+          items:
+            $ref: '#/components/schemas/MessageAttachment'
+
         message:
           type: string
         model:

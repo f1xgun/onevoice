@@ -23,6 +23,7 @@ import (
 // TurnRequest is the inputs a Turn needs to run. Constructed by the HTTP
 // handler from request body + URL params + middleware-supplied context.
 type TurnRequest struct {
+	Attachments       []domain.Attachment
 	BusinessID        uuid.UUID
 	UserID            uuid.UUID
 	ConversationID    string

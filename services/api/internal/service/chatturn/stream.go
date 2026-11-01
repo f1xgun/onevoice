@@ -163,7 +163,7 @@ func (t *Turn) buildOrchestratorRequest(ctx context.Context, req TurnRequest, en
 	}
 	body := map[string]interface{}{
 		"model":                      req.Model,
-		"message":                    req.Message,
+		"message":                    contentWithAttachments(req.Message, req.Attachments, t.deps.AttachmentPublicURL),
 		"business_id":                business.ID.String(),
 		"business_name":              business.Name,
 		"business_category":          business.Category,

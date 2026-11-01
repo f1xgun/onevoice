@@ -30,9 +30,10 @@ import (
 // graceful-disable path (auto-titling off in dev / tests without OpenAI
 // credentials), and a nil Audit disables the RPA mutation audit trail.
 type Deps struct {
-	Business     BusinessReader
-	Integrations IntegrationLister
-	Projects     ProjectReader
+	AttachmentPublicURL string
+	Business            BusinessReader
+	Integrations        IntegrationLister
+	Projects            ProjectReader
 
 	Conversations domain.ConversationRepository
 	Messages      domain.MessageRepository
