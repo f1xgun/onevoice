@@ -31,6 +31,13 @@
     --ov-info: #365f8a;
     --ov-overlay: rgb(0 0 0 / 0.48);
     --ov-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.12);
+    --ov-button-h: 44px;
+    --ov-button-sm-h: 44px;
+    --ov-block-pad-desktop: 24px;
+    --ov-block-border: 1px;
+    --ov-btn2: var(--ov-paper-raised);
+    --ov-btn2-border: var(--ov-control);
+    --ov-btn2-hover: var(--ov-paper-sunken);
     --ov-radius-sm: 4px;
     --ov-radius-md: 6px;
     --ov-radius-lg: 8px;
@@ -123,6 +130,110 @@
     --chart-4: var(--ov-info);
     --chart-5: var(--ov-ink-soft);
     --radius: var(--ov-radius-md);
+  }
+  /* Application v2: root scope also themes dialogs portaled into body.
+     The landing route has no ov-app marker and retains its existing tokens. */
+  :root:has(.ov-app) {
+    --ov-page: #f2f3f5;
+    --ov-overlay: rgb(0 0 0 / 0.45);
+    --ov-block: #ffffff;
+    --ov-ink: #1f2422;
+    --ov-ink-soft: #5b6360;
+    --ov-line: #e2e5e8;
+    --ov-field: #c9ced3;
+    --ov-brand: #245c55;
+    --ov-brand-hover: #19463f;
+    --ov-brand-tone: #e7f0ec;
+    --ov-btn2: #e8eaed;
+    --ov-btn2-border: transparent;
+    --ov-btn2-hover: #dde0e4;
+    --ov-inset: #f2f3f5;
+    --ov-post-bubble: #eef1f4;
+    --ov-star: #f5a800;
+    --ov-star-off: #d5d8dc;
+    --ov-count: #d63b32;
+    --ov-danger: #b4362e;
+    --ov-ok: #2e7d4f;
+    --ov-diff-old: #ffe3a3;
+    --ov-diff-new: #dcebff;
+    --ov-avatar-bg: #dce5ee;
+    --ov-avatar-ink: #2e4a66;
+    --ov-tg: #2aabee;
+    --ov-vk: #0077ff;
+    --ov-ya: #fc3f1d;
+    --ov-on-brand: #ffffff;
+    --ov-on-count: #ffffff;
+    --ov-segment-on: #ffffff;
+    --ov-paper: var(--ov-page);
+    --ov-paper-raised: var(--ov-block);
+    --ov-paper-sunken: var(--ov-inset);
+    --ov-control: var(--ov-field);
+    --ov-brand-soft: var(--ov-brand-tone);
+    --ov-success: var(--ov-ok);
+    --ov-button-h: 48px;
+    --ov-button-sm-h: 40px;
+    --ov-block-pad-desktop: 20px;
+    --ov-block-border: 0px;
+    --ov-radius-sm: 9px;
+    --ov-radius-md: 12px;
+    --ov-radius-lg: 16px;
+    --ov-radius-xl: 16px;
+  }
+  :root.dark:has(.ov-app) {
+    --ov-page: #141619;
+    --ov-overlay: rgb(0 0 0 / 0.6);
+    --ov-block: #1f2226;
+    --ov-ink: #eceef0;
+    --ov-ink-soft: #a2a9b1;
+    --ov-line: #30343a;
+    --ov-field: #5d646d;
+    --ov-brand: #8fc2b4;
+    --ov-brand-hover: #acd6cb;
+    --ov-brand-tone: #1d3530;
+    --ov-btn2: #2c3035;
+    --ov-btn2-hover: #363b41;
+    --ov-inset: #181a1d;
+    --ov-post-bubble: #2a2f35;
+    --ov-star: #f5b301;
+    --ov-star-off: #3e434a;
+    --ov-count: #d23c33;
+    --ov-danger: #f0a097;
+    --ov-ok: #8cc9a0;
+    --ov-diff-old: #4a3b12;
+    --ov-diff-new: #1c3250;
+    --ov-avatar-bg: #2b3947;
+    --ov-avatar-ink: #b8cce0;
+    --ov-on-brand: #141619;
+    --ov-segment-on: #3a3f46;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light):has(.ov-app) {
+      --ov-page: #141619;
+      --ov-overlay: rgb(0 0 0 / 0.6);
+      --ov-block: #1f2226;
+      --ov-ink: #eceef0;
+      --ov-ink-soft: #a2a9b1;
+      --ov-line: #30343a;
+      --ov-field: #5d646d;
+      --ov-brand: #8fc2b4;
+      --ov-brand-hover: #acd6cb;
+      --ov-brand-tone: #1d3530;
+      --ov-btn2: #2c3035;
+      --ov-btn2-hover: #363b41;
+      --ov-inset: #181a1d;
+      --ov-post-bubble: #2a2f35;
+      --ov-star: #f5b301;
+      --ov-star-off: #3e434a;
+      --ov-count: #d23c33;
+      --ov-danger: #f0a097;
+      --ov-ok: #8cc9a0;
+      --ov-diff-old: #4a3b12;
+      --ov-diff-new: #1c3250;
+      --ov-avatar-bg: #2b3947;
+      --ov-avatar-ink: #b8cce0;
+      --ov-on-brand: #141619;
+      --ov-segment-on: #3a3f46;
+    }
   }
   * {
     border-color: var(--ov-line);

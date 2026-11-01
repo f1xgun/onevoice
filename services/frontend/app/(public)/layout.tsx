@@ -3,7 +3,7 @@ import { Footer } from '@/components/layout/Footer';
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="ov-app flex min-h-screen flex-col">
       <main
         id="main-content"
         tabIndex={-1}

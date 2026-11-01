@@ -27,11 +27,11 @@ describe('ToolApprovalToggleGroup', () => {
   ])('renders the documented active styling for $decision', ({ decision, label, color }) => {
     renderGroup({ decision });
     const active = screen.getByRole('button', { name: label });
-    expect(active).toHaveClass('bg-paper-raised', color, 'ring-2', 'ring-ring');
+    expect(active).toHaveClass('bg-btn2', color, 'ring-2', 'ring-ring');
     expect(active).not.toHaveClass('bg-brand');
     for (const button of screen.getAllByRole('button')) {
       if (button === active) continue;
-      expect(button).toHaveClass('bg-paper-raised', 'text-ink');
+      expect(button).toHaveClass('bg-btn2', 'text-ink');
       expect(button).not.toHaveClass('ring-2');
     }
   });

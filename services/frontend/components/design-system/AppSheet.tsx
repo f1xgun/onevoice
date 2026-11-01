@@ -20,7 +20,7 @@ export {
 } from '@/components/ui/sheet';
 
 export interface AppSheetProps extends ComponentPropsWithoutRef<typeof Content> {
-  side?: 'left' | 'right';
+  side?: 'left' | 'right' | 'bottom';
 }
 
 export const SheetContent = forwardRef<ElementRef<typeof Content>, AppSheetProps>(
@@ -51,8 +51,13 @@ export const SheetContent = forwardRef<ElementRef<typeof Content>, AppSheetProps
           data-ov-motion
           className={cn(
             className,
-            'fixed inset-y-0 z-50 h-dvh w-[calc(100%-2rem)] max-w-md overflow-y-auto overscroll-contain border-control bg-card p-4 pt-16 text-ink shadow-overlay',
-            side === 'right' ? 'right-0 border-l' : 'left-0 border-r'
+            'fixed z-50 overflow-y-auto overscroll-contain border-control bg-card p-4 pt-16 text-ink shadow-overlay',
+            side === 'bottom'
+              ? 'inset-x-0 bottom-0 max-h-[calc(100dvh-2rem)] rounded-t-block pb-[max(1rem,env(safe-area-inset-bottom))] sm:mx-auto sm:max-w-[30rem]'
+              : cn(
+                  'inset-y-0 h-dvh w-[calc(100%-2rem)] max-w-md',
+                  side === 'right' ? 'right-0 border-l' : 'left-0 border-r'
+                )
           )}
         >
           <SheetClose asChild>
