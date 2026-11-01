@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { bizApi } from '@/lib/api/business-api';
+import { useAuthStore } from '@/lib/auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import type { Review } from '@/types/review';
 
@@ -25,10 +26,11 @@ export function decisionQueueKey(businessId: string | null) {
 }
 export function useDecisionQueue() {
   const businessId = useBusinessStore((s) => s.activeBusinessId);
+  const userId = useAuthStore((s) => s.user?.id);
   return useQuery({
-    queryKey: decisionQueueKey(businessId),
+    queryKey: [...decisionQueueKey(businessId), userId],
     queryFn: async () => (await bizApi(businessId!).get<DecisionQueue>('/decision-queue')).data,
-    enabled: !!businessId,
+    enabled: !!businessId && !!userId,
     refetchInterval: 30000,
   });
 }

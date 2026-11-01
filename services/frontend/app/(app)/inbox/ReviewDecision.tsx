@@ -109,6 +109,7 @@ export function ReviewDecision({ review, businessId }: ReviewDecisionProps) {
           {(!source || editing) && !failed ? (
             <AppTextarea
               id={`draft-${review.id}`}
+              autoFocus={editing}
               {...register('reply')}
               readOnly={!canWrite}
               disabled={mutation.isPending}
