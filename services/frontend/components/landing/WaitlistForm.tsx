@@ -36,9 +36,16 @@ interface WaitlistFormProps extends Partial<LandingEntryProps> {
   source?: WaitlistPayload['source'];
   plan?: 'pro';
   submitLabel?: string;
+  variant?: 'default' | 'access';
 }
 
-export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormProps = {}) {
+export function WaitlistForm({
+  mode,
+  source,
+  plan,
+  submitLabel,
+  variant = 'default',
+}: WaitlistFormProps = {}) {
   const t = useTranslations('landing.waitlist');
   const tValidation = useTranslations('validation');
   const schema = useMemo(() => createWaitlistSchema(tValidation), [tValidation]);
@@ -77,7 +84,11 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
     return (
       <div
         role="status"
-        className="min-w-0 rounded-lg border border-line bg-paper-raised p-4 shadow-none sm:p-6"
+        className={
+          variant === 'access'
+            ? 'min-w-0'
+            : 'min-w-0 rounded-lg border border-line bg-paper-raised p-4 shadow-none sm:p-6'
+        }
       >
         <p className="text-meta text-ink-soft">{t('success.label')}</p>
         <h3 className="mt-3 text-document-title">{t('success.title')}</h3>
@@ -105,7 +116,11 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
     <form
       onSubmit={handleSubmit(onSubmit)}
       noValidate
-      className="min-w-0 rounded-lg border border-line bg-paper-raised p-4 shadow-none sm:p-6"
+      className={
+        variant === 'access'
+          ? 'min-w-0'
+          : 'min-w-0 rounded-lg border border-line bg-paper-raised p-4 shadow-none sm:p-6'
+      }
     >
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-1.5">
@@ -165,28 +180,47 @@ export function WaitlistForm({ mode, source, plan, submitLabel }: WaitlistFormPr
           <Controller
             name="pain"
             control={control}
-            render={({ field }) => (
-              <RadioGroup
-                value={field.value ?? ''}
-                onValueChange={field.onChange}
-                className="gap-2.5"
-              >
-                {PAIN_OPTIONS.map((option) => (
-                  <label
-                    key={option}
-                    htmlFor={`pain-${option}`}
-                    className="flex min-h-11 cursor-pointer items-center gap-3 py-2 text-reading text-ink"
+            render={({ field }) =>
+              variant === 'access' ? (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger
+                    id="waitlist-pain"
+                    aria-label={t('painLabel')}
+                    className="min-h-12 rounded-inner border-control bg-paper-raised text-base"
                   >
-                    <RadioGroupItem
-                      className="shrink-0 border-control"
-                      id={`pain-${option}`}
-                      value={option}
-                    />
-                    {t(`painOptions.${option}`)}
-                  </label>
-                ))}
-              </RadioGroup>
-            )}
+                    <SelectValue placeholder={t('painLabel')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAIN_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {t(`painOptions.${option}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <RadioGroup
+                  value={field.value ?? ''}
+                  onValueChange={field.onChange}
+                  className="gap-2.5"
+                >
+                  {PAIN_OPTIONS.map((option) => (
+                    <label
+                      key={option}
+                      htmlFor={`pain-${option}`}
+                      className="flex min-h-11 cursor-pointer items-center gap-3 py-2 text-reading text-ink"
+                    >
+                      <RadioGroupItem
+                        className="shrink-0 border-control"
+                        id={`pain-${option}`}
+                        value={option}
+                      />
+                      {t(`painOptions.${option}`)}
+                    </label>
+                  ))}
+                </RadioGroup>
+              )
+            }
           />
         </fieldset>
 

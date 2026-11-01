@@ -35,7 +35,8 @@
           "cta": "Open {businessName}"
         },
         "generic": "Couldn't process the invitation. Please try again."
-      }
+      },
+      "roleLabel": "Your role in the team"
     }
   },
   "onboarding": {
@@ -2158,12 +2159,19 @@
       "register": "Sign up",
       "submit": "Log in",
       "submitting": "Logging in…",
-      "invalidCredentials": "Invalid email or password",
+      "invalidCredentials": "Incorrect email or password. Check your keyboard layout",
       "lockoutTitle": "Account temporarily locked",
       "lockoutBody": "Too many failed login attempts. Try again in {minutes} min or reset your password.",
       "lockoutResetCta": "Reset password",
       "captchaRequired": "Please complete the captcha check and try again.",
-      "captchaInvalid": "Captcha check failed. Please try again."
+      "captchaInvalid": "Captcha check failed. Please try again.",
+      "accessTitle": "Sign in",
+      "betaPrompt": "No account yet? We open access in waves.",
+      "apply": "Request access",
+      "invitedPrompt": "Received an invitation?",
+      "createAccount": "Create an account",
+      "previewAlt": "Example OneVoice screen: decision queue, review and draft reply",
+      "previewCaption": "A morning with OneVoice: everything waiting for your word on one screen, with the rest done by your rules."
     },
     "register": {
       "nameLabel": "What should we call you",
@@ -2174,7 +2182,7 @@
       "haveAccount": "Already have an account?",
       "login": "Log in",
       "eyebrow": "Sign up",
-      "title": "Let's get started.",
+      "title": "Create an account",
       "description": "A minute to sign up — then we'll connect your channels and talk about your organization's voice.",
       "submit": "Create account",
       "submitting": "Creating account…",
@@ -2193,7 +2201,7 @@
       "closedBeta": {
         "invitedDescription": "Use the email address that received your invitation. Access is enabled for that address; you can connect your organization after registering.",
         "eyebrow": "Closed beta",
-        "title": "We onboard organizations in small groups.",
+        "title": "We connect locations in small groups",
         "description": "This gives our team time to help with setup and fix issues quickly.",
         "body": "Join the waitlist. When your cohort opens, we'll enable access for your email and send you a registration link.",
         "waitlistCta": "Apply for access",

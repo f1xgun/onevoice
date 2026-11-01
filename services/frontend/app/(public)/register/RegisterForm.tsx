@@ -22,7 +22,6 @@ import { Label } from '@/components/ui/label';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { ConsentCheckboxes } from '@/components/auth/ConsentCheckboxes';
 import { FormError } from '@/components/ui/form-error';
-import { MonoLabel } from '@/components/ui/mono-label';
 
 // zod schema field identifiers for the two
 // required-consent checkboxes. Constants (not inline literals) so the
@@ -134,14 +133,21 @@ export function RegisterForm({ inviteOnly = false }: RegisterFormProps) {
 
   return (
     <AuthShell
-      eyebrow={tReg('eyebrow')}
+      variant="access"
+      eyebrow={null}
       title={tReg('title')}
       description={tReg(inviteOnly ? 'closedBeta.invitedDescription' : 'description')}
-      aside={<RegisterEditorial />}
+      footer={
+        <p>
+          {tReg('haveAccount')}
+          <br />
+          <Link href="/login">{tReg('login')}</Link>
+        </p>
+      }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="name" className="text-xs font-medium text-ink-mid">
+          <Label htmlFor="name" className="text-sm font-normal text-ink-soft">
             {tReg('nameLabel')}
           </Label>
           <Input
@@ -160,7 +166,7 @@ export function RegisterForm({ inviteOnly = false }: RegisterFormProps) {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email" className="text-xs font-medium text-ink-mid">
+          <Label htmlFor="email" className="text-sm font-normal text-ink-soft">
             {tReg('emailLabel')}
           </Label>
           <Input
@@ -179,9 +185,9 @@ export function RegisterForm({ inviteOnly = false }: RegisterFormProps) {
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password" className="text-xs font-medium text-ink-mid">
+            <Label htmlFor="password" className="text-sm font-normal text-ink-soft">
               {tReg('passwordLabel')}
             </Label>
             <Input
@@ -200,7 +206,7 @@ export function RegisterForm({ inviteOnly = false }: RegisterFormProps) {
             )}
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="confirmPassword" className="text-xs font-medium text-ink-mid">
+            <Label htmlFor="confirmPassword" className="text-sm font-normal text-ink-soft">
               {tReg('confirmPasswordLabel')}
             </Label>
             <Input
@@ -253,44 +259,7 @@ export function RegisterForm({ inviteOnly = false }: RegisterFormProps) {
         >
           {isSubmitting ? tReg('submitting') : tReg('submit')}
         </Button>
-
-        <p className="mt-6 text-sm text-ink-soft">
-          {tReg('haveAccount')}{' '}
-          <Link href="/login" className="font-medium text-ink hover:underline">
-            {tReg('login')}
-          </Link>
-        </p>
       </form>
     </AuthShell>
-  );
-}
-
-function RegisterEditorial() {
-  const tReg = useTranslations('auth.register');
-  const tBenefits = useTranslations('auth.register.benefits');
-  const benefits = [
-    { title: tBenefits('channelsTitle'), body: tBenefits('channelsBody') },
-    { title: tBenefits('voiceTitle'), body: tBenefits('voiceBody') },
-    { title: tBenefits('calmTitle'), body: tBenefits('calmBody') },
-  ];
-  return (
-    <>
-      <MonoLabel>{tReg('benefitsLabel')}</MonoLabel>
-
-      <div className="my-auto flex flex-col gap-4">
-        {benefits.map(({ title, body }) => (
-          <div key={title} className="rounded-lg border border-line bg-paper-raised p-4">
-            <div className="text-base font-medium leading-tight tracking-[-0.005em] text-ink">
-              {title}
-            </div>
-            <p className="mt-1.5 text-sm leading-relaxed text-ink-mid">{body}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="rounded-md border border-line-soft bg-paper-raised p-4 text-sm leading-relaxed text-ink-mid">
-        {tReg('benefitsBody')}
-      </div>
-    </>
   );
 }
