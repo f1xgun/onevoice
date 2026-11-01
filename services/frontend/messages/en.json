@@ -1273,6 +1273,27 @@
       "nameFallback": "Your organization",
       "describes": "OneVoice describes you as a {kind}{hasName, select, true { \"{name}\"} other {}}{hasWhere, select, true { — {where}} other {}}.",
       "toneLine": "Tone — {list}."
+    },
+    "card": {
+      "title": "Location card",
+      "subtitle": "How customers see you on Maps, VK and your channel",
+      "basics": "Basics",
+      "hours": "Opening hours",
+      "specialDates": "Special days",
+      "addDate": "+ Add a special day",
+      "photo": "Photo",
+      "editPhoto": "Edit logo",
+      "preview": "Your location card",
+      "previewHint": "Preview of OneVoice data. Platform appearance may differ.",
+      "profile": "Basics",
+      "destination": "Save the location data and send supported fields to connected platforms. Check delivery in the comparison.",
+      "empty": "Not set",
+      "loading": "Loading comparison…",
+      "difference": "Different: {field}",
+      "stored": "Your data",
+      "noPlatforms": "Connect platforms to compare your location card.",
+      "repair": "Fix everywhere",
+      "specialDestination": "Save special dates in OneVoice. Sending date overrides to platforms is not yet supported."
     }
   },
   "platforms": {

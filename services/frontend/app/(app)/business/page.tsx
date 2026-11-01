@@ -1,15 +1,7 @@
 'use client';
 
-// Linen rebuild.
-// Business profile page. Layout: PageHeader + two columns on xl+ (forms
-// left, sticky AI-understanding rail right). Each form section is a
-// paper-raised card with a MonoLabel caption + section title. Mutations
-// are owned per section (ProfileForm, HoursForm, SpecialDatesForm,
-// VoiceToneSection) so a save in one section doesn't block another.
-
 import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
 
-import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { isAxiosError } from 'axios';
@@ -20,48 +12,25 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 import { ProfileForm } from '@/components/business/ProfileForm';
-import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
-import { VoiceToneSection } from '@/components/business/VoiceToneSection';
-import { VoiceProfileSection } from '@/components/business/VoiceProfileSection';
-import { AISummaryRail } from '@/components/business/AISummaryRail';
-import { SectionHelp } from '@/components/onboarding/SectionHelp';
-import { DangerZone } from '@/components/business/DangerZone';
-import { PageHeader } from '@/components/ui/page-header';
-import { MonoLabel } from '@/components/ui/mono-label';
+import { BusinessCard } from '@/components/business/BusinessCard';
 import { Skeleton } from '@/components/ui/skeleton';
-import { normalizeStoredTones, type ToneId } from '@/lib/tones';
-import type { Business, ScheduleDay, SpecialDate } from '@/types/business';
+import type { Business } from '@/types/business';
 
 function BusinessSkeleton() {
-  const tBusiness = useTranslations('business');
   return (
-    <>
-      <PageHeader title={tBusiness('title')} sub={tBusiness('subtitle')} />
-      <LoadingPlaceholder className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-        <div className="flex min-w-0 flex-col gap-6">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-lg border border-line bg-paper-raised p-6">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="mt-2 h-6 w-48" />
-              <div className="mt-5 flex flex-col gap-3">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      </LoadingPlaceholder>
-    </>
+    <LoadingPlaceholder className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
+      <div className="space-y-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-48 w-full rounded-block" />
+        ))}
+      </div>
+    </LoadingPlaceholder>
   );
 }
 
 export default function BusinessPage() {
+  const t = useTranslations('business.card');
   const tBusiness = useTranslations('business');
-  const tSections = useTranslations('business.sections');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const { data, isLoading, isError, error, refetch } = useQuery<Business>({
     queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
@@ -72,132 +41,22 @@ export default function BusinessPage() {
     enabled: !!activeBusinessId,
     retry: false,
   });
-
-  const persistedTones = useMemo<ToneId[]>(
-    () => normalizeStoredTones(data?.settings?.voiceTone),
-    [data?.settings?.voiceTone]
-  );
-  const [tones, setTones] = useState<ToneId[]>(persistedTones);
-  useEffect(() => setTones(persistedTones), [persistedTones]);
-
   const is404 = isError && isAxiosError(error) && error.response?.status === HTTP_STATUS.NOT_FOUND;
-
-  if (isLoading) return <BusinessSkeleton />;
-  if (isError && !is404) {
-    return (
-      <>
-        <PageHeader title={tBusiness('title')} />
-        <div className="px-4 pb-10 sm:px-12 sm:pb-16">
-          <ListLoadError onRetry={() => void refetch()} />
-        </div>
-      </>
-    );
-  }
-
-  const isCreateMode = is404;
-  const title = isCreateMode ? tBusiness('createTitle') : tBusiness('title');
-  const sub = isCreateMode ? tBusiness('createSubtitle') : tBusiness('subtitle');
-
-  const schedule = data?.settings?.schedule as
-    | { schedule?: ScheduleDay[]; specialDates?: SpecialDate[] }
-    | ScheduleDay[]
-    | undefined;
-  const initialSchedule = Array.isArray(schedule) ? schedule : schedule?.schedule;
-  const initialSpecialDates = Array.isArray(schedule) ? undefined : schedule?.specialDates;
-
   return (
-    <>
-      <PageHeader title={title} sub={sub} />
-
-      <div className="px-4 sm:px-12">
-        <SectionHelp section="business" className="mb-8" />
-      </div>
-
-      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-        {/* Main column */}
-        <div className="flex min-w-0 flex-col gap-6">
-          <Section
-            caption={tSections('profile.caption')}
-            title={tSections('profile.title')}
-            sub={tSections('profile.sub')}
-          >
-            <ProfileForm defaultValues={isCreateMode ? undefined : data} />
-          </Section>
-
-          {!isCreateMode && (
-            <>
-              <Section
-                caption={tSections('voice.caption')}
-                title={tSections('voice.title')}
-                sub={tSections('voice.sub')}
-              >
-                <div className="flex min-w-0 flex-col gap-6">
-                  <VoiceToneSection initial={tones} onChange={setTones} />
-                  <div className="border-t border-line-soft pt-6">
-                    <MonoLabel>{tSections('voice.profileCaption')}</MonoLabel>
-                    <p className="mb-4 mt-1 text-[13px] text-ink-mid">
-                      {tSections('voice.profileSub')}
-                    </p>
-                    <VoiceProfileSection />
-                  </div>
-                </div>
-              </Section>
-
-              <Section
-                caption={tSections('hours.caption')}
-                title={tSections('hours.title')}
-                sub={tSections('hours.sub')}
-              >
-                <HoursForm
-                  initialSchedule={initialSchedule}
-                  initialSpecialDates={initialSpecialDates}
-                />
-              </Section>
-
-              <Section
-                caption={tSections('specialDates.caption')}
-                title={tSections('specialDates.title')}
-                sub={tSections('specialDates.sub')}
-              >
-                <SpecialDatesForm
-                  initialSchedule={initialSchedule}
-                  initialSpecialDates={initialSpecialDates}
-                />
-              </Section>
-
-              {data && activeBusinessId && (
-                <DangerZone businessId={activeBusinessId} businessName={data.name} />
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Right rail */}
-        <AISummaryRail business={isCreateMode ? undefined : data} tones={tones} />
-      </div>
-    </>
-  );
-}
-
-function Section({
-  caption,
-  title,
-  sub,
-  children,
-}: {
-  caption: string;
-  title: string;
-  sub?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="min-w-0 break-words rounded-lg border border-line bg-paper-raised">
-      <header className="border-b border-line-soft px-6 py-4">
-        <MonoLabel>{caption}</MonoLabel>
-        <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">{title}</h2>
-        {sub && <p className="mt-1 text-[13px] text-ink-mid">{sub}</p>}
+    <div className="px-gutter pb-10 pt-5 md:px-gutter-desktop">
+      <header className="mb-group">
+        <h1 className="text-page-title">{is404 ? tBusiness('createTitle') : t('title')}</h1>
+        <p className="mt-1 text-[15px] leading-[22px] text-ink-soft">{t('subtitle')}</p>
       </header>
-      <div className="px-6 py-5">{children}</div>
-    </section>
+      {isLoading ? (
+        <BusinessSkeleton />
+      ) : isError && !is404 ? (
+        <ListLoadError onRetry={() => void refetch()} />
+      ) : is404 ? (
+        <ProfileForm />
+      ) : data && activeBusinessId ? (
+        <BusinessCard key={activeBusinessId} business={data} businessId={activeBusinessId} />
+      ) : null}
+    </div>
   );
 }

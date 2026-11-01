@@ -6,7 +6,7 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 //   GET  /api/v1/businesses/{id}/integrations/drift   (authz.PermIntegrationsRead)
 //        → 200 IntegrationDrift[]  (handler.driftView JSON, camelCase tags)
 //   POST /api/v1/businesses/{id}/integrations/verify  (authz.PermBusinessUpdate)
-//        → 202 { status: "repair_started" }
+//        → 202 { started: true, health: [...] }
 //
 // The verify endpoint re-pushes the stored organization profile to every
 // connected platform and reschedules a fresh drift check; it is an
@@ -20,6 +20,9 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 // a row can exist as merely "pending" with driftDetected=false and no
 // lastCheckedAt, which must read as "not checked", never as "in sync".
 export interface IntegrationDrift {
+  remoteValues?: Record<string, string>;
+  storedValues?: Record<string, string>;
+  checkFailed?: boolean;
   platform: string;
   externalId: string;
   driftDetected: boolean;
@@ -29,7 +32,7 @@ export interface IntegrationDrift {
 }
 
 export interface VerifyIntegrationsResponse {
-  status: string;
+  started: boolean;
 }
 
 export async function fetchIntegrationsDrift(businessId: string): Promise<IntegrationDrift[]> {

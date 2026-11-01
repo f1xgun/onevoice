@@ -38,6 +38,8 @@ interface Integration {
 interface Props {
   businessId: string;
   integrations: Integration[];
+  repairLabel?: string;
+  showAlertSettings?: boolean;
 }
 
 type SyncStatus = 'in_sync' | 'out_of_sync' | 'not_checked';
@@ -55,11 +57,16 @@ function driftKey(platform: string, externalId: string): string {
 // a pending row with driftDetected=false and no lastCheckedAt is "not checked",
 // so we never render a false green guarantee before the first check.
 export function syncStatusFor(entry: IntegrationDrift | undefined): SyncStatus {
-  if (!entry || !entry.lastCheckedAt) return 'not_checked';
+  if (!entry || !entry.lastCheckedAt || entry.checkFailed) return 'not_checked';
   return entry.driftDetected ? 'out_of_sync' : 'in_sync';
 }
 
-export function IntegrationsSyncPanel({ businessId, integrations }: Props) {
+export function IntegrationsSyncPanel({
+  businessId,
+  integrations,
+  repairLabel,
+  showAlertSettings = true,
+}: Props) {
   const t = useTranslations('integrations.sync');
   const platformMeta = usePlatformMeta();
   const canVerify = usePermission('business.update').allowed;
@@ -102,7 +109,7 @@ export function IntegrationsSyncPanel({ businessId, integrations }: Props) {
   };
 
   return (
-    <div className="mt-12 rounded-lg border border-line bg-paper-raised p-6">
+    <div className="mt-4 rounded-block bg-card p-block md:p-block-desktop">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-base font-medium text-ink">{t('sectionTitle')}</div>
@@ -117,13 +124,21 @@ export function IntegrationsSyncPanel({ businessId, integrations }: Props) {
                 className="shrink-0"
                 disabled={verifyMutation.isPending}
               >
-                {verifyMutation.isPending ? t('verifying') : t('verify')}
+                {verifyMutation.isPending ? t('verifying') : (repairLabel ?? t('verify'))}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>{t('confirmTitle')}</AlertDialogTitle>
                 <AlertDialogDescription>{t('confirmBody')}</AlertDialogDescription>
+                <ul className="space-y-1 text-sm text-ink-soft">
+                  {integrations.map((i) => (
+                    <li key={i.id}>
+                      {platformMeta[i.platform as PlatformId]?.fullLabel ?? i.platform} ·{' '}
+                      {i.externalId}
+                    </li>
+                  ))}
+                </ul>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
@@ -183,7 +198,7 @@ export function IntegrationsSyncPanel({ businessId, integrations }: Props) {
           </ul>
         )}
       </div>
-      <DriftAlertSettings key={businessId} businessId={businessId} />
+      {showAlertSettings && <DriftAlertSettings key={businessId} businessId={businessId} />}
     </div>
   );
 }
