@@ -2644,7 +2644,8 @@
       "proBenefits": "More units for posts, replies and publishing across platforms.",
       "accountNameHint": "This name appears with your activity and in the team",
       "loginEmail": "Sign-in email",
-      "moreFilters": "More filters"
+      "moreFilters": "More filters",
+      "actionHistory": "Full action history"
     }
   },
   "audit": {
@@ -3078,7 +3079,7 @@
     "more": "Also waiting",
     "automatic": "Done automatically",
     "automaticHint": "Under your rules, without approval",
-    "autoReview": "Automatic review reply",
+    "autoReview": "Replied automatically",
     "instruct": "Give OneVoice an instruction",
     "approval_batch": "Instruction awaiting a decision",
     "approval_batchBody": "{count} actions need a decision. Review the whole batch.",

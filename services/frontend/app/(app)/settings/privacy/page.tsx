@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { WithdrawalPanel } from '@/components/legal/WithdrawalPanel';
@@ -25,6 +26,12 @@ export default function PrivacySettingsPage() {
       <h1 className="text-page-title">{t('data')}</h1>
       <WithdrawalPanel />
       <AuditSection embedded />
+      <Link
+        href="/tasks"
+        className="inline-flex min-h-tap items-center text-brand underline underline-offset-4"
+      >
+        {t('actionHistory')}
+      </Link>
       {current && businessId && (
         <section>
           <h2 className="text-group-title">{t('deleteLocation')}</h2>
