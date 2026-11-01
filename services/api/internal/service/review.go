@@ -32,6 +32,7 @@ const reviewDispatchTimeout = 90 * time.Second
 // path (gated by RequireBusinessAccess middleware). Refresh remains
 // userID-scoped because /reviews/refresh kicks the cross-business sync.
 type ReviewService interface {
+	Skip(ctx context.Context, businessID uuid.UUID, id string) error
 	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
 	Reply(ctx context.Context, businessID uuid.UUID, id string, replyText string) error
@@ -265,7 +266,7 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 		return domain.ErrReviewNotFound
 	}
 
-	if review.ReplyStatus == domain.ReviewReplyStatusReplied || (review.ReplyText != "" && review.ReplyStatus != domain.ReviewReplyStatusError) {
+	if (isAutoPublishSignal(ctx) && review.ReplyStatus == domain.ReviewReplyStatusSkipped) || review.ReplyStatus == domain.ReviewReplyStatusReplied || (review.ReplyText != "" && review.ReplyStatus != domain.ReviewReplyStatusError) {
 		return domain.ErrReviewAlreadyAnswered
 	}
 
@@ -274,6 +275,34 @@ func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, rep
 	}
 
 	return s.publishReply(ctx, review, replyText, true)
+}
+
+// Skip persists an operator's deliberate decision without sending anything externally.
+// Refresh inserts pending only on new rows, so this disposition survives the next sync.
+func (s *reviewService) Skip(ctx context.Context, businessID uuid.UUID, id string) error {
+	review, err := s.GetByID(ctx, businessID, id)
+	if err != nil {
+		return err
+	}
+	if review.ReplyStatus == domain.ReviewReplyStatusSkipped {
+		return nil
+	}
+	if review.ReplyStatus != domain.ReviewReplyStatusPending {
+		return domain.ErrReviewAlreadyAnswered
+	}
+	if err := s.gateBusiness(ctx, businessID); err != nil {
+		return err
+	}
+	repo, ok := s.repo.(interface {
+		SkipPending(context.Context, string, string) error
+	})
+	if !ok {
+		return fmt.Errorf("review skip not configured")
+	}
+	if err := repo.SkipPending(ctx, businessID.String(), id); err != nil {
+		return fmt.Errorf("skip review: %w", err)
+	}
+	return nil
 }
 
 // RetryReply re-sends the stored reply text of a review whose previous send
@@ -549,4 +578,33 @@ func metaInt(m map[string]interface{}, key string) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// Regenerate uses the existing drafter after an atomic, tenant-scoped reset.
+func (s *reviewService) Regenerate(ctx context.Context, businessID uuid.UUID, id string) error {
+	if _, err := s.GetByID(ctx, businessID, id); err != nil {
+		return err
+	}
+	if err := s.gateBusiness(ctx, businessID); err != nil {
+		return err
+	}
+	repo, ok := s.repo.(interface {
+		PrepareRegeneration(context.Context, string, string) error
+	})
+	if !ok {
+		return fmt.Errorf("review regeneration not configured")
+	}
+	if err := repo.PrepareRegeneration(ctx, businessID.String(), id); err != nil {
+		return err
+	}
+	results, err := s.BatchDraft(ctx, businessID, []string{id})
+	if err != nil {
+		return err
+	}
+	for _, item := range results {
+		if item.Status != BatchItemStatusDrafted {
+			return fmt.Errorf("review regeneration failed: %s", item.Error)
+		}
+	}
+	return nil
 }

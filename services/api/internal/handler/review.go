@@ -51,6 +51,7 @@ const maxBatchReviewIDs = 50
 // RequireBusinessAccess middleware); Refresh resolves the same single business
 // from the request's BusinessContext and takes userID only for logging/audit.
 type ReviewService interface {
+	Skip(ctx context.Context, businessID uuid.UUID, id string) error
 	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
 	Reply(ctx context.Context, businessID uuid.UUID, id string, replyText string) error
@@ -540,4 +541,54 @@ func (h *ReviewHandler) BulkApproveReviews(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, toBatchResponse(results))
+}
+
+// SkipReview records a deliberate non-reply; later explicit manual replies remain possible.
+func (h *ReviewHandler) SkipReview(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "SkipReview", authz.PermContentUpdate)
+	if !ok {
+		return
+	}
+	err := h.reviewService.Skip(r.Context(), bc.BusinessID, chi.URLParam(r, "id"))
+	if errors.Is(err, domain.ErrReviewNotFound) {
+		writeJSONError(w, http.StatusNotFound, "review_not_found")
+		return
+	}
+	if errors.Is(err, domain.ErrReviewAlreadyAnswered) {
+		writeJSONError(w, http.StatusConflict, "already_answered")
+		return
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "review_skip_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ReviewHandler) RegenerateReview(w http.ResponseWriter, r *http.Request) {
+	bc, ok := requireBusiness(w, r, "RegenerateReview", authz.PermContentUpdate)
+	if !ok {
+		return
+	}
+	svc, ok := h.reviewService.(interface {
+		Regenerate(context.Context, uuid.UUID, string) error
+	})
+	if !ok {
+		writeJSONError(w, http.StatusServiceUnavailable, "draft_unavailable")
+		return
+	}
+	err := svc.Regenerate(r.Context(), bc.BusinessID, chi.URLParam(r, "id"))
+	if errors.Is(err, domain.ErrReviewNotFound) {
+		writeJSONError(w, http.StatusNotFound, "review_not_found")
+		return
+	}
+	if errors.Is(err, domain.ErrReviewAlreadyAnswered) {
+		writeJSONError(w, http.StatusConflict, "draft_busy_or_closed")
+		return
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "draft_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

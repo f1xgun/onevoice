@@ -651,7 +651,8 @@ func normalizeReplyKey(reply string) string {
 // ClaimDraftForGenerating — see domain.ReviewRepository docstring.
 func (r *reviewRepository) ClaimDraftForGenerating(ctx context.Context, id string) (bool, error) {
 	filter := bson.M{
-		"_id": id,
+		"_id":          id,
+		"reply_status": bson.M{"$ne": domain.ReviewReplyStatusSkipped},
 		"draft_status": bson.M{
 			"$in": []interface{}{nil, "", domain.ReviewDraftStatusFailed},
 		},
@@ -684,12 +685,36 @@ func (r *reviewRepository) UpdateDraft(ctx context.Context, id, draft, status, e
 		set["draft_error"] = errMsg
 	}
 
-	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": set})
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id, "reply_status": bson.M{"$ne": domain.ReviewReplyStatusSkipped}}, bson.M{"$set": set})
 	if err != nil {
 		return fmt.Errorf("update review draft: %w", err)
 	}
 	if result.MatchedCount == 0 {
 		return domain.ErrReviewNotFound
+	}
+	return nil
+}
+
+// PrepareRegeneration reopens a pending draft only when no generator owns it.
+func (r *reviewRepository) PrepareRegeneration(ctx context.Context, businessID, id string) error {
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id, "business_id": businessID, "reply_status": domain.ReviewReplyStatusPending, "draft_status": bson.M{"$ne": domain.ReviewDraftStatusGenerating}}, bson.M{"$set": bson.M{"draft_status": ""}})
+	if err != nil {
+		return fmt.Errorf("prepare review regeneration: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return domain.ErrReviewAlreadyAnswered
+	}
+	return nil
+}
+
+// SkipPending cannot overwrite a concurrent published reply.
+func (r *reviewRepository) SkipPending(ctx context.Context, businessID, id string) error {
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id, "business_id": businessID, "reply_status": domain.ReviewReplyStatusPending}, bson.M{"$set": bson.M{"reply_status": domain.ReviewReplyStatusSkipped}, "$unset": bson.M{"draft_reply": "", "draft_status": "", "draft_generated_at": "", "draft_error": ""}})
+	if err != nil {
+		return fmt.Errorf("skip pending review: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return domain.ErrReviewAlreadyAnswered
 	}
 	return nil
 }

@@ -228,7 +228,7 @@ it('keeps open registration working and exposes pending state before the respons
   const user = { id: 'new-user', email: 'owner@example.org', name: 'Owner' };
   await act(async () => finish({ data: { user, accessToken: 'test-token' } }));
   expect(auth.setAuth).toHaveBeenCalledWith(user, 'test-token');
-  expect(auth.push).toHaveBeenCalledWith('/chat');
+  expect(auth.push).toHaveBeenCalledWith('/inbox');
 });
 
 it('associates a duplicate-email error with the email field and focuses it', async () => {

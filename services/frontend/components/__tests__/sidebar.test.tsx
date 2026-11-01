@@ -123,7 +123,7 @@ describe('Sidebar — approved mobile navigation', () => {
       expect(screen.getByRole('link', { name: 'Поручения' })).toHaveAttribute('href', '/chat');
       expect(screen.getByRole('link', { name: 'Ждет вашего слова' })).toHaveAttribute(
         'href',
-        '/tasks'
+        '/inbox'
       );
       expect(screen.getByRole('dialog')).toHaveClass('w-full', 'max-w-none');
     }

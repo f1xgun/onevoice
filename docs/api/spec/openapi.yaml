@@ -280,6 +280,12 @@ paths:
     $ref: paths/content_templates.yaml#/~1businesses~1{id}~1content-templates~1from-post~1{postId}
   /businesses/{id}/content-templates/from-review/{reviewId}:
     $ref: paths/content_templates.yaml#/~1businesses~1{id}~1content-templates~1from-review~1{reviewId}
+  /businesses/{id}/decision-queue:
+    $ref: paths/decision_queue.yaml#/~1businesses~1{id}~1decision-queue
+  /businesses/{id}/reviews/{reviewID}/skip:
+    $ref: paths/decision_queue.yaml#/~1businesses~1{id}~1reviews~1{reviewID}~1skip
+  /businesses/{id}/reviews/{reviewID}/regenerate:
+    $ref: paths/decision_queue.yaml#/~1businesses~1{id}~1reviews~1{reviewID}~1regenerate
   /reviews/refresh:
     $ref: paths/reviews.yaml#/~1reviews~1refresh
   /businesses/{id}/reviews:
@@ -2828,6 +2834,7 @@ components:
           type: string
           enum:
           - pending
+          - skipped
           - replied
           - error
         platformMeta:

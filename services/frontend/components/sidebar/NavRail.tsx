@@ -10,10 +10,11 @@ import { BusinessSwitcher } from '@/components/business-switcher/BusinessSwitche
 import { useAuthStore } from '@/lib/auth';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { useLogout } from '@/lib/hooks/useLogout';
+import { useDecisionQueue } from '@/hooks/useDecisionQueue';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/tasks', labelKey: 'waiting' },
+  { href: '/inbox', labelKey: 'waiting' },
   { href: '/chat', labelKey: 'instructions' },
   { href: '/posts', labelKey: 'posts' },
   { href: '/reviews', labelKey: 'reviews' },
@@ -40,6 +41,7 @@ export interface NavRailProps {
 
 export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
   const pathname = usePathname();
+  const decisions = useDecisionQueue();
   const router = useRouter();
   const tNav = useTranslations('nav');
   const tSidebar = useTranslations('sidebar');
@@ -90,6 +92,11 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
                 )}
               >
                 {tNav(labelKey)}
+                {labelKey === 'waiting' && decisions.data && decisions.data.total > 0 && (
+                  <span className="ml-auto rounded-full bg-count px-1.5 text-meta text-count-foreground">
+                    {decisions.data.total}
+                  </span>
+                )}
               </Link>
               {href === '/settings' && inSettings && (
                 <div className="mt-1 flex flex-col gap-0.5" aria-label={tNav('settings')}>

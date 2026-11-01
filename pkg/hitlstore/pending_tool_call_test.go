@@ -910,3 +910,19 @@ func TestPendingToolCall_ListPendingByConversation_FiltersStatuses(t *testing.T)
 	assert.False(t, ids["b-preparing"], "preparing must not be returned")
 	assert.False(t, ids["b-other-conv"], "different conversation must not be returned")
 }
+
+func TestDecisionQueuePendingReadIsActorScoped(t *testing.T) {
+	db := setupPendingToolCallDB(t, "decision_queue_actor")
+	repo := hitlstore.NewPendingToolCallRepository(db)
+	ctx := context.Background()
+	for _, user := range []string{"current-user", "other-user"} {
+		require.NoError(t, repo.Persist(ctx, &domain.PendingToolCallBatch{ID: user, UserID: user, BusinessID: "same-business", ConversationID: "private-" + user, Calls: []domain.PendingCall{{CallID: "call"}}, ModelMessages: []byte("private snapshot")}))
+	}
+	reader := repo.(domain.BusinessPendingToolCallReader)
+	batches, err := reader.ListPendingByBusiness(ctx, "same-business", "current-user")
+	require.NoError(t, err)
+	require.Len(t, batches, 1)
+	require.Equal(t, "private-current-user", batches[0].ConversationID)
+	require.Equal(t, "current-user", batches[0].UserID)
+	require.Empty(t, batches[0].ModelMessages)
+}

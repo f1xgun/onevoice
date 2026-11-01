@@ -57,6 +57,7 @@ type RateLimits struct {
 
 // Handlers encapsulates all HTTP handlers consumed by Setup / SetupInternal.
 type Handlers struct {
+	DecisionQueue        *handler.DecisionQueueHandler
 	Auth                 *handler.AuthHandler
 	Business             *handler.BusinessHandler
 	Integration          *handler.IntegrationHandler
@@ -302,6 +303,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 					r.Get("/tools", handlers.HITL.GetTools)
 				}
 
+				if handlers.DecisionQueue != nil {
+					r.Get("/decision-queue", handlers.DecisionQueue.List)
+				}
 				r.Get("/conversations", handlers.Conversation.ListConversations)
 				r.With(writeLimit).Post("/conversations", handlers.Conversation.CreateConversation)
 				r.Get("/conversations/{id}", handlers.Conversation.GetConversation)
@@ -337,6 +341,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/recap/latest", handlers.WeeklyValueRecap.GetLatest)
 				r.Get("/reviews/{id}", handlers.Review.GetReview)
 				r.With(writeLimit).Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
+				r.With(writeLimit).Post("/reviews/{id}/skip", handlers.Review.SkipReview)
+				r.With(writeLimit).Post("/reviews/{id}/regenerate", handlers.Review.RegenerateReview)
 				r.With(writeLimit).Post("/reviews/{id}/reply/retry", handlers.Review.RetryReviewReply)
 
 				r.Get("/posts", handlers.Post.ListPosts)

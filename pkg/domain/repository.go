@@ -609,6 +609,12 @@ type PendingCall struct {
 	DispatchedAt *time.Time `bson:"dispatched_at,omitempty"`
 }
 
+// BusinessPendingToolCallReader is the tenant- and actor-scoped read used by the decision queue.
+// It does not change the batch resolve/resume protocol.
+type BusinessPendingToolCallReader interface {
+	ListPendingByBusiness(ctx context.Context, businessID, userID string) ([]*PendingToolCallBatch, error)
+}
+
 // PendingToolCallRepository is implemented by pkg/hitlstore.
 // See docs/pkg/hitlstore.md for state machine + atomicity proof.
 type PendingToolCallRepository interface {
