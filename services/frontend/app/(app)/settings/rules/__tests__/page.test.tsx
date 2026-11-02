@@ -7,6 +7,7 @@ import RulesPage from '../page';
 
 const get = vi.fn();
 const put = vi.fn();
+const toolApprovals: Record<string, string> = {};
 const permission = { allowed: true, isLoading: false, isError: false, refetch: vi.fn() };
 vi.mock('@/lib/stores/business', () => ({
   useBusinessStore: (selector: (s: { activeBusinessId: string }) => unknown) =>
@@ -15,10 +16,14 @@ vi.mock('@/lib/stores/business', () => ({
 vi.mock('@/lib/api/business-api', () => ({ bizApi: () => ({ get, put }) }));
 vi.mock('@/lib/hooks/usePermission', () => ({ usePermission: () => permission }));
 vi.mock('@/lib/hooks/useTools', () => ({
-  useTools: () => ({ data: [], isLoading: false, isError: false }),
+  useTools: () => ({
+    data: [{ name: 'vk__reply_comment', platform: 'vk', floor: 'manual' }],
+    isLoading: false,
+    isError: false,
+  }),
 }));
 vi.mock('@/lib/hooks/useBusinessToolApprovals', () => ({
-  useBusinessToolApprovals: () => ({ data: {}, isLoading: false, isError: false }),
+  useBusinessToolApprovals: () => ({ data: toolApprovals, isLoading: false, isError: false }),
 }));
 vi.mock('@/components/business/VoiceToneSection', () => ({ VoiceToneSection: () => null }));
 vi.mock('@/components/business/VoiceProfileSection', () => ({
@@ -27,12 +32,26 @@ vi.mock('@/components/business/VoiceProfileSection', () => ({
 beforeEach(() => {
   get.mockReset();
   put.mockReset();
+  delete toolApprovals.vk__reply_comment;
   Object.assign(permission, { allowed: true, isLoading: false, isError: false });
 });
 function mount(config: object, settings: object = {}) {
   get.mockImplementation((path: string) =>
     Promise.resolve({
-      data: path === '/review-autopilot' ? config : { name: 'Point', settings },
+      data:
+        path === '/review-autopilot'
+          ? config
+          : path === '/voice-profile'
+            ? {
+                voiceProfile:
+                  typeof (settings as { voiceProfile?: unknown }).voiceProfile === 'string'
+                    ? (settings as { voiceProfile: string }).voiceProfile
+                    : '',
+                replySignature: '',
+              }
+            : path === '/reviews'
+              ? []
+              : { name: 'Point', settings },
     })
   );
   put.mockResolvedValue({});
@@ -54,7 +73,8 @@ it.each([undefined, '', ' \n  '])(
     const profile = await screen.findByRole('button', {
       name: 'О точке своими словами: Не заполнено',
     });
-    expect(screen.getByText('Не заполнено')).toHaveClass('text-ink-soft');
+    expect(profile).toHaveTextContent('Не заполнено');
+    expect(profile.querySelector('.text-ink-soft')).not.toBeNull();
     fireEvent.click(profile);
     expect(screen.getByTestId('voice-profile-editor')).toBeInTheDocument();
   }
@@ -67,7 +87,9 @@ it('shows the saved business description instead of the empty placeholder', asyn
   expect(
     await screen.findByRole('button', { name: 'О точке своими словами: Обжариваем зерно сами' })
   ).toBeInTheDocument();
-  expect(screen.queryByText('Не заполнено')).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'О точке своими словами: Обжариваем зерно сами' })
+  ).not.toHaveTextContent('Не заполнено');
 });
 it('shows saved four-star auto instead of replacing it with the new default', async () => {
   mount({ enabled: true, minRating: 4, ignoreFourStar: false, autoAnswerFacts: false });
@@ -129,7 +151,7 @@ it.skipIf(!hasLayoutBrowser)(
 it('edits factual replies independently while preserving rating and ignore settings', async () => {
   mount({ enabled: false, minRating: 5, ignoreFourStar: true, autoAnswerFacts: false });
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Адрес и обычные часы: Готовит черновик вам' })
+    await screen.findByRole('button', { name: 'Вопросы про адрес и часы: Готовит черновик вам' })
   );
   fireEvent.click(screen.getByRole('button', { name: 'Отвечает сам' }));
   await waitFor(() =>
@@ -141,3 +163,16 @@ it('edits factual replies independently while preserving rating and ignore setti
     })
   );
 });
+
+it.each([false, true])(
+  'shows factual auto-replies unless the owner explicitly chose manual (%s)',
+  async (manual) => {
+    if (manual) toolApprovals.vk__reply_comment = 'manual';
+    mount({ enabled: true, minRating: 5, ignoreFourStar: true, autoAnswerFacts: true });
+    expect(
+      await screen.findByRole('button', {
+        name: `Вопросы про адрес и часы: ${manual ? 'Готовит черновик вам' : 'Отвечает сам по карточке точки'}`,
+      })
+    ).toBeVisible();
+  }
+);

@@ -3,6 +3,7 @@
 import { forwardRef } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { businessMark } from '@/lib/business-display';
 import type { BusinessSummary } from '@/lib/hooks/useBusinessList';
 import { RolePill } from './RolePill';
 
@@ -24,7 +25,7 @@ export const BusinessRow = forwardRef<HTMLButtonElement, BusinessRowProps>(funct
   { business, isActive, onSelect },
   ref
 ) {
-  const initials = business.name.slice(0, 2).toUpperCase();
+  const initials = businessMark(business.name);
   return (
     <button
       ref={ref}

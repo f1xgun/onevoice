@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { cn } from '@/lib/utils';
+import { businessMark, shortBusinessAddress } from '@/lib/business-display';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
@@ -57,7 +58,7 @@ export function BusinessSwitcher() {
     staleTime: 30_000,
   });
   const active = businesses.find((b) => b.id === activeBusinessId);
-  const initials = active ? active.name.slice(0, 2).toUpperCase() : '';
+  const initials = active ? businessMark(active.name) : '';
 
   function handleSelect(b: BusinessSummary) {
     if (b.id !== activeBusinessId) {
@@ -84,19 +85,26 @@ export function BusinessSwitcher() {
         title={triggerAria}
         disabled={isLoading}
         className={cn(
-          'mb-4 flex min-h-11 w-full items-center gap-2.5 rounded-inner px-2.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+          'mb-4 flex min-h-11 w-full items-center gap-2.5 rounded-inner py-2 pl-2.5 pr-0 text-sm font-medium text-ink transition-colors hover:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
         )}
       >
         <span
           aria-hidden
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-inner bg-brand text-brand-foreground"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-inner bg-brand text-brand-foreground"
         >
           {active ? initials : <Plus size={18} />}
         </span>
-        <span className="min-w-0 break-words text-left">
-          <span className="block font-semibold">{active?.name || triggerAria}</span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block truncate text-[15px] font-semibold leading-5">
+            {active?.name || triggerAria}
+          </span>
           {profile?.address && (
-            <span className="block text-sm font-normal text-ink-soft">{profile.address}</span>
+            <span
+              className="block truncate text-sm font-normal text-ink-soft"
+              title={profile.address}
+            >
+              {shortBusinessAddress(profile.address)}
+            </span>
           )}
         </span>
       </PopoverTrigger>

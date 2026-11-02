@@ -1050,6 +1050,10 @@ components:
             short exemplars) that governs the AI chat loop and the review
             drafter. A non-empty value is stored verbatim; an empty string
             clears the override.
+        replySignature:
+          type: string
+          maxLength: 200
+          description: Signature for customer replies. Omitted fields keep their stored value.
     VoiceProfileResponse:
       type: object
       required:
@@ -1058,6 +1062,9 @@ components:
         voiceProfile:
           type: string
           description: Stored brand-voice profile; empty string when unset.
+        replySignature:
+          type: string
+          description: Separately stored signature, falling back to the legacy profile line.
     UpdateReviewAutopilotRequest:
       type: object
       required:

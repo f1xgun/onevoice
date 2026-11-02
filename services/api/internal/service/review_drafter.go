@@ -229,7 +229,7 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 		BusinessName:        business.Name,
 		BusinessCategory:    business.Category,
 		BusinessDescription: business.Description,
-		VoiceProfile:        apiplatform.VoiceProfileFromSettings(business.Settings),
+		VoiceProfile:        apiplatform.VoiceInstructionsFromSettings(business.Settings),
 		Platform:            review.Platform,
 		ReviewText:          review.Text,
 		Rating:              review.Rating,

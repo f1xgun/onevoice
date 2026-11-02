@@ -45,7 +45,7 @@ describe('BusinessRow', () => {
     expect(container.querySelector('span.bg-ochre')).toBeNull();
   });
 
-  it('renders 2-letter initials in the avatar', () => {
+  it('renders the single-letter mark in the avatar', () => {
     render(
       <BusinessRow
         business={makeBusiness({ name: 'Acme Co' })}
@@ -53,7 +53,7 @@ describe('BusinessRow', () => {
         onSelect={vi.fn()}
       />
     );
-    expect(screen.getByText('AC')).toBeInTheDocument();
+    expect(screen.getByText('A')).toBeInTheDocument();
   });
 
   it('renders the business name and role pill', () => {

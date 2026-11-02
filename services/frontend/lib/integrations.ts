@@ -9,8 +9,9 @@ export interface IntegrationLike {
 export interface IntegrationDisplay {
   /** Primary human-readable name. Always non-empty. */
   name: string;
-  /** Mono identifier shown beneath the name. Empty when name *is* the id. */
+  /** Recognizable public handle; never a raw provider ID. */
   identifier: string;
+  memberCount?: number;
 }
 
 // getIntegrationDisplay returns the canonical name + identifier pair to
@@ -19,17 +20,8 @@ export interface IntegrationDisplay {
 // the disconnect confirmation dialog so the same row never appears with
 // different labels in different places.
 //
-// Per-platform sources:
-//   - telegram: metadata.channel_title (from getChat) above @username/-100…
-//   - vk:       metadata.community_name (from groups.getById, lazily backfilled)
-//               above the numeric group_id
-//   - yandex_business: metadata.yandex_user (Passport login captured at
-//               connect time) above the externalId; for the legacy
-//               externalId="default" placeholder, we fall back to the
-//               platform label so we never render the literal "default".
-//
-// Fallback order is name → identifier so the user always sees *something*
-// resolvable; identifier is suppressed when it would just duplicate the name.
+// Provider IDs remain internal. Public metadata supplies the name, handle
+// and member count; absent metadata falls back to the platform label.
 export function getIntegrationDisplay(
   integration: IntegrationLike,
   platformLabel: string
@@ -39,13 +31,22 @@ export function getIntegrationDisplay(
 
   const field = PLATFORM_DISPLAY_FIELD[integration.platform as PlatformId];
   const friendly = field && typeof md[field] === 'string' ? (md[field] as string) : '';
-
-  if (integration.platform === 'yandex_business' && id === 'default') {
-    return { name: friendly || platformLabel, identifier: friendly ? '' : '' };
+  const display: IntegrationDisplay = { name: friendly || platformLabel, identifier: '' };
+  if (integration.platform === 'telegram') {
+    const username =
+      typeof md.channel_username === 'string' ? md.channel_username : id.startsWith('@') ? id : '';
+    if (/^@?[a-z\d_]{5,32}$/i.test(username)) display.identifier = `@${username.replace(/^@/, '')}`;
   }
-
-  if (friendly) {
-    return { name: friendly, identifier: friendly === id ? '' : id };
+  if (integration.platform === 'vk') {
+    const raw = md.members_count;
+    const count =
+      typeof raw === 'number'
+        ? raw
+        : typeof raw === 'string' && /^\d+$/.test(raw)
+          ? Number(raw)
+          : NaN;
+    if (Number.isInteger(count) && count >= 0) display.memberCount = count;
   }
-  return { name: id || platformLabel, identifier: '' };
+  if (display.name === display.identifier) display.identifier = '';
+  return display;
 }

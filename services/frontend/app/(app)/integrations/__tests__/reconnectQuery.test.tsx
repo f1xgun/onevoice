@@ -15,7 +15,10 @@ vi.mock('@/lib/hooks/usePermission', () => ({
 }));
 
 vi.mock('@/lib/hooks/usePlatforms', () => ({
-  usePlatforms: () => ({ platforms: registryPlatforms, isSuccess: registryReady }),
+  usePlatforms: () => ({
+    platforms: registryPlatforms.map((platform) => ({ ...platform, fullLabel: 'ВКонтакте' })),
+    isSuccess: registryReady,
+  }),
 }));
 
 vi.mock('@/lib/api/business-api', () => ({

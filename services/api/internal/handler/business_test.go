@@ -1011,6 +1011,48 @@ func TestBusinessHandler_UpdateVoiceProfile(t *testing.T) {
 	})
 }
 
+func TestBusinessHandler_ReplySignature(t *testing.T) {
+	businessID, userID := uuid.New(), uuid.New()
+	t.Run("reads legacy profile as two fields", func(t *testing.T) {
+		svc := new(MockBusinessService)
+		svc.On("GetByID", mock.Anything, businessID).Return(&domain.Business{ID: businessID, Settings: map[string]interface{}{"voiceProfile": "Не обещать скидки.\nКак подписывать ответы: Анна"}}, nil)
+		h, err := NewBusinessHandler(svc, nil, nil)
+		require.NoError(t, err)
+		req := withBizCtx(httptest.NewRequest(http.MethodGet, "/voice-profile", http.NoBody), bizPerms(businessID, userID))
+		w := httptest.NewRecorder()
+		h.GetVoiceProfile(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.JSONEq(t, `{"voiceProfile":"Не обещать скидки.","replySignature":"Анна"}`, w.Body.String())
+	})
+	for _, signature := range []string{"Анна", ""} {
+		t.Run("updates only signature: "+signature, func(t *testing.T) {
+			svc := new(MockBusinessService)
+			svc.On("UpdateSettingsKeys", mock.Anything, businessID, map[string]interface{}{"replySignature": signature}, userID).Return(&domain.Business{ID: businessID}, nil)
+			h, err := NewBusinessHandler(svc, nil, nil)
+			require.NoError(t, err)
+			payload, err := json.Marshal(map[string]string{"replySignature": signature})
+			require.NoError(t, err)
+			req := withBizCtx(httptest.NewRequest(http.MethodPut, "/voice-profile", bytes.NewReader(payload)), bizPerms(businessID, userID))
+			w := httptest.NewRecorder()
+			h.UpdateVoiceProfile(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+			svc.AssertExpectations(t)
+		})
+	}
+	t.Run("rejects oversized signature", func(t *testing.T) {
+		svc := new(MockBusinessService)
+		h, err := NewBusinessHandler(svc, nil, nil)
+		require.NoError(t, err)
+		payload, err := json.Marshal(map[string]string{"replySignature": strings.Repeat("я", 201)})
+		require.NoError(t, err)
+		req := withBizCtx(httptest.NewRequest(http.MethodPut, "/voice-profile", bytes.NewReader(payload)), bizPerms(businessID, userID))
+		w := httptest.NewRecorder()
+		h.UpdateVoiceProfile(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		svc.AssertNotCalled(t, "UpdateSettingsKeys")
+	})
+}
+
 func TestBusinessHandler_GetReviewAutopilot(t *testing.T) {
 	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
 	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")

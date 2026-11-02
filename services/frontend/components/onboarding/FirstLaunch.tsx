@@ -15,6 +15,7 @@ import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { useBusinessVoice } from '@/lib/hooks/useBusinessVoice';
 import { useBusinessStore } from '@/lib/stores/business';
 import { bizApi } from '@/lib/api/business-api';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
@@ -172,6 +173,7 @@ function ToneStep({ onDone }: ToneStepProps) {
   const t = useTranslations('launchV2');
   const businessId = useBusinessStore((s) => s.activeBusinessId);
   const permission = usePermission('business.update');
+  const voice = useBusinessVoice(businessId);
   const qc = useQueryClient();
   const reviews = useQuery({
     queryKey: ['business', businessId, 'launchReviews'],
@@ -199,29 +201,8 @@ function ToneStep({ onDone }: ToneStepProps) {
   });
   const save = useMutation({
     mutationFn: async ({ id, values }: { id: string; values: ToneValues }) => {
-      let profile: string | undefined;
-      if (values.signature.trim()) {
-        const response = await bizApi(id).get<{ voiceProfile: string }>('/voice-profile');
-        const existing = z.object({ voiceProfile: z.string() }).parse(response.data).voiceProfile;
-        const instructions = existing
-          .split('\n')
-          .filter(
-            (line) =>
-              !/^(Как подписывать ответы|How to sign replies|Подпись ответа|Reply signature):/.test(
-                line
-              )
-          )
-          .join('\n')
-          .trim();
-        profile = [instructions, `${t('signature')}: ${values.signature.trim()}`]
-          .filter(Boolean)
-          .join('\n');
-        const profileLimit = 400;
-        if (Array.from(profile).length > profileLimit)
-          throw new Error('Voice profile exceeds limit');
-      }
       await bizApi(id).put('/voice-tone', { tones: [values.tone] });
-      if (profile !== undefined) await bizApi(id).put('/voice-profile', { voiceProfile: profile });
+      await bizApi(id).put('/voice-profile', { replySignature: values.signature.trim() });
     },
     onSuccess: (_result, variables) => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(variables.id) });
@@ -231,6 +212,10 @@ function ToneStep({ onDone }: ToneStepProps) {
       onDone();
     },
   });
+  const signatureDirty = !!form.formState.dirtyFields.signature;
+  useEffect(() => {
+    if (voice.data && !signatureDirty) form.setValue('signature', voice.data.replySignature);
+  }, [voice.data, signatureDirty, form]);
   return (
     <form
       onSubmit={form.handleSubmit((values) => {
@@ -292,6 +277,14 @@ function ToneStep({ onDone }: ToneStepProps) {
       {!permission.isLoading && !permission.isError && !permission.allowed && (
         <p role="status">{t('readOnly')}</p>
       )}
+      {voice.isError && (
+        <div role="alert">
+          <p>{t('loadError')}</p>
+          <ActionButton type="button" variant="secondary" onClick={() => voice.refetch()}>
+            {t('retry')}
+          </ActionButton>
+        </div>
+      )}
       {save.isError && (
         <p role="alert" className="text-danger">
           {t('error')}
@@ -300,7 +293,7 @@ function ToneStep({ onDone }: ToneStepProps) {
       <ActionButton
         type="submit"
         className="w-full"
-        disabled={save.isPending || !permission.allowed || permission.isError}
+        disabled={save.isPending || !voice.isSuccess || !permission.allowed || permission.isError}
       >
         {t('finish')}
       </ActionButton>

@@ -424,8 +424,10 @@ func (h *BusinessHandler) GetVoiceProfile(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	profile, _ := platform.SplitLegacyVoiceProfile(platform.VoiceProfileFromSettings(business.Settings))
+	signature := platform.ReplySignatureFromSettings(business.Settings)
 	writeJSON(w, http.StatusOK, openapi.VoiceProfileResponse{
-		VoiceProfile: platform.VoiceProfileFromSettings(business.Settings),
+		VoiceProfile: profile, ReplySignature: &signature,
 	})
 }
 
@@ -447,12 +449,21 @@ func (h *BusinessHandler) UpdateVoiceProfile(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	profile := strDeref(req.VoiceProfile)
-	if !settingsBlobWithinCap(w, profile, "voice profile too large") {
-		return
+	keys := map[string]interface{}{}
+	if req.VoiceProfile != nil || req.ReplySignature == nil {
+		profile, legacySignature := platform.SplitLegacyVoiceProfile(strDeref(req.VoiceProfile))
+		if !settingsBlobWithinCap(w, profile, "voice profile too large") {
+			return
+		}
+		keys[platform.VoiceProfileSettingsKey] = profile
+		if legacySignature != "" {
+			keys[platform.ReplySignatureSettingsKey] = legacySignature
+		}
 	}
-
-	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, map[string]interface{}{platform.VoiceProfileSettingsKey: profile}, bc.UserID)
+	if req.ReplySignature != nil {
+		keys[platform.ReplySignatureSettingsKey] = strings.TrimSpace(*req.ReplySignature)
+	}
+	updated, err := h.businessService.UpdateSettingsKeys(r.Context(), bc.BusinessID, keys, bc.UserID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")

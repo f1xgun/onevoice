@@ -14,6 +14,7 @@ export interface Review {
   replyStatus: string;
   platformMeta?: Record<string, unknown>;
   createdAt: string;
+  repliedAt?: string;
 
   // AI-draft fields populated by the api review_drafter service. Present on
   // pending reviews only (UpdateReply clears them when the operator sends).

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { AlertTriangle, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ChevronRight, CheckCircle2 } from 'lucide-react';
 
 import { PlatformIcon } from './PlatformIcons';
 
@@ -37,6 +37,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { extractApiErrorCode } from '@/lib/resolveErrorMap';
 import { cn } from '@/lib/utils';
+import { formatClockTime } from '@/lib/time-display';
 
 // Yandex.Business RPA refresh poll cadence (ms). After kicking off a
 // refresh the agent runs for ~25–45s in the background, so we revisit
@@ -74,6 +75,7 @@ interface Props {
   // Today only google_business sets this (2 of N tools implemented per
   // services/agent-google-business/internal/agent/handler.go:63-71).
   isPreview?: boolean;
+  checkedAt?: string;
 }
 
 export function PlatformCard({
@@ -87,6 +89,7 @@ export function PlatformCard({
   canConnect = true,
   canDisconnect = true,
   isPreview = false,
+  checkedAt,
 }: Props) {
   const tCard = useTranslations('integrations.platformCard');
   const qc = useQueryClient();
@@ -124,20 +127,27 @@ export function PlatformCard({
     <>
       <PlatformIcon platform={platform} />
       <div className="min-w-0 flex-1">
-        <h2 className="text-reading font-semibold">{label}</h2>
+        <h2 className="text-base font-semibold leading-[22px]">{label}</h2>
         {integrations.length === 0 ? (
           <p className="mt-1 text-meta text-ink-soft">{description}</p>
         ) : (
           integrations.map((i) => {
             const display = getIntegrationDisplay(i, label);
+            const name =
+              display.name === label
+                ? ''
+                : ['telegram', 'vk'].includes(platform)
+                  ? `«${display.name.replace(/^«|»$/g, '')}»`
+                  : display.name;
+            const secondary =
+              display.memberCount !== undefined
+                ? tCard('subscribers', { count: display.memberCount })
+                : display.identifier;
             const health = readConnectionHealth(i.metadata);
             const reason = health?.reason_code ? `health.reason.${health.reason_code}` : '';
             return (
-              <div key={i.id} className="mt-1 break-words text-reading text-ink-soft">
-                <p>
-                  {display.name}
-                  {display.identifier ? ` · ${display.identifier}` : ''}
-                </p>
+              <div key={i.id} className="mt-1 break-words text-[15px] leading-[22px] text-ink-soft">
+                {(name || secondary) && <p>{[name, secondary].filter(Boolean).join(' · ')}</p>}
                 {(health?.status === 'broken' || health?.status === 'degraded') &&
                   reason &&
                   tCard.has(reason) && (
@@ -149,26 +159,33 @@ export function PlatformCard({
         )}
         <p
           className={cn(
-            'mt-1 flex items-start gap-2 text-reading',
+            'mt-1 flex items-start gap-1.5 text-[15px] leading-[22px]',
             needsReconnect ? 'text-danger' : 'text-ink'
           )}
         >
-          <span
-            aria-hidden
-            className={cn(
-              'mt-2 h-2.5 w-2.5 shrink-0 rounded-full',
-              connection === 'connected' ? 'bg-ok' : needsReconnect ? 'bg-danger' : 'bg-field'
-            )}
-          />
+          {connection === 'connected' ? (
+            <CheckCircle2 aria-hidden className="mt-1 h-head-sm w-head-sm shrink-0 text-ok" />
+          ) : (
+            <span
+              aria-hidden
+              className={cn(
+                'mt-2 h-2.5 w-2.5 shrink-0 rounded-full',
+                needsReconnect ? 'bg-danger' : 'bg-field'
+              )}
+            />
+          )}
           {integrations.some((i) => i.status === 'token_expired')
             ? tCard('status.token_expired')
             : tCard(
                 connection === 'connected'
-                  ? 'connected'
+                  ? 'working'
                   : connection === 'disconnected'
                     ? 'notConnected'
                     : `connection.${connection}`
               )}
+          {connection === 'connected' && checkedAt && formatClockTime(checkedAt) && (
+            <span>{tCard('checkedAt', { time: formatClockTime(checkedAt) })}</span>
+          )}
         </p>
         {integrations.some((i) => readConnectionHealth(i.metadata)?.status === 'degraded') && (
           <p className="mt-1 text-meta text-warning">{tCard('health.degradedLabel')}</p>
