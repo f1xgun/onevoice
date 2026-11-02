@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	apiplatform "github.com/f1xgun/onevoice/services/api/internal/platform"
 )
@@ -24,6 +27,8 @@ const (
 	// config.
 	defaultDraftMaxExamples  = 5
 	defaultDraftPerPassLimit = 10
+	yandexAutoRepliesPerHour = 10
+	yandexAutoReplyMaxAge    = 7 * 24 * time.Hour
 
 	// yandexReplyMaxRunes caps a stored draft targeting Yandex.Business. The RPA
 	// reply form accepts at most this many runes, so a draft is clamped before it
@@ -79,11 +84,23 @@ type ReviewDrafter struct {
 
 	// autoPublisher is nil when the review-reply autopilot is not wired: every
 	// drafted review then stays pending for HITL, exactly as before. When set,
-	// an opted-in positive non-Yandex draft is auto-published best-effort after
+	// an opted-in positive draft is auto-published best-effort after
 	// it is persisted ready. auditLog records the 152-ФЗ auto-publish event;
 	// nil falls back to a no-op logger.
-	autoPublisher AutoPublisher
-	auditLog      audit.Logger
+	autoPublisher    AutoPublisher
+	auditLog         audit.Logger
+	autoPublishRedis *redis.Client
+}
+
+type deferredAutoReplyRepository interface {
+	SetAutoReplyDeferred(context.Context, string, string, bool) error
+	ListDeferredAutoReplies(context.Context, string, string, int) ([]domain.Review, error)
+}
+
+// SetAutoPublishRedis supplies the shared hourly RPA counter. Without Redis,
+// Yandex auto-replies stay manual rather than bypassing the rate cap.
+func (d *ReviewDrafter) SetAutoPublishRedis(client *redis.Client) {
+	d.autoPublishRedis = client
 }
 
 // SetAutoPublisher wires the review-reply autopilot after construction (the
@@ -137,13 +154,35 @@ func (d *ReviewDrafter) GenerateForBusiness(ctx context.Context, businessID uuid
 	if err != nil {
 		return fmt.Errorf("list pending without draft: %w", err)
 	}
-	if len(pending) == 0 {
+	var deferred []domain.Review
+	if platform == a2a.AgentYandexBusiness || platform == "" {
+		if repo, ok := d.reviewRepo.(deferredAutoReplyRepository); ok {
+			deferred, err = repo.ListDeferredAutoReplies(ctx, businessID.String(), a2a.AgentYandexBusiness, d.perPassLimit)
+			if err != nil {
+				return fmt.Errorf("list deferred auto-replies: %w", err)
+			}
+		}
+	}
+	if len(pending) == 0 && len(deferred) == 0 {
 		return nil
 	}
 
 	business, err := d.businessRepo.GetByID(ctx, businessID)
 	if err != nil {
 		return fmt.Errorf("get business: %w", err)
+	}
+	for i := range deferred {
+		review := &deferred[i]
+		if !autopilotShouldPublish(apiplatform.ReviewAutopilotFromSettings(business.Settings), review, review.DraftReply, review.NeedsReview) {
+			if err := d.reviewRepo.(deferredAutoReplyRepository).SetAutoReplyDeferred(ctx, businessID.String(), review.ID, false); err != nil {
+				return fmt.Errorf("clear ineligible auto-reply deferral: %w", err)
+			}
+			continue
+		}
+		d.maybeAutoPublish(ctx, business, review, review.DraftReply, review.NeedsReview)
+	}
+	if len(pending) == 0 {
+		return nil
 	}
 
 	examples, err := d.reviewRepo.ListRepliedExamples(ctx, businessID.String(), platform, d.maxExamples)
@@ -261,8 +300,7 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 
 // maybeAutoPublish publishes the freshly-drafted reply when the business opted
 // into the review-reply autopilot AND the review is a positive, non-needs_review
-// draft AND its platform is not excluded (Yandex.Business is beta -> HITL only)
-// AND its rating clears the business-configured minRating floor. Everything else
+// draft AND its rating clears the business-configured minRating floor. Everything else
 // stays pending for HITL — the default. The publish is best-effort: an error is
 // logged and never fails the draft pass, so the draft remains ready and the
 // operator can still approve it by hand. Publication reuses the review service's
@@ -283,6 +321,31 @@ func (d *ReviewDrafter) maybeAutoPublish(ctx context.Context, business *domain.B
 func (d *ReviewDrafter) publishAutomaticReply(ctx context.Context, business *domain.Business, review *domain.Review, draft string) {
 	if d.autoPublisher == nil {
 		return
+	}
+	tool := replyToolForPlatform(review.Platform)
+	if tool == "" {
+		return
+	}
+	if floor, explicit := business.ToolApprovals()[tool]; explicit && floor != domain.ToolFloorAuto {
+		return
+	}
+	if review.Platform == a2a.AgentYandexBusiness {
+		if d.autoPublishRedis == nil {
+			return
+		}
+		count, err := ratelimit.IncrWithHeal(ctx, d.autoPublishRedis, "reviews:auto:yandex:"+business.ID.String(), time.Hour)
+		if err != nil {
+			slog.WarnContext(ctx, "review autopilot: hourly counter unavailable", "business_id", business.ID, "error", err)
+			return
+		}
+		if count > yandexAutoRepliesPerHour {
+			if repo, ok := d.reviewRepo.(deferredAutoReplyRepository); ok {
+				if err := repo.SetAutoReplyDeferred(ctx, business.ID.String(), review.ID, true); err != nil {
+					slog.WarnContext(ctx, "review autopilot: could not defer reply", "review_id", review.ID, "error", err)
+				}
+			}
+			return
+		}
 	}
 	if err := d.autoPublisher.Reply(withAutoPublishSignal(ctx), business.ID, review.ID, draft); err != nil {
 		slog.Warn("review autopilot: auto-publish failed, leaving draft for HITL",
@@ -308,7 +371,7 @@ func (d *ReviewDrafter) publishAutomaticReply(ctx context.Context, business *dom
 //     that an indirect injection steered off-topic is held for HITL;
 //   - rating floor: the rating clears the business-configured minRating (already
 //     clamped to at least ReviewAutopilotMinRatingFloor at read time);
-//   - platform: Yandex.Business is excluded (beta -> HITL only).
+//   - Yandex: a known publication date within the past seven days.
 //
 // draft and needsReview are the values just persisted, so the gate reads the
 // exact stored draft rather than re-loading the row.
@@ -316,7 +379,7 @@ func autopilotShouldPublish(cfg apiplatform.ReviewAutopilotConfig, review *domai
 	if cfg.IgnoreFourStar && review.Rating == apiplatform.ReviewAutopilotMinRatingFloor {
 		return false
 	}
-	if !cfg.Enabled {
+	if !cfg.Enabled || review.Rating > 5 {
 		return false
 	}
 	gate := *review
@@ -333,7 +396,12 @@ func autopilotShouldPublish(cfg apiplatform.ReviewAutopilotConfig, review *domai
 		return false
 	}
 	if review.Platform == a2a.AgentYandexBusiness {
-		return false
+		value, _ := review.PlatformMeta[apiplatform.YandexReviewPublishedAtKey].(string)
+		published, err := time.Parse(time.RFC3339, value)
+		age := time.Since(published)
+		if err != nil || age < 0 || age > yandexAutoReplyMaxAge {
+			return false
+		}
 	}
 	return true
 }
@@ -374,7 +442,7 @@ func isDraftSafeForAutoPublish(draft string) bool {
 // in the auto-publish audit event. It is derived from buildPlatformReply's tool
 // selection so the audit Tool field matches the tool the dispatch actually used.
 // An unknown platform yields "" (the autopilot never reaches an unknown platform
-// because the gate excludes Yandex and only Telegram/VK are eligible today).
+// because the shared publication path refuses an unknown reply tool).
 func replyToolForPlatform(platform string) string {
 	switch platform {
 	case a2a.AgentVK:
@@ -383,6 +451,8 @@ func replyToolForPlatform(platform string) string {
 		return tools.TelegramReplyToComment
 	case a2a.AgentGoogleBusiness:
 		return tools.GoogleBusinessReplyReview
+	case a2a.AgentYandexBusiness:
+		return tools.YandexBusinessReplyReview
 	}
 	return ""
 }

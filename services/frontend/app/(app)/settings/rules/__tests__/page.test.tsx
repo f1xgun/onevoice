@@ -35,7 +35,7 @@ beforeEach(() => {
   delete toolApprovals.vk__reply_comment;
   Object.assign(permission, { allowed: true, isLoading: false, isError: false });
 });
-function mount(config: object, settings: object = {}) {
+function mount(config: object, settings: object = {}, replies: object[] = []) {
   get.mockImplementation((path: string) =>
     Promise.resolve({
       data:
@@ -50,7 +50,7 @@ function mount(config: object, settings: object = {}) {
                 replySignature: '',
               }
             : path === '/reviews'
-              ? []
+              ? replies
               : { name: 'Point', settings },
     })
   );
@@ -176,3 +176,34 @@ it.each([false, true])(
     ).toBeVisible();
   }
 );
+
+it('uses the last sent review reply for tone, ignoring newer factual comments', async () => {
+  mount({ enabled: true, minRating: 5, ignoreFourStar: true, autoAnswerFacts: true }, {}, [
+    {
+      id: 'address',
+      rating: 0,
+      replyStatus: 'replied',
+      replyText: 'Наш адрес: Бажова, 68',
+      createdAt: '2026-11-03T10:00:00Z',
+      repliedAt: '2026-11-03T11:00:00Z',
+    },
+    {
+      id: 'mikhail',
+      rating: 5,
+      replyStatus: 'replied',
+      replyText: 'Михаил, спасибо за отзыв!',
+      createdAt: '2026-11-03T08:00:00Z',
+      repliedAt: '2026-11-03T09:00:00Z',
+    },
+    {
+      id: 'older',
+      rating: 5,
+      replyStatus: 'replied',
+      replyText: 'Старый ответ',
+      createdAt: '2026-11-03T07:00:00Z',
+      repliedAt: '2026-11-03T08:00:00Z',
+    },
+  ]);
+  expect(await screen.findByText('«Михаил, спасибо за отзыв!»')).toBeVisible();
+  expect(screen.queryByText(/Наш адрес:/)).toBeNull();
+});
