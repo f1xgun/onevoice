@@ -3090,7 +3090,7 @@
     "failedReply": "Не удалось подтвердить отправку",
     "retryReply": "Отправить еще раз",
     "permissionLoading": "Проверяем права…",
-    "approvalSummary": "Ждут согласования {count, plural, one {# действие} few {# действия} other {# действий}}",
+    "approvalSummary": "{count, plural, one {Ждет согласования # действие} few {Ждут согласования # действия} other {Ждут согласования # действий}}",
     "driftSummary": "Проверьте {fields}"
   },
   "rulesV2": {
