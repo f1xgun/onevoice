@@ -17,6 +17,7 @@ type queueReviews struct {
 	business string
 	err      error
 	failed   []domain.Review
+	receipt  *domain.Review
 }
 
 func (r *queueReviews) ListByBusinessID(_ context.Context, business string, filter domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -125,4 +126,12 @@ func TestDecisionQueueIncludesFailedRepliesAndCountsThem(t *testing.T) {
 	}
 	require.NotNil(t, failed)
 	require.Equal(t, "Stored failed reply", failed.ReplyText)
+}
+
+func (r *queueReviews) GetByExternalID(_ context.Context, business, _, _ string) (*domain.Review, error) {
+	r.business = business
+	if r.receipt == nil {
+		return nil, domain.ErrReviewNotFound
+	}
+	return r.receipt, nil
 }
