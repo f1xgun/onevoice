@@ -27,6 +27,19 @@ export default function InboxPage() {
   function itemTitle(item: DecisionItem) {
     return item.review?.authorName || t(item.kind);
   }
+  function itemSummary(item: DecisionItem) {
+    if (item.review) return item.review.text;
+    if (item.kind === 'approval_batch' && item.callCount)
+      return t('approvalSummary', { count: item.callCount });
+    if (item.kind === 'drift' && item.drift?.driftFields.length)
+      return t('driftSummary', {
+        count: item.drift.driftFields.length,
+        fields: item.drift.driftFields
+          .map((field) => (tDrift.has(field) ? tDrift(field) : field))
+          .join(', '),
+      });
+    return null;
+  }
   function target(item: DecisionItem) {
     if (item.kind === 'approval_batch') return `/chat/${item.conversationId}`;
     if (item.kind === 'connection') return `/integrations?reconnect=${item.platform}`;
@@ -127,11 +140,12 @@ export default function InboxPage() {
                         <PlatformIcon platform={item.platform ?? 'onevoice'} />
                         <span className="min-w-0">
                           <span className="block font-semibold">{itemTitle(item)}</span>
-                          <span className="block text-meta text-ink-soft">{t(item.kind)}</span>
-                          <span className="line-clamp-2 text-reading">
-                            {item.review?.text ??
-                              t(`${item.kind}Body`, { count: item.callCount ?? 0 })}
-                          </span>
+                          {item.review && (
+                            <span className="block text-meta text-ink-soft">{t(item.kind)}</span>
+                          )}
+                          {itemSummary(item) && (
+                            <span className="line-clamp-2 text-reading">{itemSummary(item)}</span>
+                          )}
                         </span>
                       </button>
                     </li>

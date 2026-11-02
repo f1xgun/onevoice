@@ -24,6 +24,7 @@ import { useTools } from '@/lib/hooks/useTools';
 import { useBusinessToolApprovals } from '@/lib/hooks/useBusinessToolApprovals';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { normalizeStoredTones } from '@/lib/tones';
+import { cn } from '@/lib/utils';
 import type { Business } from '@/types/business';
 
 const MAX_RATING = 5;
@@ -74,6 +75,10 @@ export default function RulesPage() {
     onError: () => toast.error(t('failed')),
   });
   const config = autopilot.data;
+  const profile =
+    typeof business.data?.settings?.voiceProfile === 'string'
+      ? business.data.settings.voiceProfile.trim()
+      : '';
   const canEdit = permission.allowed && !permission.isError && !permission.isLoading;
   const fourMode = config?.ignoreFourStar
     ? 'skip'
@@ -100,7 +105,7 @@ export default function RulesPage() {
             };
     save.mutate({ id: businessId, config: next });
   }
-  function row(title: string, value: string, onClick?: () => void) {
+  function row(title: string, value: string, onClick?: () => void, isEmpty = false) {
     return (
       <button
         type="button"
@@ -111,7 +116,9 @@ export default function RulesPage() {
       >
         <span>
           <span className="block text-base text-ink">{title}</span>
-          <span className="mt-1 block text-sm text-ink-mid">{value}</span>
+          <span className={cn('mt-1 block text-sm', isEmpty ? 'text-ink-soft' : 'text-ink-mid')}>
+            {value}
+          </span>
         </span>
         {onClick && <ChevronRight className="h-4 w-4 shrink-0 text-ink-mid" aria-hidden />}
       </button>
@@ -221,13 +228,7 @@ export default function RulesPage() {
                 .join(', ') || t('noTone'),
               business.isSuccess ? () => setEditor('tone') : undefined
             )}
-            {row(
-              t('profile'),
-              typeof business.data?.settings?.voiceProfile === 'string'
-                ? business.data.settings.voiceProfile || t('profile')
-                : t('profile'),
-              () => setEditor('profile')
-            )}
+            {row(t('profile'), profile || t('profileEmpty'), () => setEditor('profile'), !profile)}
           </div>
           {business.isError && (
             <p role="alert" className="mt-2 text-danger">

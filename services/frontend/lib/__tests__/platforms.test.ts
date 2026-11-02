@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import ru from '@/messages/ru.json';
+import en from '@/messages/en.json';
 
 import {
   PLATFORM_STATIC_META,
@@ -45,6 +47,21 @@ const REGISTRY_DEFAULT_STATUS: ReadonlyMap<PlatformId, 'active' | 'coming_soon'>
 // invariants, not the localized copy.
 const tFullLabel = (id: PlatformId) => `label:${id}`;
 const tPlatforms = (key: 'comingSoonWhen') => `coming-soon-when:${key}`;
+
+it.each([
+  [ru, 'Яндекс Карты', 'Яндекс Бизнес'],
+  [en, 'Yandex Maps', 'Yandex Business'],
+] as const)(
+  'uses the customer-facing Yandex name while naming its dashboard in instructions',
+  (messages, label, dashboard) => {
+    const labels = createPlatformFullLabels((id) => messages.platforms.fullLabel[id]);
+    expect(labels.yandex_business).toBe(label);
+    expect(messages.reviews.platformLabels.yandex_business).toBe(label);
+    expect(messages.posts.platforms.yandexBusiness).toBe(label);
+    expect(messages.landing.platforms.yandex_business.display).toBe(label);
+    expect(messages.integrations.yandexBusiness.delegated.step1).toContain(dashboard);
+  }
+);
 
 describe('PLATFORM_STATIC_META parity with backend registry', () => {
   it('declares the same platform ids as pkg/domain/platform.go', () => {

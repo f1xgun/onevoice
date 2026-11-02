@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useBusinessStore } from '@/lib/stores/business';
@@ -142,6 +142,20 @@ it('opens the whole approval batch without resolving or rejecting sibling calls'
     '/chat/conversation-1'
   );
   expect(apiPost).not.toHaveBeenCalled();
+});
+it('shows useful system details once and keeps review type labels', () => {
+  renderPage();
+  const approval = screen.getByRole('button', { name: /Поручение ждет решения/ });
+  expect(within(approval).getAllByText('Поручение ждет решения')).toHaveLength(1);
+  expect(approval).toHaveTextContent('Ждут согласования 2 действия');
+  const connection = screen.getByRole('button', { name: /Нужно переподключить площадку/ });
+  expect(within(connection).getAllByText('Нужно переподключить площадку')).toHaveLength(1);
+  expect(within(connection).queryByText('Доступ к площадке требует восстановления.')).toBeNull();
+  const drift = screen.getByRole('button', { name: /Данные на площадке отличаются/ });
+  expect(within(drift).getAllByText('Данные на площадке отличаются')).toHaveLength(1);
+  expect(drift).toHaveTextContent('Проверьте часы работы');
+  expect(screen.getByText('Отзыв')).toBeInTheDocument();
+  expect(screen.getByText('Яндекс Карты')).toBeInTheDocument();
 });
 it('opens profile drift in the card comparison and preserves reconnect destinations', async () => {
   renderPage();

@@ -665,7 +665,7 @@
     },
     "platforms": {
       "telegram": "Telegram",
-      "yandexBusiness": "Yandex.Business"
+      "yandexBusiness": "Yandex Maps"
     },
     "platformShort": {
       "telegram": "Telegram",
@@ -802,7 +802,7 @@
       "tokenGeneric": "OneVoice lost access to the platform. Reconnect the channel to continue.",
       "reconnectVk": "Reconnect VK",
       "reconnectTelegram": "Reconnect Telegram",
-      "reconnectYandex": "Reconnect Yandex.Business",
+      "reconnectYandex": "Reconnect Yandex Maps",
       "reconnectGoogle": "Reconnect Google",
       "reconnect": "Reconnect",
       "rateLimit": "The platform limited requests. Open chat, check the result and request another attempt in a few minutes if needed.",
@@ -927,31 +927,31 @@
         "yandex_business": {
           "get_info": {
             "name": "Load profile",
-            "description": "Loads the organization profile from Yandex Business."
+            "description": "Loads the organization profile from Yandex Maps."
           },
           "update_hours": {
             "name": "Update business hours",
-            "description": "Updates organization opening hours in Yandex Business."
+            "description": "Updates organization opening hours in Yandex Maps."
           },
           "update_info": {
             "name": "Update organization info",
-            "description": "Updates the organization description and phone number in Yandex Business."
+            "description": "Updates the organization description and phone number in Yandex Maps."
           },
           "get_reviews": {
             "name": "Load Yandex reviews",
-            "description": "Loads customer reviews from Yandex Business."
+            "description": "Loads customer reviews from Yandex Maps."
           },
           "reply_review": {
             "name": "Reply to Yandex review",
-            "description": "Replies to a customer review in Yandex Business."
+            "description": "Replies to a customer review in Yandex Maps."
           },
           "upload_photo": {
             "name": "Upload photo",
-            "description": "Adds a photo to the organization profile gallery in Yandex Business."
+            "description": "Adds a photo to the organization profile gallery in Yandex Maps."
           },
           "create_post": {
-            "name": "Publish Yandex Business post",
-            "description": "Publishes a post in Yandex Business."
+            "name": "Publish a post on Yandex Maps",
+            "description": "Publishes a post in Yandex Maps."
           }
         },
         "google_business": {
@@ -987,7 +987,7 @@
     "replyToast": "Reply sent",
     "platformOptions": {
       "all": "All platforms",
-      "yandexBusiness": "Yandex.Business",
+      "yandexBusiness": "Yandex Maps",
       "google": "Google",
       "twoGis": "2GIS",
       "telegram": "Telegram",
@@ -1073,7 +1073,7 @@
     },
     "ratingAria": "Rating: {rating} out of 5",
     "platformLabels": {
-      "yandex_business": "Yandex.Business",
+      "yandex_business": "Yandex Maps",
       "yandex": "Yandex",
       "google": "Google",
       "google_business": "Google Business",
@@ -1293,14 +1293,14 @@
       "stored": "Your data",
       "noPlatforms": "Connect platforms to compare your location card.",
       "repair": "Fix everywhere",
-      "specialDestination": "Save special dates in OneVoice and send them to connected Yandex Business."
+      "specialDestination": "Save special dates in OneVoice and send them to connected Yandex Maps."
     }
   },
   "platforms": {
     "fullLabel": {
       "telegram": "Telegram",
       "vk": "VK",
-      "yandex_business": "Yandex.Business",
+      "yandex_business": "Yandex Maps",
       "google_business": "Google Business",
       "2gis": "2GIS",
       "avito": "Avito",
@@ -1397,7 +1397,7 @@
           "tg_no_post_rights": "The bot can't post messages — grant that permission in the channel settings.",
           "vk_wall_scope_missing": "OneVoice can no longer publish to the community — reconnect VK.",
           "vk_token_invalid": "Access to the community ended — reconnect VK.",
-          "yandex_session_expired": "Access to Yandex.Business expired — reconnect the organization, it takes about two minutes."
+          "yandex_session_expired": "Access to Yandex Business expired — reconnect the organization, it takes about two minutes."
         }
       },
       "linkedGroupOk": "The bot is in the discussion group — comments will be collected.",
@@ -1425,7 +1425,8 @@
         "title": "name",
         "description": "description",
         "website": "website",
-        "schedule": "business hours"
+        "schedule": "business hours",
+        "phone": "phone"
       },
       "alerts": {
         "title": "Notify me when platform data changes",
@@ -1484,9 +1485,9 @@
       "continuing": "Opening VK…"
     },
     "yandexBusiness": {
-      "title": "Connect Yandex.Business",
+      "title": "Connect Yandex Maps",
       "whyCookies": "Why cookies?",
-      "whyCookiesBody": "Yandex.Business doesn't have a public API for managing reviews and company info, so OneVoice works through your session — as if you'd opened the site yourself. Cookies are stored encrypted and only used by our automation.",
+      "whyCookiesBody": "Yandex Business doesn't have a public API for managing reviews and company info, so OneVoice works through your session — as if you'd opened the site yourself. Cookies are stored encrypted and only used by our automation.",
       "howToCopy": "How to copy cookies",
       "step1Prefix": "Install the ",
       "step1Link": "Cookie-Editor",
@@ -1506,7 +1507,7 @@
       "cancel": "Cancel",
       "next": "Next",
       "searching": "Looking up your organizations on Yandex…",
-      "searchingBody": "This may take up to a minute. We're opening Yandex.Business on your behalf to fetch the list.",
+      "searchingBody": "This may take up to a minute. We're opening Yandex Business on your behalf to fetch the list.",
       "pastePlaceholder": "Paste here: a JSON array, a \"Cookie:\" header, or Session_id=…",
       "formatLabels": {
         "json": "JSON array (Cookie-Editor)",
@@ -1534,7 +1535,7 @@
       "connectedToast": "Connected: {name}",
       "delegated": {
         "intro": "Add the OneVoice representative in your organization's Yandex Access section, and we'll finish the connection.",
-        "step1": "Open Yandex.Business and go to the «Access» section of your organization.",
+        "step1": "Open Yandex Business and go to the «Access» section of your organization.",
         "step2": "Add an employee with the login shown below and the «Administrator» or «Manager» role.",
         "repLoginLabel": "OneVoice representative login",
         "copy": "Copy",
@@ -1550,7 +1551,7 @@
         "backToDelegated": "← Back to the simple method",
         "working": "Connecting and checking access…",
         "workingBody": "We're opening your organization as the representative. This can take up to a minute.",
-        "verifiedToast": "Yandex.Business connected",
+        "verifiedToast": "Yandex Maps connected",
         "unverifiedTitle": "We don't see access yet",
         "unverifiedBody": "Make sure you added the representative in the «Access» section and that the link points to your organization. Then check again.",
         "retry": "Check again",
@@ -1558,7 +1559,7 @@
         "connectFailed": "Couldn't connect the organization",
         "verifyFailed": "Could not verify access. Try again later."
       },
-      "preparing": "Yandex.Business connection is being prepared: access delegation will be available in the coming days.",
+      "preparing": "Yandex Maps connection is being prepared: access delegation will be available in the coming days.",
       "security": "You can end the connection at any time in your Yandex account.",
       "configFailed": "Could not load connection settings. Try opening this dialog later."
     },
@@ -1873,7 +1874,7 @@
         "0": {
           "kicker": "01 · One inbox",
           "title": "Every channel in one list",
-          "body": "Messages, reviews, and comments from Telegram, VK, and Yandex.Business land in a single stream. No tab-hopping, no forgotten threads."
+          "body": "Messages, reviews, and comments from Telegram, VK, and Yandex Maps land in a single stream. No tab-hopping, no forgotten threads."
         },
         "1": {
           "kicker": "02 · Drafts",
@@ -1957,7 +1958,7 @@
       "steps": {
         "0": {
           "title": "Connect",
-          "body": "Connect Telegram, VK, and Yandex Business step by step inside OneVoice."
+          "body": "Connect Telegram, VK, and Yandex Maps step by step inside OneVoice."
         },
         "1": {
           "title": "Tell us",
@@ -1984,7 +1985,7 @@
         "meta": "Communities"
       },
       "yandex_business": {
-        "display": "Yandex.Business",
+        "display": "Yandex Maps",
         "meta": "Map and reviews"
       },
       "google_business": {
@@ -2090,7 +2091,7 @@
         },
         "2": {
           "q": "How long does setup take?",
-          "a": "Usually 10–15 minutes for all the channels: Telegram and VK connect in a couple of minutes each, Yandex Business takes a little longer. We help beta members connect personally — if something doesn't work, we sort it out together the same day."
+          "a": "Usually 10–15 minutes for all the channels: Telegram and VK connect in a couple of minutes each, Yandex Maps takes a little longer. We help beta members connect personally — if something doesn't work, we sort it out together the same day."
         },
         "3": {
           "q": "I'm not tech-savvy. Can I handle it?",
@@ -2181,7 +2182,7 @@
         "body": "Share new opening hours or an offer. Review the draft for your organization’s visitors and approve sending to the selected platform."
       },
       "replies": {
-        "platforms": "Yandex.Business",
+        "platforms": "Yandex Maps",
         "title": "Reply to a review",
         "body": "Request a reply to a review, then refine the details and tone. The text is sent only after your approval."
       }
@@ -2346,7 +2347,7 @@
       "benefitsBody": "After signing up we'll connect channels (Telegram, VK, Yandex…). You can finish in a couple of minutes or come back later.",
       "benefits": {
         "channelsTitle": "One conversation — every channel",
-        "channelsBody": "Telegram, VK, Yandex.Business reply with one command, no jumping between tabs.",
+        "channelsBody": "Telegram, VK, Yandex Maps reply with one command, no jumping between tabs.",
         "voiceTitle": "AI in your voice",
         "voiceBody": "Describe the tone once — to \"Hello, it's quiet on Wednesdays\" it won't reply \"Hey! 👋\".",
         "calmTitle": "Calmer mornings",
@@ -2819,7 +2820,7 @@
       "connect": "Connect a channel",
       "viewDemo": "View demo",
       "title": "Connect your first channel",
-      "body": "Telegram, VK, or Yandex.Business — your choice. Messages and reviews will land in your shared inbox."
+      "body": "Telegram, VK, or Yandex Maps — your choice. Messages and reviews will land in your shared inbox."
     },
     "emptyInbox": {
       "openArchive": "Open archive",
@@ -3088,7 +3089,9 @@
     "editDraft": "Edit draft",
     "failedReply": "Sending could not be confirmed",
     "retryReply": "Send again",
-    "permissionLoading": "Checking permissions…"
+    "permissionLoading": "Checking permissions…",
+    "approvalSummary": "{count, plural, one {# action awaits} other {# actions await}} approval",
+    "driftSummary": "Check {fields}"
   },
   "rulesV2": {
     "title": "OneVoice rules",
@@ -3125,7 +3128,8 @@
     "unknown": "Rule has not loaded yet",
     "noTone": "Tone not chosen yet",
     "facts": "Address and regular hours",
-    "ratingCoupling": "Automatic 4-star replies also enable 5-star replies. Turning off 5-star replies also makes 4-star replies manual; “does not reply” stays unchanged."
+    "ratingCoupling": "Automatic 4-star replies also enable 5-star replies. Turning off 5-star replies also makes 4-star replies manual; “does not reply” stays unchanged.",
+    "profileEmpty": "Not filled in"
   },
   "launchV2": {
     "step": "Step {step} of 3",

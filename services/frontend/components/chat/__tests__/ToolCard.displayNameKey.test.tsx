@@ -64,7 +64,7 @@ describe('ToolCard — displayNameKey rendering', () => {
 });
 
 it.each([
-  ['yandex_business__update_hours', 'Обновить часы работы', 'Яндекс.Бизнес'],
+  ['yandex_business__update_hours', 'Обновить часы работы', 'Яндекс Карты'],
   ['vk__publish_post', 'Опубликовать пост', 'ВКонтакте'],
   ['telegram__send_channel_post', 'Отправить пост', 'Telegram'],
 ])('localizes a legacy %s action with a platform logo', (name, action, platform) => {
