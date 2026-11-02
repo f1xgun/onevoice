@@ -85,7 +85,7 @@ export function BusinessSwitcher() {
         title={triggerAria}
         disabled={isLoading}
         className={cn(
-          'mb-4 flex min-h-11 w-full items-center gap-2.5 rounded-inner px-2.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+          'mb-4 flex min-h-11 w-full items-center gap-2.5 rounded-inner py-2 pl-2.5 pr-0 text-sm font-medium text-ink transition-colors hover:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
         )}
       >
         <span
@@ -95,7 +95,7 @@ export function BusinessSwitcher() {
           {active ? initials : <Plus size={18} />}
         </span>
         <span className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-base font-semibold leading-5">
+          <span className="block truncate text-[15px] font-semibold leading-5">
             {active?.name || triggerAria}
           </span>
           {profile?.address && (
