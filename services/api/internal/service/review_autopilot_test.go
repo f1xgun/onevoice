@@ -188,39 +188,6 @@ func TestAutopilot_NeedsReviewPositive_NoPublish(t *testing.T) {
 	}
 }
 
-// Yandex.Business + opted-in + positive (rating 5) -> never published; the SAME
-// test proves a Telegram positive under the same settings IS published, so the
-// exclusion is platform-specific, not a blanket off.
-func TestAutopilot_YandexExcluded_ButTelegramPublished(t *testing.T) {
-	pub := &fakeAutoPublisher{}
-	d := newAutopilotDrafter(t, pub, audit.Nop(), "Спасибо!")
-	biz := businessWithID()
-	biz.Settings = autopilotSettings(true, 4)
-
-	yandex := positiveTelegramReview()
-	yandex.ID = "y1"
-	yandex.Platform = "yandex_business"
-	yandex.ExternalID = "yandex-ext-1"
-	if err := runDraftOne(t, d, biz, yandex); err != nil {
-		t.Fatalf("unexpected error (yandex): %v", err)
-	}
-	if pub.count() != 0 {
-		t.Fatalf("yandex_business must be excluded from auto-publish, got %d calls", pub.count())
-	}
-
-	tg := positiveTelegramReview()
-	tg.ID = "t1"
-	if err := runDraftOne(t, d, biz, tg); err != nil {
-		t.Fatalf("unexpected error (telegram): %v", err)
-	}
-	if pub.count() != 1 {
-		t.Fatalf("telegram positive must publish, got %d calls", pub.count())
-	}
-	if pub.calls[0].ReviewID != "t1" {
-		t.Fatalf("published wrong review: %+v", pub.calls[0])
-	}
-}
-
 // Positive + opted-in + non-Yandex + ready draft -> published exactly once with
 // the drafted reply; a second generateOne over the SAME review is a no-op via
 // the already-answered short-circuit (retry stays exec-1 through the shared
@@ -391,7 +358,7 @@ func TestAutopilot_FailOnRevert_GuardMatrix(t *testing.T) {
 			wantPublish: false,
 		},
 		{
-			name: "yandex blocks (platform-exclusion guard)",
+			name: "yandex without known publication date stays manual",
 			cfg:  apiplatform.ReviewAutopilotConfig{Enabled: true, MinRating: 4},
 			review: func() *domain.Review {
 				r := tgReady(5)

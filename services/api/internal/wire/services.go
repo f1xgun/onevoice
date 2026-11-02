@@ -493,6 +493,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		cfg.ReviewDraftMaxExamples,
 		cfg.ReviewDraftBatchLimit,
 	)
+	reviewDrafter.SetAutoPublishRedis(h.Redis)
 
 	if h.NATS != nil {
 		var passiveDrafter service.DraftPassRunner

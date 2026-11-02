@@ -92,7 +92,7 @@ export default function RulesPage() {
   const signature = voice.data?.replySignature.trim() ?? '';
   const tones = normalizeStoredTones(business.data?.settings?.voiceTone);
   const lastReply = reviews.data
-    ?.filter((review) => review.replyStatus === 'replied' && review.replyText)
+    ?.filter((review) => review.rating > 0 && review.replyStatus === 'replied' && review.replyText)
     .sort((a, b) =>
       (b.repliedAt || b.createdAt).localeCompare(a.repliedAt || a.createdAt)
     )[0]?.replyText;

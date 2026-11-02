@@ -246,3 +246,17 @@ it('shows a partial capability limitation without calling the channel broken', (
   expect(screen.getByText('Ограничено')).toBeVisible();
   expect(screen.queryByText('Ошибка подключения')).not.toBeInTheDocument();
 });
+
+it('keeps one normal space before the check-time separator', () => {
+  render(
+    <Wrapper>
+      <PlatformCard
+        {...baseProps}
+        platform="telegram"
+        integrations={responses.active.body}
+        checkedAt="07:00"
+      />
+    </Wrapper>
+  );
+  expect(screen.getByText('Работает · проверили в 7:00')).toBeVisible();
+});

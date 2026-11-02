@@ -571,6 +571,11 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 		rating = int(v)
 	case int:
 		rating = v
+	case string:
+		parsed, err := strconv.Atoi(v)
+		if err == nil && parsed >= 1 && parsed <= 5 {
+			rating = parsed
+		}
 	}
 
 	createdAt := time.Now()
@@ -585,7 +590,7 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 		replyStatus = "replied"
 	}
 
-	return &domain.Review{
+	review := &domain.Review{
 		ID:           uuid.NewString(),
 		BusinessID:   businessID,
 		Platform:     platform,
@@ -598,6 +603,14 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 		CreatedAt:    createdAt,
 		PlatformMeta: domain.PlatformMetaFromMap(m),
 	}
+	if platform == a2a.AgentYandexBusiness {
+		review.PlatformMeta = map[string]interface{}{}
+		if published, known := platformsync.YandexReviewPublishedAt(m, time.Now()); known {
+			review.PlatformMeta[platformsync.YandexReviewPublishedAtKey] = published.Format(time.RFC3339)
+			review.CreatedAt = published
+		}
+	}
+	return review
 }
 
 // replyReviewExternalID extracts, from a successful reply tool's arguments, the

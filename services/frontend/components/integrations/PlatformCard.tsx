@@ -174,18 +174,20 @@ export function PlatformCard({
               )}
             />
           )}
-          {integrations.some((i) => i.status === 'token_expired')
-            ? tCard('status.token_expired')
-            : tCard(
-                connection === 'connected'
-                  ? 'working'
-                  : connection === 'disconnected'
-                    ? 'notConnected'
-                    : `connection.${connection}`
-              )}
-          {connection === 'connected' && checkedAt && formatClockTime(checkedAt) && (
-            <span>{tCard('checkedAt', { time: formatClockTime(checkedAt) })}</span>
-          )}
+          <span>
+            {integrations.some((i) => i.status === 'token_expired')
+              ? tCard('status.token_expired')
+              : tCard(
+                  connection === 'connected'
+                    ? 'working'
+                    : connection === 'disconnected'
+                      ? 'notConnected'
+                      : `connection.${connection}`
+                )}
+            {connection === 'connected' && checkedAt && formatClockTime(checkedAt)
+              ? ` ${tCard('checkedAt', { time: formatClockTime(checkedAt) })}`
+              : ''}
+          </span>
         </p>
         {integrations.some((i) => readConnectionHealth(i.metadata)?.status === 'degraded') && (
           <p className="mt-1 text-meta text-warning">{tCard('health.degradedLabel')}</p>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	apiplatform "github.com/f1xgun/onevoice/services/api/internal/platform"
 )
 
 // reviewSyncBatchSize is the per-call review/comment fetch limit. 50 matches
@@ -315,6 +317,11 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 		rating = int(v)
 	case int:
 		rating = v
+	case string:
+		parsed, err := strconv.Atoi(v)
+		if err == nil && parsed >= 1 && parsed <= 5 {
+			rating = parsed
+		}
 	}
 
 	createdAt := time.Now()
@@ -331,7 +338,7 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 		replyStatus = "replied"
 	}
 
-	return &domain.Review{
+	review := &domain.Review{
 		ID:           uuid.NewString(),
 		BusinessID:   businessID,
 		Platform:     platform,
@@ -344,6 +351,14 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 		CreatedAt:    createdAt,
 		PlatformMeta: domain.PlatformMetaFromMap(m),
 	}
+	if platform == a2a.AgentYandexBusiness {
+		review.PlatformMeta = map[string]interface{}{}
+		if published, known := apiplatform.YandexReviewPublishedAt(m, time.Now()); known {
+			review.PlatformMeta[apiplatform.YandexReviewPublishedAtKey] = published.Format(time.RFC3339)
+			review.CreatedAt = published
+		}
+	}
+	return review
 }
 
 // externalIDFromMap returns a stable, unique-per-platform identifier for the
