@@ -162,8 +162,7 @@ export default function RulesPage() {
       mode:
         tool.floor === 'forbidden'
           ? 'forbidden'
-          : tool.floor === 'auto' &&
-              approvals.data?.[tool.name] !== 'manual' &&
+          : (!approvals.data?.[tool.name] || approvals.data[tool.name] === 'auto') &&
               config?.autoAnswerFacts
             ? 'factsAuto'
             : 'manual',
@@ -195,7 +194,13 @@ export default function RulesPage() {
   }
   return (
     <>
-      <header className="max-w-[816px] px-gutter pb-title-gap pt-group md:px-gutter-desktop">
+      <header className="max-w-[816px] px-gutter pb-title-gap pt-2 md:px-gutter-desktop xl:pt-group">
+        <Link
+          href="/settings"
+          className="mb-2 inline-flex min-h-6 items-center text-[15px] text-brand xl:hidden"
+        >
+          {t('backSettings')}
+        </Link>
         <h1 className="text-page-title">{t('title')}</h1>
         <p className="mt-1 text-ink-mid">{t('sub')}</p>
       </header>

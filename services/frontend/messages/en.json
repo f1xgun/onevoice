@@ -3155,7 +3155,8 @@
     "toneExample": "Example of your chosen tone",
     "warmExample": "Thank you for sharing your experience! We’re glad you enjoyed your visit. We’d love to see you again.",
     "shortExample": "Thank you for your review. We’re glad you enjoyed your visit. See you again!",
-    "quote": "“{text}”"
+    "quote": "“{text}”",
+    "backSettings": "← Settings"
   },
   "launchV2": {
     "step": "Step {step} of 3",

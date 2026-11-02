@@ -9,7 +9,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { BusinessSwitcher } from '@/components/business-switcher/BusinessSwitcher';
 
@@ -25,13 +24,13 @@ export function Sidebar() {
       </div>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <Button
-            variant="ghost"
+          <button
+            type="button"
             aria-label={tSide('toggleAria')}
-            className="px-0 text-brand xl:hidden"
+            className="min-h-11 min-w-11 text-base font-medium text-brand xl:hidden"
           >
             {tSide('menuButton')}
-          </Button>
+          </button>
         </SheetTrigger>
         <SheetContent
           data-ov-motion

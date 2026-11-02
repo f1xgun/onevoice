@@ -7,6 +7,7 @@ import RulesPage from '../page';
 
 const get = vi.fn();
 const put = vi.fn();
+const toolApprovals: Record<string, string> = {};
 const permission = { allowed: true, isLoading: false, isError: false, refetch: vi.fn() };
 vi.mock('@/lib/stores/business', () => ({
   useBusinessStore: (selector: (s: { activeBusinessId: string }) => unknown) =>
@@ -16,13 +17,13 @@ vi.mock('@/lib/api/business-api', () => ({ bizApi: () => ({ get, put }) }));
 vi.mock('@/lib/hooks/usePermission', () => ({ usePermission: () => permission }));
 vi.mock('@/lib/hooks/useTools', () => ({
   useTools: () => ({
-    data: [{ name: 'vk__reply_comment', platform: 'vk', floor: 'auto' }],
+    data: [{ name: 'vk__reply_comment', platform: 'vk', floor: 'manual' }],
     isLoading: false,
     isError: false,
   }),
 }));
 vi.mock('@/lib/hooks/useBusinessToolApprovals', () => ({
-  useBusinessToolApprovals: () => ({ data: {}, isLoading: false, isError: false }),
+  useBusinessToolApprovals: () => ({ data: toolApprovals, isLoading: false, isError: false }),
 }));
 vi.mock('@/components/business/VoiceToneSection', () => ({ VoiceToneSection: () => null }));
 vi.mock('@/components/business/VoiceProfileSection', () => ({
@@ -31,6 +32,7 @@ vi.mock('@/components/business/VoiceProfileSection', () => ({
 beforeEach(() => {
   get.mockReset();
   put.mockReset();
+  delete toolApprovals.vk__reply_comment;
   Object.assign(permission, { allowed: true, isLoading: false, isError: false });
 });
 function mount(config: object, settings: object = {}) {
@@ -161,3 +163,16 @@ it('edits factual replies independently while preserving rating and ignore setti
     })
   );
 });
+
+it.each([false, true])(
+  'shows factual auto-replies unless the owner explicitly chose manual (%s)',
+  async (manual) => {
+    if (manual) toolApprovals.vk__reply_comment = 'manual';
+    mount({ enabled: true, minRating: 5, ignoreFourStar: true, autoAnswerFacts: true });
+    expect(
+      await screen.findByRole('button', {
+        name: `Вопросы про адрес и часы: ${manual ? 'Готовит черновик вам' : 'Отвечает сам по карточке точки'}`,
+      })
+    ).toBeVisible();
+  }
+);

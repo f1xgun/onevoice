@@ -95,7 +95,9 @@ export function BusinessSwitcher() {
           {active ? initials : <Plus size={18} />}
         </span>
         <span className="min-w-0 flex-1 text-left">
-          <span className="block truncate font-semibold">{active?.name || triggerAria}</span>
+          <span className="block truncate text-base font-semibold leading-5">
+            {active?.name || triggerAria}
+          </span>
           {profile?.address && (
             <span
               className="block truncate text-sm font-normal text-ink-soft"

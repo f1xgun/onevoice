@@ -127,7 +127,7 @@ export function PlatformCard({
     <>
       <PlatformIcon platform={platform} />
       <div className="min-w-0 flex-1">
-        <h2 className="text-reading font-semibold">{label}</h2>
+        <h2 className="text-base font-semibold leading-[22px]">{label}</h2>
         {integrations.length === 0 ? (
           <p className="mt-1 text-meta text-ink-soft">{description}</p>
         ) : (
@@ -146,7 +146,7 @@ export function PlatformCard({
             const health = readConnectionHealth(i.metadata);
             const reason = health?.reason_code ? `health.reason.${health.reason_code}` : '';
             return (
-              <div key={i.id} className="mt-1 break-words text-reading text-ink-soft">
+              <div key={i.id} className="mt-1 break-words text-[15px] leading-[22px] text-ink-soft">
                 {(name || secondary) && <p>{[name, secondary].filter(Boolean).join(' · ')}</p>}
                 {(health?.status === 'broken' || health?.status === 'degraded') &&
                   reason &&
@@ -159,7 +159,7 @@ export function PlatformCard({
         )}
         <p
           className={cn(
-            'mt-1 flex items-start gap-2 text-reading',
+            'mt-1 flex items-start gap-1.5 text-[15px] leading-[22px]',
             needsReconnect ? 'text-danger' : 'text-ink'
           )}
         >
