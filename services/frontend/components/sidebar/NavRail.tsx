@@ -11,6 +11,8 @@ import { useAuthStore } from '@/lib/auth';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { useLogout } from '@/lib/hooks/useLogout';
 import { useDecisionQueue } from '@/hooks/useDecisionQueue';
+import { useBusinessList } from '@/lib/hooks/useBusinessList';
+import { useBusinessStore } from '@/lib/stores/business';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -45,6 +47,12 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
   const router = useRouter();
   const tNav = useTranslations('nav');
   const tSidebar = useTranslations('sidebar');
+  const tRoles = useTranslations('team.roles');
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const businesses = useBusinessList();
+  const role = businesses.data?.find((business) => business.id === activeBusinessId)?.role.name;
+  const roleLabel =
+    role === 'admin' ? tNav('administrator') : role && tRoles.has(role) ? tRoles(role) : role;
   const user = useAuthStore((s) => s.user);
   const { allowed: canReadBilling } = usePermission('billing.read');
   const logout = useLogout();
@@ -66,7 +74,7 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
         expanded ? 'min-h-full w-full gap-2 px-3 pt-0' : 'h-dvh w-[232px] overflow-y-auto'
       )}
     >
-      <div className={expanded ? 'pr-10 [&>button]:mb-0' : undefined}>
+      <div className={expanded ? 'pr-10 [&>button]:mb-0 [&>button]:px-0' : undefined}>
         <BusinessSwitcher />
       </div>
       <nav
@@ -131,10 +139,9 @@ export function NavRail({ onNavigate, expanded = false }: NavRailProps = {}) {
       </nav>
       <details className="mt-auto pt-7" open={expanded || undefined}>
         <summary className="cursor-pointer list-none rounded-inner px-2.5 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
-          <span className="block break-words font-semibold">
-            {user?.name || user?.email || tNav('account')}
-          </span>
-          {user?.name && <span className="block break-words text-ink-soft">{user.email}</span>}
+          <span className="block break-words font-semibold">{user?.name || tNav('account')}</span>
+          {roleLabel && <span className="block text-ink-soft">{roleLabel}</span>}
+          {expanded && <span className="block break-words text-ink-soft">{user?.email}</span>}
         </summary>
         <div className={cn('mt-2 rounded-block bg-paper-raised p-1', expanded && 'p-1')}>
           <AppearanceControls variant="navigation" />

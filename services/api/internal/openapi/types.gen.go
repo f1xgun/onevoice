@@ -2189,6 +2189,9 @@ type UpdateToolApprovalsRequest struct {
 
 // UpdateVoiceProfileRequest defines model for UpdateVoiceProfileRequest.
 type UpdateVoiceProfileRequest struct {
+	// ReplySignature Signature for customer replies. Omitted fields keep their stored value.
+	ReplySignature *string `json:"replySignature,omitempty" validate:"omitempty,max=200"`
+
 	// VoiceProfile Free-form brand-voice profile (do/don't phrases, emoji policy,
 	// short exemplars) that governs the AI chat loop and the review
 	// drafter. A non-empty value is stored verbatim; an empty string
@@ -2292,6 +2295,9 @@ type VersionMismatchResponseCode string
 
 // VoiceProfileResponse defines model for VoiceProfileResponse.
 type VoiceProfileResponse struct {
+	// ReplySignature Separately stored signature, falling back to the legacy profile line.
+	ReplySignature *string `json:"replySignature,omitempty"`
+
 	// VoiceProfile Stored brand-voice profile; empty string when unset.
 	VoiceProfile string `json:"voiceProfile" validate:"required"`
 }

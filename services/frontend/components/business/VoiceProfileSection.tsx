@@ -4,13 +4,13 @@ import { LoadingPlaceholder } from '@/components/states/LoadingPlaceholder';
 
 import { useEffect, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
-import { AppTextarea as Textarea } from '@/components/design-system/AppInput';
+import { AppInput, AppTextarea as Textarea } from '@/components/design-system/AppInput';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { Skeleton } from '@/components/ui/skeleton';
 import { bizApi } from '@/lib/api/business-api';
@@ -19,18 +19,23 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { useBusinessStore } from '@/lib/stores/business';
 import { cn } from '@/lib/utils';
+import { useBusinessVoice, type BusinessVoice } from '@/lib/hooks/useBusinessVoice';
 
 export const VOICE_PROFILE_MAX_LENGTH = 400;
+export const REPLY_SIGNATURE_MAX_LENGTH = 200;
 
-const voiceProfileResponseSchema = z.object({ voiceProfile: z.string() });
 const voiceProfileFormSchema = z.object({
   voiceProfile: z.string().refine((value) => Array.from(value).length <= VOICE_PROFILE_MAX_LENGTH),
+  replySignature: z
+    .string()
+    .refine((value) => Array.from(value).length <= REPLY_SIGNATURE_MAX_LENGTH),
 });
 
 type VoiceProfileFormValues = z.infer<typeof voiceProfileFormSchema>;
 interface VoiceProfileMutationVariables {
   businessId: string;
   profile: string;
+  signature: string;
 }
 
 export function VoiceProfileSection() {
@@ -40,15 +45,7 @@ export function VoiceProfileSection() {
   const readPerm = usePermission('business.read');
   const editPerm = usePermission('business.update');
 
-  const profileQuery = useQuery<string>({
-    queryKey: QUERY_KEYS.BUSINESS_VOICE_PROFILE(activeBusinessId),
-    queryFn: async () => {
-      const response = await bizApi(activeBusinessId!).get(BIZ_API_PATHS.BUSINESS.VOICE_PROFILE);
-      return voiceProfileResponseSchema.parse(response.data).voiceProfile;
-    },
-    enabled: !!activeBusinessId && readPerm.allowed,
-    retry: false,
-  });
+  const profileQuery = useBusinessVoice(activeBusinessId, readPerm.allowed);
 
   if (readPerm.isError) return <PermissionLoadError onRetry={readPerm.refetch} />;
   if (!activeBusinessId || (!readPerm.allowed && !readPerm.isLoading)) return null;
@@ -95,7 +92,7 @@ export function VoiceProfileSection() {
 
 interface VoiceProfileFormProps {
   businessId: string;
-  persistedProfile: string;
+  persistedProfile: BusinessVoice;
   canEdit: boolean;
   editPermissionError: boolean;
   retryEditPermission: () => unknown;
@@ -113,7 +110,7 @@ function VoiceProfileForm({
   const mountedRef = useRef(false);
   const form = useForm<VoiceProfileFormValues>({
     resolver: zodResolver(voiceProfileFormSchema),
-    defaultValues: { voiceProfile: persistedProfile },
+    defaultValues: persistedProfile,
     mode: 'onChange',
   });
   const isDirty = form.formState.isDirty;
@@ -126,20 +123,35 @@ function VoiceProfileForm({
   }, []);
 
   useEffect(() => {
-    if (!isDirty) form.reset({ voiceProfile: persistedProfile });
+    if (!isDirty) form.reset(persistedProfile);
   }, [form, isDirty, persistedProfile]);
 
   const mutation = useMutation({
-    mutationFn: ({ businessId: requestBusinessId, profile }: VoiceProfileMutationVariables) =>
+    mutationFn: ({
+      businessId: requestBusinessId,
+      profile,
+      signature,
+    }: VoiceProfileMutationVariables) =>
       bizApi(requestBusinessId)
-        .put(BIZ_API_PATHS.BUSINESS.VOICE_PROFILE, { voiceProfile: profile })
+        .put(BIZ_API_PATHS.BUSINESS.VOICE_PROFILE, {
+          voiceProfile: profile,
+          replySignature: signature,
+        })
         .then((response) => response.data),
     onSuccess: (_data, variables) => {
-      qc.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE(variables.businessId), variables.profile);
+      qc.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE(variables.businessId), {
+        voiceProfile: variables.profile,
+        replySignature: variables.signature,
+      });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_VOICE_PROFILE(variables.businessId) });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(variables.businessId) });
-      if (!mountedRef.current || form.getValues('voiceProfile') !== variables.profile) return;
-      form.reset({ voiceProfile: variables.profile });
+      if (
+        !mountedRef.current ||
+        form.getValues('voiceProfile') !== variables.profile ||
+        form.getValues('replySignature') !== variables.signature
+      )
+        return;
+      form.reset({ voiceProfile: variables.profile, replySignature: variables.signature });
       toast.success(t('saved'));
     },
     onError: () => {
@@ -150,9 +162,9 @@ function VoiceProfileForm({
   const value = form.watch('voiceProfile');
   const count = Array.from(value).length;
   const overCap = count > VOICE_PROFILE_MAX_LENGTH;
-  const handleSave = form.handleSubmit(({ voiceProfile }) => {
+  const handleSave = form.handleSubmit(({ voiceProfile, replySignature }) => {
     if (!canEdit || mutation.isPending) return;
-    mutation.mutate({ businessId, profile: voiceProfile });
+    mutation.mutate({ businessId, profile: voiceProfile, signature: replySignature });
   });
 
   return (
@@ -165,6 +177,18 @@ function VoiceProfileForm({
         aria-label={t('label')}
         aria-invalid={overCap}
       />
+      <label className="space-y-2 text-sm text-ink">
+        <span className="block">{t('signatureLabel')}</span>
+        <AppInput
+          {...form.register('replySignature')}
+          disabled={!canEdit}
+          placeholder={t('signaturePlaceholder')}
+          aria-invalid={!!form.formState.errors.replySignature}
+        />
+        <span className="block text-xs text-ink-soft">
+          {t('signatureHint', { max: REPLY_SIGNATURE_MAX_LENGTH })}
+        </span>
+      </label>
       {editPermissionError && <PermissionLoadError onRetry={retryEditPermission} />}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <div className="flex flex-col gap-0.5">
@@ -182,7 +206,7 @@ function VoiceProfileForm({
           type="submit"
           variant="primary"
           size="md"
-          disabled={!isDirty || overCap || mutation.isPending || !canEdit}
+          disabled={!isDirty || !form.formState.isValid || mutation.isPending || !canEdit}
         >
           {mutation.isPending ? t('saving') : t('saveButton')}
         </Button>

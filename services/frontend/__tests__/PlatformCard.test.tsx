@@ -214,8 +214,8 @@ it.each(['future-state', '', 'error', 'inactive'])(
 );
 
 it.each([
-  ['ru', 'Подключено'],
-  ['en', 'Connected'],
+  ['ru', 'Работает'],
+  ['en', 'Working'],
 ] as const)(
   'keeps an active channel connected after an inconclusive probe in %s',
   (locale, label) => {
@@ -242,7 +242,7 @@ it('shows a partial capability limitation without calling the channel broken', (
       <PlatformCard {...baseProps} platform="telegram" integrations={responses.degraded.body} />
     </Wrapper>
   );
-  expect(screen.getAllByText('Подключено')).toHaveLength(1);
+  expect(screen.getAllByText('Работает')).toHaveLength(1);
   expect(screen.getByText('Ограничено')).toBeVisible();
   expect(screen.queryByText('Ошибка подключения')).not.toBeInTheDocument();
 });

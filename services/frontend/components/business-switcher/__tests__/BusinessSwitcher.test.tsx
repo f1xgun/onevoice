@@ -75,7 +75,7 @@ describe('BusinessSwitcher', () => {
     render(wrap(<BusinessSwitcher />));
     const trigger = screen.getByRole('button', { name: /Acme/ });
     expect(trigger).toBeInTheDocument();
-    expect(within(trigger).getByText('AC')).toBeInTheDocument();
+    expect(within(trigger).getByText('A')).toBeInTheDocument();
   });
 
   it('opens popover on click and lists all businesses', () => {
@@ -191,7 +191,7 @@ it('explains the organization initials with a visible and accessible name', () =
   expect(trigger).toHaveTextContent('Coffee place');
   expect(trigger).toHaveAccessibleName('Coffee place, переключить организацию');
   expect(trigger).toHaveAttribute('title', trigger.getAttribute('aria-label'));
-  expect(trigger.querySelector('[aria-hidden]')).toHaveTextContent('CO');
+  expect(trigger.querySelector('[aria-hidden]')).toHaveTextContent('C');
 });
 
 it('shows the active location address from its existing business profile', async () => {

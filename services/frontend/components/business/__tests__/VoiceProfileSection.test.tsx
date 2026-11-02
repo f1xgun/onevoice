@@ -78,22 +78,43 @@ describe('VoiceProfileSection', () => {
 
   it('parses and displays the organization-scoped response', async () => {
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    expect(await screen.findByRole<HTMLTextAreaElement>('textbox')).toHaveValue(
-      'profile-business-a'
-    );
+    expect(
+      await screen.findByRole<HTMLTextAreaElement>('textbox', { name: 'Профиль голоса' })
+    ).toHaveValue('profile-business-a');
     expect(getMock).toHaveBeenCalledWith('business-a', '/voice-profile');
   });
 
   it('captures the organization ID in the save request', async () => {
     const user = userEvent.setup();
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    const textarea = await screen.findByRole<HTMLTextAreaElement>('textbox');
+    const textarea = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Профиль голоса',
+    });
     await user.clear(textarea);
     await user.type(textarea, 'Warm and concise');
     await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
     await waitFor(() =>
       expect(putMock).toHaveBeenCalledWith('business-a', '/voice-profile', {
         voiceProfile: 'Warm and concise',
+        replySignature: '',
+      })
+    );
+  });
+
+  it('edits and clears the signature without putting it in the voice profile', async () => {
+    getMock.mockResolvedValue({
+      data: { voiceProfile: 'Не обещать скидки.', replySignature: 'Анна' },
+    });
+    const user = userEvent.setup();
+    render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
+    const signature = await screen.findByRole('textbox', { name: /Чем подписывать ответы/ });
+    expect(signature).toHaveValue('Анна');
+    await user.clear(signature);
+    await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
+    await waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith('business-a', '/voice-profile', {
+        voiceProfile: 'Не обещать скидки.',
+        replySignature: '',
       })
     );
   });
@@ -101,13 +122,19 @@ describe('VoiceProfileSection', () => {
   it('remounts with B data when a dirty A editor switches organizations', async () => {
     const user = userEvent.setup();
     const view = render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    const textareaA = await screen.findByRole<HTMLTextAreaElement>('textbox');
+    const textareaA = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Профиль голоса',
+    });
     await user.clear(textareaA);
     await user.type(textareaA, 'unsaved A');
     businessState.activeBusinessId = 'business-b';
     view.rerender(<VoiceProfileSection />);
-    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('profile-business-b'));
-    expect(screen.getByRole('textbox')).not.toHaveValue('unsaved A');
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Профиль голоса' })).toHaveValue(
+        'profile-business-b'
+      )
+    );
+    expect(screen.getByRole('textbox', { name: 'Профиль голоса' })).not.toHaveValue('unsaved A');
   });
 
   it('does not reset B, toast, or invalidate B when a delayed A save completes', async () => {
@@ -119,13 +146,17 @@ describe('VoiceProfileSection', () => {
     const client = newClient();
     const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
     const view = render(<VoiceProfileSection />, { wrapper: wrapper(client) });
-    const textareaA = await screen.findByRole<HTMLTextAreaElement>('textbox');
+    const textareaA = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Профиль голоса',
+    });
     await user.clear(textareaA);
     await user.type(textareaA, 'saved A');
     await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
     businessState.activeBusinessId = 'business-b';
     view.rerender(<VoiceProfileSection />);
-    const textareaB = await screen.findByRole<HTMLTextAreaElement>('textbox');
+    const textareaB = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Профиль голоса',
+    });
     await user.clear(textareaB);
     await user.type(textareaB, 'unsaved B');
     saveA.resolve({ data: {} });
@@ -140,13 +171,15 @@ describe('VoiceProfileSection', () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({
       queryKey: QUERY_KEYS.BUSINESS_VOICE_PROFILE('business-b'),
     });
-    expect(screen.getByRole('textbox')).toHaveValue('unsaved B');
+    expect(screen.getByRole('textbox', { name: 'Профиль голоса' })).toHaveValue('unsaved B');
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
   it('counts Unicode code points like the Go server and blocks 401 characters', async () => {
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    const textarea = await screen.findByRole<HTMLTextAreaElement>('textbox');
+    const textarea = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Профиль голоса',
+    });
     fireEvent.change(textarea, { target: { value: '😀'.repeat(VOICE_PROFILE_MAX_LENGTH) } });
     expect(
       screen.getByText(`${VOICE_PROFILE_MAX_LENGTH} из ${VOICE_PROFILE_MAX_LENGTH}`)
@@ -159,10 +192,10 @@ describe('VoiceProfileSection', () => {
 
   it('hides cached content when read permission is revoked', async () => {
     const view = render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    expect(await screen.findByRole('textbox')).toBeVisible();
+    expect(await screen.findByRole('textbox', { name: 'Профиль голоса' })).toBeVisible();
     permissionState['business.read'].allowed = false;
     view.rerender(<VoiceProfileSection />);
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Профиль голоса' })).not.toBeInTheDocument();
   });
 
   it('shows retry UI for read permission errors and never starts the profile query', async () => {
@@ -177,7 +210,7 @@ describe('VoiceProfileSection', () => {
     getMock.mockResolvedValue({ data: { voiceProfile: 42 } });
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
     expect(await screen.findByText('Не получилось загрузить профиль голоса')).toBeVisible();
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Профиль голоса' })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -217,7 +250,7 @@ describe('VoiceProfileSection review regressions', () => {
       </StrictMode>,
       { wrapper: wrapper(newClient()) }
     );
-    const textarea = await screen.findByRole('textbox');
+    const textarea = await screen.findByRole('textbox', { name: 'Профиль голоса' });
     await user.clear(textarea);
     await user.type(textarea, 'saved in strict mode');
     await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
@@ -229,22 +262,28 @@ describe('VoiceProfileSection review regressions', () => {
     const user = userEvent.setup();
     const client = newClient();
     render(<VoiceProfileSection />, { wrapper: wrapper(client) });
-    const textarea = await screen.findByRole('textbox');
+    const textarea = await screen.findByRole('textbox', { name: 'Профиль голоса' });
     await waitFor(() => expect(textarea).toHaveValue('persisted'));
 
-    client.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE('business-a'), 'refetched clean');
+    client.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE('business-a'), {
+      voiceProfile: 'refetched clean',
+      replySignature: '',
+    });
     await waitFor(() => expect(textarea).toHaveValue('refetched clean'));
 
     await user.clear(textarea);
     await user.type(textarea, 'newer dirty text');
-    client.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE('business-a'), 'older refetch');
+    client.setQueryData(QUERY_KEYS.BUSINESS_VOICE_PROFILE('business-a'), {
+      voiceProfile: 'older refetch',
+      replySignature: '',
+    });
     await waitFor(() => expect(textarea).toHaveValue('newer dirty text'));
   });
 
   it('guards submitted events when editing is denied', async () => {
     permissionState['business.update'].allowed = false;
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    const form = (await screen.findByRole('textbox')).closest('form');
+    const form = (await screen.findByRole('textbox', { name: 'Профиль голоса' })).closest('form');
     fireEvent.submit(form!);
     expect(putMock).not.toHaveBeenCalled();
   });
@@ -263,7 +302,9 @@ describe('VoiceProfileSection review regressions', () => {
     });
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
     await user.click(await screen.findByRole('button', { name: 'Повторить' }));
-    expect(await screen.findByRole('textbox')).toHaveValue('after retry');
+    expect(await screen.findByRole('textbox', { name: 'Профиль голоса' })).toHaveValue(
+      'after retry'
+    );
     expect(getMock).toHaveBeenCalledTimes(2);
   });
 });
@@ -286,7 +327,7 @@ describe('VoiceProfileSection pending submit guard', () => {
     putMock.mockReturnValue(pendingSave.promise);
     const user = userEvent.setup();
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    const textarea = await screen.findByRole('textbox');
+    const textarea = await screen.findByRole('textbox', { name: 'Профиль голоса' });
     await user.clear(textarea);
     await user.type(textarea, 'save once');
     const form = textarea.closest('form')!;
@@ -322,7 +363,7 @@ describe('VoiceProfileSection successful-save cache consistency', () => {
     putMock.mockResolvedValue({ data: {} });
     const user = userEvent.setup();
     render(<VoiceProfileSection />, { wrapper: wrapper(newClient()) });
-    const textarea = await screen.findByRole('textbox');
+    const textarea = await screen.findByRole('textbox', { name: 'Профиль голоса' });
     await user.clear(textarea);
     await user.type(textarea, 'just saved text');
     await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));

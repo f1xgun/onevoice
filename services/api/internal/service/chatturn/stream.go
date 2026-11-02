@@ -11,6 +11,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
+	apiplatform "github.com/f1xgun/onevoice/services/api/internal/platform"
 )
 
 // streamBudget caps a single chat stream's wall-clock duration. Generous
@@ -240,17 +241,7 @@ func extractVoiceTone(settings map[string]interface{}) []string {
 // orchestrator renders nothing for an empty profile, so the built prompt stays
 // byte-identical to today for every business that never set one.
 func extractVoiceProfile(settings map[string]interface{}) string {
-	if settings == nil {
-		return ""
-	}
-	raw, ok := settings["voiceProfile"]
-	if !ok || raw == nil {
-		return ""
-	}
-	if s, ok := raw.(string); ok {
-		return s
-	}
-	return ""
+	return apiplatform.VoiceInstructionsFromSettings(settings)
 }
 
 // newStreamState constructs an empty streamState with a fresh idMap. Helper

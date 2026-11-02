@@ -15,6 +15,10 @@ import {
   SheetDescription,
 } from '@/components/design-system/AppSheet';
 import { VoiceProfileSection } from '@/components/business/VoiceProfileSection';
+import { DriftAlertSettings } from '@/components/integrations/DriftAlertSettings';
+import { useBusinessVoice } from '@/lib/hooks/useBusinessVoice';
+import { usePlatformFullLabels, isKnownPlatform } from '@/lib/platforms';
+import type { Review } from '@/types/review';
 import { VoiceToneSection } from '@/components/business/VoiceToneSection';
 import { PermissionLoadError } from '@/components/permission/PermissionLoadError';
 import { bizApi } from '@/lib/api/business-api';
@@ -36,11 +40,11 @@ const autopilotSchema = z.object({
   autoAnswerFacts: z.boolean(),
 });
 type Autopilot = z.infer<typeof autopilotSchema>;
-type Editor = 'five' | 'four' | 'facts' | 'tone' | 'profile' | null;
+type Editor = 'five' | 'four' | 'facts' | 'tone' | 'profile' | 'alerts' | null;
 
 export default function RulesPage() {
   const t = useTranslations('rulesV2');
-  const tCatalog = useTranslations('agentTasks.displayName.tools');
+  const platformLabels = usePlatformFullLabels();
   const toneLabels = useTranslations('business.voiceTone.options');
   const businessId = useBusinessStore((s) => s.activeBusinessId);
   const permission = usePermission('business.update');
@@ -62,6 +66,15 @@ export default function RulesPage() {
         .then((r) => r.data),
     enabled: !!businessId,
   });
+  const voice = useBusinessVoice(businessId);
+  const reviews = useQuery({
+    queryKey: ['business', businessId, 'rulesReplies'],
+    queryFn: async () => {
+      const { data } = await bizApi(businessId!).get<Review[] | { reviews: Review[] }>('/reviews');
+      return Array.isArray(data) ? data : data.reviews;
+    },
+    enabled: !!businessId,
+  });
   const tools = useTools();
   const approvals = useBusinessToolApprovals(businessId ?? '');
   const save = useMutation({
@@ -75,10 +88,17 @@ export default function RulesPage() {
     onError: () => toast.error(t('failed')),
   });
   const config = autopilot.data;
-  const profile =
-    typeof business.data?.settings?.voiceProfile === 'string'
-      ? business.data.settings.voiceProfile.trim()
-      : '';
+  const profile = voice.data?.voiceProfile.trim() ?? '';
+  const signature = voice.data?.replySignature.trim() ?? '';
+  const tones = normalizeStoredTones(business.data?.settings?.voiceTone);
+  const lastReply = reviews.data
+    ?.filter((review) => review.replyStatus === 'replied' && review.replyText)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.replyText;
+  const example =
+    lastReply ||
+    (business.isSuccess && tones.length
+      ? t(tones.includes('warm') || tones.includes('friendly') ? 'warmExample' : 'shortExample')
+      : '');
   const canEdit = permission.allowed && !permission.isError && !permission.isLoading;
   const fourMode = config?.ignoreFourStar
     ? 'skip'
@@ -112,7 +132,7 @@ export default function RulesPage() {
         disabled={!onClick}
         aria-label={`${title}: ${value}`}
         onClick={onClick}
-        className="flex min-h-20 w-full items-center justify-between gap-4 p-4 text-left disabled:cursor-default"
+        className="flex min-h-20 w-full items-center justify-between gap-4 px-5 py-4 text-left disabled:cursor-default"
       >
         <span>
           <span className="block text-base text-ink">{title}</span>
@@ -124,111 +144,147 @@ export default function RulesPage() {
       </button>
     );
   }
-  function toolRows(kind: 'comments' | 'posts' | 'card') {
+  function commentRows() {
     if (tools.isLoading || approvals.isLoading)
-      return <p className="p-4 text-sm text-ink-mid">{t('loading')}</p>;
+      return <p className="p-5 text-sm text-ink-mid">{t('loading')}</p>;
     if (tools.isError || approvals.isError)
       return (
-        <p role="alert" className="p-4 text-sm text-danger">
+        <p role="alert" className="p-5 text-sm text-danger">
           {t('loadError')}
         </p>
       );
-    const selected = (tools.data ?? []).filter((tool) =>
-      kind === 'comments'
-        ? /reply.*comment/.test(tool.name)
-        : kind === 'posts'
-          ? /send_channel_post|create_post|publish_post/.test(tool.name)
-          : /update.*(profile|business|info)/.test(tool.name)
+    const comments = (tools.data ?? []).filter((tool) => /reply.*comment/.test(tool.name));
+    if (!comments.length) return <p className="p-5 text-sm text-ink-mid">{t('none')}</p>;
+    const modes = comments.map((tool) => ({
+      tool,
+      mode:
+        tool.floor === 'forbidden'
+          ? 'forbidden'
+          : tool.floor === 'auto' &&
+              approvals.data?.[tool.name] !== 'manual' &&
+              config?.autoAnswerFacts
+            ? 'factsAuto'
+            : 'manual',
+    }));
+    return (
+      <>
+        {new Set(modes.map(({ mode }) => mode)).size === 1
+          ? row(
+              t('facts'),
+              config ? t(modes[0].mode) : t('unknown'),
+              config && canEdit ? () => setEditor('facts') : undefined
+            )
+          : modes.map(({ tool, mode }) => (
+              <div key={tool.name}>
+                {row(
+                  t('platformFacts', {
+                    platform: isKnownPlatform(tool.platform)
+                      ? platformLabels[tool.platform]
+                      : t('comments'),
+                  }),
+                  t(mode),
+                  config && canEdit ? () => setEditor('facts') : undefined
+                )}
+              </div>
+            ))}
+        {row(t('otherComments'), t('manual'))}
+      </>
     );
-    if (!selected.length) return <p className="p-4 text-sm text-ink-mid">{t('none')}</p>;
-    return selected.map((tool) => (
-      <Link
-        key={tool.name}
-        href="/settings/tools"
-        className="flex min-h-20 items-center justify-between gap-4 p-4"
-      >
-        <span>
-          <span className="block text-ink">
-            {tCatalog.has(`${tool.name.replace('__', '.')}.name`)
-              ? tCatalog(`${tool.name.replace('__', '.')}.name`)
-              : tool.platform}
-          </span>
-          <span className="mt-1 block text-sm text-ink-mid">
-            {t(
-              tool.floor === 'forbidden'
-                ? 'forbidden'
-                : tool.floor === 'auto' && approvals.data?.[tool.name] !== 'manual'
-                  ? 'auto'
-                  : 'manual'
-            )}
-          </span>
-        </span>
-        <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
-      </Link>
-    ));
   }
   return (
     <>
-      <header className="mx-auto max-w-5xl px-gutter pb-group pt-group md:px-gutter-desktop">
+      <header className="max-w-[816px] px-gutter pb-title-gap pt-group md:px-gutter-desktop">
         <h1 className="text-page-title">{t('title')}</h1>
         <p className="mt-1 text-ink-mid">{t('sub')}</p>
       </header>
-      <div className="mx-auto grid max-w-5xl gap-group px-gutter pb-group md:px-gutter-desktop lg:grid-cols-2">
-        <div className="space-y-group">
-          <section>
-            <h2 className="font-semibold text-ink">{t('reviews')}</h2>
-            <p className="mb-3 mt-1 text-sm text-ink-mid">{t('reviewsHint')}</p>
-            {autopilot.isPending ? (
-              <p role="status">{t('loading')}</p>
-            ) : autopilot.isError ? (
-              <div role="alert">
-                <p>{t('loadError')}</p>
-                <ActionButton onClick={() => autopilot.refetch()}>{t('retry')}</ActionButton>
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-block bg-card">
-                {row(
-                  t('five'),
-                  t(config?.enabled ? 'auto' : 'manual'),
-                  canEdit ? () => setEditor('five') : undefined
-                )}
-                {row(t('four'), t(fourMode), canEdit ? () => setEditor('four') : undefined)}
-                {row(t('negative'), t('manual'))}
-              </div>
-            )}
-            {permission.isError && <PermissionLoadError onRetry={permission.refetch} />}
-            {!permission.isLoading && !permission.isError && !permission.allowed && (
-              <p className="mt-2 text-sm text-ink-mid">{t('readOnly')}</p>
-            )}
-          </section>
-          {(['comments', 'posts', 'card'] as const).map((kind) => (
-            <section key={kind}>
-              <h2 className="font-semibold text-ink">{t(kind)}</h2>
-              <p className="mb-3 mt-1 text-sm text-ink-mid">{t(`${kind}Hint`)}</p>
-              <div className="overflow-hidden rounded-block bg-card">
-                {kind === 'comments' &&
-                  row(
-                    t('facts'),
-                    config ? t(config.autoAnswerFacts ? 'auto' : 'manual') : t('unknown'),
-                    config && canEdit ? () => setEditor('facts') : undefined
-                  )}
-                {toolRows(kind)}
-              </div>
-            </section>
-          ))}
-        </div>
+      <div className="max-w-[816px] space-y-group px-gutter pb-group md:px-gutter-desktop">
+        <section>
+          <h2 className="font-semibold text-ink">{t('reviews')}</h2>
+          <p className="mb-3 mt-1 text-sm text-ink-mid">{t('reviewsHint')}</p>
+          {autopilot.isPending ? (
+            <p role="status">{t('loading')}</p>
+          ) : autopilot.isError ? (
+            <div role="alert">
+              <p>{t('loadError')}</p>
+              <ActionButton onClick={() => autopilot.refetch()}>{t('retry')}</ActionButton>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-block bg-card">
+              {row(
+                t('five'),
+                t(config?.enabled ? 'auto' : 'manual'),
+                canEdit ? () => setEditor('five') : undefined
+              )}
+              {row(t('four'), t(fourMode), canEdit ? () => setEditor('four') : undefined)}
+              {row(t('negative'), t('manual'))}
+            </div>
+          )}
+          {permission.isError && <PermissionLoadError onRetry={permission.refetch} />}
+          {!permission.isLoading && !permission.isError && !permission.allowed && (
+            <p className="mt-2 text-sm text-ink-mid">{t('readOnly')}</p>
+          )}
+        </section>
+        <section>
+          <h2 className="font-semibold text-ink">{t('comments')}</h2>
+          <p className="mb-3 mt-1 text-sm text-ink-mid">{t('commentsSummary')}</p>
+          <div className="overflow-hidden rounded-block bg-card">{commentRows()}</div>
+        </section>
+        <section>
+          <h2 className="mb-3 font-semibold text-ink">{t('posts')}</h2>
+          <div className="overflow-hidden rounded-block bg-card">
+            <Link
+              href="/settings/tools"
+              className="flex min-h-20 items-center justify-between gap-4 px-5 py-4"
+            >
+              <span>
+                <span className="block text-base text-ink">{t('newPosts')}</span>
+                <span className="mt-1 block text-sm text-ink-mid">{t('postsApproval')}</span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-ink-mid" aria-hidden />
+            </Link>
+          </div>
+        </section>
+        <section>
+          <h2 className="mb-3 font-semibold text-ink">{t('card')}</h2>
+          <div className="overflow-hidden rounded-block bg-card">
+            {row(t('cardChanged'), t('cardNotification'), () => setEditor('alerts'))}
+          </div>
+        </section>
         <section>
           <h2 className="font-semibold text-ink">{t('voice')}</h2>
           <p className="mb-3 mt-1 text-sm text-ink-mid">{t('voiceHint')}</p>
+          {example && (
+            <figure className="mb-block-gap rounded-block bg-card p-5">
+              <blockquote className="whitespace-pre-line text-reading text-ink">
+                {t('quote', { text: example })}
+              </blockquote>
+              <figcaption className="mt-2 text-meta text-ink-soft">
+                {t(lastReply ? 'currentReply' : 'toneExample')}
+              </figcaption>
+            </figure>
+          )}
           <div className="overflow-hidden rounded-block bg-card">
             {row(
               t('tone'),
-              normalizeStoredTones(business.data?.settings?.voiceTone)
-                .map((tone) => toneLabels(tone))
-                .join(', ') || t('noTone'),
+              tones.map((tone) => toneLabels(tone)).join(', ') || t('noTone'),
               business.isSuccess ? () => setEditor('tone') : undefined
             )}
-            {row(t('profile'), profile || t('profileEmpty'), () => setEditor('profile'), !profile)}
+            {row(
+              t('profile'),
+              voice.isSuccess
+                ? profile || t('profileEmpty')
+                : t(voice.isError ? 'loadError' : 'loading'),
+              () => setEditor('profile'),
+              !profile
+            )}
+            {row(
+              t('signature'),
+              voice.isSuccess
+                ? signature || t('profileEmpty')
+                : t(voice.isError ? 'loadError' : 'loading'),
+              () => setEditor('profile'),
+              !signature
+            )}
           </div>
           {business.isError && (
             <p role="alert" className="mt-2 text-danger">
@@ -251,21 +307,33 @@ export default function RulesPage() {
       >
         <SheetContent side="bottom">
           <SheetTitle>
-            {t(editor === 'tone' ? 'tone' : editor === 'profile' ? 'profile' : 'choose')}
+            {t(
+              editor === 'tone'
+                ? 'tone'
+                : editor === 'profile'
+                  ? 'voice'
+                  : editor === 'alerts'
+                    ? 'card'
+                    : 'choose'
+            )}
           </SheetTitle>
           <SheetDescription className="mb-5 mt-2">
             {t(
               editor === 'tone' || editor === 'profile'
                 ? 'voiceHint'
-                : editor === 'facts'
-                  ? 'commentsHint'
-                  : 'reviewsHint'
+                : editor === 'alerts'
+                  ? 'cardHint'
+                  : editor === 'facts'
+                    ? 'commentsHint'
+                    : 'reviewsHint'
             )}
             {(editor === 'five' || editor === 'four') && (
               <span className="mt-2 block">{t('ratingCoupling')}</span>
             )}
           </SheetDescription>
-          {editor === 'tone' ? (
+          {editor === 'alerts' && businessId ? (
+            <DriftAlertSettings key={businessId} businessId={businessId} />
+          ) : editor === 'tone' ? (
             <VoiceToneSection
               key={businessId}
               initial={normalizeStoredTones(business.data?.settings?.voiceTone)}

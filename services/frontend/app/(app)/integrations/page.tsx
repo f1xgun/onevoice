@@ -6,7 +6,7 @@ import { EmptyAction } from '@/components/states/EmptyAction';
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { bizApi } from '@/lib/api/business-api';
@@ -18,7 +18,6 @@ import { trackClick } from '@/lib/telemetry';
 import { ActionButton as Button } from '@/components/design-system/ActionButton';
 import { SkeletonChannels } from '@/components/states';
 import { InlineEmpty } from '@/components/states/InlineEmpty';
-import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
@@ -27,10 +26,11 @@ import { GoogleLocationModal } from '@/components/integrations/GoogleLocationMod
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
 import { FirstActionWizard } from '@/components/onboarding/FirstActionWizard';
-import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
 import { ScopedBusinessLink } from '@/components/integrations/ScopedBusinessLink';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
+import { useIntegrationsDrift } from '@/lib/hooks/useIntegrationsDrift';
+import { readConnectionHealth } from '@/lib/constants/integrationStatus';
 import type { PlatformId } from '@/lib/platforms';
 import type { Business } from '@/types/business';
 
@@ -79,9 +79,11 @@ export default function IntegrationsPage() {
   const [resumeBusiness, setResumeBusiness] = useState<string | null>(null);
   const tCommon = useTranslations('common');
   const tV2 = useTranslations('integrations.v2');
+  const locale = useLocale();
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const drift = useIntegrationsDrift(activeBusinessId);
   useEffect(() => {
     setResumeBusiness(sessionStorage.getItem('onevoice:launch-vk-business'));
   }, [activeBusinessId]);
@@ -293,7 +295,7 @@ export default function IntegrationsPage() {
     <>
       <ScopedBusinessLink />
 
-      <div className="mx-auto max-w-[816px] space-y-group px-gutter pb-10 pt-5 md:px-gutter-desktop">
+      <div className="max-w-[816px] space-y-group px-gutter pb-10 pt-group md:px-gutter-desktop">
         <header>
           <h1 className="text-page-title">{tV2('title')}</h1>
           <p className="mt-1 text-[15px] leading-[22px] text-ink-soft">{tV2('subtitle')}</p>
@@ -373,6 +375,23 @@ export default function IntegrationsPage() {
                   canConnect={canConnect}
                   canDisconnect={canDisconnect}
                   isPreview={p.id === 'google_business'}
+                  checkedAt={
+                    platformIntegrations
+                      .map(
+                        (integration) =>
+                          readConnectionHealth(integration.metadata)?.checked_at ||
+                          drift.data?.find(
+                            (row) =>
+                              row.platform === integration.platform &&
+                              row.externalId === integration.externalId &&
+                              !row.checkFailed
+                          )?.lastCheckedAt
+                      )
+                      .filter(
+                        (value): value is string => !!value && !Number.isNaN(Date.parse(value))
+                      )
+                      .sort()[0]
+                  }
                 />
               );
             })}
@@ -406,33 +425,31 @@ export default function IntegrationsPage() {
         {platformsReady && comingSoonPlatforms.length > 0 && (
           <section>
             <h2 className="mb-block-gap text-group-title">{tIntegrations('page.comingSoon')}</h2>
-            <ul className="space-y-2">
-              {comingSoonPlatforms.map((p) => (
-                <li key={p.id} className="flex items-center gap-3">
-                  <PlatformIcon platform={p.id} className="h-head-sm w-head-sm" />
-                  <span className="flex-1 text-ink-soft">{p.fullLabel}</span>
-                  <Button variant="secondary" size="sm" disabled>
-                    {tV2('soon')}
-                  </Button>
-                </li>
-              ))}
-            </ul>
+            <p className="text-reading text-ink-soft">
+              {tV2('comingSoonDescription', {
+                platforms: new Intl.ListFormat(locale, {
+                  style: 'long',
+                  type: 'conjunction',
+                }).format(
+                  [...comingSoonPlatforms]
+                    .sort(
+                      (a, b) =>
+                        ['2gis', 'avito', 'google_business', 'whatsapp'].indexOf(a.id) -
+                        ['2gis', 'avito', 'google_business', 'whatsapp'].indexOf(b.id)
+                    )
+                    .map((p) => (p.id === 'google_business' ? tV2('googleName') : p.fullLabel))
+                ),
+              })}
+            </p>
+            <a
+              href="mailto:hello@onevoice.app"
+              className="inline-flex min-h-tap items-center text-reading text-brand underline"
+            >
+              {tV2('requestPlatform')}
+            </a>
           </section>
         )}
-        <a
-          href="mailto:hello@onevoice.app"
-          className="inline-flex min-h-tap items-center text-meta text-brand underline"
-        >
-          {tIntegrations('page.requestChannel')}
-        </a>
-        {activeBusinessId && !integrationsError && integrations.length > 0 && (
-          <details>
-            <summary className="min-h-tap cursor-pointer text-meta text-brand">
-              {tV2('sync')}
-            </summary>
-            <IntegrationsSyncPanel businessId={activeBusinessId} integrations={integrations} />
-          </details>
-        )}
+        <p className="text-meta text-ink-soft">{tV2('checkSchedule')}</p>
       </div>
 
       {ActiveModal && <ActiveModal open={true} onClose={closeActiveModal} />}

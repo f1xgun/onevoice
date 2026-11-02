@@ -1241,7 +1241,10 @@
       "saving": "Saving…",
       "saved": "Voice profile saved",
       "saveError": "Couldn't save",
-      "loadError": "Couldn't load the voice profile"
+      "loadError": "Couldn't load the voice profile",
+      "signatureLabel": "Reply signature",
+      "signaturePlaceholder": "Anna, manager",
+      "signatureHint": "Up to {max} characters. Added to replies to customers."
     },
     "categories": {
       "cafe": "Café / Restaurant",
@@ -1402,7 +1405,10 @@
       },
       "linkedGroupOk": "The bot is in the discussion group — comments will be collected.",
       "linkedGroupMissing": "The bot still isn't in the discussion group.",
-      "linkedGroupCheckFailed": "Couldn't check the status"
+      "linkedGroupCheckFailed": "Couldn't check the status",
+      "working": "Working",
+      "checkedAt": "· checked at {time}",
+      "subscribers": "{count, number} {count, plural, one {subscriber} other {subscribers}}"
     },
     "sync": {
       "sectionTitle": "Data sync",
@@ -1637,7 +1643,11 @@
         "vk": "VK community",
         "yandex_business": "Yandex Maps"
       },
-      "loading": "Loading connection settings…"
+      "loading": "Loading connection settings…",
+      "comingSoonDescription": "{platforms}. We’ll connect them when they’re ready.",
+      "googleName": "Google Business",
+      "requestPlatform": "Missing your platform? Write to us",
+      "checkSchedule": "We check access every 6 hours. If something breaks, we’ll let you know in “Needs your decision”."
     }
   },
   "gettingStarted": {
@@ -1791,7 +1801,8 @@
     "connectionAttention": "Connection error — open Integrations",
     "chooseOrganization": "Choose an organization",
     "homeLabel": "OneVoice — go to chats",
-    "language": "Language"
+    "language": "Language",
+    "administrator": "administrator"
   },
   "feedback": {
     "title": "Feedback",
@@ -2812,7 +2823,8 @@
       "newChatAria": "New chat in project \"{name}\"",
       "newChatTitle": "New chat in project \"{name}\"",
       "chatsAria": "Chats in project \"{name}\""
-    }
+    },
+    "menuButton": "Menu"
   },
   "states": {
     "channelConnectProgress": "in progress",
@@ -3127,9 +3139,23 @@
     "readOnly": "You do not have permission to change rules",
     "unknown": "Rule has not loaded yet",
     "noTone": "Tone not chosen yet",
-    "facts": "Address and regular hours",
+    "facts": "Questions about the address and hours",
     "ratingCoupling": "Automatic 4-star replies also enable 5-star replies. Turning off 5-star replies also makes 4-star replies manual; “does not reply” stays unchanged.",
-    "profileEmpty": "Not filled in"
+    "profileEmpty": "Not filled in",
+    "factsAuto": "Replies using your business details",
+    "platformFacts": "{platform}: address and hours questions",
+    "otherComments": "Other comments",
+    "commentsSummary": "In your channel and on VK",
+    "newPosts": "New posts",
+    "postsApproval": "Only after your approval",
+    "cardChanged": "If business details change on a platform",
+    "cardNotification": "Tells you and offers to fix them",
+    "signature": "Reply signature",
+    "currentReply": "How OneVoice replies now",
+    "toneExample": "Example of your chosen tone",
+    "warmExample": "Thank you for sharing your experience! We’re glad you enjoyed your visit. We’d love to see you again.",
+    "shortExample": "Thank you for your review. We’re glad you enjoyed your visit. See you again!",
+    "quote": "“{text}”"
   },
   "launchV2": {
     "step": "Step {step} of 3",

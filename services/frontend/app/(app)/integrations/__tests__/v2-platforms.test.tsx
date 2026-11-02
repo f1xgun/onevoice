@@ -101,8 +101,8 @@ it('offers real connections and keeps future platforms disabled', async () => {
   renderPage();
   expect(await screen.findByRole('heading', { name: 'Сообщество ВКонтакте' })).toBeVisible();
   const future = screen.getByRole('heading', { name: 'Скоро' }).parentElement!;
-  expect(within(future).getAllByRole('button', { name: 'Скоро' })).toHaveLength(2);
-  for (const button of within(future).getAllByRole('button')) expect(button).toBeDisabled();
+  expect(within(future).queryByRole('button')).toBeNull();
+  expect(future).toHaveTextContent('2ГИС и Авито. Подключим, когда будут готовы.');
   expect(screen.queryByRole('link', { name: 'Переподключить' })).toBeNull();
 });
 

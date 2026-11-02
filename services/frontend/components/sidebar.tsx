@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Menu } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   Sheet,
@@ -21,18 +20,17 @@ export function Sidebar() {
 
   return (
     <div className="sticky top-0 z-40 flex min-h-16 items-center gap-3 bg-background px-3 xl:hidden">
-      <div className="min-w-0 flex-1 [&>button]:mb-0">
+      <div className="min-w-0 flex-1 [&>button]:mb-0 [&>button]:px-0">
         <BusinessSwitcher />
       </div>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
             aria-label={tSide('toggleAria')}
-            className="xl:hidden"
+            className="px-0 text-brand xl:hidden"
           >
-            <Menu className="h-5 w-5" />
+            {tSide('menuButton')}
           </Button>
         </SheetTrigger>
         <SheetContent

@@ -51,7 +51,7 @@ beforeEach(() => {
     Promise.resolve({
       data:
         path === '/voice-profile'
-          ? { voiceProfile: 'Не обещать скидки.\nКак подписывать ответы: Ирина' }
+          ? { voiceProfile: 'Не обещать скидки.', replySignature: 'Ирина' }
           : [],
     })
   );
@@ -155,10 +155,13 @@ it('saves the chosen tone and signature using the existing voice APIs', async ()
   fireEvent.change(screen.getByLabelText('Как подписывать ответы'), {
     target: { value: 'Анна, управляющая' },
   });
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Готово, к делам' })).toBeEnabled()
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Готово, к делам' }));
   await waitFor(() => expect(bizPut).toHaveBeenCalledWith('/voice-tone', { tones: ['warm'] }));
   expect(bizPut).toHaveBeenCalledWith('/voice-profile', {
-    voiceProfile: 'Не обещать скидки.\nКак подписывать ответы: Анна, управляющая',
+    replySignature: 'Анна, управляющая',
   });
   await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
 });
