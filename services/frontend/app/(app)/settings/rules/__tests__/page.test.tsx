@@ -21,16 +21,18 @@ vi.mock('@/lib/hooks/useBusinessToolApprovals', () => ({
   useBusinessToolApprovals: () => ({ data: {}, isLoading: false, isError: false }),
 }));
 vi.mock('@/components/business/VoiceToneSection', () => ({ VoiceToneSection: () => null }));
-vi.mock('@/components/business/VoiceProfileSection', () => ({ VoiceProfileSection: () => null }));
+vi.mock('@/components/business/VoiceProfileSection', () => ({
+  VoiceProfileSection: () => <div data-testid="voice-profile-editor" />,
+}));
 beforeEach(() => {
   get.mockReset();
   put.mockReset();
   Object.assign(permission, { allowed: true, isLoading: false, isError: false });
 });
-function mount(config: object) {
+function mount(config: object, settings: object = {}) {
   get.mockImplementation((path: string) =>
     Promise.resolve({
-      data: path === '/review-autopilot' ? config : { name: 'Point', settings: {} },
+      data: path === '/review-autopilot' ? config : { name: 'Point', settings },
     })
   );
   put.mockResolvedValue({});
@@ -42,6 +44,31 @@ function mount(config: object) {
     </QueryClientProvider>
   );
 }
+it.each([undefined, '', ' \n  '])(
+  'shows an editable empty profile for %j',
+  async (voiceProfile) => {
+    mount(
+      { enabled: true, minRating: 5, ignoreFourStar: true, autoAnswerFacts: false },
+      { voiceProfile }
+    );
+    const profile = await screen.findByRole('button', {
+      name: 'О точке своими словами: Не заполнено',
+    });
+    expect(screen.getByText('Не заполнено')).toHaveClass('text-ink-soft');
+    fireEvent.click(profile);
+    expect(screen.getByTestId('voice-profile-editor')).toBeInTheDocument();
+  }
+);
+it('shows the saved business description instead of the empty placeholder', async () => {
+  mount(
+    { enabled: true, minRating: 5, ignoreFourStar: true, autoAnswerFacts: false },
+    { voiceProfile: 'Обжариваем зерно сами' }
+  );
+  expect(
+    await screen.findByRole('button', { name: 'О точке своими словами: Обжариваем зерно сами' })
+  ).toBeInTheDocument();
+  expect(screen.queryByText('Не заполнено')).toBeNull();
+});
 it('shows saved four-star auto instead of replacing it with the new default', async () => {
   mount({ enabled: true, minRating: 4, ignoreFourStar: false, autoAnswerFacts: false });
   expect(await screen.findByRole('button', { name: 'На 4 звезды: Отвечает сам' })).toBeEnabled();

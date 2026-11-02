@@ -62,7 +62,7 @@ it('localizes platform names and gives failed tasks explicit retry and removal a
   );
   renderPage();
 
-  expect((await screen.findAllByText('Яндекс.Бизнес')).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText('Яндекс Карты')).length).toBeGreaterThan(0);
   fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
   await waitFor(() => expect(requests.post).toHaveBeenCalledWith('/tasks/error/retry'));
 

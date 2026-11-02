@@ -73,7 +73,7 @@ describe('YandexBusinessConnectModal — method routing', () => {
   it('shows a disabled delegated connection when unavailable', async () => {
     configUnavailable();
     renderModal();
-    expect(await screen.findByText(/Подключение Яндекс.Бизнеса готовится/)).toBeInTheDocument();
+    expect(await screen.findByText(/Подключение Яндекс Карт готовится/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Подключить$/ })).toBeDisabled();
     expect(screen.getByText(/Подключение можно в любой момент отменить/)).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
