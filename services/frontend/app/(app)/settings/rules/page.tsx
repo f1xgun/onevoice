@@ -93,7 +93,9 @@ export default function RulesPage() {
   const tones = normalizeStoredTones(business.data?.settings?.voiceTone);
   const lastReply = reviews.data
     ?.filter((review) => review.replyStatus === 'replied' && review.replyText)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.replyText;
+    .sort((a, b) =>
+      (b.repliedAt || b.createdAt).localeCompare(a.repliedAt || a.createdAt)
+    )[0]?.replyText;
   const example =
     lastReply ||
     (business.isSuccess && tones.length

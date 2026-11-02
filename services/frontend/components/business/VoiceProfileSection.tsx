@@ -162,6 +162,8 @@ function VoiceProfileForm({
   const value = form.watch('voiceProfile');
   const count = Array.from(value).length;
   const overCap = count > VOICE_PROFILE_MAX_LENGTH;
+  const signatureOverCap =
+    Array.from(form.watch('replySignature')).length > REPLY_SIGNATURE_MAX_LENGTH;
   const handleSave = form.handleSubmit(({ voiceProfile, replySignature }) => {
     if (!canEdit || mutation.isPending) return;
     mutation.mutate({ businessId, profile: voiceProfile, signature: replySignature });
@@ -183,7 +185,7 @@ function VoiceProfileForm({
           {...form.register('replySignature')}
           disabled={!canEdit}
           placeholder={t('signaturePlaceholder')}
-          aria-invalid={!!form.formState.errors.replySignature}
+          aria-invalid={signatureOverCap}
         />
         <span className="block text-xs text-ink-soft">
           {t('signatureHint', { max: REPLY_SIGNATURE_MAX_LENGTH })}
@@ -206,7 +208,7 @@ function VoiceProfileForm({
           type="submit"
           variant="primary"
           size="md"
-          disabled={!isDirty || !form.formState.isValid || mutation.isPending || !canEdit}
+          disabled={!isDirty || overCap || signatureOverCap || mutation.isPending || !canEdit}
         >
           {mutation.isPending ? t('saving') : t('saveButton')}
         </Button>
