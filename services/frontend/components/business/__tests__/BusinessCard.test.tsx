@@ -73,6 +73,34 @@ describe('location card', () => {
     expect(screen.getByRole('button', { name: 'Сохранить часы' })).toBeInTheDocument();
   });
 
+  it('lists special days by date', async () => {
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <BusinessCard
+          business={{
+            ...business,
+            settings: {
+              ...business.settings,
+              specialDates: [
+                { date: '2026-11-08', closed: false, open: '11:00', close: '21:00' },
+                { date: '2026-11-04', closed: true },
+              ],
+            },
+          }}
+          businessId="biz"
+        />
+      </QueryClientProvider>
+    );
+    const days = (await screen.findAllByRole('button', { name: /ноября/ })).map(
+      (button) => button.textContent ?? ''
+    );
+    expect(days.findIndex((text) => text.includes('4 ноября'))).toBeLessThan(
+      days.findIndex((text) => text.includes('8 ноября'))
+    );
+  });
+
   it.skipIf(!hasLayoutBrowser)(
     'fits both widths and themes',
     async () => {

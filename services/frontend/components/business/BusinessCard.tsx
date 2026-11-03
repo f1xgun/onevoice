@@ -40,6 +40,7 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
   const specialDates = Array.isArray(raw)
     ? ((business.settings?.specialDates as SpecialDate[] | undefined) ?? [])
     : (raw?.specialDates ?? (business.settings?.specialDates as SpecialDate[] | undefined) ?? []);
+  const sortedSpecialDates = [...specialDates].sort((a, b) => a.date.localeCompare(b.date));
   const hours = (day: { closed: boolean; open?: string; close?: string }) =>
     openingHours(day, t('dayOff'));
   const groups = groupOpeningHours(schedule ?? []);
@@ -111,7 +112,7 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
           <section>
             <h2 className="mb-2.5 text-group-title">{t('specialDates')}</h2>
             <div className="rounded-block bg-card py-2">
-              {specialDates.map((day) =>
+              {sortedSpecialDates.map((day) =>
                 row(
                   new Intl.DateTimeFormat(locale, {
                     weekday: 'short',
