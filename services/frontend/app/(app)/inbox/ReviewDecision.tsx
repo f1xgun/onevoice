@@ -216,6 +216,7 @@ export function ReviewDecision({ review, businessId, businessName }: ReviewDecis
                 <ActionButton
                   type="button"
                   variant="secondary"
+                  className="!px-2.5"
                   disabled={mutation.isPending || review.draftStatus === 'generating'}
                   onClick={() => mutation.mutate('draft')}
                 >
@@ -224,6 +225,7 @@ export function ReviewDecision({ review, businessId, businessName }: ReviewDecis
                 <ActionButton
                   type="button"
                   variant="secondary"
+                  className="!px-2.5"
                   disabled={mutation.isPending}
                   onClick={() => mutation.mutate('skip')}
                 >
