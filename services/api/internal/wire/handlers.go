@@ -335,7 +335,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if !ok {
 		return nil, fmt.Errorf("wire: pending store lacks decision queue reader")
 	}
-	decisionQueue := handler.NewDecisionQueueHandler(service.NewDecisionQueueService(repos.Review, pendingReader, repos.Integration, repos.SyncState, repos.AuditLog))
+	decisionSource := service.NewDecisionQueueService(repos.Review, pendingReader, repos.Integration, repos.SyncState, repos.AuditLog)
+	decisionSource.SetConversations(repos.Conversation)
+	decisionQueue := handler.NewDecisionQueueHandler(decisionSource)
 	return &router.Handlers{
 		DecisionQueue:        decisionQueue,
 		Auth:                 authHandler,

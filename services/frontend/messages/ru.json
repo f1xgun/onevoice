@@ -3163,7 +3163,8 @@
     "autoFact": {
       "address": "Ответили {platform} на вопрос про адрес",
       "hours": "Ответили {platform} на вопрос про часы"
-    }
+    },
+    "postTopic": "{heading}: {topic}"
   },
   "rulesV2": {
     "title": "Правила OneVoice",

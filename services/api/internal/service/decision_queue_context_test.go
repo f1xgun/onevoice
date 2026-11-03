@@ -91,3 +91,44 @@ func TestDecisionQueueDoesNotProjectForeignApprovalContent(t *testing.T) {
 	require.NotContains(t, string(raw), "Чужой секретный пост")
 	require.Equal(t, 2, queue.Total)
 }
+
+type queueConversation struct {
+	domain.ConversationRepository
+	conversation *domain.Conversation
+}
+
+func (r queueConversation) GetByID(context.Context, string) (*domain.Conversation, error) {
+	return r.conversation, nil
+}
+
+func TestDecisionApprovalTitleKeepsConversationOwnership(t *testing.T) {
+	business, user := uuid.New(), uuid.New()
+	for _, scope := range []string{"own", "other-user", "other-business", "pending-title"} {
+		t.Run(scope, func(t *testing.T) {
+			conversation := &domain.Conversation{ID: "conversation", BusinessID: business.String(), UserID: user.String(), Title: "выходной 4 ноября", TitleStatus: domain.TitleStatusManual}
+			if scope == "other-user" {
+				conversation.UserID = uuid.NewString()
+			}
+			if scope == "other-business" {
+				conversation.BusinessID = uuid.NewString()
+			}
+			if scope == "pending-title" {
+				conversation.TitleStatus = domain.TitleStatusAutoPending
+			}
+			pending := queuePendingRows{{ID: "batch", ConversationID: conversation.ID, BusinessID: business.String(), UserID: user.String(), Status: "pending", Calls: []domain.PendingCall{{ToolName: tools.VKPublishPost}}}}
+			svc := NewDecisionQueueService(&queueReviews{}, pending, nil, nil, nil)
+			svc.SetConversations(queueConversation{conversation: conversation})
+			queue, err := svc.List(context.Background(), business, user, DecisionAccess{Content: true})
+			require.NoError(t, err)
+			for _, item := range queue.Items {
+				if item.Approval != nil {
+					if scope == "own" {
+						require.Equal(t, conversation.Title, item.Approval.Title)
+					} else {
+						require.Empty(t, item.Approval.Title)
+					}
+				}
+			}
+		})
+	}
+}

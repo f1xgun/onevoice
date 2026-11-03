@@ -87,11 +87,12 @@ vi.mock('@/hooks/useDecisionQueue', async (original) => {
                 approval: state.rich
                   ? {
                       post: true,
+                      title: 'выходной 4 ноября',
                       platforms: ['telegram', 'vk'],
                       scheduledAt: new Date(
                         new Date().setDate(new Date().getDate() + 1)
                       ).toISOString(),
-                      preview: 'Завтра открываемся в 11:00.',
+                      preview: 'Сегодня, 4 ноября, кофейня закрыта: отдыхаем в праздник.',
                     }
                   : undefined,
               },
@@ -324,10 +325,13 @@ it('shows post content, destinations, review receipts and the actual Maps rating
   state.rich = true;
   renderPage();
   expect(screen.getByRole('button', { name: /Пост на завтра/ })).toHaveTextContent(
-    'Завтра открываемся в 11:00.'
+    'Сегодня, 4 ноября, кофейня закрыта: отдыхаем в праздник.'
   );
   expect(screen.getByRole('button', { name: /Пост на завтра/ })).toHaveTextContent(
     'в канал и во ВКонтакте'
+  );
+  expect(screen.getByRole('button', { name: /Пост на завтра/ })).toHaveTextContent(
+    'Пост на завтра: выходной 4 ноября'
   );
   expect(await screen.findByText('Как вас видят на Картах')).toBeVisible();
   expect(screen.getByText('4,7')).toBeVisible();

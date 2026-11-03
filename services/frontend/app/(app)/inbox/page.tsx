@@ -133,17 +133,24 @@ export default function InboxPage() {
   function itemTitle(item: DecisionItem) {
     if (item.review) return item.review.authorName || t('review');
     if (item.approval?.post) {
-      const day = item.approval.scheduledAt && decisionDay(item.approval.scheduledAt);
-      if (day?.kind === 'tomorrow') return t('postTomorrow');
-      if (day?.kind === 'today') return t('postToday');
-      return day
-        ? t('postDate', {
-            date: new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long' }).format(
-              day.date
-            ),
-          })
-        : t('newPost');
+      const day = item.approval.scheduledAt ? decisionDay(item.approval.scheduledAt) : null;
+      const heading =
+        day?.kind === 'tomorrow'
+          ? t('postTomorrow')
+          : day?.kind === 'today'
+            ? t('postToday')
+            : day
+              ? t('postDate', {
+                  date: new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long' }).format(
+                    day.date
+                  ),
+                })
+              : t('newPost');
+      return item.approval.title
+        ? t('postTopic', { heading, topic: item.approval.title })
+        : heading;
     }
+    if (item.approval?.title) return item.approval.title;
     if (
       item.kind === 'drift' &&
       item.platform === 'yandex_business' &&

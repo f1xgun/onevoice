@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +35,7 @@ type DecisionItem struct {
 }
 
 type DecisionApproval struct {
+	Title       string     `json:"title,omitempty"`
 	Post        bool       `json:"post"`
 	Platforms   []string   `json:"platforms"`
 	ScheduledAt *time.Time `json:"scheduledAt,omitempty"`
@@ -52,11 +55,16 @@ type DecisionReceipt struct {
 type DecisionAccess struct{ Content, Integrations, Audit bool }
 
 type DecisionQueueService struct {
-	reviews      domain.ReviewRepository
-	pending      domain.BusinessPendingToolCallReader
-	integrations domain.IntegrationRepository
-	sync         domain.SyncStateRepository
-	audit        domain.AuditLogRepository
+	reviews       domain.ReviewRepository
+	pending       domain.BusinessPendingToolCallReader
+	integrations  domain.IntegrationRepository
+	sync          domain.SyncStateRepository
+	audit         domain.AuditLogRepository
+	conversations domain.ConversationRepository
+}
+
+func (s *DecisionQueueService) SetConversations(repository domain.ConversationRepository) {
+	s.conversations = repository
 }
 
 func NewDecisionQueueService(reviews domain.ReviewRepository, pending domain.BusinessPendingToolCallReader, integrations domain.IntegrationRepository, sync domain.SyncStateRepository, audit domain.AuditLogRepository) *DecisionQueueService {
@@ -91,7 +99,17 @@ func (s *DecisionQueueService) List(ctx context.Context, businessID, userID uuid
 			if b.BusinessID != businessID.String() || b.UserID != userID.String() || b.Status != domain.ReviewReplyStatusPending || len(b.Calls) == 0 || (!b.ExpiresAt.IsZero() && !b.ExpiresAt.After(time.Now())) {
 				continue
 			}
-			out.Items = append(out.Items, DecisionItem{ID: "approval:" + b.ID, Kind: decisionKindApproval, CreatedAt: b.CreatedAt, ConversationID: b.ConversationID, CallCount: len(b.Calls), Approval: decisionApproval(b.Calls)})
+			approval := decisionApproval(b.Calls)
+			if s.conversations != nil && b.ConversationID != "" {
+				conversation, err := s.conversations.GetByID(ctx, b.ConversationID)
+				if err != nil && !errors.Is(err, domain.ErrConversationNotFound) {
+					return out, fmt.Errorf("decision approval conversation: %w", err)
+				}
+				if conversation != nil && conversation.BusinessID == businessID.String() && conversation.UserID == userID.String() && conversation.TitleStatus != domain.TitleStatusAutoPending {
+					approval.Title = clampRunes(strings.TrimSpace(conversation.Title), decisionTitleRunes)
+				}
+			}
+			out.Items = append(out.Items, DecisionItem{ID: "approval:" + b.ID, Kind: decisionKindApproval, CreatedAt: b.CreatedAt, ConversationID: b.ConversationID, CallCount: len(b.Calls), Approval: approval})
 			out.Total++
 		}
 	}

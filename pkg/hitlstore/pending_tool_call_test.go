@@ -916,7 +916,7 @@ func TestDecisionQueuePendingReadIsActorScoped(t *testing.T) {
 	repo := hitlstore.NewPendingToolCallRepository(db)
 	ctx := context.Background()
 	for _, user := range []string{"current-user", "other-user"} {
-		require.NoError(t, repo.Persist(ctx, &domain.PendingToolCallBatch{ID: user, UserID: user, BusinessID: "same-business", ConversationID: "private-" + user, Calls: []domain.PendingCall{{CallID: "call"}}, ModelMessages: []byte("private snapshot")}))
+		require.NoError(t, repo.Persist(ctx, &domain.PendingToolCallBatch{ID: user, UserID: user, BusinessID: "same-business", ConversationID: "private-" + user, Calls: []domain.PendingCall{{CallID: "call", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "Свой пост", "scheduled_at": "2026-11-04T09:00:00+03:00", "chat_id": "private-target", "access_token": "private-token"}}}, ModelMessages: []byte("private snapshot")}))
 	}
 	reader := repo.(domain.BusinessPendingToolCallReader)
 	batches, err := reader.ListPendingByBusiness(ctx, "same-business", "current-user")
@@ -925,4 +925,9 @@ func TestDecisionQueuePendingReadIsActorScoped(t *testing.T) {
 	require.Equal(t, "private-current-user", batches[0].ConversationID)
 	require.Equal(t, "current-user", batches[0].UserID)
 	require.Empty(t, batches[0].ModelMessages)
+	require.Equal(t, tools.TelegramSendChannelPost, batches[0].Calls[0].ToolName)
+	require.Equal(t, "Свой пост", batches[0].Calls[0].Arguments["text"])
+	require.Equal(t, "2026-11-04T09:00:00+03:00", batches[0].Calls[0].Arguments["scheduled_at"])
+	require.NotContains(t, batches[0].Calls[0].Arguments, "chat_id")
+	require.NotContains(t, batches[0].Calls[0].Arguments, "access_token")
 }

@@ -3163,7 +3163,8 @@
     "autoFact": {
       "address": "Answered an address question {platform}",
       "hours": "Answered an opening-hours question {platform}"
-    }
+    },
+    "postTopic": "{heading}: {topic}"
   },
   "rulesV2": {
     "title": "OneVoice rules",

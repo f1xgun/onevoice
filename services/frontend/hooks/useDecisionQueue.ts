@@ -14,7 +14,13 @@ export interface DecisionItem {
   review?: Review;
   conversationId?: string;
   callCount?: number;
-  approval?: { post: boolean; platforms: string[]; scheduledAt?: string; preview?: string };
+  approval?: {
+    post: boolean;
+    platforms: string[];
+    scheduledAt?: string;
+    preview?: string;
+    title?: string;
+  };
   drift?: { driftFields: string[]; externalId?: string };
 }
 export interface DecisionQueue {

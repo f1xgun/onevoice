@@ -17,6 +17,7 @@ import (
 )
 
 const decisionPreviewRunes = 220
+const decisionTitleRunes = 80
 
 // decisionApproval projects only display context from an already actor-scoped batch.
 func decisionApproval(calls []domain.PendingCall) *DecisionApproval {
