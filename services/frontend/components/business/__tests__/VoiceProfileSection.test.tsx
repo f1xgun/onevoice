@@ -254,7 +254,7 @@ describe('VoiceProfileSection review regressions', () => {
     await user.clear(textarea);
     await user.type(textarea, 'saved in strict mode');
     await user.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Профиль голоса сохранён'));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Профиль голоса сохранен'));
     expect(screen.getByRole('button', { name: 'Сохранить профиль' })).toBeDisabled();
   });
 
@@ -370,7 +370,7 @@ describe('VoiceProfileSection successful-save cache consistency', () => {
 
     await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
     expect(textarea).toHaveValue('just saved text');
-    expect(toastSuccess).toHaveBeenCalledWith('Профиль голоса сохранён');
+    expect(toastSuccess).toHaveBeenCalledWith('Профиль голоса сохранен');
 
     await act(async () => {
       delayedRefetch.resolve({ data: { voiceProfile: 'just saved text' } });

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import { z } from 'zod';
@@ -44,6 +44,7 @@ type Editor = 'five' | 'four' | 'facts' | 'tone' | 'profile' | 'alerts' | null;
 
 export default function RulesPage() {
   const t = useTranslations('rulesV2');
+  const locale = useLocale();
   const platformLabels = usePlatformFullLabels();
   const toneLabels = useTranslations('business.voiceTone.options');
   const businessId = useBusinessStore((s) => s.activeBusinessId);
@@ -273,7 +274,12 @@ export default function RulesPage() {
           <div className="overflow-hidden rounded-block bg-card">
             {row(
               t('tone'),
-              tones.map((tone) => toneLabels(tone)).join(', ') || t('noTone'),
+              tones
+                .map((tone, index) => {
+                  const label = toneLabels(tone);
+                  return index === 0 ? label : label.toLocaleLowerCase(locale);
+                })
+                .join(', ') || t('noTone'),
               business.isSuccess ? () => setEditor('tone') : undefined
             )}
             {row(

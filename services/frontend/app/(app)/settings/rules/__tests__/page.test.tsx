@@ -207,3 +207,15 @@ it('uses the last sent review reply for tone, ignoring newer factual comments', 
   expect(await screen.findByText('«Михаил, спасибо за отзыв!»')).toBeVisible();
   expect(screen.queryByText(/Наш адрес:/)).toBeNull();
 });
+
+it('lists tones as one phrase and spells stars the same way in every rule', async () => {
+  mount(
+    { enabled: true, minRating: 5, ignoreFourStar: true, autoAnswerFacts: true },
+    { voiceTone: ['warm', 'professional'] }
+  );
+  expect(
+    await screen.findByRole('button', { name: 'Тон общения: Теплый, профессиональный' })
+  ).toBeInTheDocument();
+  expect(screen.getByText('На 5 звезд')).toBeInTheDocument();
+  expect(screen.queryByText(/звёзд/)).toBeNull();
+});
