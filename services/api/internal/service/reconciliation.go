@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/tools"
@@ -82,6 +83,7 @@ type ReconciliationService struct {
 	tasks          domain.AgentTaskRepository
 	driftDMEnabled bool
 	publicURL      string
+	scheduleAudit  audit.Logger
 }
 
 // NewReconciliationService wires the reconciler. nc may be nil (Yandex checks

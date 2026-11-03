@@ -282,19 +282,35 @@ func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, i
 			fn:             i.SyncInfo,
 		})
 	}
-	if sch, ok := platImpl.(ScheduleSyncer); ok {
-		hours := scheduleToYandexJSON(b.Settings)
-		if hours != "" {
-			input := map[string]string{"permalink": integ.ExternalID, "hours": hours}
-			s.runWithTask(ctx, b, integ, capabilityDispatch{
-				taskType:       "sync_hours",
-				displayName:    "Синхронизация часов работы",
-				displayNameKey: "sync.hours",
-				input:          func(error) map[string]string { return input },
-				fn:             sch.SyncSchedule,
-			})
+	if schedule, ok := platImpl.(ScheduleSyncer); ok {
+		s.dispatchSchedule(ctx, b, integ, schedule)
+	}
+}
+
+// SyncScheduleContext repairs only supported weekly hours, without other profile fields.
+func (s *Syncer) SyncScheduleContext(ctx context.Context, business *domain.Business) {
+	integrations, err := s.integrations.ListByBusinessID(ctx, business.ID)
+	if err != nil {
+		slog.ErrorContext(ctx, "schedule sync: list integrations", "business_id", business.ID, "error", err)
+		return
+	}
+	for _, integration := range integrations {
+		if integration.Status != domain.IntegrationStatusActive {
+			continue
+		}
+		if schedule, ok := s.perPlatform[integration.Platform].(ScheduleSyncer); ok {
+			s.dispatchSchedule(ctx, business, integration, schedule)
 		}
 	}
+}
+
+func (s *Syncer) dispatchSchedule(ctx context.Context, b *domain.Business, integ domain.Integration, schedule ScheduleSyncer) {
+	hours := scheduleToYandexJSON(b.Settings)
+	if hours == "" {
+		return
+	}
+	input := map[string]string{"permalink": integ.ExternalID, "hours": hours}
+	s.runWithTask(ctx, b, integ, capabilityDispatch{taskType: "sync_hours", displayName: "Синхронизация часов работы", displayNameKey: "sync.hours", input: func(error) map[string]string { return input }, fn: schedule.SyncSchedule})
 }
 
 // runWithTask wraps a capability invocation with start time, error capture,

@@ -59,9 +59,12 @@ func (r *SyncRunner) worker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case job := <-r.jobs:
-			if job.specialDates != nil {
+			switch {
+			case job.specialDates != nil:
 				r.syncer.SyncSpecialDatesContext(ctx, &job.business, *job.specialDates)
-			} else {
+			case job.scheduleOnly:
+				r.syncer.SyncScheduleContext(ctx, &job.business)
+			default:
 				r.syncer.SyncBusinessContext(ctx, &job.business)
 			}
 		}
@@ -72,6 +75,22 @@ func (r *SyncRunner) worker(ctx context.Context) {
 type syncJob struct {
 	business     domain.Business
 	specialDates *domain.SpecialDateHoursChange
+	scheduleOnly bool
+}
+
+// SyncSchedule uses the existing queue for an explicit hours-only repair.
+func (r *SyncRunner) SyncSchedule(business *domain.Business) error {
+	if business == nil || r.ctx == nil || r.ctx.Err() != nil {
+		return domain.ErrServiceUnavailable
+	}
+	select {
+	case <-r.ctx.Done():
+		return domain.ErrServiceUnavailable
+	case r.jobs <- syncJob{business: *business, scheduleOnly: true}:
+		return nil
+	default:
+		return domain.ErrServiceUnavailable
+	}
 }
 
 func (r *SyncRunner) SyncSpecialDates(business *domain.Business, change domain.SpecialDateHoursChange) {

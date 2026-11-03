@@ -43,8 +43,8 @@ export default function BusinessPage() {
   });
   const is404 = isError && isAxiosError(error) && error.response?.status === HTTP_STATUS.NOT_FOUND;
   return (
-    <div className="px-gutter pb-10 pt-5 md:px-gutter-desktop">
-      <header className="mb-group">
+    <div className="px-gutter pb-10 pt-2 md:px-gutter-desktop xl:pt-group">
+      <header className="mb-4 xl:mb-group">
         <h1 className="text-page-title">{is404 ? tBusiness('createTitle') : t('title')}</h1>
         <p className="mt-1 text-[15px] leading-[22px] text-ink-soft">{t('subtitle')}</p>
       </header>

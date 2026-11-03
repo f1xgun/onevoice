@@ -426,3 +426,51 @@
           application/json:
             schema:
               $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/adopt-hours:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: adoptIntegrationHours
+    summary: Accept the displayed Yandex hours into the local business profile.
+    description: Requires business.update. Preserves special dates and the original check time; never dispatches a platform write. A changed or unavailable comparison returns 409.
+    tags:
+    - integrations
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/AdoptHoursRequest
+    responses:
+      '200':
+        description: Updated business profile.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '403':
+        description: Insufficient permission.
+      '404':
+        description: Business not found.
+      '409':
+        description: Comparison changed or cannot be adopted.
+      '500':
+        description: Internal failure.
+/businesses/{id}/integrations/restore-hours:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: restoreIntegrationHours
+    summary: Queue the recorded weekly hours through the schedule-only sync capability.
+    description: Requires business.update and verified email. Other profile fields are not dispatched.
+    tags:
+    - integrations
+    responses:
+      '202':
+        description: Hours repair queued; delivery is verified by the existing sync process.
+      '403':
+        description: Insufficient permission.
+      '404':
+        description: Business not found.
+      '503':
+        description: Schedule queue unavailable.

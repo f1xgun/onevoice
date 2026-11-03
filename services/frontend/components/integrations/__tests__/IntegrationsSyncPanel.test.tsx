@@ -1,178 +1,163 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { IntegrationsSyncPanel, syncStatusFor } from '../IntegrationsSyncPanel';
+import {
+  fetchIntegrationsDrift,
+  verifyIntegrations,
+  adoptIntegrationHours,
+  restoreIntegrationHours,
+} from '@/lib/api/integrationsSync';
+import { toast } from 'sonner';
 
-// Mocks must precede the component import so its transitive imports resolve
-// to the mocked exports at module-evaluation time.
 vi.mock('@/lib/api/integrationsSync', () => ({
   fetchIntegrationsDrift: vi.fn(),
   verifyIntegrations: vi.fn(),
+  adoptIntegrationHours: vi.fn(),
+  restoreIntegrationHours: vi.fn(),
 }));
-vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-}));
-vi.mock('@/lib/telemetry', () => ({ trackClick: vi.fn() }));
-
-let permAllowed = true;
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+let canEdit = true;
 vi.mock('@/lib/hooks/usePermission', () => ({
-  usePermission: () => ({ allowed: permAllowed, isLoading: false }),
+  usePermission: () => ({ allowed: canEdit, isLoading: false }),
 }));
-
-import { toast } from 'sonner';
-import { fetchIntegrationsDrift, verifyIntegrations } from '@/lib/api/integrationsSync';
-import type { IntegrationDrift } from '@/lib/api/integrationsSync';
-import { IntegrationsSyncPanel, syncStatusFor } from '../IntegrationsSyncPanel';
-
-const mockedFetchDrift = vi.mocked(fetchIntegrationsDrift);
-const mockedVerify = vi.mocked(verifyIntegrations);
-const mockedToast = vi.mocked(toast);
-
-const INTEGRATIONS = [
+const integrations = [
   {
-    id: 't1',
+    id: 'tg',
     platform: 'telegram',
-    externalId: '-100200',
-    metadata: { channel_title: 'My Channel' },
-  },
-  { id: 'v1', platform: 'vk', externalId: '55', metadata: { community_name: 'My Community' } },
-  { id: 'y1', platform: 'yandex_business', externalId: 'org-1', metadata: {} },
-];
-
-// telegram: checked, no drift → in sync.
-// vk: checked, drifted on title+website → out of sync.
-// yandex: pending row (no lastCheckedAt) → must read "not checked", never green.
-const DRIFT: IntegrationDrift[] = [
-  {
-    platform: 'telegram',
-    externalId: '-100200',
-    driftDetected: false,
-    driftFields: [],
-    lastCheckedAt: '2026-07-01T10:00:00Z',
-    nextCheckAt: '2026-07-02T10:00:00Z',
+    externalId: 'private-id',
+    metadata: { channel_title: 'Зёрна на Бажова' },
   },
   {
-    platform: 'vk',
-    externalId: '55',
-    driftDetected: true,
-    driftFields: ['title', 'website'],
-    lastCheckedAt: '2026-07-01T10:00:00Z',
-    nextCheckAt: '2026-07-02T10:00:00Z',
-  },
-  {
+    id: 'ya',
     platform: 'yandex_business',
-    externalId: 'org-1',
-    driftDetected: false,
-    driftFields: [],
-    nextCheckAt: '2026-07-02T10:00:00Z',
+    externalId: 'org',
+    metadata: { business_name: 'Кофейня Зёрна' },
   },
 ];
-
-function renderPanel() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-  }
+const week = Object.fromEntries(
+  ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => [
+    day,
+    { open: day === 'saturday' ? '10:00' : '08:00', close: '21:00' },
+  ])
+);
+const stored = { ...week, saturday: { open: '09:00', close: '21:00' } };
+const row = {
+  platform: 'yandex_business',
+  externalId: 'org',
+  driftDetected: true,
+  driftFields: ['schedule'],
+  lastCheckedAt: '2026-11-03T07:00:00+03:00',
+  nextCheckAt: '2026-11-04T07:00:00+03:00',
+  remoteValues: { schedule: JSON.stringify(week) },
+  storedValues: { schedule: JSON.stringify(stored) },
+};
+function mount() {
   return render(
-    <Wrapper>
-      <IntegrationsSyncPanel businessId="biz-1" integrations={INTEGRATIONS} />
-    </Wrapper>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <IntegrationsSyncPanel businessId="business" integrations={integrations} />
+    </QueryClientProvider>
   );
 }
-
 beforeEach(() => {
-  permAllowed = true;
-  mockedFetchDrift.mockReset();
-  mockedVerify.mockReset();
-  mockedToast.success.mockReset();
-  mockedToast.error.mockReset();
-  mockedFetchDrift.mockResolvedValue(DRIFT);
-  mockedVerify.mockResolvedValue({ started: true });
+  vi.clearAllMocks();
+  canEdit = true;
+  vi.mocked(fetchIntegrationsDrift).mockResolvedValue([row]);
+  vi.mocked(adoptIntegrationHours).mockResolvedValue({});
+  vi.mocked(restoreIntegrationHours).mockResolvedValue({});
+  vi.mocked(verifyIntegrations).mockResolvedValue({ started: true });
 });
-
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
+it('shows the actual weekly-hours difference with two explicit owner choices', async () => {
+  mount();
+  expect(await screen.findByText('Часы на Картах другие')).toBeVisible();
+  expect(screen.getByText('Суббота')).toBeVisible();
+  expect(screen.getByText('10:00–21:00')).toHaveClass('bg-diff-old');
+  expect(screen.getByText('9:00–21:00')).toHaveClass('bg-diff-new');
+  expect(screen.getByRole('button', { name: 'Вернуть ваши часы на Карты' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Взять часы с Карт' })).toBeEnabled();
+  expect(screen.queryByText('schedule')).toBeNull();
+  expect(screen.queryByText('org')).toBeNull();
 });
-
-describe('IntegrationsSyncPanel', () => {
-  it('renders in-sync, out-of-sync (with plain field names) and not-checked statuses', async () => {
-    renderPanel();
-
-    // Wait for the resolved status, not the prop-rendered channel name.
-    await screen.findByText('Синхронизировано');
-    expect(screen.getByText('My Channel')).toBeInTheDocument();
-
-    // in sync (only telegram) — the pending yandex row must NOT read as green.
-    expect(screen.getAllByText('Синхронизировано')).toHaveLength(1);
-
-    // out of sync with human-readable field names.
-    expect(screen.getByText('Рассинхронизация')).toBeInTheDocument();
-    expect(screen.getByText('Отличается от площадки: название, сайт')).toBeInTheDocument();
-
-    // pending (no lastCheckedAt) → neutral "not checked".
-    expect(screen.getByText('Не проверялось')).toBeInTheDocument();
-  });
-
-  it('runs the verify flow: confirm → POST verify → success toast → drift refetch', async () => {
-    const user = userEvent.setup();
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('My Channel')).toBeInTheDocument());
-    expect(mockedFetchDrift).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole('button', { name: 'Проверить синхронизацию' }));
-    await user.click(await screen.findByRole('button', { name: 'Переотправить и проверить' }));
-
-    await waitFor(() => expect(mockedVerify).toHaveBeenCalledWith('biz-1'));
-    await waitFor(() => expect(mockedToast.success).toHaveBeenCalled());
-    // invalidation refetches the drift query.
-    await waitFor(() => expect(mockedFetchDrift.mock.calls.length).toBeGreaterThan(1));
-  });
-
-  it('shows an error toast when verify fails', async () => {
-    mockedVerify.mockRejectedValue(new Error('boom'));
-    const user = userEvent.setup();
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('My Channel')).toBeInTheDocument());
-
-    await user.click(screen.getByRole('button', { name: 'Проверить синхронизацию' }));
-    await user.click(await screen.findByRole('button', { name: 'Переотправить и проверить' }));
-
-    await waitFor(() => expect(mockedToast.error).toHaveBeenCalled());
-    expect(mockedToast.success).not.toHaveBeenCalled();
-  });
-
-  it('hides the verify action for actors without business.update', async () => {
-    permAllowed = false;
-    renderPanel();
-    // read-only status is still shown for viewers.
-    await screen.findByText('Синхронизировано');
-
-    expect(
-      screen.queryByRole('button', { name: 'Проверить синхронизацию' })
-    ).not.toBeInTheDocument();
-  });
-
-  it('renders a skeleton (no false green) while drift is loading', async () => {
-    mockedFetchDrift.mockImplementation(() => new Promise(() => {}));
-    renderPanel();
-    // channels render immediately from props; statuses are still pending.
-    await waitFor(() => expect(screen.getByText('My Channel')).toBeInTheDocument());
-    expect(document.querySelectorAll('[data-state="static"]').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Синхронизировано')).not.toBeInTheDocument();
-  });
-
-  it('shows a load-failed notice when the drift fetch errors', async () => {
-    mockedFetchDrift.mockRejectedValue(new Error('network'));
-    renderPanel();
-    await waitFor(() =>
-      expect(screen.getByText('Не удалось загрузить статус синхронизации.')).toBeInTheDocument()
-    );
-    expect(screen.queryByText('Синхронизировано')).not.toBeInTheDocument();
-  });
+it('adopts the displayed source snapshot without invoking either outbound repair path', async () => {
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Взять часы с Карт' }));
+  await waitFor(() =>
+    expect(adoptIntegrationHours).toHaveBeenCalledWith('business', 'org', row.lastCheckedAt)
+  );
+  expect(restoreIntegrationHours).not.toHaveBeenCalled();
+  expect(verifyIntegrations).not.toHaveBeenCalled();
 });
-
-it('does not show a previous green comparison after a failed check', () => {
-  expect(syncStatusFor({ ...DRIFT[0], checkFailed: true })).toBe('not_checked');
+it('restores only hours instead of the full-profile verify operation', async () => {
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Вернуть ваши часы на Карты' }));
+  await waitFor(() => expect(restoreIntegrationHours).toHaveBeenCalledWith('business'));
+  expect(verifyIntegrations).not.toHaveBeenCalled();
+  expect(adoptIntegrationHours).not.toHaveBeenCalled();
+});
+it('keeps full-profile confirmation for a scalar difference and excludes raw identifiers', async () => {
+  vi.mocked(fetchIntegrationsDrift).mockResolvedValue([
+    {
+      ...row,
+      platform: 'telegram',
+      externalId: 'private-id',
+      driftFields: ['title'],
+      remoteValues: { title: 'Зерна кофе' },
+      storedValues: { title: 'Кофейня Зёрна' },
+    },
+  ]);
+  mount();
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Вернуть данные из карточки на площадки' })
+  );
+  const dialog = await screen.findByRole('alertdialog');
+  expect(dialog).toHaveTextContent('Зёрна на Бажова');
+  expect(dialog).not.toHaveTextContent('private-id');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Поправить везде' }));
+  await waitFor(() => expect(verifyIntegrations).toHaveBeenCalled());
+});
+it('does not offer writes to a read-only actor', async () => {
+  canEdit = false;
+  mount();
+  await screen.findByText('Часы на Картах другие');
+  expect(screen.queryByRole('button')).toBeNull();
+});
+it('shows one positive receipt only when every connected channel has a successful comparison', async () => {
+  vi.mocked(fetchIntegrationsDrift).mockResolvedValue(
+    integrations.map((integration) => ({
+      ...row,
+      platform: integration.platform,
+      externalId: integration.externalId,
+      driftDetected: false,
+      driftFields: [],
+    }))
+  );
+  mount();
+  expect(await screen.findByText(/проверенные данные совпадают/)).toBeVisible();
+  expect(screen.queryByRole('button')).toBeNull();
+});
+it('does not turn missing, pending or failed comparison data into a green guarantee', async () => {
+  vi.mocked(fetchIntegrationsDrift).mockResolvedValue([
+    { ...row, driftDetected: false, checkFailed: true },
+  ]);
+  mount();
+  await waitFor(() => expect(fetchIntegrationsDrift).toHaveBeenCalled());
+  expect(screen.queryByText(/совпадают/)).toBeNull();
+  expect(syncStatusFor({ ...row, driftDetected: false, checkFailed: true })).toBe('not_checked');
+  expect(syncStatusFor(undefined)).toBe('not_checked');
+});
+it('keeps a loading skeleton and a fetch failure distinct from a completed comparison', async () => {
+  vi.mocked(fetchIntegrationsDrift).mockRejectedValue(new Error('offline'));
+  mount();
+  expect(await screen.findByRole('alert')).toBeVisible();
+  expect(screen.queryByText(/совпадают/)).toBeNull();
+});
+it('keeps the difference available after a failed mutation', async () => {
+  vi.mocked(adoptIntegrationHours).mockRejectedValue(new Error('offline'));
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Взять часы с Карт' }));
+  await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  expect(screen.getByText('10:00–21:00')).toBeVisible();
 });

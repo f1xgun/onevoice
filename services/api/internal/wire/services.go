@@ -578,6 +578,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.PlanResolver,
 	)
 	s.Reconciler.SetDriftAlerts(repos.AgentTask, cfg.DriftAlertDeliveryEnabled, cfg.PublicURL)
+	s.Reconciler.SetScheduleAudit(s.AuditLogger)
 
 	s.PresenceHealth = service.NewPresenceHealthService(repos.Review, repos.SyncState)
 	s.PresenceHealthSnapshot = presencehealth.New(repos.PresenceHealthSnapshot, s.PresenceHealth, repos.PresenceHealthSnapshot, log)

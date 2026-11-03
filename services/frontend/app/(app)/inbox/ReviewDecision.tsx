@@ -140,7 +140,7 @@ export function ReviewDecision({ review, businessId, businessName }: ReviewDecis
               {businessMark(businessName || '')}
             </span>
             <strong className="text-base font-semibold">{businessName || t('business')}</strong>
-            <label htmlFor={`draft-${review.id}`} className="text-meta text-ink-soft">
+            <label htmlFor={`draft-${review.id}`} className="text-meta lowercase text-ink-soft">
               {t(failed ? 'failedReply' : 'draft')}
             </label>
           </div>

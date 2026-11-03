@@ -2,12 +2,11 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import { useIntegrationsDrift } from '@/lib/hooks/useIntegrationsDrift';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { IntegrationsSyncPanel } from '@/components/integrations/IntegrationsSyncPanel';
-import { usePlatformMeta, type PlatformId } from '@/lib/platforms';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { ListLoadError } from '@/components/lists/ListLoadError';
 
 interface Integration {
@@ -22,9 +21,7 @@ interface BusinessComparisonProps {
 
 export function BusinessComparison({ businessId }: BusinessComparisonProps) {
   const t = useTranslations('business.card');
-  const platformMeta = usePlatformMeta();
-  const driftFields = useTranslations('integrations.sync.fields');
-  const { data: drift } = useIntegrationsDrift(businessId);
+  const permission = usePermission('integrations.read');
   const {
     data: integrations,
     isError,
@@ -39,8 +36,10 @@ export function BusinessComparison({ businessId }: BusinessComparisonProps) {
           if (!Array.isArray(r.data)) throw new Error('Invalid integration list response');
           return r.data;
         }),
+    enabled: permission.allowed,
   });
   const active = integrations?.filter((i) => i.status === 'active') ?? [];
+  if (!permission.allowed && !permission.isLoading) return null;
   return (
     <section id="comparison" className="scroll-mt-4">
       {isError ? (
@@ -49,43 +48,6 @@ export function BusinessComparison({ businessId }: BusinessComparisonProps) {
         <p className="text-meta text-ink-soft">{t('loading')}</p>
       ) : (
         <>
-          {(drift ?? [])
-            .filter(
-              (entry) =>
-                !entry.checkFailed &&
-                entry.lastCheckedAt &&
-                active.some(
-                  (i) => i.platform === entry.platform && i.externalId === entry.externalId
-                )
-            )
-            .map((entry) => (
-              <div key={`${entry.platform}:${entry.externalId}`} className="space-y-3">
-                {entry.driftFields.map(
-                  (field) =>
-                    entry.remoteValues?.[field] !== undefined &&
-                    entry.storedValues?.[field] !== undefined && (
-                      <div key={field} className="rounded-block bg-card p-block md:p-block-desktop">
-                        <h3 className="font-semibold">
-                          {t('difference', { field: driftFields(field) })}
-                        </h3>
-                        <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-2 break-words text-sm">
-                          <dt className="text-ink-soft">
-                            {platformMeta[entry.platform as PlatformId]?.fullLabel ??
-                              entry.platform}
-                          </dt>
-                          <dd className="whitespace-pre-wrap rounded bg-diff-old px-1">
-                            {entry.remoteValues[field] || t('empty')}
-                          </dd>
-                          <dt className="text-ink-soft">{t('stored')}</dt>
-                          <dd className="whitespace-pre-wrap rounded bg-diff-new px-1">
-                            {entry.storedValues[field] || t('empty')}
-                          </dd>
-                        </dl>
-                      </div>
-                    )
-                )}
-              </div>
-            ))}
           <IntegrationsSyncPanel
             businessId={businessId}
             integrations={active}

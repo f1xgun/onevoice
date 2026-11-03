@@ -188,6 +188,11 @@ type SyncStateRepository interface {
 	ScheduleImmediate(ctx context.Context, businessID uuid.UUID) error
 }
 
+// RemoteScheduleAdopter saves accepted remote hours and clears their mismatch atomically.
+type RemoteScheduleAdopter interface {
+	AdoptSchedule(context.Context, uuid.UUID, SyncState, []byte) error
+}
+
 // BusinessMembershipRepository persists the v2 RBAC membership graph.
 // See docs/pkg/domain-repository.md — InTx pairs compose with authz invariants under one tx.
 type BusinessMembershipRepository interface {
