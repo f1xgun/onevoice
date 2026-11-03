@@ -19,7 +19,11 @@ import { useConversationFlow } from '@/hooks/useConversationFlow';
 
 const schema = z.object({ instruction: z.string().trim().min(1) });
 
-export function InstructionComposer({ businessId }: { businessId: string }) {
+interface InstructionComposerProps {
+  businessId: string;
+}
+
+export function InstructionComposer({ businessId }: InstructionComposerProps) {
   const t = useTranslations('inbox');
   const tChat = useTranslations('chat.instructions');
   const permission = usePermission('content.create');
@@ -77,7 +81,7 @@ export function InstructionComposer({ businessId }: { businessId: string }) {
           aria-label={t('instruct')}
           placeholder={t('instructionPlaceholder')}
           disabled={form.formState.isSubmitting || !permission.allowed}
-          className="!min-h-11 !border-0 !bg-transparent !p-2 !shadow-none"
+          className="!min-h-11 resize-none !border-0 !bg-transparent !p-2 !shadow-none"
         />
         <ActionButton
           type="submit"

@@ -58,7 +58,7 @@ func decisionApproval(calls []domain.PendingCall) *DecisionApproval {
 			}
 		}
 	}
-	if len(dates) == len(calls) && len(dates) > 0 {
+	if result.Post && len(dates) == len(calls) && len(dates) > 0 {
 		same := true
 		for _, date := range dates {
 			if !date.Equal(dates[0]) {

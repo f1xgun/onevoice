@@ -110,10 +110,7 @@ export function ReviewDecision({ review, businessId, businessName }: ReviewDecis
             <p className="text-meta">
               <span className="text-star" aria-hidden>
                 {Array.from({ length: MAX_RATING }, (_, index) => (
-                  <span
-                    key={index}
-                    className={index < review.rating ? 'text-star' : 'text-ink-faint'}
-                  >
+                  <span key={index} className={index < review.rating ? 'text-star' : 'text-line'}>
                     {'★'.repeat(1)}
                   </span>
                 ))}

@@ -135,7 +135,7 @@ func (s *DecisionQueueService) List(ctx context.Context, businessID, userID uuid
 			if !d.DriftDetected || d.LastCheckedAt == nil {
 				continue
 			}
-			out.Items = append(out.Items, DecisionItem{ID: "drift:" + d.ID.String(), Kind: "drift", Platform: d.Platform, CreatedAt: d.UpdatedAt, Drift: &d})
+			out.Items = append(out.Items, DecisionItem{ID: "drift:" + d.ID.String(), Kind: "drift", Platform: d.Platform, CreatedAt: *d.LastCheckedAt, Drift: &d})
 			out.Total++
 		}
 	}
