@@ -8,6 +8,8 @@ import { ProfileForm } from './ProfileForm';
 import { HoursForm, SpecialDatesForm } from './ScheduleForm';
 import { BusinessPresence } from './BusinessPresence';
 import { groupOpeningHours, openingHours } from '@/lib/business-schedule';
+import { businessMark } from '@/lib/business-display';
+import { BUSINESS_DESCRIPTION_MAX_LEN } from '@/lib/schemas';
 import { BusinessComparison } from './BusinessComparison';
 import {
   Sheet,
@@ -139,25 +141,38 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
               onClick={() => setEditor('profile')}
               className="w-full whitespace-pre-wrap break-words rounded-block bg-card p-block text-left leading-6 md:p-block-desktop"
             >
-              {business.description || t('empty')}
+              <span className="block">{business.description || t('empty')}</span>
+              <span className="mt-3 block text-meta text-ink-soft">
+                {t('descriptionCount', {
+                  count: business.description?.length ?? 0,
+                  max: BUSINESS_DESCRIPTION_MAX_LEN,
+                })}
+              </span>
             </button>
           </section>
           <section>
-            <h2 className="mb-2.5 text-group-title">{t('photo')}</h2>
+            <h2 className="mb-2.5 text-group-title">{t('logo')}</h2>
             <button
               type="button"
               onClick={() => setEditor('profile')}
-              className="flex min-h-[120px] w-full items-center gap-4 rounded-block bg-card p-block text-left text-brand md:p-block-desktop"
+              className="flex min-h-20 w-full items-center gap-3 rounded-block bg-card p-block text-left text-brand md:p-block-desktop"
             >
-              {business.logoUrl && (
+              {business.logoUrl ? (
                 <Image
                   src={business.logoUrl}
                   alt={business.name}
-                  width={120}
-                  height={120}
+                  width={44}
+                  height={44}
                   unoptimized
-                  className="h-[120px] w-[120px] rounded-inner object-cover"
+                  className="h-11 w-11 shrink-0 rounded-inner object-cover"
                 />
+              ) : (
+                <span
+                  aria-hidden
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-inner bg-brand text-lg font-semibold text-brand-foreground"
+                >
+                  {businessMark(business.name)}
+                </span>
               )}
               {t('editPhoto')}
             </button>

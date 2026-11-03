@@ -14,7 +14,7 @@ const NAME_MIN_LEN = 2;
 const NAME_MAX_LEN = 100;
 // Business profile fields.
 const BUSINESS_NAME_MAX_LEN = 200;
-const BUSINESS_DESCRIPTION_MAX_LEN = 500;
+export const BUSINESS_DESCRIPTION_MAX_LEN = 500;
 const BUSINESS_ADDRESS_MAX_LEN = 500;
 
 // Translator shape we depend on for schema messages. Compatible with both
