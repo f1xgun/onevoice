@@ -50,6 +50,7 @@ var (
 	// ErrServiceUnavailable is returned when a downstream resource (e.g. the
 	// OAuth advisory lock) is exhausted or temporarily unavailable.
 	ErrServiceUnavailable = errors.New("service unavailable")
+	ErrSyncStateChanged   = errors.New("comparison changed or unavailable")
 	// ErrActorEmailNotVerified is returned by Connect when the acting user's
 	// email is unverified. Mirrors the RequireVerifiedEmailDay0 middleware so
 	// the public OAuth callbacks (which sit outside that gate) cannot persist a

@@ -533,6 +533,12 @@ type AccountDeletionInfo struct {
 	ScheduledDeletionAt time.Time `json:"scheduledDeletionAt" validate:"required"`
 }
 
+// AdoptHoursRequest defines model for AdoptHoursRequest.
+type AdoptHoursRequest struct {
+	ExternalId    string    `json:"externalId" validate:"required,min=1,max=128"`
+	LastCheckedAt time.Time `json:"lastCheckedAt" validate:"required"`
+}
+
 // AgentTask defines model for AgentTask.
 type AgentTask struct {
 	BusinessId     openapi_types.UUID `json:"businessId" validate:"required,uuid"`
@@ -2658,6 +2664,9 @@ type UpdateBusinessDescriptionTemplateJSONRequestBody = UpdateDescriptionTemplat
 
 // UpdateBusinessDriftAlertsJSONRequestBody defines body for UpdateBusinessDriftAlerts for application/json ContentType.
 type UpdateBusinessDriftAlertsJSONRequestBody = UpdateDriftAlertSettingsRequest
+
+// AdoptIntegrationHoursJSONRequestBody defines body for AdoptIntegrationHours for application/json ContentType.
+type AdoptIntegrationHoursJSONRequestBody = AdoptHoursRequest
 
 // SelectGoogleLocationJSONRequestBody defines body for SelectGoogleLocation for application/json ContentType.
 type SelectGoogleLocationJSONRequestBody = GoogleSelectLocationRequest

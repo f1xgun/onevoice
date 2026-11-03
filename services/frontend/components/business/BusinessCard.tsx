@@ -6,6 +6,8 @@ import { ChevronRight } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ProfileForm } from './ProfileForm';
 import { HoursForm, SpecialDatesForm } from './ScheduleForm';
+import { BusinessPresence } from './BusinessPresence';
+import { groupOpeningHours, openingHours } from '@/lib/business-schedule';
 import { BusinessComparison } from './BusinessComparison';
 import {
   Sheet,
@@ -26,7 +28,6 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
   const locale = useLocale();
   const fields = useTranslations('business.profileForm.fields');
   const days = useTranslations('business.daysOfWeek');
-  const scheduleText = useTranslations('business.scheduleForm');
   const specialDatesEditor: Editor = 'specialDates';
   const [editor, setEditor] = useState<Editor>(null);
   const raw = business.settings?.schedule as
@@ -38,9 +39,18 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
     ? ((business.settings?.specialDates as SpecialDate[] | undefined) ?? [])
     : (raw?.specialDates ?? (business.settings?.specialDates as SpecialDate[] | undefined) ?? []);
   const hours = (day: { closed: boolean; open?: string; close?: string }) =>
-    day.closed ? scheduleText('closed') : `${day.open ?? '—'}–${day.close ?? '—'}`;
+    openingHours(day, t('dayOff'));
+  const groups = groupOpeningHours(schedule ?? []);
+  function groupLabel(keys: ScheduleDay['day'][]) {
+    if (keys.length === 1) return days(keys[0]);
+    const last =
+      locale === 'ru'
+        ? days(keys[keys.length - 1]).toLocaleLowerCase(locale)
+        : days(keys[keys.length - 1]);
+    return keys.length === 2 ? `${days(keys[0])}, ${last}` : `${days(keys[0])} – ${last}`;
+  }
 
-  function row(label: string, value: string | null | undefined, target: Editor) {
+  function row(label: string, value: string | null | undefined, target: Editor, stacked = false) {
     return (
       <button
         type="button"
@@ -48,10 +58,21 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
         onClick={() => setEditor(target)}
         className="flex min-h-[52px] w-full items-center gap-3 px-block py-3 text-left md:px-block-desktop"
       >
-        <span className="shrink-0">{label}</span>
-        <span className="ml-auto min-w-0 break-words text-right text-ink-soft">
-          {value || t('empty')}
-        </span>
+        {stacked ? (
+          <span className="min-w-0 flex-1">
+            <span className="block">{label}</span>
+            <span className="mt-1 block break-words text-[15px] leading-[22px] text-ink-soft">
+              {value || t('empty')}
+            </span>
+          </span>
+        ) : (
+          <>
+            <span className="shrink-0">{label}</span>
+            <span className="ml-auto min-w-0 break-words text-right text-ink-soft">
+              {value || t('empty')}
+            </span>
+          </>
+        )}
         <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-ink-soft" />
       </button>
     );
@@ -64,23 +85,30 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
           <BusinessComparison businessId={businessId} />
           <section>
             <h2 className="mb-2.5 text-group-title">{t('basics')}</h2>
-            <div className="overflow-hidden rounded-block bg-card">
+            <div className="overflow-hidden rounded-block bg-card py-2">
               {(['name', 'category', 'address', 'phone', 'website'] as const).map((field) =>
-                row(fields(field), business[field], 'profile')
+                row(
+                  field === 'address' ? t('address') : fields(field),
+                  field === 'website'
+                    ? business.website?.replace(/^https?:\/\//, '').replace(/\/$/, '')
+                    : business[field],
+                  'profile',
+                  field === 'address'
+                )
               )}
             </div>
           </section>
           <section>
             <h2 className="mb-2.5 text-group-title">{t('hours')}</h2>
-            <div className="rounded-block bg-card">
+            <div className="rounded-block bg-card py-2">
               {schedule?.length
-                ? schedule.map((day) => row(days(day.day), hours(day), 'hours'))
+                ? groups.map((group) => row(groupLabel(group.days), hours(group.hours), 'hours'))
                 : row(t('hours'), undefined, 'hours')}
             </div>
           </section>
           <section>
             <h2 className="mb-2.5 text-group-title">{t('specialDates')}</h2>
-            <div className="rounded-block bg-card">
+            <div className="rounded-block bg-card py-2">
               {specialDates.map((day) =>
                 row(
                   new Intl.DateTimeFormat(locale, {
@@ -88,7 +116,9 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
                     day: 'numeric',
                     month: 'long',
                     timeZone: 'UTC',
-                  }).format(new Date(day.date)),
+                  })
+                    .format(new Date(day.date))
+                    .replace(/^./u, (letter) => letter.toLocaleUpperCase(locale)),
                   hours(day),
                   specialDatesEditor
                 )
@@ -133,28 +163,12 @@ export function BusinessCard({ business, businessId }: BusinessCardProps) {
             </button>
           </section>
         </div>
-        <aside className="hidden min-w-0 xl:block">
-          <h2 className="mb-2.5 text-group-title">{t('preview')}</h2>
-          <div className="space-y-3 break-words rounded-block bg-card p-block-desktop">
-            {business.logoUrl && (
-              <Image
-                src={business.logoUrl}
-                alt=""
-                width={280}
-                height={160}
-                unoptimized
-                className="h-40 w-full rounded-inner object-cover"
-              />
-            )}
-            <h3 className="text-lg font-semibold">{business.name}</h3>
-            <p className="text-ink-soft">
-              {business.category} · {business.address}
-            </p>
-            <p>{business.phone}</p>
-            <p className="text-ink-soft">{business.website}</p>
-          </div>
-          <p className="mt-3 text-meta text-ink-soft">{t('previewHint')}</p>
-        </aside>
+        <BusinessPresence
+          business={business}
+          businessId={businessId}
+          schedule={schedule ?? []}
+          specialDates={specialDates}
+        />
       </div>
       <Sheet
         open={editor !== null}

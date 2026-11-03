@@ -128,6 +128,10 @@ paths:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1drift
   /businesses/{id}/integrations/verify:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1verify
+  /businesses/{id}/integrations/adopt-hours:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1adopt-hours
+  /businesses/{id}/integrations/restore-hours:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1restore-hours
   /businesses/{id}/integrations/{integrationId}:
     $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1{integrationId}
   /businesses/{id}/integrations/vk/connect:
@@ -1007,6 +1011,19 @@ components:
           description: Free-form per-day schedule blob.
         specialDates:
           description: Optional special-date overrides. Send specialDates alone to explicitly sync dates to Yandex Business while preserving weekly hours.
+    AdoptHoursRequest:
+      type: object
+      required:
+      - externalId
+      - lastCheckedAt
+      properties:
+        externalId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        lastCheckedAt:
+          type: string
+          format: date-time
     UpdateVoiceToneRequest:
       type: object
       properties:

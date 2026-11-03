@@ -62,15 +62,24 @@ function scheduleValue(value: unknown) {
   return { closed: false, open: formatClockTime(hours.open), close: formatClockTime(hours.close) };
 }
 
-export function firstScheduleDifference(remoteValue?: string, storedValue?: string) {
+export function scheduleDifferences(remoteValue?: string, storedValue?: string) {
   const remote = readSchedule(remoteValue),
     stored = readSchedule(storedValue);
-  if (!remote || !stored) return null;
+  if (!remote || !stored) return [];
+  const differences = [];
   for (const [index, key] of yandexDays.entries()) {
     const before = scheduleValue(remote[key]),
       after = scheduleValue(stored[key]);
     if (before && after && JSON.stringify(before) !== JSON.stringify(after))
-      return { day: days[index], remote: before, stored: after };
+      differences.push({ day: days[index], remote: before, stored: after });
   }
-  return null;
+  return differences;
+}
+
+export function firstScheduleDifference(remoteValue?: string, storedValue?: string) {
+  return scheduleDifferences(remoteValue, storedValue)[0] ?? null;
+}
+export function hasCompleteYandexHours(value?: string) {
+  const schedule = readSchedule(value);
+  return !!schedule && yandexDays.every((day) => scheduleValue(schedule[day]) !== null);
 }

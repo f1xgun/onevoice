@@ -287,6 +287,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(integWith).Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
 				r.With(integWith).Post("/integrations/telegram/owner-link", handlers.Connect.StartTelegramOwnerLink)
 				r.With(integWith).Post("/integrations/verify", handlers.Integration.VerifyIntegrations)
+				r.With(integWith).Post("/integrations/restore-hours", handlers.Integration.RestoreHours)
+				r.With(writeLimit).Post("/integrations/adopt-hours", handlers.Integration.AdoptHours)
 
 				if users != nil {
 					r.With(

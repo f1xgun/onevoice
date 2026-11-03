@@ -114,6 +114,8 @@ export const BIZ_API_PATHS = {
     // VerifyIntegrations). DRIFT is read-gated like ROOT; VERIFY re-pushes
     // the stored organization profile to the connected platforms.
     DRIFT: '/integrations/drift',
+    ADOPT_HOURS: '/integrations/adopt-hours',
+    RESTORE_HOURS: '/integrations/restore-hours',
     VERIFY: '/integrations/verify',
   },
   REVIEWS: {

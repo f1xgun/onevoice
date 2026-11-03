@@ -46,3 +46,19 @@ export async function verifyIntegrations(businessId: string): Promise<VerifyInte
   );
   return data;
 }
+
+export async function adoptIntegrationHours(
+  businessId: string,
+  externalId: string,
+  lastCheckedAt: string
+) {
+  return (
+    await bizApi(businessId).post(BIZ_API_PATHS.INTEGRATIONS.ADOPT_HOURS, {
+      externalId,
+      lastCheckedAt,
+    })
+  ).data;
+}
+export async function restoreIntegrationHours(businessId: string) {
+  return (await bizApi(businessId).post(BIZ_API_PATHS.INTEGRATIONS.RESTORE_HOURS)).data;
+}

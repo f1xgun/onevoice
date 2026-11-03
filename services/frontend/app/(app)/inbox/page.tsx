@@ -283,13 +283,6 @@ export default function InboxPage() {
                   {itemSummary(selected) && (
                     <blockquote className="text-reading">{itemSummary(selected)}</blockquote>
                   )}
-                  {selected.drift && (
-                    <p className="text-meta text-ink-soft">
-                      {selected.drift.driftFields
-                        .map((field) => (tDrift.has(field) ? tDrift(field) : ''))
-                        .join(', ')}
-                    </p>
-                  )}
                   <ActionButton asChild>
                     <Link href={target(selected)}>{t(`${selected.kind}Action`)}</Link>
                   </ActionButton>
