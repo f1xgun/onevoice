@@ -1305,7 +1305,9 @@
       "platform": "Platform",
       "platformMatches": "{platform}: {fields} match",
       "platformDifferent": "{platform}: different {fields}",
-      "ratingCount": "{count, number} {count, plural, one {rating} other {ratings}}"
+      "ratingCount": "{count, number} {count, plural, one {rating} other {ratings}}",
+      "logo": "Logo",
+      "descriptionCount": "{count, number} of {max, number} characters · Telegram channel and VK"
     }
   },
   "platforms": {

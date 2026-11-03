@@ -1305,7 +1305,9 @@
       "platform": "Площадка",
       "platformMatches": "{platform}: совпадают {fields}",
       "platformDifferent": "{platform}: отличаются {fields}",
-      "ratingCount": "{count, number} {count, plural, one {оценка} few {оценки} many {оценок} other {оценки}}"
+      "ratingCount": "{count, number} {count, plural, one {оценка} few {оценки} many {оценок} other {оценки}}",
+      "logo": "Логотип",
+      "descriptionCount": "{count, number} из {max, number} знаков · в канале и во ВКонтакте"
     }
   },
   "platforms": {
