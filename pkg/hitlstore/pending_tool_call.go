@@ -194,7 +194,11 @@ func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, con
 // ListPendingByBusiness reads only live, unresolved batches through the existing tenant index.
 func (r *pendingToolCallRepo) ListPendingByBusiness(ctx context.Context, businessID, userID string) ([]*domain.PendingToolCallBatch, error) {
 	filter := bson.M{"business_id": businessID, "user_id": userID, "status": statusPending, "expires_at": bson.M{"$gt": time.Now().UTC()}}
-	cursor, err := r.coll.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}).SetProjection(bson.M{"_id": 1, "conversation_id": 1, "business_id": 1, "user_id": 1, "status": 1, "calls.call_id": 1, "created_at": 1, "expires_at": 1}))
+	cursor, err := r.coll.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}).SetProjection(bson.M{
+		"_id": 1, "conversation_id": 1, "business_id": 1, "user_id": 1, "status": 1,
+		"calls.call_id": 1, "calls.tool_name": 1, "calls.arguments.text": 1, "calls.arguments.caption": 1,
+		"calls.arguments.scheduled_at": 1, "calls.arguments.publish_date": 1, "created_at": 1, "expires_at": 1,
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("list business approvals: %w", err)
 	}

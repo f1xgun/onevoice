@@ -3072,7 +3072,7 @@
     "generating": "Preparing a draft…",
     "draftFailed": "Could not prepare a draft. Try again.",
     "actionError": "Could not complete the action. Your text remains in the field.",
-    "send": "Reply on behalf of the location",
+    "send": "Reply",
     "regenerate": "Another version",
     "skip": "Do not reply",
     "readOnly": "You can read. Publishing access is needed to reply.",
@@ -3095,7 +3095,7 @@
     "autoReview": "Replied automatically",
     "instruct": "Give OneVoice an instruction",
     "approval_batch": "Instruction awaiting a decision",
-    "approval_batchBody": "{count} actions need a decision. Review the whole batch.",
+    "approval_batchBody": "{count, plural, one {# action in this instruction needs approval.} other {# actions in this instruction need approval.}} Review the full set.",
     "approval_batchAction": "Open conversation and review",
     "allReviews": "All reviews",
     "editDraft": "Edit draft",
@@ -3103,7 +3103,68 @@
     "retryReply": "Send again",
     "permissionLoading": "Checking permissions…",
     "approvalSummary": "{count, plural, one {# action awaits} other {# actions await}} approval",
-    "driftSummary": "Check {fields}"
+    "driftSummary": "Check {fields}",
+    "business": "Your business",
+    "platformGeneric": "Platform",
+    "reviewAt": "review {platform}",
+    "commentAt": "comment {platform}",
+    "underPost": ", on “{title}”",
+    "quote": "“{text}”",
+    "postTomorrow": "Post for tomorrow",
+    "postToday": "Post for today",
+    "postDate": "Post for {date}",
+    "newPost": "New post",
+    "scheduledFor": "publishes at {time}",
+    "assigned": "you requested it {when}",
+    "hoursDifferent": "Different hours on Maps",
+    "hoursDifferenceDetail": "{day}: {remote} instead of {stored}",
+    "closedDay": "closed",
+    "autoPerson": "Replied to {name}’s {rating}-star review {platform}",
+    "autoAt": "Replied automatically {platform}",
+    "sourceWhen": "{platform}, {when}",
+    "mapsPresence": "How you appear on Maps",
+    "ratingCount": "{count, number} {count, plural, one {rating} other {ratings}}",
+    "editHeading": "To edit the reply",
+    "editHint": "Select the text and edit it. OneVoice will use your correction in future replies.",
+    "instructionPlaceholder": "Ask OneVoice: for example, a post about your new roast",
+    "instructionError": "Could not send the instruction. Try again.",
+    "place": {
+      "yandex_business": "on Yandex Maps",
+      "telegram": "on Telegram",
+      "vk": "on VK",
+      "google_business": "on Google Maps",
+      "other": "on the platform"
+    },
+    "destination": {
+      "telegram": "to your channel",
+      "vk": "to VK",
+      "yandex_business": "to Maps",
+      "google_business": "to Google Maps",
+      "other": "to the platform"
+    },
+    "assignedDay": {
+      "today": "today",
+      "yesterday": "yesterday",
+      "tomorrow": "for tomorrow",
+      "date": "on {date}"
+    },
+    "when": {
+      "today": "today, {time}",
+      "yesterday": "yesterday, {time}",
+      "tomorrow": "tomorrow, {time}",
+      "date": "{date}, {time}"
+    },
+    "whenProse": {
+      "today": "today at {time}",
+      "yesterday": "yesterday at {time}",
+      "tomorrow": "tomorrow at {time}",
+      "date": "{date} at {time}"
+    },
+    "autoFact": {
+      "address": "Answered an address question {platform}",
+      "hours": "Answered an opening-hours question {platform}"
+    },
+    "postTopic": "{heading}: {topic}"
   },
   "rulesV2": {
     "title": "OneVoice rules",

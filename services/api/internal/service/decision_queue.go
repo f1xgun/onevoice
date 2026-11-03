@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,7 +19,7 @@ const decisionKindApproval = "approval_batch"
 type DecisionQueue struct {
 	Items     []DecisionItem    `json:"items"`
 	Total     int               `json:"total"`
-	Automatic []domain.AuditLog `json:"automatic"`
+	Automatic []DecisionReceipt `json:"automatic"`
 }
 
 type DecisionItem struct {
@@ -29,16 +31,40 @@ type DecisionItem struct {
 	ConversationID string            `json:"conversationId,omitempty"`
 	CallCount      int               `json:"callCount,omitempty"`
 	Drift          *domain.SyncState `json:"drift,omitempty"`
+	Approval       *DecisionApproval `json:"approval,omitempty"`
+}
+
+type DecisionApproval struct {
+	Title       string     `json:"title,omitempty"`
+	Post        bool       `json:"post"`
+	Platforms   []string   `json:"platforms"`
+	ScheduledAt *time.Time `json:"scheduledAt,omitempty"`
+	Preview     string     `json:"preview,omitempty"`
+}
+
+type DecisionReceipt struct {
+	ID         uuid.UUID `json:"id"`
+	Action     string    `json:"action"`
+	CreatedAt  time.Time `json:"createdAt"`
+	Platform   string    `json:"platform,omitempty"`
+	AuthorName string    `json:"authorName,omitempty"`
+	Rating     int       `json:"rating,omitempty"`
+	Fact       string    `json:"fact,omitempty"`
 }
 
 type DecisionAccess struct{ Content, Integrations, Audit bool }
 
 type DecisionQueueService struct {
-	reviews      domain.ReviewRepository
-	pending      domain.BusinessPendingToolCallReader
-	integrations domain.IntegrationRepository
-	sync         domain.SyncStateRepository
-	audit        domain.AuditLogRepository
+	reviews       domain.ReviewRepository
+	pending       domain.BusinessPendingToolCallReader
+	integrations  domain.IntegrationRepository
+	sync          domain.SyncStateRepository
+	audit         domain.AuditLogRepository
+	conversations domain.ConversationRepository
+}
+
+func (s *DecisionQueueService) SetConversations(repository domain.ConversationRepository) {
+	s.conversations = repository
 }
 
 func NewDecisionQueueService(reviews domain.ReviewRepository, pending domain.BusinessPendingToolCallReader, integrations domain.IntegrationRepository, sync domain.SyncStateRepository, audit domain.AuditLogRepository) *DecisionQueueService {
@@ -46,7 +72,7 @@ func NewDecisionQueueService(reviews domain.ReviewRepository, pending domain.Bus
 }
 
 func (s *DecisionQueueService) List(ctx context.Context, businessID, userID uuid.UUID, access DecisionAccess) (DecisionQueue, error) {
-	out := DecisionQueue{Items: []DecisionItem{}, Automatic: []domain.AuditLog{}}
+	out := DecisionQueue{Items: []DecisionItem{}, Automatic: []DecisionReceipt{}}
 	if access.Content {
 		reviews, total, err := s.reviews.ListByBusinessID(ctx, businessID.String(), domain.ReviewFilter{ReplyStatus: domain.ReviewReplyStatusPending, Limit: 100})
 		if err != nil {
@@ -70,10 +96,20 @@ func (s *DecisionQueueService) List(ctx context.Context, businessID, userID uuid
 			return out, fmt.Errorf("decision approvals: %w", err)
 		}
 		for _, b := range batches {
-			if b.UserID != userID.String() || b.Status != domain.ReviewReplyStatusPending || len(b.Calls) == 0 || (!b.ExpiresAt.IsZero() && !b.ExpiresAt.After(time.Now())) {
+			if b.BusinessID != businessID.String() || b.UserID != userID.String() || b.Status != domain.ReviewReplyStatusPending || len(b.Calls) == 0 || (!b.ExpiresAt.IsZero() && !b.ExpiresAt.After(time.Now())) {
 				continue
 			}
-			out.Items = append(out.Items, DecisionItem{ID: "approval:" + b.ID, Kind: decisionKindApproval, CreatedAt: b.CreatedAt, ConversationID: b.ConversationID, CallCount: len(b.Calls)})
+			approval := decisionApproval(b.Calls)
+			if s.conversations != nil && b.ConversationID != "" {
+				conversation, err := s.conversations.GetByID(ctx, b.ConversationID)
+				if err != nil && !errors.Is(err, domain.ErrConversationNotFound) {
+					return out, fmt.Errorf("decision approval conversation: %w", err)
+				}
+				if conversation != nil && conversation.BusinessID == businessID.String() && conversation.UserID == userID.String() && conversation.TitleStatus != domain.TitleStatusAutoPending {
+					approval.Title = clampRunes(strings.TrimSpace(conversation.Title), decisionTitleRunes)
+				}
+			}
+			out.Items = append(out.Items, DecisionItem{ID: "approval:" + b.ID, Kind: decisionKindApproval, CreatedAt: b.CreatedAt, ConversationID: b.ConversationID, CallCount: len(b.Calls), Approval: approval})
 			out.Total++
 		}
 	}
@@ -99,7 +135,7 @@ func (s *DecisionQueueService) List(ctx context.Context, businessID, userID uuid
 			if !d.DriftDetected || d.LastCheckedAt == nil {
 				continue
 			}
-			out.Items = append(out.Items, DecisionItem{ID: "drift:" + d.ID.String(), Kind: "drift", Platform: d.Platform, CreatedAt: d.UpdatedAt, Drift: &d})
+			out.Items = append(out.Items, DecisionItem{ID: "drift:" + d.ID.String(), Kind: "drift", Platform: d.Platform, CreatedAt: *d.LastCheckedAt, Drift: &d})
 			out.Total++
 		}
 	}
@@ -111,7 +147,11 @@ func (s *DecisionQueueService) List(ctx context.Context, businessID, userID uuid
 		// Defense in depth: never relabel a manual audit entry as automatic.
 		for _, log := range logs {
 			if log.Action == "review.auto_replied" {
-				out.Automatic = append(out.Automatic, log)
+				receipt, err := s.decisionReceipt(ctx, businessID, log, access.Content)
+				if err != nil {
+					return out, err
+				}
+				out.Automatic = append(out.Automatic, receipt)
 			}
 		}
 	}

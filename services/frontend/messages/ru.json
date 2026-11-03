@@ -3072,7 +3072,7 @@
     "generating": "Готовим черновик…",
     "draftFailed": "Не удалось подготовить черновик. Попробуйте еще раз.",
     "actionError": "Не удалось завершить действие. Ваш текст остается в поле.",
-    "send": "Ответить от имени точки",
+    "send": "Ответить",
     "regenerate": "Другой вариант",
     "skip": "Не отвечать",
     "readOnly": "Вы можете читать. Для ответа нужно право публикации.",
@@ -3095,7 +3095,7 @@
     "autoReview": "Ответили автоматически",
     "instruct": "Поручить OneVoice",
     "approval_batch": "Поручение ждет решения",
-    "approval_batchBody": "В поручении ждут решения {count} действий. Проверьте весь набор.",
+    "approval_batchBody": "{count, plural, one {В поручении ждет решения # действие.} few {В поручении ждут решения # действия.} other {В поручении ждут решения # действий.}} Проверьте весь набор.",
     "approval_batchAction": "Открыть поручение и проверить",
     "allReviews": "Все отзывы",
     "editDraft": "Изменить черновик",
@@ -3103,7 +3103,68 @@
     "retryReply": "Отправить еще раз",
     "permissionLoading": "Проверяем права…",
     "approvalSummary": "{count, plural, one {Ждет согласования # действие} few {Ждут согласования # действия} other {Ждут согласования # действий}}",
-    "driftSummary": "Проверьте {fields}"
+    "driftSummary": "Проверьте {fields}",
+    "business": "Ваша точка",
+    "platformGeneric": "Площадка",
+    "reviewAt": "отзыв {platform}",
+    "commentAt": "комментарий {platform}",
+    "underPost": ", под постом «{title}»",
+    "quote": "«{text}»",
+    "postTomorrow": "Пост на завтра",
+    "postToday": "Пост на сегодня",
+    "postDate": "Пост на {date}",
+    "newPost": "Новый пост",
+    "scheduledFor": "выйдет в {time}",
+    "assigned": "вы поручили {when}",
+    "hoursDifferent": "Часы на Картах другие",
+    "hoursDifferenceDetail": "{day}: {remote} вместо {stored}",
+    "closedDay": "выходной",
+    "autoPerson": "Ответили на отзыв: {name}, {rating} из 5 {platform}",
+    "autoAt": "Ответили автоматически {platform}",
+    "sourceWhen": "{platform}, {when}",
+    "mapsPresence": "Как вас видят на Картах",
+    "ratingCount": "{count, number} {count, plural, one {оценка} few {оценки} many {оценок} other {оценки}}",
+    "editHeading": "Чтобы поправить ответ",
+    "editHint": "Нажмите на текст и пишите. OneVoice учтет правку в следующих ответах.",
+    "instructionPlaceholder": "Поручить: например, пост про новую обжарку",
+    "instructionError": "Не получилось передать поручение. Попробуйте еще раз.",
+    "place": {
+      "yandex_business": "на Яндекс Картах",
+      "telegram": "в Telegram",
+      "vk": "во ВКонтакте",
+      "google_business": "в Google Картах",
+      "other": "на площадке"
+    },
+    "destination": {
+      "telegram": "в канал",
+      "vk": "во ВКонтакте",
+      "yandex_business": "на Карты",
+      "google_business": "в Google Карты",
+      "other": "на площадку"
+    },
+    "assignedDay": {
+      "today": "сегодня",
+      "yesterday": "вчера",
+      "tomorrow": "на завтра",
+      "date": "{date}"
+    },
+    "when": {
+      "today": "сегодня, {time}",
+      "yesterday": "вчера, {time}",
+      "tomorrow": "завтра, {time}",
+      "date": "{date}, {time}"
+    },
+    "whenProse": {
+      "today": "сегодня в {time}",
+      "yesterday": "вчера в {time}",
+      "tomorrow": "завтра в {time}",
+      "date": "{date} в {time}"
+    },
+    "autoFact": {
+      "address": "Ответили {platform} на вопрос про адрес",
+      "hours": "Ответили {platform} на вопрос про часы"
+    },
+    "postTopic": "{heading}: {topic}"
   },
   "rulesV2": {
     "title": "Правила OneVoice",

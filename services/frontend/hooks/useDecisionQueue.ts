@@ -14,12 +14,27 @@ export interface DecisionItem {
   review?: Review;
   conversationId?: string;
   callCount?: number;
-  drift?: { driftFields: string[] };
+  approval?: {
+    post: boolean;
+    platforms: string[];
+    scheduledAt?: string;
+    preview?: string;
+    title?: string;
+  };
+  drift?: { driftFields: string[]; externalId?: string };
 }
 export interface DecisionQueue {
   items: DecisionItem[];
   total: number;
-  automatic: { id: string; action: string; createdAt: string }[];
+  automatic: {
+    id: string;
+    action: string;
+    createdAt: string;
+    platform?: string;
+    authorName?: string;
+    rating?: number;
+    fact?: string;
+  }[];
 }
 export function decisionQueueKey(businessId: string | null) {
   return ['businesses', businessId, 'decision-queue'] as const;
