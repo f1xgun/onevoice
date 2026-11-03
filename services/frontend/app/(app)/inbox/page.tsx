@@ -351,9 +351,7 @@ export default function InboxPage() {
                                       <span
                                         key={star}
                                         className={
-                                          star <= item.review!.rating
-                                            ? 'text-star'
-                                            : 'text-ink-faint'
+                                          star <= item.review!.rating ? 'text-star' : 'text-line'
                                         }
                                       >
                                         ★
